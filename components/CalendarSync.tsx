@@ -1,6 +1,7 @@
-import { Alert, Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
-import { Calendar as CalendarIcon, Share2 } from 'lucide-react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { Calendar as CalendarIcon, ExternalLink, Share2 } from 'lucide-react-native';
 import { useState } from 'react';
+import { buildGoogleCalendarURL } from '@/lib/googleCalendarURL';
 import { colors, radius, spacing } from '@/constants/theme';
 import { requestCalendarPermission, syncTripToCalendar, shareCalendarInvite } from '@/lib/calendar';
 import type { Flight, Trip } from '@/lib/types';
@@ -15,6 +16,7 @@ interface Props {
 export default function CalendarSync({ trip, flights, packingItems }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [openingGCal, setOpeningGCal] = useState(false);
 
   const sync = async () => {
     setSyncing(true);
@@ -45,6 +47,64 @@ export default function CalendarSync({ trip, flights, packingItems }: Props) {
     }
   };
 
+  const openInGoogleCalendar = async () => {
+    setOpeningGCal(true);
+    try {
+      const events = buildShareEvents(trip, flights);
+      if (events.length === 0) {
+        Alert.alert('No events', 'No flight events to add to Google Calendar.');
+        return;
+      }
+
+      const openEvent = async (index: number): Promise<void> => {
+        if (index >= events.length) return;
+        const event = events[index];
+        const url = buildGoogleCalendarURL({
+          title: event.title,
+          startISO: event.startDate.toISOString(),
+          endISO: event.endDate.toISOString(),
+          location: event.location,
+          description: event.notes,
+        });
+
+        if (index < events.length - 1) {
+          Alert.alert(
+            `Event ${index + 1} of ${events.length}`,
+            `Opening: ${event.title}\n\nAfter adding this event, come back for the next one.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open',
+                onPress: async () => {
+                  await Linking.openURL(url);
+                  openEvent(index + 1);
+                },
+              },
+            ],
+          );
+        } else {
+          Alert.alert(
+            events.length > 1 ? `Event ${index + 1} of ${events.length}` : 'Open in Google Calendar',
+            `Opening: ${event.title}`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open',
+                onPress: () => Linking.openURL(url),
+              },
+            ],
+          );
+        }
+      };
+
+      await openEvent(0);
+    } catch (e: any) {
+      Alert.alert('Failed to open Google Calendar', e?.message ?? 'Unknown error');
+    } finally {
+      setOpeningGCal(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Pressable
@@ -72,6 +132,20 @@ export default function CalendarSync({ trip, flights, packingItems }: Props) {
           <>
             <Share2 size={16} color={colors.green2} />
             <Text style={styles.shareText}>Share with Group</Text>
+          </>
+        )}
+      </Pressable>
+      <Pressable
+        style={({ pressed }) => [styles.shareBtn, pressed ? { opacity: 0.8 } : null]}
+        onPress={openInGoogleCalendar}
+        disabled={openingGCal}
+      >
+        {openingGCal ? (
+          <ActivityIndicator color={colors.green2} size="small" />
+        ) : (
+          <>
+            <ExternalLink size={16} color={colors.green2} />
+            <Text style={styles.shareText}>Google Calendar</Text>
           </>
         )}
       </Pressable>
