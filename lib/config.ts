@@ -17,6 +17,7 @@ export const CONFIG = {
     CHECKLIST: '331563e8-057d-45e5-8c9c-6aabb2bad2ab',
     MOMENTS: 'ba5fbab9-f32e-4336-ba1d-c307627169eb',
     FILES: '6f680533-2b9b-434a-bd32-4b2edd63e766',
+    TRIP_INSIGHTS: '2ff114bd-0870-43a4-b93f-481c3c544866',
   },
 } as const;
 
