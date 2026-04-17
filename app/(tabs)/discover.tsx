@@ -21,7 +21,10 @@ import { colors, radius, spacing } from '@/constants/theme';
 import { distanceFromHotel, formatDistance, estimateWalkTime } from '@/lib/distance';
 import { searchNearby, searchPlace, HOTEL_LAT, HOTEL_LNG, type NearbyPlace } from '@/lib/google-places';
 import { PlaceDetailSheet } from '@/components/discover/PlaceDetailSheet';
+import { FilterBar } from '@/components/discover/FilterBar';
 import { addPlace, getSavedPlaces, getActiveTrip } from '@/lib/notion';
+import { useFilters } from '@/hooks/useFilters';
+import { applyFilters } from '@/lib/filters';
 import type { Place } from '@/lib/types';
 
 const DISCOVER_CATEGORIES = [
@@ -139,6 +142,8 @@ export default function DiscoverScreen() {
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
   const [detailPlace, setDetailPlace] = useState<NearbyPlace | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const { filters, updateFilters, resetFilters } = useFilters();
 
   const loadSavedPlaces = useCallback(async () => {
     setSavedLoading(true);
@@ -281,6 +286,25 @@ export default function DiscoverScreen() {
     setDetailPlace(place);
   };
 
+  // Apply filters to explore places
+  const enrichedPlaces = places.map(p => ({
+    ...p,
+    rating: p.rating,
+    distanceKm: p.lat && p.lng ? distanceFromHotel(p.lat, p.lng) : undefined,
+    isOpenNow: p.open_now,
+    priceLevel: p.price_level,
+  }));
+  const filteredExplore = applyFilters(enrichedPlaces, filters);
+
+  // Apply filters to saved places
+  const enrichedSaved = savedPlaces.map(p => ({
+    ...p,
+    distanceKm: p.latitude && p.longitude ? distanceFromHotel(p.latitude, p.longitude) : undefined,
+    isOpenNow: undefined as boolean | undefined,
+    priceLevel: undefined as number | undefined,
+  }));
+  const filteredSaved = applyFilters(enrichedSaved, filters);
+
   const renderCard = ({ item }: { item: NearbyPlace }) => {
     const isSaving = savingIds.has(item.place_id);
     const priceStr = priceLevelString(item.price_level);
@@ -373,7 +397,10 @@ export default function DiscoverScreen() {
               <Text style={styles.sub}>
                 {isCurated
                   ? 'Curated picks for Boracay'
-                  : `${places.length} places · sorted by distance from Canyon`}
+                  : `${(discoverView === 'explore' ? filteredExplore : filteredSaved).length} places`
+                    + (filters.sortBy === 'distance' ? ' · sorted by distance' : ' · sorted by rating')
+                    + (filters.minRating > 0 ? ` · ${filters.minRating}+` : '')
+                    + (filters.openNow ? ' · open now' : '')}
               </Text>
             </View>
             <Pressable
@@ -413,23 +440,39 @@ export default function DiscoverScreen() {
 
         {/* Category pills — only in Explore */}
         {discoverView === 'explore' && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.pillRow}
-          >
-            {DISCOVER_CATEGORIES.map((cat, i) => (
-              <Pressable
-                key={cat.label}
-                style={[styles.pill, i === activeCategory && styles.pillActive]}
-                onPress={() => onCategoryChange(i)}
-              >
-                <Text style={[styles.pillText, i === activeCategory && styles.pillTextActive]}>
-                  {cat.label}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          <>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.pillRow}
+            >
+              {DISCOVER_CATEGORIES.map((cat, i) => (
+                <Pressable
+                  key={cat.label}
+                  style={[styles.pill, i === activeCategory && styles.pillActive]}
+                  onPress={() => onCategoryChange(i)}
+                >
+                  <Text style={[styles.pillText, i === activeCategory && styles.pillTextActive]}>
+                    {cat.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <FilterBar
+              filters={filters}
+              onUpdate={updateFilters}
+              onOpenMore={() => setMoreOpen(true)}
+            />
+          </>
+        )}
+
+        {/* Filter bar for saved view */}
+        {discoverView === 'saved' && (
+          <FilterBar
+            filters={filters}
+            onUpdate={updateFilters}
+            onOpenMore={() => setMoreOpen(true)}
+          />
         )}
 
         {/* List / Map toggle — only in Explore */}
@@ -465,7 +508,7 @@ export default function DiscoverScreen() {
           </View>
         ) : (
           <FlatList
-            data={savedPlaces}
+            data={filteredSaved}
             keyExtractor={p => p.id}
             contentContainerStyle={styles.list}
             ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
@@ -518,7 +561,7 @@ export default function DiscoverScreen() {
         </MapView>
       ) : (
         <FlatList
-          data={places}
+          data={filteredExplore}
           keyExtractor={p => p.place_id}
           renderItem={renderCard}
           contentContainerStyle={styles.list}
