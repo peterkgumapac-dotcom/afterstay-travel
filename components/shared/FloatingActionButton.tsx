@@ -172,7 +172,7 @@ export const FloatingActionButton: React.FC = () => {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 100 : 90,
+    bottom: Platform.OS === 'ios' ? 110 : 90,
     right: 20,
     width: 56,
     height: 56,
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   },
   menuContainer: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 175 : 165,
+    bottom: Platform.OS === 'ios' ? 185 : 165,
     right: 20,
     alignItems: 'flex-end',
     gap: 14,

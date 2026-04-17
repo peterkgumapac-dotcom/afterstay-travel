@@ -6,6 +6,7 @@ import {
   FlatList,
   Image,
   Linking,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -721,7 +722,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: spacing.lg,
-    bottom: spacing.xl,
+    bottom: Platform.OS === 'ios' ? 24 : spacing.xl,
     width: 56,
     height: 56,
     borderRadius: 28,

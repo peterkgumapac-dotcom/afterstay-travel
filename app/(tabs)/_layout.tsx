@@ -51,7 +51,9 @@ export default function TabLayout() {
           borderColor: colors.border,
           elevation: 8,
         },
-        tabBarItemStyle: {
+        tabBarItemStyle: Platform.OS === 'ios' ? {
+          paddingTop: 4,
+        } : {
           paddingTop: 8,
           paddingBottom: 8,
         },
