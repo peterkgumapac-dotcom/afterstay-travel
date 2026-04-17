@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Sun, Cloud, CloudRain, CloudSun, CloudSnow, CloudFog, CloudLightning } from 'lucide-react-native';
 
 import { CONFIG } from '../../lib/config';
 
@@ -15,20 +16,21 @@ interface DayForecast {
   minTemp: number;
   chanceRain: number;
   condition: string;
-  emoji: string;
   rainWindows: { startHour: number; endHour: number; maxChance: number }[];
 }
 
-const emojiForCondition = (condition: string): string => {
+type LucideIcon = typeof Sun;
+
+const iconForCondition = (condition: string): { Icon: LucideIcon; color: string } => {
   const c = condition.toLowerCase();
-  if (c.includes('sunny') || c.includes('clear')) return '☀️';
-  if (c.includes('partly cloudy')) return '⛅';
-  if (c.includes('cloud') || c.includes('overcast')) return '☁️';
-  if (c.includes('thunder')) return '⛈️';
-  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return '🌧️';
-  if (c.includes('snow') || c.includes('sleet')) return '❄️';
-  if (c.includes('fog') || c.includes('mist')) return '🌫️';
-  return '🌤️';
+  if (c.includes('sunny') || c.includes('clear')) return { Icon: Sun, color: '#fbbf24' };
+  if (c.includes('partly cloudy')) return { Icon: CloudSun, color: '#94a3b8' };
+  if (c.includes('thunder')) return { Icon: CloudLightning, color: '#60a5fa' };
+  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return { Icon: CloudRain, color: '#60a5fa' };
+  if (c.includes('snow') || c.includes('sleet')) return { Icon: CloudSnow, color: '#e2e8f0' };
+  if (c.includes('fog') || c.includes('mist')) return { Icon: CloudFog, color: '#94a3b8' };
+  if (c.includes('cloud') || c.includes('overcast')) return { Icon: Cloud, color: '#94a3b8' };
+  return { Icon: CloudSun, color: '#fbbf24' };
 };
 
 const formatHourRange = (start: number, end: number): string => {
@@ -108,7 +110,6 @@ export const WeatherForecastCard = () => {
           minTemp: Math.round(fd.day.mintemp_c),
           chanceRain: fd.day.daily_chance_of_rain,
           condition: fd.day.condition.text,
-          emoji: emojiForCondition(fd.day.condition.text),
           rainWindows,
         };
       });
@@ -147,17 +148,22 @@ export const WeatherForecastCard = () => {
       <Text style={styles.label}>Your Stay Weather · Boracay</Text>
 
       <View style={styles.daysRow}>
-        {days.map((d) => (
+        {days.map((d) => {
+          const { Icon: WeatherIcon, color: iconColor } = iconForCondition(d.condition);
+          return (
           <View key={d.date} style={styles.dayCol}>
             <Text style={styles.dayLabel}>{d.dayLabel}</Text>
-            <Text style={styles.emoji}>{d.emoji}</Text>
+            <View style={styles.iconWrap}>
+              <WeatherIcon color={iconColor} size={28} strokeWidth={1.75} />
+            </View>
             <Text style={styles.maxTemp}>{d.maxTemp}°</Text>
             <Text style={styles.minTemp}>{d.minTemp}°</Text>
             {d.chanceRain > 0 && (
               <Text style={styles.rainPct}>{d.chanceRain}%</Text>
             )}
           </View>
-        ))}
+          );
+        })}
       </View>
 
       {insights.length > 0 && (
@@ -206,9 +212,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 8,
   },
-  emoji: {
-    fontSize: 28,
+  iconWrap: {
     marginBottom: 8,
+    alignItems: 'center',
   },
   maxTemp: {
     color: '#fff',

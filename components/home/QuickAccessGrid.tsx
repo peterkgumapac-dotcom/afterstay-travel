@@ -28,7 +28,7 @@ const DEFAULT_TILES: Tile[] = [
   { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: 'Not set' },
   { id: 'door', iconName: 'door', label: 'Door Code', value: '\u2014' },
   { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: '3:00 PM' },
-  { id: 'checkout', iconName: 'checkout', label: 'Check-out', value: '12:00 PM' },
+  { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: '12:00 PM' },
 ];
 
 const QUICK_ACCESS_KEY = 'quickAccess_v1';
@@ -105,8 +105,8 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
               <View style={styles.tileIconWrap}>
                 <TileIcon color="#2dd4a0" size={22} strokeWidth={2} />
               </View>
-              <Text style={styles.tileLabel}>{tile.label}</Text>
-              <Text style={styles.tileValue} numberOfLines={1}>
+              <Text style={styles.tileLabel} numberOfLines={1}>{tile.label}</Text>
+              <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
                 {showValue(tile)}
               </Text>
             </TouchableOpacity>
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   },
   tileLabel: {
     color: '#5a6577',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
     letterSpacing: 0.3,
     textTransform: 'uppercase',

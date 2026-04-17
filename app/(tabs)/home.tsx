@@ -201,7 +201,7 @@ export default function HomeScreen() {
     { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: trip.wifiSsid || 'Not set' },
     { id: 'door', iconName: 'door', label: 'Door Code', value: trip.doorCode ? '\u2022\u2022\u2022\u2022' : '\u2014' },
     { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: trip.checkIn || '3:00 PM' },
-    { id: 'checkout', iconName: 'checkout', label: 'Check-out', value: trip.checkOut || '12:00 PM' },
+    { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: trip.checkOut || '12:00 PM' },
   ];
 
   return (
