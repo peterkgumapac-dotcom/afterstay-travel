@@ -22,6 +22,7 @@ import { distanceFromHotel, formatDistance, estimateWalkTime } from '@/lib/dista
 import { searchNearby, searchPlace, HOTEL_LAT, HOTEL_LNG, type NearbyPlace } from '@/lib/google-places';
 import { PlaceDetailSheet } from '@/components/discover/PlaceDetailSheet';
 import { FilterBar } from '@/components/discover/FilterBar';
+import { FilterMoreSheet } from '@/components/discover/FilterMoreSheet';
 import { addPlace, getSavedPlaces, getActiveTrip } from '@/lib/notion';
 import { useFilters } from '@/hooks/useFilters';
 import { applyFilters } from '@/lib/filters';
@@ -599,6 +600,14 @@ export default function DiscoverScreen() {
           distanceKm={detailPlace.lat && detailPlace.lng ? distanceFromHotel(detailPlace.lat, detailPlace.lng) : undefined}
         />
       )}
+
+      <FilterMoreSheet
+        visible={moreOpen}
+        filters={filters}
+        onUpdate={updateFilters}
+        onReset={resetFilters}
+        onClose={() => setMoreOpen(false)}
+      />
     </View>
   );
 }
