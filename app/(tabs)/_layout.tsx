@@ -29,9 +29,16 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.green,
         tabBarInactiveTintColor: colors.text2,
-        tabBarStyle: {
-          position: 'absolute',
-          bottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 16) : 16,
+        tabBarStyle: Platform.OS === 'ios' ? {
+          backgroundColor: 'rgba(15,19,24,0.98)',
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom,
+          paddingTop: 8,
+        } : {
+          position: 'absolute' as const,
+          bottom: 16,
           left: 20,
           right: 20,
           backgroundColor: 'rgba(15,19,24,0.92)',
@@ -42,15 +49,7 @@ export default function TabLayout() {
           paddingTop: 0,
           borderWidth: 1,
           borderColor: colors.border,
-          ...Platform.select({
-            ios: {
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: -4 },
-              shadowOpacity: 0.24,
-              shadowRadius: 16,
-            },
-            android: { elevation: 8 },
-          }),
+          elevation: 8,
         },
         tabBarItemStyle: {
           paddingTop: 8,
