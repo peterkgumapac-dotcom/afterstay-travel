@@ -2,8 +2,8 @@
 
 const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY ?? '';
 
-const HOTEL_LAT = 11.9674;
-const HOTEL_LNG = 121.9249;
+const HOTEL_LAT = 11.9710;
+const HOTEL_LNG = 121.9215;
 
 export interface PlaceSearchResult {
   place_id: string;

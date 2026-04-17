@@ -4,8 +4,8 @@ export const CONFIG = {
   WEATHER_KEY: process.env.EXPO_PUBLIC_WEATHER_API_KEY || '',
   ANTHROPIC_KEY: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '',
   TRIP_PAGE_ID: process.env.EXPO_PUBLIC_TRIP_PAGE_ID || '344e56a9-1cd3-8123-aa32-da48cfbfb7c1',
-  HOTEL: { lat: 11.9674, lng: 121.9249 },
-  HOTEL_COORDS: { lat: 11.9674, lng: 121.9249 },
+  HOTEL: { lat: 11.9710, lng: 121.9215 },
+  HOTEL_COORDS: { lat: 11.9710, lng: 121.9215 },
   TRIP_BUDGET_KEY: 'tripBudget_v1',
   NOTION_DBS: {
     TRIP: '9be3ad05-4004-465b-9228-b8b825fb334d',
