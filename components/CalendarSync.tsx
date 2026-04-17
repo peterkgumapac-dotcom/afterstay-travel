@@ -4,16 +4,17 @@ import { useState } from 'react';
 import { buildGoogleCalendarURL } from '@/lib/googleCalendarURL';
 import { colors, radius, spacing } from '@/constants/theme';
 import { requestCalendarPermission, syncTripToCalendar, shareCalendarInvite } from '@/lib/calendar';
-import type { Flight, Trip } from '@/lib/types';
+import type { Flight, GroupMember, Trip } from '@/lib/types';
 import { safeParse } from '@/lib/utils';
 
 interface Props {
   trip: Trip;
   flights: Flight[];
   packingItems?: { item: string; packed: boolean }[];
+  members?: GroupMember[];
 }
 
-export default function CalendarSync({ trip, flights, packingItems }: Props) {
+export default function CalendarSync({ trip, flights, packingItems, members = [] }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [openingGCal, setOpeningGCal] = useState(false);
@@ -50,56 +51,88 @@ export default function CalendarSync({ trip, flights, packingItems }: Props) {
   const openInGoogleCalendar = async () => {
     setOpeningGCal(true);
     try {
-      const events = buildShareEvents(trip, flights);
-      if (events.length === 0) {
-        Alert.alert('No events', 'No flight events to add to Google Calendar.');
+      // Collect attendee emails from non-primary members
+      const attendeeEmails = members
+        .filter(m => m.role !== 'Primary' && m.email)
+        .map(m => m.email!);
+
+      const outbound = flights.find(f => f.direction === 'Outbound');
+      const returnFlight = flights.find(f => f.direction === 'Return');
+
+      const gcalEvents = [
+        ...(outbound ? [{
+          title: `\u2708\uFE0F Flight to ${trip.name.split(' ')[0]} \u2014 ${outbound.flightNumber}`,
+          description: `${outbound.airline} ${outbound.flightNumber}\nRef: ${outbound.bookingRef || 'N/A'}\nDepart: ${outbound.from}\nArrive: ${outbound.to}\n\nArrive at airport 2 hours before departure.`,
+          location: `${outbound.from} Airport`,
+          startISO: outbound.departTime,
+          endISO: outbound.arriveTime,
+          attendeeEmails,
+        }] : []),
+        {
+          title: `\uD83C\uDFE8 Check-in ${trip.accommodation || 'Hotel'}`,
+          description: `${trip.accommodation || 'Hotel'}\nCheck-in 3:00 PM`,
+          location: trip.accommodation || 'Hotel',
+          startISO: `${trip.startDate}T15:00:00+08:00`,
+          endISO: `${trip.startDate}T16:00:00+08:00`,
+          attendeeEmails,
+        },
+        {
+          title: `\uD83C\uDFE8 Check-out ${trip.accommodation || 'Hotel'}`,
+          description: 'Check out by 12:00 PM.',
+          location: trip.accommodation || 'Hotel',
+          startISO: `${trip.endDate}T11:00:00+08:00`,
+          endISO: `${trip.endDate}T12:00:00+08:00`,
+          attendeeEmails,
+        },
+        ...(returnFlight ? [{
+          title: `\u2708\uFE0F Flight Home \u2014 ${returnFlight.flightNumber}`,
+          description: `${returnFlight.airline} ${returnFlight.flightNumber}\nRef: ${returnFlight.bookingRef || 'N/A'}\nDepart: ${returnFlight.from}\nArrive: ${returnFlight.to}`,
+          location: `${returnFlight.from} Airport`,
+          startISO: returnFlight.departTime,
+          endISO: returnFlight.arriveTime,
+          attendeeEmails,
+        }] : []),
+      ];
+
+      if (gcalEvents.length === 0) {
+        Alert.alert('No events', 'No events to add.');
         return;
       }
 
-      const openEvent = async (index: number): Promise<void> => {
-        if (index >= events.length) return;
-        const event = events[index];
-        const url = buildGoogleCalendarURL({
-          title: event.title,
-          startISO: event.startDate.toISOString(),
-          endISO: event.endDate.toISOString(),
-          location: event.location,
-          description: event.notes,
-        });
+      const attendeeNames = members
+        .filter(m => m.role !== 'Primary' && m.email)
+        .map(m => m.name.split(' ')[0]);
 
-        if (index < events.length - 1) {
-          Alert.alert(
-            `Event ${index + 1} of ${events.length}`,
-            `Opening: ${event.title}\n\nAfter adding this event, come back for the next one.`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Open',
-                onPress: async () => {
-                  await Linking.openURL(url);
-                  openEvent(index + 1);
-                },
-              },
-            ],
-          );
-        } else {
-          Alert.alert(
-            events.length > 1 ? `Event ${index + 1} of ${events.length}` : 'Open in Google Calendar',
-            `Opening: ${event.title}`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Open',
-                onPress: () => Linking.openURL(url),
-              },
-            ],
-          );
+      const openEvent = (index: number) => {
+        if (index >= gcalEvents.length) {
+          Alert.alert('Done!', `All ${gcalEvents.length} events sent.`);
+          return;
         }
+        const ev = gcalEvents[index];
+        const url = buildGoogleCalendarURL(ev);
+
+        Alert.alert(
+          `Event ${index + 1} of ${gcalEvents.length}`,
+          `${ev.title}${attendeeNames.length > 0 ? `\n\nGuests: ${attendeeNames.join(', ')}` : ''}`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: index < gcalEvents.length - 1 ? 'Open' : 'Open (last)',
+              onPress: () => {
+                Linking.openURL(url).then(() => {
+                  if (index + 1 < gcalEvents.length) {
+                    setTimeout(() => openEvent(index + 1), 1500);
+                  }
+                });
+              },
+            },
+          ],
+        );
       };
 
-      await openEvent(0);
+      openEvent(0);
     } catch (e: any) {
-      Alert.alert('Failed to open Google Calendar', e?.message ?? 'Unknown error');
+      Alert.alert('Failed', e?.message ?? 'Unknown error');
     } finally {
       setOpeningGCal(false);
     }

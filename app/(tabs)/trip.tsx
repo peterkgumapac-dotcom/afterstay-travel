@@ -292,7 +292,7 @@ export default function TripScreen() {
                   <Text style={styles.muted}>No flights saved yet.</Text>
                 )}
                 {flights.length > 0 && (
-                  <CalendarSync trip={trip} flights={flights} packingItems={packing} />
+                  <CalendarSync trip={trip} flights={flights} packingItems={packing} members={members} />
                 )}
               </Section>
 
