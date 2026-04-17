@@ -333,7 +333,7 @@ export default function DiscoverScreen() {
               <Text style={styles.sub}>
                 {isCurated
                   ? 'Curated picks for Boracay'
-                  : `${places.length} places nearby`}
+                  : `${places.length} places · sorted by distance from Canyon`}
               </Text>
             </View>
             <Pressable
