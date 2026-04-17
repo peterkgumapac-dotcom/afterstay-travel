@@ -23,6 +23,7 @@ import { searchNearby, searchPlace, HOTEL_LAT, HOTEL_LNG, type NearbyPlace } fro
 import { PlaceDetailSheet } from '@/components/discover/PlaceDetailSheet';
 import { FilterBar } from '@/components/discover/FilterBar';
 import { FilterMoreSheet } from '@/components/discover/FilterMoreSheet';
+import { InsightCard } from '@/components/discover/InsightCard';
 import { addPlace, getSavedPlaces, getActiveTrip } from '@/lib/notion';
 import { useFilters } from '@/hooks/useFilters';
 import { applyFilters } from '@/lib/filters';
@@ -438,6 +439,9 @@ export default function DiscoverScreen() {
             </Text>
           </Pressable>
         </View>
+
+        {/* AI Insights card — only in Explore */}
+        {discoverView === 'explore' && <InsightCard />}
 
         {/* Category pills — only in Explore */}
         {discoverView === 'explore' && (
