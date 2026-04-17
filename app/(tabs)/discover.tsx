@@ -1,6 +1,6 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { List, Map, Plus, Bookmark, Navigation, Sparkles } from 'lucide-react-native';
+import { List, Map, Plus, Bookmark, BookmarkCheck, Navigation, Sparkles, Globe2 } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
@@ -20,7 +20,9 @@ import AfterStayLoader from '@/components/AfterStayLoader';
 import { colors, radius, spacing } from '@/constants/theme';
 import { distanceFromHotel, formatDistance, estimateWalkTime } from '@/lib/distance';
 import { searchNearby, searchPlace, HOTEL_LAT, HOTEL_LNG, type NearbyPlace } from '@/lib/google-places';
-import { addPlace } from '@/lib/notion';
+import { PlaceDetailSheet } from '@/components/discover/PlaceDetailSheet';
+import { addPlace, getSavedPlaces, getActiveTrip } from '@/lib/notion';
+import type { Place } from '@/lib/types';
 
 const DISCOVER_CATEGORIES = [
   { label: 'All', type: '', keyword: 'boracay' },
@@ -133,6 +135,23 @@ export default function DiscoverScreen() {
   const [isCurated, setIsCurated] = useState(false);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [discoverView, setDiscoverView] = useState<'explore' | 'saved'>('explore');
+  const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [detailPlace, setDetailPlace] = useState<NearbyPlace | null>(null);
+
+  const loadSavedPlaces = useCallback(async () => {
+    setSavedLoading(true);
+    try {
+      const trip = await getActiveTrip();
+      if (!trip) return;
+      const all = await getSavedPlaces(trip.id);
+      setSavedPlaces(all.filter(p => p.saved));
+    } catch {}
+    finally { setSavedLoading(false); }
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadSavedPlaces(); }, [loadSavedPlaces]));
 
   const enrichCurated = useCallback(async (curated: NearbyPlace[]): Promise<NearbyPlace[]> => {
     // Try to get real photos + place_ids from Google Places search
@@ -159,9 +178,31 @@ export default function DiscoverScreen() {
   const fetchPlaces = useCallback(async (categoryIndex: number) => {
     try {
       const cat = DISCOVER_CATEGORIES[categoryIndex];
-      const type = cat.type || undefined;
-      const keyword = cat.keyword || undefined;
-      const results = await searchNearby(type, keyword);
+
+      let results: NearbyPlace[];
+
+      if (cat.label === 'All') {
+        // Run one search per non-All category, merge + dedupe
+        const searches = DISCOVER_CATEGORIES
+          .filter(c => c.label !== 'All')
+          .map(c => searchNearby(c.type || undefined, c.keyword || undefined).catch(() => [] as NearbyPlace[]));
+        const allResults = await Promise.all(searches);
+        const seen = new Set<string>();
+        const merged: NearbyPlace[] = [];
+        for (const batch of allResults) {
+          for (const p of batch) {
+            if (seen.has(p.place_id)) continue;
+            seen.add(p.place_id);
+            merged.push(p);
+          }
+        }
+        results = merged;
+      } else {
+        const type = cat.type || undefined;
+        const keyword = cat.keyword || undefined;
+        results = await searchNearby(type, keyword);
+      }
+
       if (results.length > 0) {
         const sorted = [...results].sort((a, b) => {
           const dA = a.lat && a.lng ? distanceFromHotel(a.lat, a.lng) : 999;
@@ -174,7 +215,6 @@ export default function DiscoverScreen() {
         const curated = filterCurated(categoryIndex);
         setPlaces(curated);
         setIsCurated(true);
-        // Enrich with real photos in background
         enrichCurated(curated).then(enriched => setPlaces(enriched));
       }
     } catch {
@@ -238,7 +278,7 @@ export default function DiscoverScreen() {
   };
 
   const onCardPress = (place: NearbyPlace) => {
-    router.push({ pathname: '/place-details', params: { placeId: place.place_id, placeName: place.name } } as any);
+    setDetailPlace(place);
   };
 
   const renderCard = ({ item }: { item: NearbyPlace }) => {
@@ -351,47 +391,107 @@ export default function DiscoverScreen() {
           </View>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pillRow}
-        >
-          {DISCOVER_CATEGORIES.map((cat, i) => (
-            <Pressable
-              key={cat.label}
-              style={[styles.pill, i === activeCategory && styles.pillActive]}
-              onPress={() => onCategoryChange(i)}
-            >
-              <Text style={[styles.pillText, i === activeCategory && styles.pillTextActive]}>
-                {cat.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
+        {/* Explore / Saved toggle */}
         <View style={styles.viewToggle}>
           <Pressable
-            style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
-            onPress={() => setViewMode('list')}
-            accessibilityLabel="Switch to list view"
-            accessibilityRole="button"
+            style={[styles.viewToggleBtn, discoverView === 'explore' && styles.viewToggleBtnActive]}
+            onPress={() => setDiscoverView('explore')}
           >
-            <List size={16} color={viewMode === 'list' ? colors.green2 : colors.text3} />
-            <Text style={[styles.viewToggleText, viewMode === 'list' && styles.viewToggleTextActive]}>List</Text>
+            <Globe2 size={16} color={discoverView === 'explore' ? colors.green2 : colors.text3} />
+            <Text style={[styles.viewToggleText, discoverView === 'explore' && styles.viewToggleTextActive]}>Explore</Text>
           </Pressable>
           <Pressable
-            style={[styles.viewToggleBtn, viewMode === 'map' && styles.viewToggleBtnActive]}
-            onPress={() => setViewMode('map')}
-            accessibilityLabel="Switch to map view"
-            accessibilityRole="button"
+            style={[styles.viewToggleBtn, discoverView === 'saved' && styles.viewToggleBtnActive]}
+            onPress={() => { setDiscoverView('saved'); loadSavedPlaces(); }}
           >
-            <Map size={16} color={viewMode === 'map' ? colors.green2 : colors.text3} />
-            <Text style={[styles.viewToggleText, viewMode === 'map' && styles.viewToggleTextActive]}>Map</Text>
+            <BookmarkCheck size={16} color={discoverView === 'saved' ? colors.green2 : colors.text3} />
+            <Text style={[styles.viewToggleText, discoverView === 'saved' && styles.viewToggleTextActive]}>
+              Saved{savedPlaces.length > 0 ? ` (${savedPlaces.length})` : ''}
+            </Text>
           </Pressable>
         </View>
+
+        {/* Category pills — only in Explore */}
+        {discoverView === 'explore' && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.pillRow}
+          >
+            {DISCOVER_CATEGORIES.map((cat, i) => (
+              <Pressable
+                key={cat.label}
+                style={[styles.pill, i === activeCategory && styles.pillActive]}
+                onPress={() => onCategoryChange(i)}
+              >
+                <Text style={[styles.pillText, i === activeCategory && styles.pillTextActive]}>
+                  {cat.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* List / Map toggle — only in Explore */}
+        {discoverView === 'explore' && (
+          <View style={styles.listMapToggle}>
+            <Pressable
+              style={[styles.listMapBtn, viewMode === 'list' && styles.listMapBtnActive]}
+              onPress={() => setViewMode('list')}
+            >
+              <List size={14} color={viewMode === 'list' ? colors.green2 : colors.text3} />
+              <Text style={[styles.listMapText, viewMode === 'list' && styles.listMapTextActive]}>List</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.listMapBtn, viewMode === 'map' && styles.listMapBtnActive]}
+              onPress={() => setViewMode('map')}
+            >
+              <Map size={14} color={viewMode === 'map' ? colors.green2 : colors.text3} />
+              <Text style={[styles.listMapText, viewMode === 'map' && styles.listMapTextActive]}>Map</Text>
+            </Pressable>
+          </View>
+        )}
       </SafeAreaView>
 
-      {loading ? (
+      {discoverView === 'saved' ? (
+        savedLoading ? (
+          <AfterStayLoader message="Loading saved places..." />
+        ) : savedPlaces.length === 0 ? (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+            <Bookmark color={colors.text3} size={40} />
+            <Text style={{ color: colors.text2, marginTop: 12, textAlign: 'center', fontSize: 14 }}>
+              No saved places yet.{'\n'}Tap Save to Trip on any place to bookmark it.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={savedPlaces}
+            keyExtractor={p => p.id}
+            contentContainerStyle={styles.list}
+            ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
+            renderItem={({ item }) => (
+              <Pressable style={styles.card}>
+                <View style={styles.cardBody}>
+                  <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+                  {item.rating ? (
+                    <Text style={styles.cardRating}>{'★ '}{item.rating.toFixed(1)}</Text>
+                  ) : null}
+                  {item.notes ? (
+                    <Text style={styles.cardAddress} numberOfLines={2}>{item.notes}</Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            )}
+            refreshControl={
+              <RefreshControl
+                refreshing={savedLoading}
+                onRefresh={loadSavedPlaces}
+                tintColor={colors.green2}
+              />
+            }
+          />
+        )
+      ) : loading ? (
         <AfterStayLoader message="Finding places nearby..." />
       ) : viewMode === 'map' ? (
         <MapView
@@ -433,17 +533,29 @@ export default function DiscoverScreen() {
         />
       )}
 
-      <Pressable
-        style={styles.fab}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          router.push({ pathname: '/add-place' as any });
-        }}
-        accessibilityLabel="Add a place"
-        accessibilityRole="button"
-      >
-        <Plus size={24} color={colors.white} />
-      </Pressable>
+      {discoverView === 'explore' && (
+        <Pressable
+          style={styles.fab}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push({ pathname: '/add-place' as any });
+          }}
+          accessibilityLabel="Add a place"
+          accessibilityRole="button"
+        >
+          <Plus size={24} color={colors.white} />
+        </Pressable>
+      )}
+
+      {detailPlace && (
+        <PlaceDetailSheet
+          visible={!!detailPlace}
+          placeId={detailPlace.place_id}
+          initialName={detailPlace.name}
+          onClose={() => setDetailPlace(null)}
+          distanceKm={detailPlace.lat && detailPlace.lng ? distanceFromHotel(detailPlace.lat, detailPlace.lng) : undefined}
+        />
+      )}
     </View>
   );
 }
@@ -528,6 +640,26 @@ const styles = StyleSheet.create({
   viewToggleTextActive: {
     color: colors.green2,
   },
+  listMapToggle: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.bg3,
+    borderRadius: radius.sm,
+    padding: 2,
+  },
+  listMapBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    borderRadius: 4,
+  },
+  listMapBtnActive: { backgroundColor: colors.card },
+  listMapText: { color: colors.text3, fontSize: 12, fontWeight: '600' },
+  listMapTextActive: { color: colors.green2 },
   mapView: { flex: 1 },
   list: { padding: spacing.lg, paddingBottom: 100 },
   fab: {
