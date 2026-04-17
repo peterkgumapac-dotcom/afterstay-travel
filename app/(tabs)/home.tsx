@@ -6,14 +6,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnticipationHero } from '@/components/home/AnticipationHero';
 import { BudgetAlertStrip } from '@/components/home/BudgetAlertStrip';
-// import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
+import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { GettingThereLink } from '@/components/home/GettingThereLink';
 import { GlanceStrip } from '@/components/home/GlanceStrip';
 import ProfileRow from '@/components/home/ProfileRow';
@@ -247,7 +246,7 @@ export default function HomeScreen() {
 
         <QuickAccessGrid tiles={quickAccessTiles} />
       </ScrollView>
-      {/* <FloatingActionButton /> */}
+      <FloatingActionButton />
     </SafeAreaView>
   );
 }
