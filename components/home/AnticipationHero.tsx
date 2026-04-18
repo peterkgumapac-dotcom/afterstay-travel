@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors } from '@/constants/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const HERO_H = 380;
@@ -147,7 +148,7 @@ export const AnticipationHero: React.FC<Props> = ({
       )}
 
       <LinearGradient
-        colors={['rgba(8,11,18,0.65)', 'transparent', 'rgba(8,11,18,0.4)', 'rgba(8,11,18,0.95)']}
+        colors={['rgba(20,18,16,0.65)', 'transparent', 'rgba(20,18,16,0.4)', 'rgba(20,18,16,0.95)']}
         locations={[0, 0.25, 0.55, 1]}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
@@ -227,7 +228,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     marginHorizontal: 16,
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
   },
   image: {
     ...StyleSheet.absoluteFillObject,
@@ -262,14 +263,14 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   countdownBackdrop: {
-    backgroundColor: 'rgba(8, 11, 18, 0.6)',
+    backgroundColor: 'rgba(20, 18, 16, 0.6)',
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(45, 212, 160, 0.3)',
-    shadowColor: '#2dd4a0',
+    borderColor: colors.accentBorder,
+    shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowRadius: 24,
     elevation: 8,
@@ -291,7 +292,7 @@ const styles = StyleSheet.create({
     minWidth: 44,
   },
   digitLarge: {
-    color: '#2dd4a0',
+    color: colors.accent,
     fontSize: 34,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
@@ -365,15 +366,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   badge: {
-    backgroundColor: 'rgba(45,212,160,0.2)',
-    borderColor: '#2dd4a0',
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accent,
     borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
   },
   badgeText: {
-    color: '#2dd4a0',
+    color: colors.accent,
     fontSize: 10,
     fontWeight: '600',
   },

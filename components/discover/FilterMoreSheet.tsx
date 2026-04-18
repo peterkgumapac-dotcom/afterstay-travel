@@ -6,6 +6,7 @@ import {
 import { RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Filters } from '../../lib/filters';
+import { colors } from '@/constants/theme';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -32,7 +33,7 @@ export const FilterMoreSheet: React.FC<Props> = ({
             <Text style={styles.title}>Filters</Text>
             <TouchableOpacity onPress={() => { Haptics.selectionAsync(); onReset(); }}>
               <View style={styles.resetBtn}>
-                <RotateCcw color="#8b95a5" size={14} />
+                <RotateCcw color={colors.text2} size={14} />
                 <Text style={styles.resetText}>Reset</Text>
               </View>
             </TouchableOpacity>
@@ -108,8 +109,8 @@ export const FilterMoreSheet: React.FC<Props> = ({
                     Haptics.selectionAsync();
                     onUpdate({ openNow: v });
                   }}
-                  trackColor={{ false: '#2a3040', true: '#2dd4a0' }}
-                  thumbColor="#fff"
+                  trackColor={{ false: colors.border2, true: colors.accent }}
+                  thumbColor={colors.white}
                 />
               </View>
             </View>
@@ -131,14 +132,14 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#0a0d12',
+    backgroundColor: colors.canvas,
     height: SCREEN_H * 0.7,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
   handle: {
     width: 40, height: 4,
-    backgroundColor: '#2a3040',
+    backgroundColor: colors.border2,
     borderRadius: 2,
     alignSelf: 'center',
     marginTop: 8,
@@ -152,7 +153,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   title: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 22,
     fontWeight: '700',
   },
@@ -163,10 +164,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
   },
   resetText: {
-    color: '#8b95a5',
+    color: colors.text2,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -174,16 +175,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1f27',
+    borderBottomColor: colors.card,
   },
   sectionTitle: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 15,
     fontWeight: '700',
     marginBottom: 12,
   },
   sectionHint: {
-    color: '#5a6577',
+    color: colors.text3,
     fontSize: 12,
     marginTop: -8,
     marginBottom: 0,
@@ -197,21 +198,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 16,
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#2a3040',
+    borderColor: colors.border2,
   },
   optionActive: {
-    backgroundColor: 'rgba(45,212,160,0.12)',
-    borderColor: '#2dd4a0',
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accent,
   },
   optionText: {
-    color: '#8b95a5',
+    color: colors.text2,
     fontSize: 13,
     fontWeight: '600',
   },
   optionTextActive: {
-    color: '#2dd4a0',
+    color: colors.accent,
     fontWeight: '700',
   },
   switchRow: {
@@ -222,13 +223,13 @@ const styles = StyleSheet.create({
   applyBtn: {
     marginHorizontal: 20,
     marginVertical: 16,
-    backgroundColor: '#2dd4a0',
+    backgroundColor: colors.accent,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
   applyBtnText: {
-    color: '#000',
+    color: colors.bg,
     fontSize: 15,
     fontWeight: '700',
   },

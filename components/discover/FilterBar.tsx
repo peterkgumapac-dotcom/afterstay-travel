@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'reac
 import { ArrowUpDown, Clock, Star, SlidersHorizontal, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Filters, countActiveFilters } from '../../lib/filters';
+import { colors } from '@/constants/theme';
 
 interface Props {
   filters: Filters;
@@ -27,7 +28,7 @@ export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) =>
           style={[styles.chip, styles.chipSort]}
           onPress={() => tapChip(() => setSortMenuOpen(true))}
         >
-          <ArrowUpDown color="#2dd4a0" size={13} strokeWidth={2.5} />
+          <ArrowUpDown color={colors.accent} size={13} strokeWidth={2.5} />
           <Text style={styles.chipTextActive}>
             {filters.sortBy === 'distance' ? 'Distance' : 'Rating'}
           </Text>
@@ -39,7 +40,7 @@ export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) =>
           onPress={() => tapChip(() => onUpdate({ openNow: !filters.openNow }))}
         >
           <Clock
-            color={filters.openNow ? '#2dd4a0' : '#8b95a5'}
+            color={filters.openNow ? colors.accent : colors.text2}
             size={13}
             strokeWidth={2}
           />
@@ -56,10 +57,10 @@ export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) =>
           }))}
         >
           <Star
-            color={filters.minRating >= 4.0 ? '#2dd4a0' : '#8b95a5'}
+            color={filters.minRating >= 4.0 ? colors.accent : colors.text2}
             size={13}
             strokeWidth={2}
-            fill={filters.minRating >= 4.0 ? '#2dd4a0' : 'transparent'}
+            fill={filters.minRating >= 4.0 ? colors.accent : 'transparent'}
           />
           <Text style={filters.minRating >= 4.0 ? styles.chipTextActive : styles.chipText}>
             4.0+
@@ -72,7 +73,7 @@ export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) =>
           onPress={() => tapChip(onOpenMore)}
         >
           <SlidersHorizontal
-            color={activeCount > 0 ? '#2dd4a0' : '#8b95a5'}
+            color={activeCount > 0 ? colors.accent : colors.text2}
             size={13}
             strokeWidth={2}
           />
@@ -114,7 +115,7 @@ export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) =>
                   {opt === 'distance' ? 'Distance (nearest first)' : 'Rating (highest first)'}
                 </Text>
                 {filters.sortBy === opt && (
-                  <Check color="#2dd4a0" size={18} strokeWidth={2.5} />
+                  <Check color={colors.accent} size={18} strokeWidth={2.5} />
                 )}
               </TouchableOpacity>
             ))}
@@ -140,38 +141,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 18,
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#2a3040',
+    borderColor: colors.border2,
   },
   chipSort: {
-    borderColor: '#2dd4a0',
-    backgroundColor: 'rgba(45,212,160,0.08)',
+    borderColor: colors.accent,
+    backgroundColor: colors.accentBg,
   },
   chipActive: {
-    backgroundColor: 'rgba(45,212,160,0.12)',
-    borderColor: '#2dd4a0',
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accent,
   },
   chipText: {
-    color: '#8b95a5',
+    color: colors.text2,
     fontSize: 12,
     fontWeight: '600',
   },
   chipTextActive: {
-    color: '#2dd4a0',
+    color: colors.accent,
     fontSize: 12,
     fontWeight: '700',
   },
   badge: {
     marginLeft: 2,
-    backgroundColor: '#2dd4a0',
+    backgroundColor: colors.accent,
     borderRadius: 8,
     minWidth: 16, height: 16,
     alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 4,
   },
   badgeText: {
-    color: '#000',
+    color: colors.bg,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -182,14 +183,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   menu: {
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderRadius: 14,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#2a3040',
+    borderColor: colors.border2,
   },
   menuTitle: {
-    color: '#8b95a5',
+    color: colors.text2,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -206,12 +207,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   menuItemText: {
-    color: '#cbd5e1',
+    color: colors.text,
     fontSize: 14,
     fontWeight: '500',
   },
   menuItemTextActive: {
-    color: '#fff',
+    color: colors.text,
     fontWeight: '700',
   },
 });

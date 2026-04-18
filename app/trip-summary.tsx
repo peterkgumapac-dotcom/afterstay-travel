@@ -8,6 +8,7 @@ import {
 import { FLIGHTS } from '../lib/flightData';
 import { getActiveTrip, getExpenses, getGroupMembers } from '../lib/notion';
 import type { Expense, GroupMember, Trip } from '../lib/types';
+import { colors } from '@/constants/theme';
 
 export default function TripSummary() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function TripSummary() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft color="#fff" size={22} strokeWidth={2} />
+          <ArrowLeft color={colors.text} size={22} strokeWidth={2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Trip Summary</Text>
         <View style={{ width: 40 }} />
@@ -90,7 +91,7 @@ export default function TripSummary() {
 
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Plane color="#2dd4a0" size={18} strokeWidth={2} />
+              <Plane color={colors.accent} size={18} strokeWidth={2} />
               <Text style={styles.cardTitle}>Outbound</Text>
             </View>
             <Text style={styles.cardLine}>{FLIGHTS.outbound.airline} {FLIGHTS.outbound.number}</Text>
@@ -102,7 +103,7 @@ export default function TripSummary() {
 
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Plane color="#2dd4a0" size={18} strokeWidth={2} style={{ transform: [{ rotate: '180deg' }] }} />
+              <Plane color={colors.accent} size={18} strokeWidth={2} style={{ transform: [{ rotate: '180deg' }] }} />
               <Text style={styles.cardTitle}>Return</Text>
             </View>
             <Text style={styles.cardLine}>{FLIGHTS.return.airline} {FLIGHTS.return.number}</Text>
@@ -117,11 +118,11 @@ export default function TripSummary() {
           <Text style={styles.sectionLabel}>Stay</Text>
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Hotel color="#2dd4a0" size={18} strokeWidth={2} />
+              <Hotel color={colors.accent} size={18} strokeWidth={2} />
               <Text style={styles.cardTitle}>Canyon Hotels & Resorts</Text>
             </View>
             <View style={styles.metaRow}>
-              <MapPin color="#5a6577" size={14} />
+              <MapPin color={colors.text3} size={14} />
               <Text style={styles.cardSubLine}>Station B, Sitio Sinagpa, Balabag</Text>
             </View>
             <Text style={styles.cardMeta}>Check-in 3:00 PM · Check-out 12:00 PM</Text>
@@ -133,7 +134,7 @@ export default function TripSummary() {
             <Text style={styles.sectionLabel}>Budget</Text>
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Wallet color="#2dd4a0" size={18} strokeWidth={2} />
+                <Wallet color={colors.accent} size={18} strokeWidth={2} />
                 <Text style={styles.cardTitle}>Trip spending</Text>
               </View>
               <View style={styles.budgetRow}>
@@ -155,7 +156,7 @@ export default function TripSummary() {
             <Text style={styles.sectionLabel}>Travelers</Text>
             <View style={styles.card}>
               <View style={styles.cardHeader}>
-                <Users color="#2dd4a0" size={18} strokeWidth={2} />
+                <Users color={colors.accent} size={18} strokeWidth={2} />
                 <Text style={styles.cardTitle}>{members.length} people</Text>
               </View>
               {members.map((m) => (
@@ -164,7 +165,7 @@ export default function TripSummary() {
                     <Image source={{ uri: m.profilePhoto }} style={styles.avatar} />
                   ) : (
                     <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                      <Text style={{ color: '#2dd4a0' }}>{m.name.charAt(0)}</Text>
+                      <Text style={{ color: colors.accent }}>{m.name.charAt(0)}</Text>
                     </View>
                   )}
                   <View style={{ flex: 1 }}>
@@ -182,7 +183,7 @@ export default function TripSummary() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080b12' },
+  container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 12, paddingVertical: 10,
@@ -190,47 +191,47 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 40, height: 40, borderRadius: 20,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
   },
-  headerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  headerTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   hero: { paddingHorizontal: 16, paddingVertical: 16 },
-  heroTitle: { color: '#fff', fontSize: 32, fontWeight: '800' },
-  heroDates: { color: '#8b95a5', fontSize: 14, marginTop: 4 },
+  heroTitle: { color: colors.text, fontSize: 32, fontWeight: '800' },
+  heroDates: { color: colors.text2, fontSize: 14, marginTop: 4 },
   section: { paddingHorizontal: 16, paddingTop: 16 },
   sectionLabel: {
-    color: '#5a6577', fontSize: 11, fontWeight: '700',
+    color: colors.text3, fontSize: 11, fontWeight: '700',
     letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10,
   },
   calendarRow: { gap: 8, paddingVertical: 4 },
   dayChip: {
-    backgroundColor: '#0f1318', borderWidth: 1, borderColor: '#1e2530',
+    backgroundColor: colors.bg2, borderWidth: 1, borderColor: colors.border,
     borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14,
     alignItems: 'center', minWidth: 60,
   },
-  dayWeekday: { color: '#5a6577', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  dayNumber: { color: '#fff', fontSize: 22, fontWeight: '700', marginVertical: 2 },
-  dayMonth: { color: '#5a6577', fontSize: 10 },
+  dayWeekday: { color: colors.text3, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  dayNumber: { color: colors.text, fontSize: 22, fontWeight: '700', marginVertical: 2 },
+  dayMonth: { color: colors.text3, fontSize: 10 },
   card: {
-    backgroundColor: '#0f1318', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#1e2530', marginBottom: 10,
+    backgroundColor: colors.bg2, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 10,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  cardTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  cardLine: { color: '#fff', fontSize: 14, marginVertical: 2 },
-  cardSubLine: { color: '#8b95a5', fontSize: 13, marginVertical: 2 },
-  cardMeta: { color: '#5a6577', fontSize: 11, marginTop: 4 },
+  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  cardLine: { color: colors.text, fontSize: 14, marginVertical: 2 },
+  cardSubLine: { color: colors.text2, fontSize: 13, marginVertical: 2 },
+  cardMeta: { color: colors.text3, fontSize: 11, marginTop: 4 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginVertical: 2 },
   budgetRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4 },
-  budgetSpent: { color: '#2dd4a0', fontSize: 24, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  budgetTotal: { color: '#5a6577', fontSize: 14, fontVariant: ['tabular-nums'] },
+  budgetSpent: { color: colors.accent, fontSize: 24, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  budgetTotal: { color: colors.text3, fontSize: 14, fontVariant: ['tabular-nums'] },
   progressTrack: {
-    height: 4, backgroundColor: '#1a1f27', borderRadius: 2,
+    height: 4, backgroundColor: colors.card, borderRadius: 2,
     overflow: 'hidden', marginTop: 10,
   },
-  progressFill: { height: '100%', backgroundColor: '#2dd4a0', borderRadius: 2 },
+  progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 2 },
   memberRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1a1f27' },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.card },
   avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  memberName: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  memberRole: { color: '#5a6577', fontSize: 11 },
+  memberName: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  memberRole: { color: colors.text3, fontSize: 11 },
 });

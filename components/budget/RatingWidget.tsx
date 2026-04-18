@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { Star } from 'lucide-react-native';
+import { colors } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
 
 interface Props {
@@ -34,8 +35,8 @@ export const RatingWidget: React.FC<Props> = ({
             activeOpacity={0.7}
           >
             <Star
-              color={n <= rating ? '#fbbf24' : '#3a4150'}
-              fill={n <= rating ? '#fbbf24' : 'transparent'}
+              color={n <= rating ? colors.gold : colors.border2}
+              fill={n <= rating ? colors.gold : 'transparent'}
               size={28}
               strokeWidth={2}
             />
@@ -48,7 +49,7 @@ export const RatingWidget: React.FC<Props> = ({
         value={notes}
         onChangeText={onNotesChange}
         placeholder="Quick note (optional)"
-        placeholderTextColor="#5a6577"
+        placeholderTextColor={colors.text3}
         multiline
         numberOfLines={2}
       />
@@ -63,14 +64,14 @@ export const RatingWidget: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     marginVertical: 14,
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#1e2530',
+    borderColor: colors.border,
   },
   label: {
-    color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 12,
+    color: colors.text, fontSize: 14, fontWeight: '600', marginBottom: 12,
   },
   starRow: {
     flexDirection: 'row',
@@ -80,13 +81,13 @@ const styles = StyleSheet.create({
   },
   starBtn: { padding: 6 },
   notesInput: {
-    backgroundColor: '#1a1f27', color: '#fff', fontSize: 13,
+    backgroundColor: colors.card, color: colors.text, fontSize: 13,
     paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: 8, borderWidth: 1, borderColor: '#2a3040',
+    borderRadius: 8, borderWidth: 1, borderColor: colors.border2,
     minHeight: 60, textAlignVertical: 'top',
   },
   hint: {
-    color: '#5a6577', fontSize: 11, fontStyle: 'italic',
+    color: colors.text3, fontSize: 11, fontStyle: 'italic',
     textAlign: 'center', marginTop: 8,
   },
 });

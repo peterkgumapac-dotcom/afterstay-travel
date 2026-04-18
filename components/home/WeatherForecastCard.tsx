@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Sun, Cloud, CloudRain, CloudSun, CloudSnow, CloudFog, CloudLightning } from 'lucide-react-native';
 
+import { colors } from '@/constants/theme';
 import { CONFIG } from '../../lib/config';
 
 interface HourData {
@@ -125,7 +126,7 @@ export const WeatherForecastCard = () => {
   if (loading) {
     return (
       <View style={styles.card}>
-        <ActivityIndicator color="#2dd4a0" />
+        <ActivityIndicator color={colors.accentLt} />
       </View>
     );
   }
@@ -181,16 +182,16 @@ export const WeatherForecastCard = () => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderRadius: 16,
     padding: 16,
     marginHorizontal: 16,
     marginVertical: 10,
     borderWidth: 1,
-    borderColor: '#1e2530',
+    borderColor: colors.border,
   },
   label: {
-    color: '#8b95a5',
+    color: colors.text2,
     fontSize: 12,
     fontWeight: '500',
     letterSpacing: 0.3,
@@ -205,7 +206,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dayLabel: {
-    color: '#8b95a5',
+    color: colors.text2,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -217,17 +218,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   maxTemp: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 18,
     fontWeight: '500',
   },
   minTemp: {
-    color: '#5a6577',
+    color: colors.text3,
     fontSize: 13,
     marginTop: 2,
   },
   rainPct: {
-    color: '#60a5fa',
+    color: colors.info,
     fontSize: 10,
     fontWeight: '600',
     marginTop: 4,
@@ -236,11 +237,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#1e2530',
+    borderTopColor: colors.border,
     gap: 8,
   },
   insight: {
-    color: '#93c5fd',
+    color: colors.accentLt,
     fontSize: 13,
     lineHeight: 18,
   },

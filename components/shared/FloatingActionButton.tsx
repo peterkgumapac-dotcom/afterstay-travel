@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, TouchableOpacity, StyleSheet, Animated,
-  Modal, Pressable, Text, Platform,
+  Modal, Pressable, Text,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Plus, Camera, FileText, Package, Receipt } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { colors } from '@/constants/theme';
 
 interface FabAction {
   id: string;
@@ -31,28 +32,28 @@ export const FloatingActionButton: React.FC = () => {
       id: 'moment',
       icon: Camera,
       label: 'Capture Moment',
-      color: '#ec4899',
+      color: colors.fab2,
       onPress: () => router.push('/(tabs)/moments'),
     },
     {
       id: 'expense',
       icon: Receipt,
       label: 'Quick Expense',
-      color: '#fbbf24',
+      color: colors.fab4,
       onPress: () => router.push('/add-expense'),
     },
     {
       id: 'pack',
       icon: Package,
       label: 'Add to Packing',
-      color: '#a78bfa',
+      color: colors.fab3,
       onPress: () => router.push('/(tabs)/trip'),
     },
     {
       id: 'summary',
       icon: FileText,
       label: 'Trip Summary',
-      color: '#2dd4a0',
+      color: colors.fab1,
       onPress: () => router.push('/trip-summary'),
     },
   ];
@@ -147,7 +148,7 @@ export const FloatingActionButton: React.FC = () => {
                     onPress={() => handleAction(action)}
                     activeOpacity={0.85}
                   >
-                    <ActionIcon color="#fff" size={22} strokeWidth={2.5} />
+                    <ActionIcon color={colors.white} size={22} strokeWidth={2.5} />
                   </TouchableOpacity>
                 </Animated.View>
               );
@@ -162,7 +163,7 @@ export const FloatingActionButton: React.FC = () => {
         activeOpacity={0.85}
       >
         <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-          <Plus color="#000" size={28} strokeWidth={3} />
+          <Plus color={colors.bg} size={28} strokeWidth={3} />
         </Animated.View>
       </TouchableOpacity>
     </>
@@ -172,15 +173,15 @@ export const FloatingActionButton: React.FC = () => {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 110 : 90,
+    bottom: 100,
     right: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#2dd4a0',
+    backgroundColor: colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#2dd4a0',
+    shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
@@ -193,7 +194,7 @@ const styles = StyleSheet.create({
   },
   menuContainer: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 185 : 165,
+    bottom: 175,
     right: 20,
     alignItems: 'flex-end',
     gap: 14,
@@ -204,15 +205,15 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   labelPill: {
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.card,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#1e2530',
+    borderColor: colors.border,
   },
   labelText: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 13,
     fontWeight: '600',
   },

@@ -1,24 +1,130 @@
+import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 import { BookOpen, Compass, Home, Plane, Wallet } from 'lucide-react-native';
 import React from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FullWindowOverlay } from 'react-native-screens';
 
 import { colors } from '@/constants/theme';
 
-function TabIcon({ Icon, color, focused }: { Icon: typeof Home; color: string; focused: boolean }) {
-  return (
-    <View style={{
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: focused ? colors.green : 'transparent',
-      alignItems: 'center',
-      justifyContent: 'center',
-    }}>
-      <Icon size={20} color={focused ? '#fff' : color} strokeWidth={1.75} />
+const TAB_ICONS = {
+  home: Home,
+  guide: BookOpen,
+  discover: Compass,
+  budget: Wallet,
+  trip: Plane,
+} as const;
+
+const TAB_LABELS: Record<string, string> = {
+  home: 'Home',
+  guide: 'Guide',
+  discover: 'Discover',
+  budget: 'Budget',
+  trip: 'Our Trip',
+};
+
+function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarProps) {
+  const bottomOffset = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 16;
+
+  const visibleRoutes = state.routes.filter(
+    (route) => (descriptors[route.key]?.options as Record<string, unknown>)?.href !== null
+  );
+
+  const tabBar = (
+    <View
+      style={{
+        position: 'absolute',
+        bottom: bottomOffset,
+        left: 10,
+        right: 10,
+        paddingVertical: 4,
+        paddingHorizontal: 4,
+        borderRadius: 22,
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+        ...Platform.select({
+          ios: {
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.35,
+            shadowRadius: 16,
+          },
+          android: { elevation: 8 },
+        }),
+      }}
+    >
+      {visibleRoutes.map((route) => {
+        const originalIndex = state.routes.indexOf(route);
+        const focused = state.index === originalIndex;
+        const Icon = TAB_ICONS[route.name as keyof typeof TAB_ICONS];
+        if (!Icon) return null;
+
+        const color = focused ? colors.accent : colors.text3;
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+
+          if (!focused && !event.defaultPrevented) {
+            navigation.navigate(route.name, route.params);
+          }
+        };
+
+        const onLongPress = () => {
+          navigation.emit({
+            type: 'tabLongPress',
+            target: route.key,
+          });
+        };
+
+        return (
+          <Pressable
+            key={route.key}
+            onPress={onPress}
+            onLongPress={onLongPress}
+            accessibilityRole="button"
+            accessibilityState={focused ? { selected: true } : {}}
+            accessibilityLabel={TAB_LABELS[route.name] ?? route.name}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 9,
+              borderRadius: 18,
+              backgroundColor: focused ? colors.accentBg : 'transparent',
+            }}
+          >
+            <Icon size={20} color={color} strokeWidth={1.8} />
+            <Text
+              style={{
+                fontSize: 10.5,
+                fontWeight: '600',
+                color,
+                marginTop: 3,
+                letterSpacing: -0.1,
+              }}
+            >
+              {TAB_LABELS[route.name] ?? route.name}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
+
+  if (Platform.OS === 'ios') {
+    return <FullWindowOverlay>{tabBar}</FullWindowOverlay>;
+  }
+
+  return tabBar;
 }
 
 export default function TabLayout() {
@@ -26,81 +132,20 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      tabBar={(props) => <TabBarOverlay {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: colors.green,
-        tabBarInactiveTintColor: colors.text2,
-        tabBarStyle: Platform.OS === 'ios' ? {
-          backgroundColor: 'rgba(15,19,24,0.98)',
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          height: 60 + insets.bottom,
-          paddingBottom: insets.bottom,
-          paddingTop: 8,
-        } : {
-          position: 'absolute' as const,
-          bottom: 16,
-          left: 20,
-          right: 20,
-          backgroundColor: 'rgba(15,19,24,0.92)',
-          borderTopWidth: 0,
-          borderRadius: 31,
-          height: 68,
-          paddingBottom: 0,
-          paddingTop: 0,
-          borderWidth: 1,
-          borderColor: colors.border,
-          elevation: 8,
-        },
-        tabBarItemStyle: Platform.OS === 'ios' ? {
-          paddingTop: 4,
-        } : {
-          paddingTop: 8,
-          paddingBottom: 8,
-        },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '700' },
         headerStyle: { backgroundColor: colors.bg },
-        headerTitleStyle: { color: colors.text, fontWeight: '800' },
+        headerTitleStyle: { color: colors.text, fontWeight: '600' },
         headerShown: false,
         headerShadowVisible: false,
         headerTintColor: colors.text,
-        sceneStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Tabs.Screen
-        name="home"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Home} color={color} focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="guide"
-        options={{
-          title: 'Guide',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={BookOpen} color={color} focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="discover"
-        options={{
-          title: 'Discover',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Compass} color={color} focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="budget"
-        options={{
-          title: 'Budget',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Wallet} color={color} focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="trip"
-        options={{
-          title: 'Our Trip',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Plane} color={color} focused={focused} />,
-        }}
-      />
+      <Tabs.Screen name="home" options={{ title: 'Home' }} />
+      <Tabs.Screen name="guide" options={{ title: 'Guide' }} />
+      <Tabs.Screen name="discover" options={{ title: 'Discover' }} />
+      <Tabs.Screen name="budget" options={{ title: 'Budget' }} />
+      <Tabs.Screen name="trip" options={{ title: 'Our Trip' }} />
 
       {/* Hidden tabs — accessible via FAB and gear icon */}
       <Tabs.Screen name="moments" options={{ href: null }} />

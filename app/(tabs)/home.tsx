@@ -137,7 +137,7 @@ export default function HomeScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.fullCenter}>
-        <ActivityIndicator color={colors.green2} />
+        <ActivityIndicator color={colors.accentLt} />
         <Text style={styles.loadingText}>Loading your trip...</Text>
       </SafeAreaView>
     );
@@ -212,7 +212,7 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.green2}
+            tintColor={colors.accentLt}
           />
         }
       >
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
   errorText: { color: colors.text2, fontSize: 13, textAlign: 'center' },
   retry: {
     marginTop: spacing.md,
-    backgroundColor: colors.green,
+    backgroundColor: colors.accent,
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: radius.md,

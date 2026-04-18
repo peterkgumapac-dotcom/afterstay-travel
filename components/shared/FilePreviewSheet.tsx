@@ -7,6 +7,7 @@ import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import { colors } from '@/constants/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -116,7 +117,7 @@ export const FilePreviewSheet: React.FC<Props> = ({
           ) : (
             <View style={styles.imageFallback}>
               <Text style={{ fontSize: 48 }}>🖼️</Text>
-              <Text style={{ color: '#8b95a5', marginTop: 12 }}>
+              <Text style={{ color: colors.text2, marginTop: 12 }}>
                 Image could not be loaded
               </Text>
             </View>
@@ -165,7 +166,7 @@ export const FilePreviewSheet: React.FC<Props> = ({
               {fileType && <Text style={styles.subtitle}>{fileType}</Text>}
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={{ color: '#fff', fontSize: 20 }}>✕</Text>
+              <Text style={{ color: colors.text, fontSize: 20 }}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -178,7 +179,7 @@ export const FilePreviewSheet: React.FC<Props> = ({
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color="#000" />
+                <ActivityIndicator color={colors.canvas} />
               ) : (
                 <Text style={styles.primaryBtnText}>
                   {kind === 'image' ? 'Share / Save' :
@@ -201,7 +202,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 12,
@@ -216,15 +217,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1f27',
+    borderBottomColor: colors.card,
     marginBottom: 16,
   },
-  title: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  subtitle: { color: '#8b95a5', fontSize: 12, marginTop: 2 },
+  title: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  subtitle: { color: colors.text2, fontSize: 12, marginTop: 2 },
   closeBtn: {
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
   },
   previewArea: {
     flex: 1,
@@ -241,15 +242,15 @@ const styles = StyleSheet.create({
   docCard: {
     alignItems: 'center',
     padding: 32,
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
     borderRadius: 16,
     width: '100%',
     borderWidth: 1,
-    borderColor: '#2a3040',
+    borderColor: colors.border2,
   },
   docIcon: { fontSize: 56, marginBottom: 16 },
   docTitle: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
@@ -259,9 +260,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 12,
   },
-  docMetaText: { color: '#8b95a5', fontSize: 12 },
+  docMetaText: { color: colors.text2, fontSize: 12 },
   docHint: {
-    color: '#5a6577',
+    color: colors.text3,
     fontSize: 11,
     textAlign: 'center',
     marginTop: 8,
@@ -270,21 +271,21 @@ const styles = StyleSheet.create({
   missing: {
     alignItems: 'center',
     padding: 32,
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    backgroundColor: 'rgba(196, 85, 74, 0.08)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderColor: 'rgba(196, 85, 74, 0.3)',
     width: '100%',
   },
   missingIcon: { fontSize: 40, marginBottom: 12 },
-  missingTitle: { color: '#ef4444', fontSize: 15, fontWeight: '700', marginBottom: 6 },
-  missingText: { color: '#8b95a5', fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  missingTitle: { color: colors.danger, fontSize: 15, fontWeight: '700', marginBottom: 6 },
+  missingText: { color: colors.text2, fontSize: 12, textAlign: 'center', lineHeight: 18 },
   primaryBtn: {
-    backgroundColor: '#2dd4a0',
+    backgroundColor: colors.accent,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 12,
   },
-  primaryBtnText: { color: '#000', fontSize: 15, fontWeight: '700' },
+  primaryBtnText: { color: colors.canvas, fontSize: 15, fontWeight: '700' },
 });

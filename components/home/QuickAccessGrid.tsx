@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, Alert } fro
 import { Wifi, Lock, LogIn, LogOut } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import { colors } from '@/constants/theme';
 
 type LucideIcon = typeof Wifi;
 
@@ -103,7 +104,7 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
               activeOpacity={0.7}
             >
               <View style={styles.tileIconWrap}>
-                <TileIcon color="#2dd4a0" size={22} strokeWidth={2} />
+                <TileIcon color={colors.accent} size={22} strokeWidth={2} />
               </View>
               <Text style={styles.tileLabel} numberOfLines={1}>{tile.label}</Text>
               <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
@@ -130,7 +131,7 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
                 editingTile?.id === 'checkin' ? '3:00 PM' :
                 '12:00 PM'
               }
-              placeholderTextColor="#5a6577"
+              placeholderTextColor={colors.text3}
               autoFocus
               secureTextEntry={editingTile?.id === 'door'}
             />
@@ -160,7 +161,7 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   header: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 12,
@@ -171,12 +172,12 @@ const styles = StyleSheet.create({
   },
   tile: {
     flex: 1,
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#1e2530',
+    borderColor: colors.border,
     alignItems: 'center',
     minHeight: 100,
   },
@@ -184,13 +185,13 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(45, 212, 160, 0.1)',
+    backgroundColor: colors.accentBg,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
   },
   tileLabel: {
-    color: '#5a6577',
+    color: colors.text3,
     fontSize: 9,
     fontWeight: '600',
     letterSpacing: 0.3,
@@ -198,7 +199,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   tileValue: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
@@ -216,22 +217,22 @@ const modalStyles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#1e2530',
+    borderColor: colors.border,
   },
-  title: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 16 },
+  title: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 16 },
   input: {
-    backgroundColor: '#1a1f27',
-    color: '#fff',
+    backgroundColor: colors.card,
+    color: colors.text,
     fontSize: 15,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: '#2a3040',
+    borderColor: colors.border,
   },
   actions: {
     flexDirection: 'row',
@@ -239,10 +240,10 @@ const modalStyles = StyleSheet.create({
     gap: 20,
     marginTop: 16,
   },
-  cancel: { color: '#8b95a5', fontSize: 14, fontWeight: '500' },
-  save: { color: '#2dd4a0', fontSize: 14, fontWeight: '700' },
+  cancel: { color: colors.text2, fontSize: 14, fontWeight: '500' },
+  save: { color: colors.accent, fontSize: 14, fontWeight: '700' },
   hint: {
-    color: '#5a6577',
+    color: colors.text3,
     fontSize: 11,
     fontStyle: 'italic',
     marginTop: 8,

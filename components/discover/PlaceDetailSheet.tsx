@@ -28,6 +28,7 @@ import * as Haptics from 'expo-haptics';
 
 import { fetchPlaceDetails, PlaceDetails, Review } from '../../lib/placeDetails';
 import { formatDistance, estimateWalkTime } from '../../lib/distance';
+import { colors } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
@@ -36,15 +37,15 @@ const PHOTO_HEIGHT = 220;
 
 // ── Colors ──────────────────────────────────────────────────────────────
 const C = {
-  bg: '#0a0d12',
-  card: '#1a1f27',
-  border: '#2a3040',
-  text: '#fff',
-  muted: '#8b95a5',
-  faint: '#5a6577',
-  accent: '#2dd4a0',
-  star: '#fbbf24',
-  review: '#cbd5e1',
+  bg: colors.canvas,
+  card: colors.card,
+  border: colors.border2,
+  text: colors.text,
+  muted: colors.text2,
+  faint: colors.text3,
+  accent: colors.accent,
+  star: colors.warn,
+  review: colors.text,
 } as const;
 
 // ── Props ───────────────────────────────────────────────────────────────
@@ -288,11 +289,11 @@ export const PlaceDetailSheet: React.FC<Props> = ({
               {/* Open now badge */}
               {details.isOpenNow != null && (
                 <View style={s.badgeRow}>
-                  <Clock size={14} color={details.isOpenNow ? C.accent : '#ef4444'} />
+                  <Clock size={14} color={details.isOpenNow ? C.accent : colors.danger} />
                   <Text
                     style={[
                       s.badgeText,
-                      { color: details.isOpenNow ? C.accent : '#ef4444' },
+                      { color: details.isOpenNow ? C.accent : colors.danger },
                     ]}
                   >
                     {details.isOpenNow ? 'Open now' : 'Closed'}

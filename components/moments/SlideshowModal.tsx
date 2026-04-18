@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { CONFIG } from '../../lib/config';
+import { colors } from '@/constants/theme';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const AUTO_ADVANCE_MS = 4000;
@@ -148,7 +149,7 @@ export const SlideshowModal: React.FC<Props> = ({
                 value={draftCaption}
                 onChangeText={setDraftCaption}
                 placeholder="Add a caption..."
-                placeholderTextColor="#5a6577"
+                placeholderTextColor={colors.text3}
                 multiline
                 autoFocus
               />
@@ -212,8 +213,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center', justifyContent: 'center',
   },
-  topBtnText: { color: '#fff', fontSize: 18 },
-  counter: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  topBtnText: { color: colors.text, fontSize: 18 },
+  counter: { color: colors.text, fontSize: 13, fontWeight: '600' },
   bottomBar: {
     position: 'absolute',
     bottom: 0, left: 0, right: 0,
@@ -229,13 +230,13 @@ const styles = StyleSheet.create({
   },
   location: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
   date: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
-  caption: { color: '#fff', fontSize: 15, lineHeight: 22 },
-  captionPlaceholder: { color: '#5a6577', fontSize: 14, fontStyle: 'italic' },
+  caption: { color: colors.text, fontSize: 15, lineHeight: 22 },
+  captionPlaceholder: { color: colors.text3, fontSize: 14, fontStyle: 'italic' },
   captionInput: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#2dd4a0',
+    borderBottomColor: colors.accent,
     paddingVertical: 8,
     minHeight: 40,
   },
@@ -245,8 +246,8 @@ const styles = StyleSheet.create({
     gap: 20,
     marginTop: 10,
   },
-  cancelText: { color: '#8b95a5', fontSize: 13 },
-  saveText: { color: '#2dd4a0', fontSize: 13, fontWeight: '700' },
+  cancelText: { color: colors.text2, fontSize: 13 },
+  saveText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   controls: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -260,6 +261,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   playBtn: { width: 60, height: 60, borderRadius: 30 },
-  playBtnActive: { backgroundColor: '#2dd4a0' },
-  ctrlText: { color: '#fff', fontSize: 24, fontWeight: '300' },
+  playBtnActive: { backgroundColor: colors.accent },
+  ctrlText: { color: colors.text, fontSize: 24, fontWeight: '300' },
 });

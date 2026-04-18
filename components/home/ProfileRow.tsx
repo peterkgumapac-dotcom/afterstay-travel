@@ -32,7 +32,7 @@ export default function ProfileRow({ userName, avatarUrl }: Props) {
         style={styles.gearButton}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >
-        <Settings color="#8b95a5" size={22} strokeWidth={2} />
+        <Settings color={colors.text2} size={22} strokeWidth={2} />
       </Pressable>
     </View>
   );
@@ -62,12 +62,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.green + '30',
+    backgroundColor: colors.accentDim,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitial: {
-    color: colors.green2,
+    color: colors.accentLt,
     fontSize: 15,
     fontWeight: '700',
   },

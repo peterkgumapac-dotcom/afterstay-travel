@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { colors } from '@/constants/theme';
 import { FLIGHTS } from '../../lib/flightData';
 
 export const GettingThereLink = () => {
@@ -47,32 +48,32 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#1e2530',
+    borderColor: colors.border,
   },
   label: {
-    color: '#5a6577',
+    color: colors.text3,
     fontSize: 10,
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   title: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 14,
     fontWeight: '700',
     marginTop: 8,
   },
   subtitle: {
-    color: '#8b95a5',
+    color: colors.text2,
     fontSize: 11,
     marginTop: 4,
   },
   arrow: {
-    color: '#2dd4a0',
+    color: colors.accent,
     fontSize: 11,
     fontWeight: '600',
     marginTop: 10,

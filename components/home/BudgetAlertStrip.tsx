@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Wallet, TrendingUp, AlertTriangle } from 'lucide-react-native';
 import { getBudgetStatus } from '../../lib/budgetAlerts';
 import { getActiveTrip, getExpenses } from '../../lib/notion';
+import { colors } from '@/constants/theme';
 import type { Expense, Trip } from '../../lib/types';
 
 export const BudgetAlertStrip: React.FC = () => {
@@ -50,10 +51,10 @@ export const BudgetAlertStrip: React.FC = () => {
   const status = getBudgetStatus(tripSpent, total, daysRemaining);
 
   const colorMap = {
-    green: { bg: 'rgba(45,212,160,0.08)', border: 'rgba(45,212,160,0.3)', accent: '#2dd4a0', icon: TrendingUp },
-    yellow: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.3)', accent: '#fbbf24', icon: Wallet },
-    orange: { bg: 'rgba(249,115,22,0.1)', border: 'rgba(249,115,22,0.4)', accent: '#fdba74', icon: AlertTriangle },
-    red: { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.5)', accent: '#fca5a5', icon: AlertTriangle },
+    green: { bg: colors.accentDim, border: colors.accentBorder, accent: colors.accent, icon: TrendingUp },
+    yellow: { bg: colors.warnBg, border: colors.warnBorder, accent: colors.warn, icon: Wallet },
+    orange: { bg: 'rgba(209,120,88,0.1)', border: 'rgba(209,120,88,0.4)', accent: colors.coral, icon: AlertTriangle },
+    red: { bg: 'rgba(196,85,74,0.12)', border: 'rgba(196,85,74,0.5)', accent: colors.danger, icon: AlertTriangle },
   };
 
   const c = colorMap[status.level];
@@ -115,7 +116,7 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   row: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   amount: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  totalText: { color: '#5a6577', fontSize: 12, fontVariant: ['tabular-nums'] },
+  totalText: { color: colors.text3, fontSize: 12, fontVariant: ['tabular-nums'] },
   message: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   percentBadge: {
     paddingHorizontal: 10,

@@ -25,8 +25,8 @@ const AfterStayDarkTheme = {
     card: colors.card,
     border: colors.border,
     text: colors.text,
-    primary: colors.green,
-    notification: colors.green,
+    primary: colors.accent,
+    notification: colors.accent,
   },
 };
 
@@ -56,7 +56,6 @@ export default function RootLayout() {
         screenOptions={{
           headerStyle: { backgroundColor: colors.bg },
           headerTintColor: colors.text,
-          contentStyle: { backgroundColor: colors.bg },
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

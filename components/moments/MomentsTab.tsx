@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { CONFIG } from '../../lib/config';
+import { colors, spacing, radius } from '@/constants/theme';
 import { SlideshowModal } from './SlideshowModal';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -142,7 +143,7 @@ export const MomentsTab = () => {
         disabled={uploading}
       >
         {uploading ? (
-          <ActivityIndicator color="#2dd4a0" />
+          <ActivityIndicator color={colors.accent} />
         ) : (
           <>
             <Text style={styles.addIcon}>+</Text>
@@ -152,7 +153,7 @@ export const MomentsTab = () => {
       </TouchableOpacity>
 
       {loading ? (
-        <ActivityIndicator color="#2dd4a0" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />
       ) : moments.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyIcon}>📸</Text>
@@ -198,42 +199,42 @@ export const MomentsTab = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#080b12' },
+  container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
   },
-  title: { color: '#fff', fontSize: 28, fontWeight: '700' },
-  subtitle: { color: '#8b95a5', fontSize: 13, marginTop: 4 },
+  title: { color: colors.text, fontSize: 28, fontWeight: '700' },
+  subtitle: { color: colors.text2, fontSize: 13, marginTop: 4 },
   slideshowBtn: {
-    backgroundColor: '#1a4a3a',
+    backgroundColor: colors.accentBg,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: radius.sm,
   },
-  slideshowText: { color: '#2dd4a0', fontSize: 13, fontWeight: '600' },
+  slideshowText: { color: colors.accent, fontSize: 13, fontWeight: '600' },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderWidth: 1,
-    borderColor: '#1e2530',
-    borderRadius: 12,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     paddingVertical: 14,
-    marginHorizontal: 16,
+    marginHorizontal: spacing.lg,
     marginVertical: 10,
-    gap: 8,
+    gap: spacing.sm,
   },
-  addIcon: { color: '#2dd4a0', fontSize: 20, fontWeight: '300' },
-  addText: { color: '#2dd4a0', fontSize: 14, fontWeight: '600' },
-  grid: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 100 },
+  addIcon: { color: colors.accent, fontSize: 20, fontWeight: '300' },
+  addText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
+  grid: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 100 },
   tile: { width: TILE_SIZE, height: TILE_SIZE, margin: 4 },
-  tileImage: { width: '100%', height: '100%', borderRadius: 8, backgroundColor: '#1a1f27' },
+  tileImage: { width: '100%', height: '100%', borderRadius: radius.xs, backgroundColor: colors.card },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
-  emptyText: { color: '#8b95a5', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyText: { color: colors.text2, fontSize: 14, textAlign: 'center', lineHeight: 20 },
 });

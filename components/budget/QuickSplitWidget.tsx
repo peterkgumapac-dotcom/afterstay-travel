@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { colors } from '@/constants/theme';
 
 interface Props {
   totalAmount: number;
@@ -62,13 +63,13 @@ export const QuickSplitWidget: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 14,
     marginVertical: 10,
   },
   label: {
-    color: '#8b95a5',
+    color: colors.text2,
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.3,
@@ -84,28 +85,28 @@ const styles = StyleSheet.create({
   btn: {
     width: 40, height: 40,
     borderRadius: 20,
-    backgroundColor: '#2a3040',
+    backgroundColor: colors.border2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   btnDisabled: { opacity: 0.3 },
-  btnText: { color: '#fff', fontSize: 22, fontWeight: '300' },
+  btnText: { color: colors.text, fontSize: 22, fontWeight: '300' },
   countBox: { alignItems: 'center', minWidth: 70 },
   count: {
-    color: '#2dd4a0',
+    color: colors.accent,
     fontSize: 28,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-  countLabel: { color: '#8b95a5', fontSize: 11, marginTop: 2 },
+  countLabel: { color: colors.text2, fontSize: 11, marginTop: 2 },
   perPersonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#2a3040',
+    borderTopColor: colors.border2,
   },
-  perPersonLabel: { color: '#8b95a5', fontSize: 12 },
-  perPersonValue: { color: '#2dd4a0', fontSize: 14, fontWeight: '700' },
+  perPersonLabel: { color: colors.text2, fontSize: 12 },
+  perPersonValue: { color: colors.accent, fontSize: 14, fontWeight: '700' },
 });

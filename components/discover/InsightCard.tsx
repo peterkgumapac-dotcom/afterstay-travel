@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTripInsight } from '../../hooks/useTripInsight';
 import { NewsItem } from '../../lib/tripInsights';
+import { colors } from '@/constants/theme';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -19,7 +20,7 @@ export const InsightCard: React.FC = () => {
   if (loading && !insight) {
     return (
       <View style={[styles.card, styles.cardLoading]}>
-        <ActivityIndicator color="#a855f7" size="small" />
+        <ActivityIndicator color={colors.accent} size="small" />
         <Text style={styles.loadingText}>Loading Boracay insights...</Text>
       </View>
     );
@@ -46,14 +47,14 @@ export const InsightCard: React.FC = () => {
         style={styles.cardWrap}
       >
         <LinearGradient
-          colors={['#3b1d5a', '#1e0f2e']}
+          colors={[colors.elevated, colors.bg2]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.card}
         >
           <View style={styles.headerRow}>
             <View style={styles.titleRow}>
-              <Sparkles color="#c084fc" size={16} strokeWidth={2.5} />
+              <Sparkles color={colors.accentLt} size={16} strokeWidth={2.5} />
               <Text style={styles.title}>What's Happening in Boracay</Text>
             </View>
             <TouchableOpacity
@@ -65,9 +66,9 @@ export const InsightCard: React.FC = () => {
               style={styles.refreshBtn}
             >
               {loading ? (
-                <ActivityIndicator color="#c084fc" size="small" />
+                <ActivityIndicator color={colors.accentLt} size="small" />
               ) : (
-                <RefreshCw color="#c084fc" size={14} strokeWidth={2.5} />
+                <RefreshCw color={colors.accentLt} size={14} strokeWidth={2.5} />
               )}
             </TouchableOpacity>
           </View>
@@ -100,7 +101,7 @@ export const InsightCard: React.FC = () => {
             <View style={styles.modalHeader}>
               <View>
                 <View style={styles.titleRow}>
-                  <Sparkles color="#c084fc" size={18} />
+                  <Sparkles color={colors.accentLt} size={18} />
                   <Text style={styles.modalTitle}>Boracay Right Now</Text>
                 </View>
                 <Text style={styles.modalSubtitle}>
@@ -108,7 +109,7 @@ export const InsightCard: React.FC = () => {
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setExpanded(false)} style={styles.closeBtn}>
-                <X color="#fff" size={20} />
+                <X color={colors.text} size={20} />
               </TouchableOpacity>
             </View>
 
@@ -129,7 +130,7 @@ export const InsightCard: React.FC = () => {
               )}
 
               <TouchableOpacity onPress={() => refresh()} style={styles.refreshBottomBtn}>
-                <RefreshCw color="#c084fc" size={14} />
+                <RefreshCw color={colors.accentLt} size={14} />
                 <Text style={styles.refreshBottomText}>Refresh now</Text>
               </TouchableOpacity>
 
@@ -162,7 +163,7 @@ const NewsItemCard: React.FC<{ item: NewsItem }> = ({ item }) => (
     <Text style={styles.newsSummary}>{item.summary}</Text>
     {item.sourceUrl && (
       <View style={styles.sourceRow}>
-        <ExternalLink color="#8b95a5" size={12} />
+        <ExternalLink color={colors.text2} size={12} />
         <Text style={styles.sourceText}>
           {item.sourceName || 'Read source'}
         </Text>
@@ -187,25 +188,25 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.3)',
+    borderColor: colors.accentBorder,
   },
   cardLoading: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     padding: 16,
-    backgroundColor: 'rgba(168,85,247,0.08)',
+    backgroundColor: colors.accentBg,
     borderRadius: 16,
     marginHorizontal: 16,
     marginVertical: 10,
   },
-  loadingText: { color: '#a855f7', fontSize: 13 },
+  loadingText: { color: colors.accent, fontSize: 13 },
   cardError: {
-    backgroundColor: 'rgba(239,68,68,0.1)',
+    backgroundColor: 'rgba(196,85,74,0.10)',
     marginHorizontal: 16,
     marginVertical: 10,
   },
-  errorText: { color: '#ef4444', fontSize: 13, textAlign: 'center' },
+  errorText: { color: colors.danger, fontSize: 13, textAlign: 'center' },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -213,29 +214,29 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  title: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  title: { color: colors.text, fontSize: 14, fontWeight: '700' },
   refreshBtn: {
     padding: 6,
     borderRadius: 20,
-    backgroundColor: 'rgba(168,85,247,0.15)',
+    backgroundColor: colors.accentDim,
   },
-  summary: { color: '#e2e8f0', fontSize: 13, lineHeight: 19, marginBottom: 8 },
+  summary: { color: colors.text, fontSize: 13, lineHeight: 19, marginBottom: 8 },
   footer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  footerText: { color: '#c084fc', fontSize: 11, fontWeight: '600' },
+  footerText: { color: colors.accentLt, fontSize: 11, fontWeight: '600' },
   modalBg: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: '#0a0d12',
+    backgroundColor: colors.canvas,
     height: SCREEN_H * 0.85,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
   handle: {
     width: 40, height: 4,
-    backgroundColor: '#2a3040',
+    backgroundColor: colors.border2,
     borderRadius: 2,
     alignSelf: 'center',
     marginTop: 8,
@@ -247,52 +248,52 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
-  modalTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
-  modalSubtitle: { color: '#8b95a5', fontSize: 11, marginTop: 2 },
+  modalTitle: { color: colors.text, fontSize: 22, fontWeight: '700' },
+  modalSubtitle: { color: colors.text2, fontSize: 11, marginTop: 2 },
   closeBtn: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
     alignItems: 'center', justifyContent: 'center',
   },
   summaryBox: {
     marginHorizontal: 20,
     padding: 14,
-    backgroundColor: 'rgba(168,85,247,0.08)',
+    backgroundColor: colors.accentBg,
     borderRadius: 12,
     borderLeftWidth: 3,
-    borderLeftColor: '#c084fc',
+    borderLeftColor: colors.accentLt,
     marginBottom: 16,
   },
-  summaryLarge: { color: '#e2e8f0', fontSize: 14, lineHeight: 21 },
+  summaryLarge: { color: colors.text, fontSize: 14, lineHeight: 21 },
   newsCard: {
     marginHorizontal: 20,
     marginBottom: 12,
     padding: 14,
-    backgroundColor: '#1a1f27',
+    backgroundColor: colors.card,
     borderRadius: 12,
   },
   dateChip: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(192,132,252,0.15)',
+    backgroundColor: colors.accentDim,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
     marginBottom: 8,
   },
-  dateChipText: { color: '#c084fc', fontSize: 11, fontWeight: '700' },
-  newsTitle: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 4 },
-  newsSummary: { color: '#cbd5e1', fontSize: 13, lineHeight: 18, marginBottom: 8 },
+  dateChipText: { color: colors.accentLt, fontSize: 11, fontWeight: '700' },
+  newsTitle: { color: colors.text, fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  newsSummary: { color: colors.text, fontSize: 13, lineHeight: 18, marginBottom: 8 },
   sourceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingTop: 6,
     borderTopWidth: 1,
-    borderTopColor: '#2a3040',
+    borderTopColor: colors.border2,
   },
-  sourceText: { color: '#8b95a5', fontSize: 11 },
+  sourceText: { color: colors.text2, fontSize: 11 },
   empty: { padding: 40, alignItems: 'center' },
-  emptyText: { color: '#8b95a5', fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  emptyText: { color: colors.text2, fontSize: 13, textAlign: 'center', lineHeight: 20 },
   refreshBottomBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -302,13 +303,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: 'rgba(168,85,247,0.08)',
+    backgroundColor: colors.accentBg,
     borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.3)',
+    borderColor: colors.accentBorder,
   },
-  refreshBottomText: { color: '#c084fc', fontSize: 13, fontWeight: '600' },
+  refreshBottomText: { color: colors.accentLt, fontSize: 13, fontWeight: '600' },
   disclaimer: {
-    color: '#5a6577',
+    color: colors.text3,
     fontSize: 10,
     textAlign: 'center',
     marginTop: 16,

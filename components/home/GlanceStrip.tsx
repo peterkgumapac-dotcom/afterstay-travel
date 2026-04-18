@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { Wallet, Package, Paperclip, Camera } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { colors } from '@/constants/theme';
 
 interface Props {
   budgetSpent: number;
@@ -29,9 +30,9 @@ export const GlanceStrip: React.FC<Props> = ({
 
   const budgetPct = budgetTotal > 0 ? (budgetSpent / budgetTotal) * 100 : 0;
   const budgetColor =
-    budgetPct > 90 ? '#ff7777' :
-    budgetPct > 75 ? '#fbbf24' :
-    budgetTotal > 0 ? '#2dd4a0' : '#8b95a5';
+    budgetPct > 90 ? colors.danger :
+    budgetPct > 75 ? colors.warn :
+    budgetTotal > 0 ? colors.accent : colors.text2;
 
   const items = [
     {
@@ -45,19 +46,19 @@ export const GlanceStrip: React.FC<Props> = ({
     {
       Icon: Package,
       value: `${packingPacked}/${packingTotal}`,
-      color: packingTotal > 0 && packingPacked === packingTotal ? '#2dd4a0' : '#fff',
+      color: packingTotal > 0 && packingPacked === packingTotal ? colors.accent : colors.text,
       onPress: () => router.push('/(tabs)/trip'),
     },
     {
       Icon: Paperclip,
       value: `${filesCount}`,
-      color: filesCount > 0 ? '#2dd4a0' : '#8b95a5',
+      color: filesCount > 0 ? colors.accent : colors.text2,
       onPress: () => router.push('/(tabs)/trip'),
     },
     {
       Icon: Camera,
       value: `${photosCount}`,
-      color: photosCount > 0 ? '#2dd4a0' : '#8b95a5',
+      color: photosCount > 0 ? colors.accent : colors.text2,
       onPress: () => router.push('/(tabs)/moments'),
     },
   ];
@@ -88,10 +89,10 @@ const styles = StyleSheet.create({
     marginVertical: 10,
     paddingVertical: 12,
     paddingHorizontal: 4,
-    backgroundColor: '#0f1318',
+    backgroundColor: colors.bg2,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1e2530',
+    borderColor: colors.border,
   },
   cell: {
     flex: 1,

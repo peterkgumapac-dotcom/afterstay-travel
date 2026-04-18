@@ -6,7 +6,6 @@ import {
   FlatList,
   Image,
   Linking,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -72,18 +71,18 @@ const CATEGORY_EMOJI: Record<string, string> = {
 };
 
 const CATEGORY_GRADIENT: Record<string, string> = {
-  natural_feature: '#0ea5e9',
-  tourist_attraction: '#f59e0b',
-  restaurant: '#ef4444',
-  food: '#ef4444',
-  cafe: '#92400e',
-  bar: '#8b5cf6',
-  night_club: '#8b5cf6',
-  spa: '#14b8a6',
-  shopping_mall: '#ec4899',
-  store: '#ec4899',
-  convenience_store: '#6366f1',
-  pharmacy: '#22c55e',
+  natural_feature: colors.blue,
+  tourist_attraction: colors.gold,
+  restaurant: colors.danger,
+  food: colors.danger,
+  cafe: colors.accentDk,
+  bar: colors.purple,
+  night_club: colors.purple,
+  spa: colors.accent,
+  shopping_mall: colors.pink,
+  store: colors.pink,
+  convenience_store: colors.info,
+  pharmacy: colors.success,
 };
 
 function getPlaceEmoji(types: string[]): string {
@@ -722,7 +721,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: spacing.lg,
-    bottom: Platform.OS === 'ios' ? 24 : spacing.xl,
+    bottom: spacing.xl,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -784,8 +783,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
     gap: 4,
   },
-  distanceText: { color: '#2dd4a0', fontSize: 12, fontWeight: '600' },
-  walkTimeText: { color: '#8b95a5', fontSize: 11 },
+  distanceText: { color: colors.accent, fontSize: 12, fontWeight: '600' },
+  walkTimeText: { color: colors.text2, fontSize: 11 },
   badgeRow: {
     flexDirection: 'row',
     marginTop: 2,
@@ -796,10 +795,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   badgeOpen: {
-    backgroundColor: 'rgba(29,158,117,0.15)',
+    backgroundColor: colors.accentDim,
   },
   badgeClosed: {
-    backgroundColor: 'rgba(239,68,68,0.15)',
+    backgroundColor: 'rgba(196,85,74,0.15)',
   },
   badgeText: {
     fontSize: 11,
