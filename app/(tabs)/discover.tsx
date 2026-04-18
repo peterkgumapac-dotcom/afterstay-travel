@@ -131,6 +131,23 @@ function mapGoogleTypeToCategory(types: string[]): 'Eat' | 'Do' | 'Nature' | 'Es
   return 'Do';
 }
 
+const TRIP_PLANNER_CHIPS = [
+  { emoji: '\uD83C\uDFD6', label: 'Beach day' },
+  { emoji: '\uD83C\uDF74', label: 'Food crawl' },
+  { emoji: '\uD83E\uDD3F', label: 'Snorkeling' },
+  { emoji: '\uD83C\uDF05', label: 'Sunset spot' },
+  { emoji: '\uD83D\uDEF6', label: 'Island hop' },
+  { emoji: '\uD83C\uDF78', label: 'Nightlife' },
+];
+
+const ITINERARY_STYLES = [
+  { id: 'relaxed', label: 'Relaxed', desc: 'Chill vibes, no rush' },
+  { id: 'adventure', label: 'Adventure', desc: 'Action-packed days' },
+  { id: 'foodie', label: 'Foodie', desc: 'Eat your way through' },
+  { id: 'family', label: 'Family', desc: 'Kid-friendly activities' },
+  { id: 'culture', label: 'Culture', desc: 'History and local life' },
+];
+
 export default function DiscoverScreen() {
   const router = useRouter();
   const [places, setPlaces] = useState<NearbyPlace[]>([]);
@@ -145,6 +162,8 @@ export default function DiscoverScreen() {
   const [savedLoading, setSavedLoading] = useState(false);
   const [detailPlace, setDetailPlace] = useState<NearbyPlace | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<'planner' | 'places'>('places');
+  const [selectedStyle, setSelectedStyle] = useState<string>('relaxed');
   const { filters, updateFilters, resetFilters } = useFilters();
 
   const loadSavedPlaces = useCallback(async () => {
@@ -380,7 +399,7 @@ export default function DiscoverScreen() {
               accessibilityLabel="Get directions"
               accessibilityRole="button"
             >
-              <Navigation size={14} color={colors.green2} />
+              <Navigation size={14} color={colors.accentLt} />
               <Text style={styles.directionsBtnText}>Directions</Text>
             </Pressable>
           </View>
@@ -393,58 +412,61 @@ export default function DiscoverScreen() {
     <View style={styles.safe}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bg }}>
         <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Discover</Text>
-              <Text style={styles.sub}>
-                {isCurated
-                  ? 'Curated picks for Boracay'
-                  : `${(discoverView === 'explore' ? filteredExplore : filteredSaved).length} places`
-                    + (filters.sortBy === 'distance' ? ' · sorted by distance' : ' · sorted by rating')
-                    + (filters.minRating > 0 ? ` · ${filters.minRating}+` : '')
-                    + (filters.openNow ? ' · open now' : '')}
-              </Text>
+          <Text style={styles.title}>Discover</Text>
+          <Text style={styles.sub}>
+            {mainTab === 'planner'
+              ? 'Plan your perfect trip'
+              : isCurated
+                ? 'Curated picks for Boracay'
+                : `${(discoverView === 'explore' ? filteredExplore : filteredSaved).length} places`}
+          </Text>
+        </View>
+
+        {/* Main segmented: Trip Planner | Places */}
+        <View style={styles.mainSegmented}>
+          <Pressable
+            style={[styles.mainSegBtn, mainTab === 'planner' && styles.mainSegBtnActive]}
+            onPress={() => setMainTab('planner')}
+          >
+            <Sparkles size={14} color={mainTab === 'planner' ? colors.accentLt : colors.text3} />
+            <Text style={[styles.mainSegText, mainTab === 'planner' && styles.mainSegTextActive]}>Trip Planner</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.mainSegBtn, mainTab === 'places' && styles.mainSegBtnActive]}
+            onPress={() => setMainTab('places')}
+          >
+            <Globe2 size={14} color={mainTab === 'places' ? colors.accentLt : colors.text3} />
+            <Text style={[styles.mainSegText, mainTab === 'places' && styles.mainSegTextActive]}>Places</Text>
+          </Pressable>
+        </View>
+
+        {mainTab === 'places' && (
+          <>
+            {/* Explore / Saved toggle */}
+            <View style={styles.viewToggle}>
+              <Pressable
+                style={[styles.viewToggleBtn, discoverView === 'explore' && styles.viewToggleBtnActive]}
+                onPress={() => setDiscoverView('explore')}
+              >
+                <Globe2 size={16} color={discoverView === 'explore' ? colors.accentLt : colors.text3} />
+                <Text style={[styles.viewToggleText, discoverView === 'explore' && styles.viewToggleTextActive]}>Explore</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.viewToggleBtn, discoverView === 'saved' && styles.viewToggleBtnActive]}
+                onPress={() => { setDiscoverView('saved'); loadSavedPlaces(); }}
+              >
+                <BookmarkCheck size={16} color={discoverView === 'saved' ? colors.accentLt : colors.text3} />
+                <Text style={[styles.viewToggleText, discoverView === 'saved' && styles.viewToggleTextActive]}>
+                  Saved{savedPlaces.length > 0 ? ` (${savedPlaces.length})` : ''}
+                </Text>
+              </Pressable>
             </View>
-            <Pressable
-              style={styles.suggestHeaderBtn}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                router.push('/trip-planner' as any);
-              }}
-              accessibilityLabel="Get personalized suggestions"
-              accessibilityRole="button"
-            >
-              <Sparkles size={16} color={colors.white} />
-              <Text style={styles.suggestHeaderBtnText}>For You</Text>
-            </Pressable>
-          </View>
-        </View>
+          </>
+        )}
 
-        {/* Explore / Saved toggle */}
-        <View style={styles.viewToggle}>
-          <Pressable
-            style={[styles.viewToggleBtn, discoverView === 'explore' && styles.viewToggleBtnActive]}
-            onPress={() => setDiscoverView('explore')}
-          >
-            <Globe2 size={16} color={discoverView === 'explore' ? colors.green2 : colors.text3} />
-            <Text style={[styles.viewToggleText, discoverView === 'explore' && styles.viewToggleTextActive]}>Explore</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.viewToggleBtn, discoverView === 'saved' && styles.viewToggleBtnActive]}
-            onPress={() => { setDiscoverView('saved'); loadSavedPlaces(); }}
-          >
-            <BookmarkCheck size={16} color={discoverView === 'saved' ? colors.green2 : colors.text3} />
-            <Text style={[styles.viewToggleText, discoverView === 'saved' && styles.viewToggleTextActive]}>
-              Saved{savedPlaces.length > 0 ? ` (${savedPlaces.length})` : ''}
-            </Text>
-          </Pressable>
-        </View>
+        {mainTab === 'places' && discoverView === 'explore' && <InsightCard />}
 
-        {/* AI Insights card — only in Explore */}
-        {discoverView === 'explore' && <InsightCard />}
-
-        {/* Category pills — only in Explore */}
-        {discoverView === 'explore' && (
+        {mainTab === 'places' && discoverView === 'explore' && (
           <>
             <ScrollView
               horizontal
@@ -472,7 +494,7 @@ export default function DiscoverScreen() {
         )}
 
         {/* Filter bar for saved view */}
-        {discoverView === 'saved' && (
+        {mainTab === 'places' && discoverView === 'saved' && (
           <FilterBar
             filters={filters}
             onUpdate={updateFilters}
@@ -481,27 +503,89 @@ export default function DiscoverScreen() {
         )}
 
         {/* List / Map toggle — only in Explore */}
-        {discoverView === 'explore' && (
+        {mainTab === 'places' && discoverView === 'explore' && (
           <View style={styles.listMapToggle}>
             <Pressable
               style={[styles.listMapBtn, viewMode === 'list' && styles.listMapBtnActive]}
               onPress={() => setViewMode('list')}
             >
-              <List size={14} color={viewMode === 'list' ? colors.green2 : colors.text3} />
+              <List size={14} color={viewMode === 'list' ? colors.accentLt : colors.text3} />
               <Text style={[styles.listMapText, viewMode === 'list' && styles.listMapTextActive]}>List</Text>
             </Pressable>
             <Pressable
               style={[styles.listMapBtn, viewMode === 'map' && styles.listMapBtnActive]}
               onPress={() => setViewMode('map')}
             >
-              <Map size={14} color={viewMode === 'map' ? colors.green2 : colors.text3} />
+              <Map size={14} color={viewMode === 'map' ? colors.accentLt : colors.text3} />
               <Text style={[styles.listMapText, viewMode === 'map' && styles.listMapTextActive]}>Map</Text>
             </Pressable>
           </View>
         )}
       </SafeAreaView>
 
-      {discoverView === 'saved' ? (
+      {mainTab === 'planner' ? (
+        <ScrollView contentContainerStyle={styles.plannerContent}>
+          {/* AI prompt input */}
+          <View style={styles.plannerPrompt}>
+            <Sparkles size={18} color={colors.accent} />
+            <Text style={styles.plannerPromptText}>
+              What do you want to do in Boracay?
+            </Text>
+          </View>
+
+          {/* Popular chips */}
+          <Text style={styles.plannerSectionLabel}>Popular first visit</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {TRIP_PLANNER_CHIPS.map((chip) => (
+              <Pressable
+                key={chip.label}
+                style={styles.chip}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push('/trip-planner' as any);
+                }}
+              >
+                <Text style={styles.chipEmoji}>{chip.emoji}</Text>
+                <Text style={styles.chipLabel}>{chip.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          {/* Itinerary styles */}
+          <Text style={styles.plannerSectionLabel}>Choose your style</Text>
+          <View style={styles.styleList}>
+            {ITINERARY_STYLES.map((style) => (
+              <Pressable
+                key={style.id}
+                style={[styles.styleCard, selectedStyle === style.id && styles.styleCardActive]}
+                onPress={() => setSelectedStyle(style.id)}
+              >
+                <View style={styles.styleRadio}>
+                  {selectedStyle === style.id && <View style={styles.styleRadioDot} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.styleLabel, selectedStyle === style.id && styles.styleLabelActive]}>
+                    {style.label}
+                  </Text>
+                  <Text style={styles.styleDesc}>{style.desc}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Generate button */}
+          <Pressable
+            style={styles.generateBtn}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push('/trip-planner' as any);
+            }}
+          >
+            <Sparkles size={16} color={colors.white} />
+            <Text style={styles.generateBtnText}>Generate Itinerary</Text>
+          </Pressable>
+        </ScrollView>
+      ) : discoverView === 'saved' ? (
         savedLoading ? (
           <AfterStayLoader message="Loading saved places..." />
         ) : savedPlaces.length === 0 ? (
@@ -534,7 +618,7 @@ export default function DiscoverScreen() {
               <RefreshControl
                 refreshing={savedLoading}
                 onRefresh={loadSavedPlaces}
-                tintColor={colors.green2}
+                tintColor={colors.accentLt}
               />
             }
           />
@@ -575,13 +659,13 @@ export default function DiscoverScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={() => { setRefreshing(true); fetchPlaces(activeCategory); }}
-              tintColor={colors.green2}
+              tintColor={colors.accentLt}
             />
           }
         />
       )}
 
-      {discoverView === 'explore' && (
+      {mainTab === 'places' && discoverView === 'explore' && (
         <Pressable
           style={styles.fab}
           onPress={() => {
@@ -622,26 +706,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
   title: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   sub: { color: colors.text2, fontSize: 13, marginTop: 2, marginBottom: spacing.md },
-  suggestHeaderBtn: {
+  mainSegmented: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.bg3,
+    borderRadius: radius.md,
+    padding: 3,
+  },
+  mainSegBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    backgroundColor: colors.purple,
     paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
   },
-  suggestHeaderBtnText: {
-    color: colors.white,
+  mainSegBtnActive: {
+    backgroundColor: colors.card,
+  },
+  mainSegText: {
+    color: colors.text3,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
+  },
+  mainSegTextActive: {
+    color: colors.accentLt,
   },
   pillRow: {
     paddingHorizontal: spacing.lg,
@@ -694,7 +787,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   viewToggleTextActive: {
-    color: colors.green2,
+    color: colors.accentLt,
   },
   listMapToggle: {
     flexDirection: 'row',
@@ -715,7 +808,7 @@ const styles = StyleSheet.create({
   },
   listMapBtnActive: { backgroundColor: colors.card },
   listMapText: { color: colors.text3, fontSize: 12, fontWeight: '600' },
-  listMapTextActive: { color: colors.green2 },
+  listMapTextActive: { color: colors.accentLt },
   mapView: { flex: 1 },
   list: { padding: spacing.lg, paddingBottom: 100 },
   fab: {
@@ -805,7 +898,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   badgeTextOpen: {
-    color: colors.green2,
+    color: colors.accentLt,
   },
   badgeTextClosed: {
     color: colors.red,
@@ -838,8 +931,100 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   directionsBtnText: {
-    color: colors.green2,
+    color: colors.accentLt,
     fontSize: 13,
+    fontWeight: '700',
+  },
+  // Trip Planner styles
+  plannerContent: {
+    padding: spacing.lg,
+    paddingBottom: 100,
+    gap: spacing.lg,
+  },
+  plannerPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+  },
+  plannerPromptText: {
+    color: colors.text2,
+    fontSize: 14,
+    flex: 1,
+  },
+  plannerSectionLabel: {
+    color: colors.text3,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  chipRow: {
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.card,
+    borderRadius: radius.pill,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipEmoji: { fontSize: 16 },
+  chipLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  styleList: { gap: spacing.sm },
+  styleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  styleCardActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentDim,
+  },
+  styleRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.text3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  styleRadioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
+  },
+  styleLabel: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  styleLabelActive: { color: colors.accent },
+  styleDesc: { color: colors.text3, fontSize: 12, marginTop: 1 },
+  generateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+  },
+  generateBtnText: {
+    color: colors.white,
+    fontSize: 15,
     fontWeight: '700',
   },
 });

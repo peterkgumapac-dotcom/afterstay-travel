@@ -1,9 +1,10 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { Plus, MessageCircle } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -45,7 +46,7 @@ import type {
   Trip,
   TripFile,
 } from '@/lib/types';
-import { hoursUntil } from '@/lib/utils';
+import { hoursUntil, formatCurrency } from '@/lib/utils';
 
 const PACKING_CATEGORIES = [
   'All',
@@ -68,17 +69,8 @@ const ADD_CATEGORIES: PackingItem['category'][] = [
 
 type PackingFilter = (typeof PACKING_CATEGORIES)[number];
 
-const PLACE_CATEGORY_EMOJI: Record<PlaceCategory, string> = {
-  Eat: '🍽',
-  Coffee: '☕',
-  Do: '🎯',
-  Nature: '🌿',
-  Nightlife: '🎉',
-  Wellness: '💆',
-  Culture: '🏛',
-  Essentials: '🛒',
-  Transport: '🚕',
-};
+const TAB_KEYS = ['Overview', 'Flights', 'Packing', 'Files'] as const;
+type TabKey = (typeof TAB_KEYS)[number];
 
 export default function TripScreen() {
   const router = useRouter();
@@ -93,6 +85,7 @@ export default function TripScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
 
+  const [activeTab, setActiveTab] = useState<TabKey>('Overview');
   const [packingFilter, setPackingFilter] = useState<PackingFilter>('All');
   const [newItem, setNewItem] = useState('');
   const [newCategory, setNewCategory] = useState<PackingItem['category']>('Clothing');
@@ -128,7 +121,6 @@ export default function TripScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Deduplicate flights by flight number + direction, collect passengers
   const deduplicateFlights = (list: Flight[]): { flight: Flight; passengers: string[] }[] => {
     const map = new Map<string, { flight: Flight; passengers: string[] }>();
     for (const f of list) {
@@ -147,7 +139,6 @@ export default function TripScreen() {
 
   const outboundDeduped = deduplicateFlights(flights.filter(f => f.direction === 'Outbound'));
   const returnDeduped = deduplicateFlights(flights.filter(f => f.direction === 'Return'));
-  const returnFlight = flights.find(f => f.direction === 'Return');
 
   const filteredPacking = useMemo(
     () =>
@@ -162,30 +153,12 @@ export default function TripScreen() {
     return { done, total: packing.length };
   }, [packing]);
 
-  const showCheckout = returnFlight ? hoursUntil(returnFlight.departTime) <= 24 && hoursUntil(returnFlight.departTime) >= -2 : false;
-  const checklistStats = useMemo(() => {
-    const done = checklist.filter(c => c.done).length;
-    return { done, total: checklist.length };
-  }, [checklist]);
-
   const onTogglePacked = async (item: PackingItem, packed: boolean) => {
     setPacking(list => list.map(p => (p.id === item.id ? { ...p, packed } : p)));
     try {
       await togglePacked(item.id, packed);
     } catch {
       setPacking(list => list.map(p => (p.id === item.id ? { ...p, packed: !packed } : p)));
-    }
-  };
-
-  const onToggleChecklist = async (item: ChecklistItem, done: boolean) => {
-    const primary = members.find(m => m.role === 'Primary')?.name;
-    setChecklist(list =>
-      list.map(c => (c.id === item.id ? { ...c, done, doneBy: done ? primary : undefined } : c))
-    );
-    try {
-      await toggleChecklistItem(item.id, done, done ? primary : undefined);
-    } catch {
-      setChecklist(list => list.map(c => (c.id === item.id ? { ...c, done: !done } : c)));
     }
   };
 
@@ -204,7 +177,7 @@ export default function TripScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.centered}>
-        <ActivityIndicator color={colors.green2} />
+        <ActivityIndicator color={colors.accentLt} />
       </SafeAreaView>
     );
   }
@@ -216,263 +189,279 @@ export default function TripScreen() {
     );
   }
 
+  const currency = trip.costCurrency ?? 'PHP';
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <FlatList
-        data={[0]}
-        keyExtractor={() => 'x'}
-        renderItem={() => null}
-        ListHeaderComponent={
-          <ScrollView>
-            <View style={styles.content}>
-              <Text style={styles.pageTitle}>Our Trip</Text>
+      {/* Header */}
+      <View style={styles.headerSection}>
+        <Text style={styles.pageTitle}>Our Trip</Text>
+        <Text style={styles.pageSub}>
+          {trip.destination || 'Boracay'} {'\u00B7'} Apr 20 {'\u2013'} 27
+        </Text>
+      </View>
 
-              {/* Group Members */}
-              <Section title="Group">
-                <View style={{ gap: spacing.sm }}>
-                  {members.length === 0 ? (
-                    <Text style={styles.muted}>No group members yet.</Text>
-                  ) : (
-                    members.map(m => (
-                      <GroupMemberCard
-                        key={m.id}
-                        member={m}
-                        onEmailUpdate={(id, email) => {
-                          setMembers(list =>
-                            list.map(gm =>
-                              gm.id === id ? { ...gm, email } : gm
-                            )
-                          );
-                        }}
-                        onPhotoUpdate={async (id, uri) => {
-                          setMembers(list =>
-                            list.map(gm =>
-                              gm.id === id ? { ...gm, profilePhoto: uri } : gm
-                            )
-                          );
-                          try {
-                            await updateMemberPhoto(id, uri);
-                          } catch {
-                            setMembers(list =>
-                              list.map(gm =>
-                                gm.id === id ? { ...gm, profilePhoto: m.profilePhoto } : gm
-                              )
-                            );
-                          }
-                        }}
-                      />
-                    ))
-                  )}
-                </View>
-              </Section>
+      {/* Segmented control */}
+      <View style={styles.segmented}>
+        {TAB_KEYS.map((tab) => (
+          <Pressable
+            key={tab}
+            style={[styles.segBtn, activeTab === tab && styles.segBtnActive]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.segText, activeTab === tab && styles.segTextActive]}>
+              {tab}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
-              {/* Flights */}
-              <Section title="Flights">
-                {outboundDeduped.length > 0 && (
-                  <>
-                    <Text style={styles.subLabel}>Outbound</Text>
-                    <View style={{ gap: spacing.sm }}>
-                      {outboundDeduped.map(({ flight: f, passengers }) => (
-                        <FlightCard key={f.id} flight={f} passengers={passengers} />
-                      ))}
-                    </View>
-                  </>
-                )}
-                {returnDeduped.length > 0 && (
-                  <>
-                    <Text style={[styles.subLabel, { marginTop: spacing.md }]}>Return</Text>
-                    <View style={{ gap: spacing.sm }}>
-                      {returnDeduped.map(({ flight: f, passengers }) => (
-                        <FlightCard key={f.id} flight={f} passengers={passengers} />
-                      ))}
-                    </View>
-                  </>
-                )}
-                {flights.length === 0 && (
-                  <Text style={styles.muted}>No flights saved yet.</Text>
-                )}
-                {flights.length > 0 && (
-                  <CalendarSync trip={trip} flights={flights} packingItems={packing} members={members} />
-                )}
-              </Section>
-
-              {/* Files */}
-              <Section title="Files">
-                <View style={{ gap: spacing.sm }}>
-                  {files.length === 0 ? (
-                    <Text style={styles.muted}>No files attached yet. Tap + to add boarding passes, confirmations, etc.</Text>
-                  ) : (
-                    files.map(f => <TripFileRow key={f.id} file={f} />)
-                  )}
-                  <Pressable
-                    style={({ pressed }) => [styles.addFileBtn, pressed && { opacity: 0.7 }]}
-                    onPress={() => router.push('/add-file')}
-                  >
-                    <Plus size={16} color={colors.green2} />
-                    <Text style={styles.addFileText}>Add File</Text>
-                  </Pressable>
-                </View>
-              </Section>
-
-              {/* Saved Places */}
-              <Section title={`Saved for This Trip (${savedPlaces.length})`}>
-                <View style={{ gap: spacing.sm }}>
-                  {savedPlaces.length === 0 ? (
-                    <Text style={styles.muted}>No saved places yet. Bookmark places in Discover.</Text>
-                  ) : (
-                    savedPlaces.map(p => (
-                      <View key={p.id} style={styles.savedPlaceCard}>
-                        <Text style={styles.savedPlaceEmoji}>
-                          {PLACE_CATEGORY_EMOJI[p.category] ?? '📍'}
-                        </Text>
-                        <View style={{ flex: 1, gap: 2 }}>
-                          <View style={styles.savedPlaceHeader}>
-                            <Text style={styles.savedPlaceName} numberOfLines={1}>
-                              {p.name}
-                            </Text>
-                            {p.rating ? (
-                              <Text style={styles.savedPlaceRating}>
-                                {'\u2B50'} {p.rating.toFixed(1)}
-                              </Text>
-                            ) : null}
-                          </View>
-                          {p.notes ? (
-                            <Text style={styles.savedPlaceNotes} numberOfLines={2}>
-                              {p.notes}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </View>
-              </Section>
-
-              {/* Packing List */}
-              <Section title="Packing List">
-                <View style={styles.progressRow}>
-                  <Text style={styles.progressText}>
-                    {packingStats.done} / {packingStats.total} packed
-                  </Text>
-                  <ProgressBar
-                    value={packingStats.total === 0 ? 0 : packingStats.done / packingStats.total}
-                  />
-                </View>
-
-                {/* Add item form */}
-                <View style={styles.addRow}>
-                  <TextInput
-                    value={newItem}
-                    onChangeText={setNewItem}
-                    placeholder="Add an item…"
-                    placeholderTextColor={colors.text3}
-                    style={styles.addInput}
-                    onSubmitEditing={submitNewItem}
-                    returnKeyType="done"
-                  />
-                  <Pressable
-                    onPress={submitNewItem}
-                    disabled={adding || !newItem.trim()}
-                    style={({ pressed }) => [
-                      styles.addBtn,
-                      (!newItem.trim() || adding) && { opacity: 0.4 },
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Plus size={18} color={colors.white} />
-                  </Pressable>
-                </View>
-                <Select<PackingItem['category']>
-                  options={ADD_CATEGORIES}
-                  value={newCategory}
-                  onChange={setNewCategory}
-                />
-
-                {/* Filter tabs */}
-                <View style={{ marginTop: spacing.md }}>
-                  <Select<PackingFilter>
-                    label="Filter"
-                    options={PACKING_CATEGORIES}
-                    value={packingFilter}
-                    onChange={setPackingFilter}
-                  />
-                </View>
-
-                <View style={{ gap: spacing.md, marginTop: spacing.md }}>
-                  {filteredPacking.length === 0 ? (
-                    <Text style={styles.muted}>
-                      {packing.length === 0 ? 'No packing items yet.' : 'Nothing in this category.'}
-                    </Text>
-                  ) : packingFilter !== 'All' ? (
-                    <View style={{ gap: spacing.sm }}>
-                      {filteredPacking.map(p => (
-                        <PackingItemRow
-                          key={p.id}
-                          item={p}
-                          onToggle={packed => onTogglePacked(p, packed)}
-                        />
-                      ))}
-                    </View>
-                  ) : (
-                    ADD_CATEGORIES
-                      .filter(cat => filteredPacking.some(p => p.category === cat))
-                      .map(cat => (
-                        <View key={cat} style={{ gap: spacing.sm }}>
-                          <Text style={styles.packingCategoryHeader}>{cat}</Text>
-                          {filteredPacking
-                            .filter(p => p.category === cat)
-                            .map(p => (
-                              <PackingItemRow
-                                key={p.id}
-                                item={p}
-                                onToggle={packed => onTogglePacked(p, packed)}
-                              />
-                            ))}
-                        </View>
-                      ))
-                  )}
-                </View>
-              </Section>
-
-              {/* Checkout Checklist — last 24h */}
-              {showCheckout && (
-                <Section title="Checkout Checklist">
-                  <View style={styles.progressRow}>
-                    <Text style={styles.progressText}>
-                      {checklistStats.done} / {checklistStats.total} complete
-                    </Text>
-                    <ProgressBar
-                      value={checklistStats.total === 0 ? 0 : checklistStats.done / checklistStats.total}
-                      tone="amber"
-                    />
-                  </View>
-                  <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-                    {checklist.length === 0 ? (
-                      <Text style={styles.muted}>No checkout tasks configured.</Text>
-                    ) : (
-                      checklist.map(c => (
-                        <ChecklistItemRow
-                          key={c.id}
-                          item={c}
-                          doneBy={members.find(m => m.role === 'Primary')?.name}
-                          onToggle={done => onToggleChecklist(c, done)}
-                        />
-                      ))
-                    )}
-                  </View>
-                </Section>
-              )}
-            </View>
-          </ScrollView>
-        }
+      <ScrollView
+        contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); load(); }}
-            tintColor={colors.green2}
+            tintColor={colors.accentLt}
           />
         }
-      />
+      >
+        {activeTab === 'Overview' && (
+          <>
+            {/* Group Members */}
+            <Section title="Group">
+              <View style={{ gap: spacing.sm }}>
+                {members.length === 0 ? (
+                  <Text style={styles.muted}>No group members yet.</Text>
+                ) : (
+                  members.map(m => (
+                    <GroupMemberCard
+                      key={m.id}
+                      member={m}
+                      onEmailUpdate={(id, email) => {
+                        setMembers(list =>
+                          list.map(gm => gm.id === id ? { ...gm, email } : gm)
+                        );
+                      }}
+                      onPhotoUpdate={async (id, uri) => {
+                        setMembers(list =>
+                          list.map(gm => gm.id === id ? { ...gm, profilePhoto: uri } : gm)
+                        );
+                        try {
+                          await updateMemberPhoto(id, uri);
+                        } catch {
+                          setMembers(list =>
+                            list.map(gm => gm.id === id ? { ...gm, profilePhoto: m.profilePhoto } : gm)
+                          );
+                        }
+                      }}
+                    />
+                  ))
+                )}
+              </View>
+            </Section>
+
+            {/* Accommodation card */}
+            {trip.accommodation && (
+              <Section title="Accommodation">
+                <View style={styles.accomCard}>
+                  <Text style={styles.accomName}>{trip.accommodation}</Text>
+                  {trip.address ? <Text style={styles.accomAddr}>{trip.address}</Text> : null}
+                  {trip.roomType ? <Text style={styles.accomRoom}>{trip.roomType}</Text> : null}
+                  <View style={styles.accomGrid}>
+                    <View style={styles.accomGridItem}>
+                      <Text style={styles.accomGridLabel}>CHECK-IN</Text>
+                      <Text style={styles.accomGridValue}>{trip.checkIn || '3:00 PM'}</Text>
+                    </View>
+                    <View style={styles.accomGridItem}>
+                      <Text style={styles.accomGridLabel}>CHECKOUT</Text>
+                      <Text style={styles.accomGridValue}>{trip.checkOut || '12:00 PM'}</Text>
+                    </View>
+                  </View>
+                  {trip.cost ? (
+                    <View style={styles.accomCostRow}>
+                      <Text style={styles.accomCostLabel}>Total</Text>
+                      <Text style={styles.accomCostValue}>
+                        {formatCurrency(trip.cost, currency)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {trip.cost && members.length > 1 ? (
+                    <Text style={styles.accomSplit}>
+                      {formatCurrency(trip.cost / members.length, currency)} per person
+                    </Text>
+                  ) : null}
+                </View>
+              </Section>
+            )}
+
+            {/* Mini flight cards */}
+            <Section title="Flights">
+              {outboundDeduped.length > 0 && (
+                <>
+                  <Text style={styles.subLabel}>Outbound</Text>
+                  <View style={{ gap: spacing.sm }}>
+                    {outboundDeduped.map(({ flight: f, passengers }) => (
+                      <FlightCard key={f.id} flight={f} passengers={passengers} />
+                    ))}
+                  </View>
+                </>
+              )}
+              {returnDeduped.length > 0 && (
+                <>
+                  <Text style={[styles.subLabel, { marginTop: spacing.md }]}>Return</Text>
+                  <View style={{ gap: spacing.sm }}>
+                    {returnDeduped.map(({ flight: f, passengers }) => (
+                      <FlightCard key={f.id} flight={f} passengers={passengers} />
+                    ))}
+                  </View>
+                </>
+              )}
+              {flights.length === 0 && (
+                <Text style={styles.muted}>No flights saved yet.</Text>
+              )}
+            </Section>
+          </>
+        )}
+
+        {activeTab === 'Flights' && (
+          <>
+            {outboundDeduped.length > 0 && (
+              <Section title="Outbound">
+                <View style={{ gap: spacing.sm }}>
+                  {outboundDeduped.map(({ flight: f, passengers }) => (
+                    <FlightCard key={f.id} flight={f} passengers={passengers} />
+                  ))}
+                </View>
+              </Section>
+            )}
+            {returnDeduped.length > 0 && (
+              <Section title="Return">
+                <View style={{ gap: spacing.sm }}>
+                  {returnDeduped.map(({ flight: f, passengers }) => (
+                    <FlightCard key={f.id} flight={f} passengers={passengers} />
+                  ))}
+                </View>
+              </Section>
+            )}
+            {flights.length === 0 && (
+              <Text style={styles.muted}>No flights saved yet.</Text>
+            )}
+            {flights.length > 0 && (
+              <CalendarSync trip={trip} flights={flights} packingItems={packing} members={members} />
+            )}
+          </>
+        )}
+
+        {activeTab === 'Packing' && (
+          <>
+            <View style={styles.packingHeader}>
+              <Text style={styles.packingProgress}>
+                {packingStats.done} of {packingStats.total} packed
+              </Text>
+              <ProgressBar
+                value={packingStats.total === 0 ? 0 : packingStats.done / packingStats.total}
+              />
+            </View>
+
+            {/* Add item form */}
+            <View style={styles.addRow}>
+              <TextInput
+                value={newItem}
+                onChangeText={setNewItem}
+                placeholder="Add an item\u2026"
+                placeholderTextColor={colors.text3}
+                style={styles.addInput}
+                onSubmitEditing={submitNewItem}
+                returnKeyType="done"
+              />
+              <Pressable
+                onPress={submitNewItem}
+                disabled={adding || !newItem.trim()}
+                style={({ pressed }) => [
+                  styles.addBtn,
+                  (!newItem.trim() || adding) && { opacity: 0.4 },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Plus size={18} color={colors.white} />
+              </Pressable>
+            </View>
+            <Select<PackingItem['category']>
+              options={ADD_CATEGORIES}
+              value={newCategory}
+              onChange={setNewCategory}
+            />
+
+            {/* Filter tabs */}
+            <View style={{ marginTop: spacing.md }}>
+              <Select<PackingFilter>
+                label="Filter"
+                options={PACKING_CATEGORIES}
+                value={packingFilter}
+                onChange={setPackingFilter}
+              />
+            </View>
+
+            <View style={{ gap: spacing.md, marginTop: spacing.md }}>
+              {filteredPacking.length === 0 ? (
+                <Text style={styles.muted}>
+                  {packing.length === 0 ? 'No packing items yet.' : 'Nothing in this category.'}
+                </Text>
+              ) : packingFilter !== 'All' ? (
+                <View style={{ gap: spacing.sm }}>
+                  {filteredPacking.map(p => (
+                    <PackingItemRow
+                      key={p.id}
+                      item={p}
+                      onToggle={packed => onTogglePacked(p, packed)}
+                    />
+                  ))}
+                </View>
+              ) : (
+                ADD_CATEGORIES
+                  .filter(cat => filteredPacking.some(p => p.category === cat))
+                  .map(cat => (
+                    <View key={cat} style={{ gap: spacing.sm }}>
+                      <Text style={styles.packingCategoryHeader}>{cat}</Text>
+                      {filteredPacking
+                        .filter(p => p.category === cat)
+                        .map(p => (
+                          <PackingItemRow
+                            key={p.id}
+                            item={p}
+                            onToggle={packed => onTogglePacked(p, packed)}
+                          />
+                        ))}
+                    </View>
+                  ))
+              )}
+            </View>
+          </>
+        )}
+
+        {activeTab === 'Files' && (
+          <>
+            <View style={styles.filesHeader}>
+              <Text style={styles.filesCount}>{files.length} files</Text>
+            </View>
+            <View style={{ gap: spacing.sm }}>
+              {files.length === 0 ? (
+                <Text style={styles.muted}>No files attached yet.</Text>
+              ) : (
+                files.map(f => <TripFileRow key={f.id} file={f} />)
+              )}
+              <Pressable
+                style={({ pressed }) => [styles.addFileBtn, pressed && { opacity: 0.7 }]}
+                onPress={() => router.push('/add-file')}
+              >
+                <Plus size={16} color={colors.accentLt} />
+                <Text style={styles.addFileText}>Upload</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -487,7 +476,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function ProgressBar({ value, tone = 'green' }: { value: number; tone?: 'green' | 'amber' }) {
-  const color = tone === 'green' ? colors.green : colors.amber;
+  const color = tone === 'green' ? colors.accent : colors.amber;
   const pct = Math.max(0, Math.min(1, value));
   return (
     <View style={styles.bar}>
@@ -499,9 +488,40 @@ function ProgressBar({ value, tone = 'green' }: { value: number; tone?: 'green' 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  errorText: { color: colors.red, fontSize: 13 },
-  content: { padding: spacing.lg, paddingBottom: 100, gap: spacing.xl },
+  errorText: { color: colors.danger, fontSize: 13 },
+  headerSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
   pageTitle: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+  pageSub: { color: colors.text2, fontSize: 13, marginTop: 2 },
+  segmented: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    backgroundColor: colors.bg3,
+    borderRadius: radius.md,
+    padding: 3,
+  },
+  segBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: radius.sm,
+  },
+  segBtnActive: {
+    backgroundColor: colors.card,
+  },
+  segText: {
+    color: colors.text3,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  segTextActive: {
+    color: colors.accentLt,
+  },
+  content: { padding: spacing.lg, paddingBottom: 100, gap: spacing.xl },
   section: { gap: spacing.md },
   sectionTitle: { fontSize: 11, fontWeight: '800', color: colors.text2, textTransform: 'uppercase', letterSpacing: 0.7 },
   subLabel: {
@@ -513,8 +533,55 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   muted: { color: colors.text2, fontSize: 13 },
-  progressRow: { gap: 6 },
-  progressText: { color: colors.text2, fontSize: 12 },
+  // Accommodation card
+  accomCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+  },
+  accomName: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  accomAddr: { color: colors.text2, fontSize: 12, marginTop: 2 },
+  accomRoom: { color: colors.text3, fontSize: 12, marginTop: 4 },
+  accomGrid: {
+    flexDirection: 'row',
+    marginTop: spacing.md,
+    gap: spacing.md,
+  },
+  accomGridItem: {
+    flex: 1,
+    backgroundColor: colors.bg3,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+  },
+  accomGridLabel: {
+    color: colors.text3,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  accomGridValue: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  accomCostRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  accomCostLabel: { color: colors.text2, fontSize: 13 },
+  accomCostValue: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  accomSplit: { color: colors.text3, fontSize: 12, marginTop: 4, textAlign: 'right' },
+  // Packing
+  packingHeader: { gap: 6 },
+  packingProgress: { color: colors.text2, fontSize: 14, fontWeight: '600' },
   bar: {
     height: 6,
     borderRadius: 3,
@@ -538,25 +605,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radius.md,
-    backgroundColor: colors.green,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  addFileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.green + '40',
-    borderStyle: 'dashed',
-  },
-  addFileText: {
-    color: colors.green2,
-    fontSize: 14,
-    fontWeight: '600',
   },
   packingCategoryHeader: {
     color: colors.text3,
@@ -565,39 +616,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  savedPlaceCard: {
+  // Files
+  filesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  filesCount: { color: colors.text2, fontSize: 13, fontWeight: '600' },
+  addFileBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.card,
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    borderColor: colors.accent + '40',
+    borderStyle: 'dashed',
   },
-  savedPlaceEmoji: {
-    fontSize: 22,
-  },
-  savedPlaceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  savedPlaceName: {
-    color: colors.text,
+  addFileText: {
+    color: colors.accentLt,
     fontSize: 14,
     fontWeight: '600',
-    flex: 1,
-  },
-  savedPlaceRating: {
-    color: colors.amber,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  savedPlaceNotes: {
-    color: colors.text2,
-    fontSize: 12,
-    lineHeight: 16,
   },
 });

@@ -118,9 +118,15 @@ function getDayLabel(day: number, currentDay: number, dateStr: string): string {
 }
 
 function getDailyProgressColor(pct: number): string {
-  if (pct >= 1) return colors.red;
-  if (pct >= 0.75) return colors.amber;
-  return colors.green2;
+  if (pct >= 1) return colors.danger;
+  if (pct >= 0.75) return colors.warn;
+  return colors.accent;
+}
+
+function getBudgetStatusLabel(pct: number): { label: string; color: string } {
+  if (pct >= 1) return { label: 'Over budget', color: colors.danger };
+  if (pct >= 0.75) return { label: 'Watch it', color: colors.warn };
+  return { label: 'Cruising', color: colors.accent };
 }
 
 export default function BudgetScreen() {
@@ -303,7 +309,7 @@ export default function BudgetScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.centered}>
-        <ActivityIndicator color={colors.green2} />
+        <ActivityIndicator color={colors.accentLt} />
       </SafeAreaView>
     );
   }
@@ -320,11 +326,40 @@ export default function BudgetScreen() {
       <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bg }}>
         <View style={styles.header}>
           <Text style={styles.title}>Budget</Text>
-          <Text style={styles.sub}>
-            {isLimited
-              ? `${formatCurrency(trip.budgetLimit ?? 0, currency)} for ${totalDays} days · ${formatCurrency(dailyAllowance, currency)}/day`
-              : `${dailyExpenses.length} ${dailyExpenses.length === 1 ? 'expense' : 'expenses'} logged`}
-          </Text>
+          {isLimited ? (
+            <View style={styles.budgetHero}>
+              <Text style={styles.budgetSpent}>
+                {formatCurrency(total, currency)}
+              </Text>
+              <Text style={styles.budgetOfTotal}>
+                of {formatCurrency(trip.budgetLimit ?? 0, currency)}
+              </Text>
+              <View style={styles.budgetBar}>
+                <View
+                  style={[
+                    styles.budgetBarFill,
+                    {
+                      width: `${Math.min(100, (total / (trip.budgetLimit ?? 1)) * 100)}%`,
+                      backgroundColor: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1)).color,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.budgetStatusRow}>
+                <View style={[styles.statusDot, { backgroundColor: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1)).color }]} />
+                <Text style={[styles.statusText, { color: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1)).color }]}>
+                  {getBudgetStatusLabel(total / (trip.budgetLimit ?? 1)).label}
+                </Text>
+                <Text style={styles.budgetRemaining}>
+                  {formatCurrency(Math.max(0, (trip.budgetLimit ?? 0) - total), currency)} remaining
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.sub}>
+              {dailyExpenses.length} {dailyExpenses.length === 1 ? 'expense' : 'expenses'} logged
+            </Text>
+          )}
         </View>
 
         {/* Mode toggle */}
@@ -506,7 +541,7 @@ export default function BudgetScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); load(); }}
-            tintColor={colors.green2}
+            tintColor={colors.accentLt}
           />
         }
         stickySectionHeadersEnabled={false}
@@ -526,6 +561,51 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
   title: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   sub: { color: colors.text2, fontSize: 13, marginTop: 2 },
+  budgetHero: {
+    marginTop: spacing.sm,
+  },
+  budgetSpent: {
+    color: colors.text,
+    fontSize: 32,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  budgetOfTotal: {
+    color: colors.text3,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  budgetBar: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.bg3,
+    overflow: 'hidden',
+    marginTop: spacing.sm,
+  },
+  budgetBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  budgetStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  budgetRemaining: {
+    color: colors.text3,
+    fontSize: 12,
+    marginLeft: 'auto',
+  },
   toggleRow: {
     flexDirection: 'row',
     marginHorizontal: spacing.lg,
@@ -541,7 +621,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   toggleBtnActive: {
-    backgroundColor: colors.green,
+    backgroundColor: colors.accent,
   },
   toggleText: {
     color: colors.text3,
@@ -559,7 +639,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   editHint: {
-    color: colors.green2,
+    color: colors.accentLt,
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
@@ -581,7 +661,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     paddingVertical: 4,
     borderBottomWidth: 1,
-    borderBottomColor: colors.green2,
+    borderBottomColor: colors.accentLt,
   },
   accommodationCard: {
     backgroundColor: colors.card,
@@ -695,7 +775,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.green,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',

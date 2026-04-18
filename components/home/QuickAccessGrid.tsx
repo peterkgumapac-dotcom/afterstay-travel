@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, Alert } from 'react-native';
-import { Wifi, Lock, LogIn, LogOut } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants/theme';
-
-type LucideIcon = typeof Wifi;
 
 interface Tile {
   id: string;
@@ -18,24 +15,29 @@ interface Props {
   tiles?: Tile[];
 }
 
-const ICON_MAP: Record<string, LucideIcon> = {
-  wifi: Wifi,
-  door: Lock,
-  checkin: LogIn,
-  checkout: LogOut,
-};
-
 const DEFAULT_TILES: Tile[] = [
-  { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: 'Not set' },
-  { id: 'door', iconName: 'door', label: 'Door Code', value: '\u2014' },
-  { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: '3:00 PM' },
-  { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: '12:00 PM' },
+  { id: 'checkin', iconName: 'checkin', label: 'CHECK-IN', value: '3:00 PM' },
+  { id: 'checkout', iconName: 'checkout', label: 'CHECKOUT', value: '12:00 PM' },
+  { id: 'wifi', iconName: 'wifi', label: 'WIFI', value: 'Not set' },
+  { id: 'door', iconName: 'door', label: 'DOOR CODE', value: '\u2014' },
 ];
+
+const HINT_MAP: Record<string, string> = {
+  checkin: 'Early check-in available',
+  checkout: 'Late checkout on request',
+  wifi: 'Ask front desk for password',
+  door: 'Long-press to reveal',
+};
 
 const QUICK_ACCESS_KEY = 'quickAccess_v1';
 
 export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
-  const [tiles, setTiles] = useState<Tile[]>(initialTiles ?? DEFAULT_TILES);
+  const [tiles, setTiles] = useState<Tile[]>(() => {
+    if (!initialTiles) return DEFAULT_TILES;
+    // Reorder to match 2x2: checkin, checkout, wifi, door
+    const order = ['checkin', 'checkout', 'wifi', 'door'];
+    return order.map(id => initialTiles.find(t => t.id === id) ?? DEFAULT_TILES.find(t => t.id === id)!);
+  });
   const [editingTile, setEditingTile] = useState<Tile | null>(null);
   const [draft, setDraft] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -52,7 +54,10 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
   React.useEffect(() => {
     if (!loaded) return;
     AsyncStorage.getItem(QUICK_ACCESS_KEY).then(saved => {
-      if (!saved) setTiles(initialTiles ?? DEFAULT_TILES);
+      if (!saved && initialTiles) {
+        const order = ['checkin', 'checkout', 'wifi', 'door'];
+        setTiles(order.map(id => initialTiles.find(t => t.id === id) ?? DEFAULT_TILES.find(t => t.id === id)!));
+      }
     });
   }, [initialTiles, loaded]);
 
@@ -88,31 +93,26 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
     <View style={styles.section}>
       <Text style={styles.header}>Quick Access</Text>
       <View style={styles.grid}>
-        {tiles.map((tile) => {
-          const TileIcon = ICON_MAP[tile.id] ?? Wifi;
-          return (
-            <TouchableOpacity
-              key={tile.id}
-              style={styles.tile}
-              onPress={() => openEdit(tile)}
-              onLongPress={() => {
-                if (tile.id === 'door') {
-                  Alert.alert('Door code', tile.value === '\u2014' ? 'Not set' : tile.value);
-                  Haptics.selectionAsync();
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.tileIconWrap}>
-                <TileIcon color={colors.accent} size={22} strokeWidth={2} />
-              </View>
-              <Text style={styles.tileLabel} numberOfLines={1}>{tile.label}</Text>
-              <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
-                {showValue(tile)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        {tiles.map((tile) => (
+          <TouchableOpacity
+            key={tile.id}
+            style={styles.tile}
+            onPress={() => openEdit(tile)}
+            onLongPress={() => {
+              if (tile.id === 'door') {
+                Alert.alert('Door code', tile.value === '\u2014' ? 'Not set' : tile.value);
+                Haptics.selectionAsync();
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.tileLabel}>{tile.label}</Text>
+            <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+              {showValue(tile)}
+            </Text>
+            <Text style={styles.tileHint}>{HINT_MAP[tile.id] ?? ''}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <Modal visible={!!editingTile} transparent animationType="fade">
@@ -168,41 +168,36 @@ const styles = StyleSheet.create({
   },
   grid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   tile: {
-    flex: 1,
+    width: '48.5%',
     backgroundColor: colors.bg2,
     borderRadius: 12,
     paddingVertical: 16,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center',
-    minHeight: 100,
-  },
-  tileIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.accentBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
+    minHeight: 90,
   },
   tileLabel: {
     color: colors.text3,
     fontSize: 9,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
+    fontWeight: '700',
+    letterSpacing: 1,
     marginBottom: 6,
   },
   tileValue: {
     color: colors.text,
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  tileHint: {
+    color: colors.text3,
+    fontSize: 10,
+    marginTop: 4,
   },
 });
 

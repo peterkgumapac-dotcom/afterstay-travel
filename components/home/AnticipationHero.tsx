@@ -1,11 +1,11 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '@/constants/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const HERO_H = 380;
+const HERO_H = 320;
 
 interface Props {
   photos: string[];
@@ -13,16 +13,8 @@ interface Props {
   destination: string;
   dateRange: string;
   verified?: boolean;
-  countdown: {
-    status: 'upcoming' | 'active' | 'completed';
-    days?: number;
-    hours?: number;
-    minutes?: number;
-    dayNumber?: number;
-    totalDays: number;
-  };
-  quote: string;
-  tripStartISO?: string;
+  roomInfo?: string;
+  bookingRef?: string;
 }
 
 export const AnticipationHero: React.FC<Props> = ({
@@ -31,23 +23,12 @@ export const AnticipationHero: React.FC<Props> = ({
   destination,
   dateRange,
   verified,
-  countdown,
-  quote,
-  tripStartISO,
+  roomInfo,
+  bookingRef,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextIndex, setNextIndex] = useState(1);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0.3)).current;
-  const [now, setNow] = useState(Date.now());
-
-  // Tick every second for live countdown
-  useEffect(() => {
-    if (countdown.status !== 'upcoming') return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [countdown.status]);
 
   // Photo cross-fade every 5s
   useEffect(() => {
@@ -66,52 +47,6 @@ export const AnticipationHero: React.FC<Props> = ({
     return () => clearInterval(interval);
   }, [photos.length]);
 
-  // Pulse animation on days digit
-  useEffect(() => {
-    if (countdown.status !== 'upcoming') return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.04,
-          duration: 1000,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [countdown.status]);
-
-  // Glow animation
-  useEffect(() => {
-    if (countdown.status !== 'upcoming') return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, {
-          toValue: 0.6,
-          duration: 1500,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: false,
-        }),
-        Animated.timing(glowAnim, {
-          toValue: 0.3,
-          duration: 1500,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: false,
-        }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [countdown.status]);
-
   const handleDotPress = (i: number) => {
     Haptics.selectionAsync();
     setCurrentIndex(i);
@@ -119,21 +54,6 @@ export const AnticipationHero: React.FC<Props> = ({
   };
 
   if (photos.length === 0) return null;
-
-  // Compute live countdown from tripStartISO or use props
-  let liveDays = countdown.days ?? 0;
-  let liveHours = countdown.hours ?? 0;
-  let liveMinutes = countdown.minutes ?? 0;
-  let liveSeconds = 0;
-
-  if (countdown.status === 'upcoming' && tripStartISO) {
-    const tripStart = new Date(tripStartISO).getTime();
-    const diff = Math.max(0, tripStart - now);
-    liveDays = Math.floor(diff / 86400000);
-    liveHours = Math.floor((diff % 86400000) / 3600000);
-    liveMinutes = Math.floor((diff % 3600000) / 60000);
-    liveSeconds = Math.floor((diff % 60000) / 1000);
-  }
 
   return (
     <View style={styles.container}>
@@ -148,12 +68,13 @@ export const AnticipationHero: React.FC<Props> = ({
       )}
 
       <LinearGradient
-        colors={['rgba(20,18,16,0.65)', 'transparent', 'rgba(20,18,16,0.4)', 'rgba(20,18,16,0.95)']}
-        locations={[0, 0.25, 0.55, 1]}
+        colors={['rgba(20,18,16,0.3)', 'transparent', 'rgba(20,18,16,0.5)', 'rgba(20,18,16,0.95)']}
+        locations={[0, 0.2, 0.5, 1]}
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
 
+      {/* Dots top-right */}
       <View style={styles.dots}>
         {photos.map((_, i) => (
           <Pressable key={i} onPress={() => handleDotPress(i)} hitSlop={8}>
@@ -162,51 +83,15 @@ export const AnticipationHero: React.FC<Props> = ({
         ))}
       </View>
 
-      {countdown.status === 'upcoming' && (
-        <View style={styles.countdownContainer}>
-          <Animated.View style={[styles.countdownBackdrop, { shadowOpacity: glowAnim }]}>
-            <Text style={styles.countdownLabel}>ARRIVING IN</Text>
-            <View style={styles.digitsRow}>
-              <Animated.View style={[styles.digitCell, { transform: [{ scale: pulseAnim }] }]}>
-                <Text style={styles.digitLarge}>{liveDays}</Text>
-                <Text style={styles.digitLabel}>DAYS</Text>
-              </Animated.View>
-              <Text style={styles.separator}>:</Text>
-              <View style={styles.digitCell}>
-                <Text style={styles.digit}>{String(liveHours).padStart(2, '0')}</Text>
-                <Text style={styles.digitLabel}>HRS</Text>
-              </View>
-              <Text style={styles.separator}>:</Text>
-              <View style={styles.digitCell}>
-                <Text style={styles.digit}>{String(liveMinutes).padStart(2, '0')}</Text>
-                <Text style={styles.digitLabel}>MIN</Text>
-              </View>
-              <Text style={styles.separator}>:</Text>
-              <View style={styles.digitCell}>
-                <Text style={styles.digitMuted}>{String(liveSeconds).padStart(2, '0')}</Text>
-                <Text style={styles.digitLabel}>SEC</Text>
-              </View>
-            </View>
-          </Animated.View>
-        </View>
-      )}
-
-      {countdown.status === 'active' && (
-        <View style={styles.countdownContainer}>
-          <View style={styles.countdownBackdrop}>
-            <Text style={styles.activeLabel}>
-              Day {countdown.dayNumber} of {countdown.totalDays}
-            </Text>
-            <Text style={styles.activeSubLabel}>
-              You're in {destination.split(',')[0]}
-            </Text>
-          </View>
-        </View>
-      )}
-
+      {/* Bottom info overlay */}
       <View style={styles.bottomInfo}>
         <Text style={styles.hotelName}>{hotelName}</Text>
         <Text style={styles.destination}>{destination}</Text>
+
+        {roomInfo ? (
+          <Text style={styles.roomInfo}>{roomInfo}</Text>
+        ) : null}
+
         <View style={styles.metaRow}>
           <Text style={styles.dates}>{dateRange}</Text>
           {verified && (
@@ -215,7 +100,22 @@ export const AnticipationHero: React.FC<Props> = ({
             </View>
           )}
         </View>
-        {quote ? <Text style={styles.quote}>{quote}</Text> : null}
+
+        {bookingRef ? (
+          <Text style={styles.refText}>{bookingRef}</Text>
+        ) : null}
+
+        {/* Group member avatars */}
+        <View style={styles.groupRow}>
+          <View style={styles.avatarStack}>
+            {['P', 'A', 'J'].map((initial, i) => (
+              <View key={initial} style={[styles.groupAvatar, { marginLeft: i > 0 ? -8 : 0, zIndex: 3 - i }]}>
+                <Text style={styles.groupAvatarText}>{initial}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.groupText}>You + 2 travelers</Text>
+        </View>
       </View>
     </View>
   );
@@ -254,95 +154,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     width: 20,
   },
-  countdownContainer: {
-    position: 'absolute',
-    top: 20,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 3,
-  },
-  countdownBackdrop: {
-    backgroundColor: 'rgba(20, 18, 16, 0.6)',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.accentBorder,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 24,
-    elevation: 8,
-  },
-  countdownLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  digitsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  digitCell: {
-    alignItems: 'center',
-    minWidth: 44,
-  },
-  digitLarge: {
-    color: colors.accent,
-    fontSize: 34,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: -1,
-    lineHeight: 38,
-  },
-  digit: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-    lineHeight: 32,
-  },
-  digitMuted: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 22,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-    lineHeight: 26,
-  },
-  digitLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginTop: 2,
-  },
-  separator: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 24,
-    fontWeight: '200',
-    marginTop: -14,
-  },
-  activeLabel: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  activeSubLabel: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 14,
-    marginTop: 6,
-    textAlign: 'center',
-  },
   bottomInfo: {
     position: 'absolute',
-    bottom: 20,
-    left: 18,
-    right: 18,
+    bottom: 16,
+    left: 16,
+    right: 16,
     zIndex: 3,
   },
   hotelName: {
@@ -353,12 +169,17 @@ const styles = StyleSheet.create({
   destination: {
     color: 'rgba(255,255,255,0.85)',
     fontSize: 12,
-    marginTop: 3,
+    marginTop: 2,
+  },
+  roomInfo: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 11,
+    marginTop: 4,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 6,
     gap: 8,
   },
   dates: {
@@ -378,10 +199,38 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
   },
-  quote: {
+  refText: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    fontStyle: 'italic',
+    fontSize: 10,
+    marginTop: 4,
+    fontFamily: 'SpaceMono',
+  },
+  groupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 8,
+    gap: 8,
+  },
+  avatarStack: {
+    flexDirection: 'row',
+  },
+  groupAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.accentDim,
+    borderWidth: 2,
+    borderColor: 'rgba(20,18,16,0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupAvatarText: {
+    color: colors.accentLt,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  groupText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 11,
   },
 });
