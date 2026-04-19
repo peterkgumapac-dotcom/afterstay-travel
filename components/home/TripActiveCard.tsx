@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -9,8 +10,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useTheme } from '@/constants/ThemeContext';
-import { elevation, radius, spacing } from '@/constants/theme';
-import { formatDatePHT } from '@/lib/utils';
+import { elevation } from '@/constants/theme';
+import { formatCurrency, formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 
 interface TripActiveCardProps {
@@ -32,20 +33,20 @@ const FILL_DARK = '#3d2416';
 const BUDGET_STATUS_CONFIG = {
   cruising: {
     label: 'On pace',
-    textColor: GREEN_TEXT,
+    tone: '#2f7a46',
     bg: 'rgba(125, 220, 150, 0.14)',
     border: 'rgba(125, 220, 150, 0.35)',
   },
   low: {
     label: 'Watch spending',
-    textColor: '#8b6f2f',
-    bg: 'rgba(200, 154, 60, 0.14)',
-    border: 'rgba(200, 154, 60, 0.35)',
+    tone: '#8b6f2f',
+    bg: 'rgba(200, 160, 60, 0.14)',
+    border: 'rgba(200, 160, 60, 0.35)',
   },
   over: {
     label: 'Overspending',
-    textColor: '#b04a2a',
-    bg: 'rgba(176, 74, 42, 0.14)',
+    tone: '#b04a2a',
+    bg: 'rgba(176, 74, 42, 0.12)',
     border: 'rgba(176, 74, 42, 0.35)',
   },
 } as const;
@@ -92,7 +93,7 @@ export function TripActiveCard({
     [dayOfTrip, totalDays],
   );
 
-  const budgetPct = useMemo(
+  const spentPct = useMemo(
     () => (budget > 0 ? Math.min(100, (spent / budget) * 100) : 0),
     [spent, budget],
   );
@@ -102,17 +103,25 @@ export function TripActiveCard({
     [dayOfTrip, totalDays],
   );
 
-  const budgetFillColor = useMemo(() => {
-    if (budgetStatus === 'low') return '#c89a3c';
-    if (budgetStatus === 'over') return colors.danger;
-    return colors.accent;
-  }, [budgetStatus, colors]);
-
   const statusConfig = BUDGET_STATUS_CONFIG[budgetStatus];
+
+  const [budgetOpen, setBudgetOpen] = useState(false);
+
+  const budgetHint = useMemo(() => {
+    const remaining = budget - spent;
+    if (budgetStatus === 'over') {
+      const pastPace = spent - Math.round((budget * expectedPct) / 100);
+      return `\u20B1${pastPace.toLocaleString()} past pace`;
+    }
+    if (budgetStatus === 'low') {
+      return `\u20B1${remaining.toLocaleString()} left for ${daysLeft} days \u00B7 above pace`;
+    }
+    return `\u20B1${remaining.toLocaleString()} left for ${daysLeft} days`;
+  }, [budgetStatus, budget, spent, expectedPct, daysLeft]);
 
   return (
     <View style={styles.card}>
-      {/* Top row */}
+      {/* Top row: Day label + TRIP LIVE pill */}
       <View style={styles.topRow}>
         <Text style={styles.topLabel}>
           {trip.destination ?? 'Trip'} {'\u00B7'} Day {dayOfTrip} of {totalDays}
@@ -125,75 +134,108 @@ export function TripActiveCard({
 
       <View style={styles.separator} />
 
-      {/* Days-left status */}
-      <View style={styles.section}>
-        <Text style={styles.kicker}>DAYS LEFT</Text>
-        <View style={styles.bigNumberRow}>
-          <Text style={styles.bigNumber}>{daysLeft}</Text>
-          <Text style={styles.unit}>days</Text>
+      {/* Days-left status bar */}
+      <View>
+        <View style={styles.statusBarHeader}>
+          <View style={styles.statusBarLeft}>
+            <Text style={styles.kicker}>DAYS LEFT</Text>
+            <Text style={styles.bigNumber}>{daysLeft}</Text>
+            <Text style={styles.unit}>days</Text>
+          </View>
+          <Text style={styles.hint}>
+            {dayOfTrip} spent {'\u00B7'} returning {formatDatePHT(trip.endDate)}
+          </Text>
         </View>
-        <Text style={styles.hint}>
-          {dayOfTrip} spent {'\u00B7'} returning {formatDatePHT(trip.endDate)}
-        </Text>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${tripPct}%` }]} />
+          <View style={[styles.progressFill, { width: `${tripPct}%`, backgroundColor: FILL_DARK }]} />
+        </View>
+        <View style={styles.pctRow}>
+          <Text style={styles.pctLabel}>{Math.round(tripPct)}%</Text>
         </View>
       </View>
 
       <View style={styles.separator} />
 
-      {/* Budget peek */}
-      <View style={styles.section}>
-        <Text style={styles.kicker}>BUDGET</Text>
-        <View style={styles.budgetRow}>
-          <Text style={styles.budgetAmount}>
-            {'\u20B1'}{spent.toLocaleString()}
-          </Text>
-          <Text style={styles.budgetOf}>
-            {' '}of {'\u20B1'}{budget.toLocaleString()}
-          </Text>
+      {/* Budget — collapsed peek; tap to expand */}
+      <Pressable
+        onPress={() => setBudgetOpen(!budgetOpen)}
+        style={styles.budgetHeader}
+        accessibilityRole="button"
+        accessibilityLabel={`Budget ${statusConfig.label}`}
+      >
+        <View style={styles.budgetHeaderLeft}>
+          <Text style={styles.kicker}>Budget</Text>
+          <View style={[styles.statusPill, { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }]}>
+            <Text style={[styles.statusPillText, { color: statusConfig.tone }]}>
+              {statusConfig.label.toUpperCase()}
+            </Text>
+          </View>
         </View>
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFillBudget,
-              { width: `${budgetPct}%`, backgroundColor: budgetFillColor },
-            ]}
-          />
-          {/* Expected pace marker */}
-          <View
-            style={[
-              styles.paceMarker,
-              { left: `${expectedPct}%` },
-            ]}
-          />
+        <View style={styles.peekToggle}>
+          <Text style={styles.peekText}>{budgetOpen ? 'Hide' : 'Peek'}</Text>
+          <Svg
+            width={10}
+            height={10}
+            viewBox="0 0 10 10"
+            style={{ transform: [{ rotate: budgetOpen ? '180deg' : '0deg' }] }}
+          >
+            <Path
+              d="M2 3.5L5 6.5L8 3.5"
+              stroke={colors.text3}
+              strokeWidth={1.4}
+              fill="none"
+              strokeLinecap="round"
+            />
+          </Svg>
         </View>
-        <View
-          style={[
-            styles.statusPill,
-            { backgroundColor: statusConfig.bg, borderColor: statusConfig.border },
-          ]}
-        >
-          <Text style={[styles.statusText, { color: statusConfig.textColor }]}>
-            {statusConfig.label}
-          </Text>
+      </Pressable>
+
+      {/* Expanded budget detail */}
+      {budgetOpen && (
+        <View style={styles.budgetExpanded}>
+          <View style={styles.budgetAmountRow}>
+            <View style={styles.budgetAmountLeft}>
+              <Text style={styles.budgetSpent}>
+                {'\u20B1'}{spent.toLocaleString()}
+              </Text>
+              <Text style={styles.budgetTotal}>
+                {' '}/ {'\u20B1'}{budget.toLocaleString()}
+              </Text>
+            </View>
+            <Text style={styles.budgetPct}>{Math.round(spentPct)}%</Text>
+          </View>
+          <View style={styles.budgetTrack}>
+            <View
+              style={[
+                styles.budgetFill,
+                {
+                  width: `${Math.min(100, spentPct)}%`,
+                  backgroundColor: budgetStatus === 'over' ? '#b04a2a'
+                    : budgetStatus === 'low' ? '#c8a03c'
+                    : FILL_DARK,
+                },
+              ]}
+            />
+            <View style={[styles.paceMarker, { left: `${expectedPct}%` }]} />
+          </View>
+          <Text style={styles.budgetHint}>{budgetHint}</Text>
         </View>
-      </View>
+      )}
     </View>
   );
-};
+}
 
-const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
   StyleSheet.create({
     card: {
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: radius.lg,
-      paddingVertical: spacing.lg,
+      borderRadius: 22,
+      paddingVertical: 16,
       paddingHorizontal: 18,
-      marginHorizontal: spacing.lg,
-      marginTop: spacing.md,
+      marginHorizontal: 16,
+      gap: 14,
       ...elevation.sm,
     },
     topRow: {
@@ -206,7 +248,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       fontSize: 9.5,
       fontWeight: '700',
       textTransform: 'uppercase',
-      letterSpacing: 1.6,
+      letterSpacing: 0.16 * 9.5,
     },
     livePill: {
       flexDirection: 'row',
@@ -215,8 +257,8 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       backgroundColor: GREEN_BG,
       borderWidth: 1,
       borderColor: GREEN_BORDER,
-      borderRadius: radius.pill,
-      paddingHorizontal: spacing.sm,
+      borderRadius: 99,
+      paddingHorizontal: 8,
       paddingVertical: 3,
     },
     liveDot: {
@@ -229,93 +271,157 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       color: GREEN_TEXT,
       fontSize: 9.5,
       fontWeight: '700',
-      letterSpacing: 0.4,
+      letterSpacing: 0.04 * 9.5,
     },
     separator: {
       height: 1,
       backgroundColor: colors.border,
-      marginVertical: spacing.md,
     },
-    section: {
-      gap: 4,
+    statusBarHeader: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    statusBarLeft: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: 6,
     },
     kicker: {
       color: colors.text3,
-      fontSize: 8.5,
+      fontSize: 9.5,
       fontWeight: '700',
       textTransform: 'uppercase',
-      letterSpacing: 1.4,
-    },
-    bigNumberRow: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-      gap: 4,
+      letterSpacing: 0.16 * 9.5,
     },
     bigNumber: {
+      fontFamily: 'SpaceMono',
       color: colors.text,
-      fontSize: 24,
+      fontSize: 20,
       fontWeight: '600',
       fontVariant: ['tabular-nums'],
+      letterSpacing: -0.02 * 20,
     },
     unit: {
       color: colors.text3,
-      fontSize: 12,
+      fontSize: 11,
     },
     hint: {
       color: colors.text3,
       fontSize: 11,
-      marginBottom: 6,
     },
     progressTrack: {
-      height: 4,
-      borderRadius: 2,
+      height: 8,
+      borderRadius: 99,
+      backgroundColor: colors.card2,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    progressFill: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      bottom: 0,
+      borderRadius: 99,
+    },
+    pctRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      marginTop: 4,
+    },
+    pctLabel: {
+      fontFamily: 'SpaceMono',
+      color: colors.text3,
+      fontSize: 10.5,
+      fontVariant: ['tabular-nums'],
+    },
+    budgetHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    budgetHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    statusPill: {
+      borderWidth: 1,
+      borderRadius: 99,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    statusPillText: {
+      fontSize: 9.5,
+      fontWeight: '700',
+      letterSpacing: 0.08 * 9.5,
+    },
+    peekToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    peekText: {
+      fontSize: 11,
+      color: colors.text3,
+    },
+    budgetExpanded: {
+      marginTop: 12,
+    },
+    budgetAmountRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    budgetAmountLeft: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+    },
+    budgetSpent: {
+      fontFamily: 'SpaceMono',
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      fontVariant: ['tabular-nums'],
+    },
+    budgetTotal: {
+      fontSize: 11,
+      color: colors.text3,
+    },
+    budgetPct: {
+      fontFamily: 'SpaceMono',
+      fontSize: 11,
+      color: colors.text3,
+      fontVariant: ['tabular-nums'],
+    },
+    budgetTrack: {
+      height: 8,
+      borderRadius: 99,
       backgroundColor: colors.card2,
       overflow: 'visible',
       position: 'relative',
     },
-    progressFill: {
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: FILL_DARK,
-    },
-    progressFillBudget: {
-      height: 4,
-      borderRadius: 2,
+    budgetFill: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      bottom: 0,
+      borderRadius: 99,
     },
     paceMarker: {
       position: 'absolute',
-      top: -3,
+      top: -2,
       width: 2,
-      height: 10,
+      height: 12,
       backgroundColor: colors.text3,
+      opacity: 0.5,
       borderRadius: 1,
-      borderStyle: 'dashed',
     },
-    budgetRow: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-    },
-    budgetAmount: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: '700',
-      fontVariant: ['tabular-nums'],
-    },
-    budgetOf: {
+    budgetHint: {
+      marginTop: 6,
+      fontSize: 10.5,
       color: colors.text3,
-      fontSize: 12,
-    },
-    statusPill: {
-      alignSelf: 'flex-start',
-      borderWidth: 1,
-      borderRadius: radius.pill,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-      marginTop: spacing.sm,
-    },
-    statusText: {
-      fontSize: 10,
-      fontWeight: '600',
-      letterSpacing: 0.3,
     },
   });

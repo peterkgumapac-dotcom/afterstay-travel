@@ -1,8 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Plane } from 'lucide-react-native';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing } from '@/constants/theme';
+import { elevation } from '@/constants/theme';
 import { FLIGHTS } from '@/lib/flightData';
 
 interface Props {
@@ -14,176 +14,220 @@ export const FlightCard: React.FC<Props> = ({ direction = 'outbound' }) => {
   const styles = getStyles(colors);
   const flight = direction === 'outbound' ? FLIGHTS.outbound : FLIGHTS.return;
 
+  const depCode = flight.depart.code;
+  const arrCode = flight.arrive.code;
+  const depTime = flight.depart.time;
+  const arrTime = flight.arrive.time;
+  const depCity = depCode === 'MNL' ? 'Manila' : 'Caticlan';
+  const arrCity = arrCode === 'MPH' ? 'Caticlan' : 'Manila';
+  const flightCode = flight.number;
+  const ref = flight.ref;
+  const dateShort = flight.dateShort;
+
   return (
     <View style={styles.card}>
-      {/* Header */}
+      {/* Header: airline logo + info + on-time chip */}
       <View style={styles.header}>
-        <View style={styles.airlineLogo}>
-          <Text style={styles.airlineCode}>
-            {flight.number.split(' ')[0]}
-          </Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.airlineName}>
-            {flight.airline} {'\u00B7'} {flight.number}
-          </Text>
-          <Text style={styles.refText}>Ref: {flight.ref}</Text>
-        </View>
-        <Text style={styles.dateText}>{flight.dateShort}</Text>
-      </View>
-
-      {/* Route */}
-      <View style={styles.route}>
-        <View style={styles.airport}>
-          <Text style={styles.airportCode}>{flight.depart.code}</Text>
-          <Text style={styles.timeText}>{flight.depart.time}</Text>
-        </View>
-
-        <View style={styles.routeLine}>
-          <View style={styles.line} />
-          <View style={styles.planeCircle}>
-            <Plane size={14} color={colors.accent} />
+        <View style={styles.headerLeft}>
+          <View style={styles.airlineLogo}>
+            <Text style={styles.airlineLogoText}>5J</Text>
           </View>
-          <View style={styles.line} />
+          <View>
+            <Text style={styles.airlineName}>Cebu Pacific {'\u00B7'} {flightCode}</Text>
+            <Text style={styles.refText}>Ref {ref} {'\u00B7'} {dateShort}</Text>
+          </View>
         </View>
-
-        <View style={[styles.airport, { alignItems: 'flex-end' }]}>
-          <Text style={styles.airportCode}>{flight.arrive.code}</Text>
-          <Text style={styles.timeText}>{flight.arrive.time}</Text>
+        <View style={styles.onTimePill}>
+          <View style={styles.onTimeDot} />
+          <Text style={styles.onTimeText}>On time</Text>
         </View>
       </View>
 
-      {/* Divider */}
+      {/* Route: dep -> plane -> arr */}
+      <View style={styles.route}>
+        <View>
+          <Text style={styles.routeCode}>{depCode}</Text>
+          <Text style={styles.routeMeta}>{depTime} {'\u00B7'} {depCity}</Text>
+        </View>
+
+        <View style={styles.routeCenter}>
+          <View style={styles.routeDash} />
+          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+            <Path
+              d="M17.8 19.2L16.5 17.2 14 16l-2 3-2-3-2.5 1.2-1.3 2L2 17l1.5-2L8 13l-2-8 2 1 4 6 4-6 2-1-2 8 4.5 2L22 17z"
+              stroke={colors.textDim}
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
+          <View style={styles.routeDash} />
+        </View>
+
+        <View style={styles.routeRight}>
+          <Text style={styles.routeCode}>{arrCode}</Text>
+          <Text style={styles.routeMeta}>{arrTime} {'\u00B7'} {arrCity}</Text>
+        </View>
+      </View>
+
+      {/* Ticket divider with notches */}
       <View style={styles.ticketDivider}>
-        <View style={styles.notchLeft} />
+        <View style={[styles.notchLeft, { backgroundColor: colors.bg }]} />
         <View style={styles.dashedLine} />
-        <View style={styles.notchRight} />
+        <View style={[styles.notchRight, { backgroundColor: colors.bg }]} />
       </View>
 
-      {/* Footer */}
-      <Text style={styles.footer}>
-        Duration {flight.duration} {'\u00B7'} 3 passengers {'\u00B7'} Peter +20kg bag
-      </Text>
+      {/* Footer stats */}
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Duration {flight.duration}</Text>
+        <Text style={styles.footerDot}>{'\u2022'}</Text>
+        <Text style={styles.footerText}>3 passengers</Text>
+        <Text style={styles.footerDot}>{'\u2022'}</Text>
+        <Text style={styles.footerText}>Peter +20kg bag</Text>
+      </View>
     </View>
   );
 };
 
-const getStyles = (colors: any) => StyleSheet.create({
-  card: {
-    backgroundColor: colors.bg2,
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 16,
-  },
-  airlineLogo: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: colors.accentDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  airlineCode: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  airlineName: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  refText: {
-    color: colors.text3,
-    fontSize: 11,
-    marginTop: 1,
-  },
-  dateText: {
-    color: colors.text2,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  route: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  airport: {
-    alignItems: 'flex-start',
-    width: 60,
-  },
-  airportCode: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  timeText: {
-    color: colors.text2,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  routeLine: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  line: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border2,
-  },
-  planeCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.accentDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 4,
-  },
-  ticketDivider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  notchLeft: {
-    width: 12,
-    height: 24,
-    borderTopRightRadius: 12,
-    borderBottomRightRadius: 12,
-    backgroundColor: colors.bg,
-    marginLeft: -16,
-  },
-  dashedLine: {
-    flex: 1,
-    height: 1,
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginHorizontal: 4,
-  },
-  notchRight: {
-    width: 12,
-    height: 24,
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
-    backgroundColor: colors.bg,
-    marginRight: -16,
-  },
-  footer: {
-    color: colors.text3,
-    fontSize: 11,
-    textAlign: 'center',
-  },
-});
+const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 22,
+      padding: 16,
+      marginHorizontal: 16,
+      ...elevation.sm,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    airlineLogo: {
+      width: 38,
+      height: 38,
+      borderRadius: 10,
+      backgroundColor: colors.text2,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    airlineLogoText: {
+      color: colors.bg,
+      fontSize: 10,
+      fontWeight: '600',
+      letterSpacing: 0.04 * 10,
+    },
+    airlineName: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    refText: {
+      fontSize: 11,
+      color: colors.text3,
+    },
+    onTimePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      borderRadius: 99,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    onTimeDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 99,
+      backgroundColor: colors.accent,
+    },
+    onTimeText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    route: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+    },
+    routeCode: {
+      fontFamily: 'SpaceMono',
+      fontSize: 22,
+      fontWeight: '500',
+      letterSpacing: -0.8,
+      color: colors.text,
+    },
+    routeMeta: {
+      fontSize: 11,
+      color: colors.text3,
+      marginTop: 2,
+    },
+    routeCenter: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    routeDash: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.textDim,
+      opacity: 0.6,
+    },
+    routeRight: {
+      alignItems: 'flex-end',
+    },
+    ticketDivider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 14,
+      marginBottom: 12,
+      marginHorizontal: -4,
+    },
+    notchLeft: {
+      width: 12,
+      height: 24,
+      borderTopRightRadius: 12,
+      borderBottomRightRadius: 12,
+      marginLeft: -12,
+    },
+    dashedLine: {
+      flex: 1,
+      height: 1,
+      borderStyle: 'dashed',
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginHorizontal: 4,
+    },
+    notchRight: {
+      width: 12,
+      height: 24,
+      borderTopLeftRadius: 12,
+      borderBottomLeftRadius: 12,
+      marginRight: -12,
+    },
+    footer: {
+      flexDirection: 'row',
+      gap: 14,
+      alignItems: 'center',
+    },
+    footerText: {
+      fontSize: 11,
+      color: colors.text3,
+    },
+    footerDot: {
+      fontSize: 11,
+      color: colors.text3,
+    },
+  });

@@ -22,7 +22,7 @@ import ProfileRow from '@/components/home/ProfileRow';
 import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
 import { useTheme } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
+import { spacing } from '@/constants/theme';
 import { FLIGHTS } from '@/lib/flightData';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
@@ -31,8 +31,6 @@ import {
   getFlights,
   getGroupMembers,
   getMoments,
-  getPackingList,
-  getTripFiles,
 } from '@/lib/supabase';
 import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
 import { formatDatePHT, safeParse } from '@/lib/utils';
@@ -47,6 +45,55 @@ const FALLBACK_PHOTOS = [
   'https://www.canyon.ph/wp-content/uploads/2023/01/CHRBoracay-Rooms-Deluxe-w-Pool-01.jpg',
 ];
 
+/* ── Section header matching prototype's GroupHeader ── */
+function SectionHeader({
+  kicker,
+  title,
+  action,
+}: {
+  kicker: string;
+  title: string;
+  action?: React.ReactNode;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={sectionHeaderStyles.container}>
+      <View>
+        <Text style={[sectionHeaderStyles.kicker, { color: colors.text3 }]}>
+          {kicker}
+        </Text>
+        <Text style={[sectionHeaderStyles.title, { color: colors.text }]}>
+          {title}
+        </Text>
+      </View>
+      {action}
+    </View>
+  );
+}
+
+const sectionHeaderStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 12,
+  },
+  kicker: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: 0.16 * 9.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+    letterSpacing: -0.5,
+  },
+});
+
 export default function HomeScreen() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
@@ -59,7 +106,7 @@ export default function HomeScreen() {
 
   const [phase, setPhase] = useState<TripPhase>('upcoming');
   const [totalSpent, setTotalSpent] = useState(0);
-  const [userName, setUserName] = useState('Traveler');
+  const [userName, setUserName] = useState('Peter');
   const [userAvatar, setUserAvatar] = useState<string>();
 
   const load = useCallback(async () => {
@@ -78,14 +125,14 @@ export default function HomeScreen() {
         setMoments(ms);
         await cacheSet(`flights:${t.id}`, fs);
 
-        const primary = members.find(m => m.role === 'Primary');
+        const primary = members.find((m) => m.role === 'Primary');
         if (primary) {
           setUserName(primary.name);
           if (primary.profilePhoto) setUserAvatar(primary.profilePhoto);
         }
 
         // Compute trip phase from flight data
-        const outbound = fs.find(f => f.direction === 'Outbound');
+        const outbound = fs.find((f) => f.direction === 'Outbound');
         if (outbound) {
           const departMs = safeParse(outbound.departTime).getTime();
           const arriveMs = safeParse(outbound.arriveTime).getTime();
@@ -113,7 +160,11 @@ export default function HomeScreen() {
         }
 
         // Fetch expense summary for active phase
-        const summary = await getExpenseSummary(t.id).catch(() => ({ total: 0, byCategory: {}, count: 0 }));
+        const summary = await getExpenseSummary(t.id).catch(() => ({
+          total: 0,
+          byCategory: {},
+          count: 0,
+        }));
         setTotalSpent(summary.total);
       } else {
         setFlights([]);
@@ -129,7 +180,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let alive = true;
-    cacheGet<Trip | null>('trip:active').then(async cached => {
+    cacheGet<Trip | null>('trip:active').then(async (cached) => {
       if (!alive || !cached) return;
       setTrip(cached);
       const cachedFlights = await cacheGet<Flight[]>(`flights:${cached.id}`);
@@ -137,7 +188,9 @@ export default function HomeScreen() {
       if (alive) setLoading(false);
     });
     load();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [load]);
 
   const onRefresh = () => {
@@ -173,10 +226,15 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={styles.fullCenter}>
         <Text style={styles.errorTitle}>Couldn't load trip</Text>
-        <Text style={styles.errorText}>{error ?? 'No active trip found.'}</Text>
+        <Text style={styles.errorText}>
+          {error ?? 'No active trip found.'}
+        </Text>
         <Pressable
           style={styles.retry}
-          onPress={() => { setLoading(true); load(); }}
+          onPress={() => {
+            setLoading(true);
+            load();
+          }}
           accessibilityLabel="Retry loading trip"
           accessibilityRole="button"
         >
@@ -191,7 +249,9 @@ export default function HomeScreen() {
     if (!trip.hotelPhotos) return FALLBACK_PHOTOS;
     try {
       const parsed = JSON.parse(trip.hotelPhotos);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : FALLBACK_PHOTOS;
+      return Array.isArray(parsed) && parsed.length > 0
+        ? parsed
+        : FALLBACK_PHOTOS;
     } catch {
       return FALLBACK_PHOTOS;
     }
@@ -204,7 +264,10 @@ export default function HomeScreen() {
   const tripStartMs = safeParse(trip.startDate).getTime();
   const tripEndMs = safeParse(trip.endDate).getTime();
   const nowMs = Date.now();
-  const totalDays = Math.max(1, Math.ceil((tripEndMs - tripStartMs) / 86400000) + 1);
+  const totalDays = Math.max(
+    1,
+    Math.ceil((tripEndMs - tripStartMs) / 86400000) + 1,
+  );
 
   const countdown = (() => {
     if (nowMs < tripStartMs) {
@@ -222,12 +285,12 @@ export default function HomeScreen() {
     { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: trip.checkIn || '3:00 PM' },
     { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: trip.checkOut || '12:00 PM' },
     { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: trip.wifiSsid || 'Not set' },
-    { id: 'door', iconName: 'door', label: 'Door Code', value: trip.doorCode ? '\u2022\u2022\u2022\u2022' : '\u2014' },
+    { id: 'door', iconName: 'door', label: 'Door code', value: trip.doorCode ? '\u2022\u2022\u2022\u2022' : '\u2014' },
   ];
 
   // Room info
   const roomInfo = trip.roomType
-    ? `${trip.roomType} \u00D7 2 \u00B7 ${totalDays} nights \u00B7 ${dateRange}`
+    ? `${trip.roomType} \u00D7 2 \u00B7 ${totalDays} nights \u00B7 Apr 20 \u2013 27`
     : undefined;
 
   return (
@@ -243,8 +306,10 @@ export default function HomeScreen() {
           />
         }
       >
+        {/* 1. Top bar */}
         <ProfileRow userName={userName} avatarUrl={userAvatar} />
 
+        {/* 2. Hero slideshow */}
         <AnticipationHero
           photos={hotelPhotos}
           hotelName={trip.accommodation}
@@ -255,45 +320,103 @@ export default function HomeScreen() {
           bookingRef={trip.bookingRef ? `Agoda #${trip.bookingRef}` : undefined}
         />
 
-        {phase === 'inflight' ? (
-          <FlightProgressCard onLanded={landFlight} />
-        ) : phase === 'arrived' ? (
-          <ArrivedCard onStart={goExplore} />
-        ) : phase === 'active' ? (
-          <TripActiveCard
-            trip={trip}
-            dayOfTrip={countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1}
-            totalDays={countdown.totalDays}
-            daysLeft={countdown.totalDays - (countdown.status === 'active' ? countdown.dayNumber ?? 1 : 0)}
-            budgetStatus="cruising"
-            spent={totalSpent}
-            budget={trip.budgetLimit ?? 0}
-          />
-        ) : (
-          <CountdownCard
-            tripStartISO={flights.find(f => f.direction === 'Outbound')?.departTime ?? FLIGHTS.outbound.depart.timeISO}
-            status={countdown.status}
-            dayNumber={countdown.status === 'active' ? countdown.dayNumber : undefined}
-            totalDays={countdown.totalDays}
-            dateLabel={flights.find(f => f.direction === 'Outbound')?.departTime ? formatDatePHT(flights.find(f => f.direction === 'Outbound')!.departTime) : FLIGHTS.outbound.dateShort}
-            onBoard={boardFlight}
-          />
+        {/* 3. Phase card */}
+        <View style={styles.phaseSection}>
+          {phase === 'inflight' ? (
+            <FlightProgressCard onLanded={landFlight} />
+          ) : phase === 'arrived' ? (
+            <ArrivedCard onStart={goExplore} />
+          ) : phase === 'active' ? (
+            <TripActiveCard
+              trip={trip}
+              dayOfTrip={
+                countdown.status === 'active'
+                  ? countdown.dayNumber ?? 1
+                  : 1
+              }
+              totalDays={countdown.totalDays}
+              daysLeft={
+                countdown.totalDays -
+                (countdown.status === 'active'
+                  ? countdown.dayNumber ?? 1
+                  : 0)
+              }
+              budgetStatus="cruising"
+              spent={totalSpent}
+              budget={trip.budgetLimit ?? 0}
+            />
+          ) : (
+            <CountdownCard
+              tripStartISO={
+                flights.find((f) => f.direction === 'Outbound')?.departTime ??
+                FLIGHTS.outbound.depart.timeISO
+              }
+              status={countdown.status}
+              dayNumber={
+                countdown.status === 'active'
+                  ? countdown.dayNumber
+                  : undefined
+              }
+              totalDays={countdown.totalDays}
+              dateLabel={
+                flights.find((f) => f.direction === 'Outbound')?.departTime
+                  ? formatDatePHT(
+                      flights.find((f) => f.direction === 'Outbound')!
+                        .departTime,
+                    )
+                  : FLIGHTS.outbound.dateShort
+              }
+              onBoard={boardFlight}
+            />
+          )}
+        </View>
+
+        {/* 4. Weather — shown in active phase as "Boracay right now" */}
+        {phase === 'active' && (
+          <>
+            <SectionHeader kicker="Weather" title="Boracay right now" />
+            <WeatherForecastCard />
+          </>
         )}
 
-        <FlightCard direction="outbound" />
+        {/* 5. Flight card */}
+        <SectionHeader
+          kicker={phase === 'active' ? 'Transit \u00B7 Return' : 'Transit \u00B7 Outbound'}
+          title={phase === 'active' ? 'Flight home to Manila' : 'Flight to Caticlan'}
+        />
+        <FlightCard direction={phase === 'active' ? 'return' : 'outbound'} />
 
-        <WeatherForecastCard />
+        {/* 4b. Weather — shown in non-active phase as "Boracay this week" */}
+        {phase !== 'active' && (
+          <>
+            <SectionHeader kicker="Weather" title="Boracay this week" />
+            <WeatherForecastCard />
+          </>
+        )}
 
+        {/* 6. Quick access */}
+        <SectionHeader
+          kicker="Stay \u00B7 Quick access"
+          title="Everything for check-in"
+        />
         <QuickAccessGrid tiles={quickAccessTiles} />
 
+        {/* 7. Moments preview */}
+        <SectionHeader kicker="Moments \u00B7 Day 1" title="Trip so far" />
+
+        {/* 8. Nearby */}
+        <SectionHeader kicker="Nearby" title="Around the hotel" />
         <NearbySection />
+
+        {/* Bottom spacer */}
+        <View style={{ height: 16 }} />
       </ScrollView>
       <FloatingActionButton />
     </SafeAreaView>
   );
 }
 
-const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     fullCenter: {
@@ -312,7 +435,10 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       backgroundColor: colors.accent,
       paddingVertical: 10,
       paddingHorizontal: 20,
-      borderRadius: radius.md,
+      borderRadius: 16,
     },
     retryText: { color: colors.white, fontWeight: '700' },
+    phaseSection: {
+      paddingBottom: 14,
+    },
   });

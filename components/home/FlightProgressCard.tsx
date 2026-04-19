@@ -1,10 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   type SharedValue,
@@ -22,9 +17,7 @@ import Svg, {
   G,
   Path,
 } from 'react-native-svg';
-import { ChevronRight } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
 
 /* ── Brand constants ── */
 const ESPRESSO = '#3d2416';
@@ -62,7 +55,6 @@ const AnimatedG = Animated.createAnimatedComponent(G);
 
 /* ── Arc length constant ── */
 const ARC_LENGTH = 320;
-
 const INITIAL_PROGRESS = 0.32;
 
 /* ── Props ── */
@@ -89,7 +81,7 @@ export function FlightProgressCard({
   const styles = getStyles(colors);
 
   /* ── State ── */
-  const [playing, setPlaying] = useState(true);
+  const [playing] = useState(true);
   const [progress, setProgress] = useState(INITIAL_PROGRESS);
 
   /* ── Shared values ── */
@@ -101,13 +93,13 @@ export function FlightProgressCard({
   const ringRadius = useSharedValue(7);
   const ringOpacity = useSharedValue(0.5);
 
-  /* ── Sync progress state → shared value ── */
+  /* ── Sync progress state -> shared value ── */
   useEffect(() => {
     progressSV.value = withTiming(progress, {
       duration: 900,
       easing: Easing.linear,
     });
-  }, [progress]);
+  }, [progress, progressSV]);
 
   /* ── Progress drift ── */
   useEffect(() => {
@@ -118,7 +110,7 @@ export function FlightProgressCard({
     return () => clearInterval(id);
   }, [playing]);
 
-  /* ── Pulsing dot animation ── */
+  /* ── Pulsing dot animation (1.6s ease-in-out infinite) ── */
   useEffect(() => {
     pulseScale.value = withRepeat(
       withSequence(
@@ -134,9 +126,9 @@ export function FlightProgressCard({
       ),
       -1,
     );
-  }, []);
+  }, [pulseScale, pulseOpacity]);
 
-  /* ── Destination pulse ring ── */
+  /* ── Destination pulse ring (2s ease-out infinite) ── */
   useEffect(() => {
     ringRadius.value = withRepeat(
       withSequence(
@@ -152,7 +144,7 @@ export function FlightProgressCard({
       ),
       -1,
     );
-  }, []);
+  }, [ringRadius, ringOpacity]);
 
   /* ── Animated props ── */
   const completedArcProps = useAnimatedProps(() => ({
@@ -174,10 +166,7 @@ export function FlightProgressCard({
   }));
 
   /* ── Derived values ── */
-  const remainingMin = Math.max(
-    0,
-    Math.round(totalMinutes * (1 - progress)),
-  );
+  const remainingMin = Math.max(0, Math.round(totalMinutes * (1 - progress)));
   const progressPct = Math.round(progress * 100);
 
   /* ── Static plane position for initial render ── */
@@ -185,11 +174,11 @@ export function FlightProgressCard({
   const staticAngle = bezierAngle(progress);
 
   return (
-    <View style={styles.card}>
-      {/* ── Top row ── */}
+    <View style={styles.wrapper}>
+      {/* ── Top row: label + eta, status chip ── */}
       <View style={styles.topRow}>
         <View style={styles.topLeft}>
-          <Text style={styles.eyebrow}>ARRIVING IN</Text>
+          <Text style={styles.eyebrow}>Arriving in</Text>
           <View style={styles.etaRow}>
             <Text style={styles.remainingMono}>{remainingMin}m</Text>
             <Text style={styles.etaText}>{'\u00B7'} ETA {etaLabel}</Text>
@@ -204,96 +193,82 @@ export function FlightProgressCard({
       {/* ── Separator ── */}
       <View style={[styles.separator, { backgroundColor: colors.border }]} />
 
-      {/* ── SVG Arc Strip ── */}
-      <Svg viewBox="0 0 300 56" style={styles.svgContainer}>
-        <Defs>
-          <Path id="flightArc" d="M 20 46 Q 150 -8 280 46" />
-        </Defs>
+      {/* ── Arc strip ── */}
+      <View style={styles.arcWrap}>
+        <Svg viewBox="0 0 300 56" style={styles.svgContainer}>
+          <Defs>
+            <Path id="flightArc" d="M 20 46 Q 150 -8 280 46" />
+          </Defs>
 
-        {/* Remaining arc (dashed) */}
-        <Path
-          d="M 20 46 Q 150 -8 280 46"
-          stroke={colors.border}
-          strokeWidth={1.2}
-          fill="none"
-          strokeDasharray="3 4"
-        />
-
-        {/* Completed arc */}
-        <AnimatedPath
-          d="M 20 46 Q 150 -8 280 46"
-          stroke={colors.accent}
-          strokeWidth={2}
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={String(ARC_LENGTH)}
-          animatedProps={completedArcProps}
-        />
-
-        {/* Origin marker */}
-        <Circle cx={20} cy={46} r={3.5} fill={colors.ink} />
-
-        {/* Destination marker */}
-        <Circle cx={280} cy={46} r={3.5} fill={colors.accent} />
-
-        {/* Destination pulse ring */}
-        <AnimatedCircle
-          cx={280}
-          cy={46}
-          fill="none"
-          stroke={colors.accent}
-          strokeWidth={1.5}
-          animatedProps={pulseRingProps}
-        />
-
-        {/* Plane group */}
-        <AnimatedG
-          animatedProps={planeGroupProps}
-          transform={`translate(${staticPos.x}, ${staticPos.y}) rotate(${staticAngle})`}
-        >
-          {/* White halo */}
-          <Circle r={12} fill={CREAM} opacity={0.9} />
-          <Circle
-            r={12}
+          {/* Remaining arc (dashed, subtle) */}
+          <Path
+            d="M 20 46 Q 150 -8 280 46"
+            stroke="rgba(61,36,22,0.25)"
+            strokeWidth={1.2}
             fill="none"
-            stroke={colors.accent}
-            strokeWidth={1}
-            opacity={0.35}
+            strokeDasharray="3 4"
           />
 
-          {/* Plane body — scaled 1.6x via nested G */}
-          <G scale={1.6}>
-            {/* Swept wings */}
-            <Path
-              d="M0 0 L-5 -6 L-6.5 -6 L-1 0 L-6.5 6 L-5 6 Z"
-              fill={ESPRESSO}
-            />
-            {/* Fuselage */}
-            <Path
-              d="M-6 -1.1 L4 -1.3 L6 -0.6 L6.4 0 L6 0.6 L4 1.3 L-6 1.1 Z"
-              fill={ESPRESSO}
-            />
-            {/* Tail fin */}
-            <Path d="M-5.5 0 L-7.5 -3 L-7 -3 L-4.5 0 Z" fill={ESPRESSO} />
-            {/* Cockpit window */}
-            <Ellipse cx={4} cy={0} rx={1.2} ry={0.6} fill="#ffd9a8" />
-          </G>
-        </AnimatedG>
-      </Svg>
+          {/* Completed arc */}
+          <AnimatedPath
+            d="M 20 46 Q 150 -8 280 46"
+            stroke={colors.accent}
+            strokeWidth={2}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={String(ARC_LENGTH)}
+            animatedProps={completedArcProps}
+          />
 
-      {/* ── Origin / Dest labels ── */}
-      <View style={styles.labelRow}>
-        <View>
-          <Text style={styles.codeLabel}>{fromCode}</Text>
-          <Text style={styles.cityLabel}>{fromCity}</Text>
-        </View>
-        <View style={styles.labelRight}>
-          <Text style={[styles.codeLabel, { color: colors.accent }]}>
-            {toCode}
-          </Text>
-          <Text style={[styles.cityLabel, { textAlign: 'right' }]}>
-            {toCity}
-          </Text>
+          {/* Origin marker */}
+          <Circle cx={20} cy={46} r={3.5} fill={colors.ink} />
+
+          {/* Destination marker */}
+          <Circle cx={280} cy={46} r={3.5} fill={colors.accent} />
+
+          {/* Destination pulse ring */}
+          <AnimatedCircle
+            cx={280}
+            cy={46}
+            fill="none"
+            stroke={colors.accent}
+            strokeWidth={1.5}
+            animatedProps={pulseRingProps}
+          />
+
+          {/* Plane group */}
+          <AnimatedG
+            animatedProps={planeGroupProps}
+            transform={`translate(${staticPos.x}, ${staticPos.y}) rotate(${staticAngle})`}
+          >
+            {/* White halo */}
+            <Circle r={12} fill={CREAM} opacity={0.9} />
+            <Circle r={12} fill="none" stroke={colors.accent} strokeWidth={0.8} opacity={0.35} />
+
+            {/* Plane body — scaled 1.6x */}
+            <G scale={1.6}>
+              {/* Main wings (swept) */}
+              <Path d="M0 0 L-5 -6 L-6.5 -6 L-1 0 L-6.5 6 L-5 6 Z" fill={ESPRESSO} />
+              {/* Fuselage */}
+              <Path d="M-6 -1.1 L4 -1.3 L6 -0.6 L6.4 0 L6 0.6 L4 1.3 L-6 1.1 Z" fill={ESPRESSO} />
+              {/* Tail fin */}
+              <Path d="M-6 0 L-8 -3 L-5.8 -3 L-4.5 0 L-5.8 3 L-8 3 Z" fill={ESPRESSO} />
+              {/* Cockpit window */}
+              <Ellipse cx={4} cy={0} rx={1.2} ry={0.6} fill="#ffd9a8" />
+            </G>
+          </AnimatedG>
+        </Svg>
+
+        {/* Origin / Dest labels */}
+        <View style={styles.labelRow}>
+          <View>
+            <Text style={styles.codeLabel}>{fromCode}</Text>
+            <Text style={styles.cityLabel}>{fromCity}</Text>
+          </View>
+          <View style={styles.labelRight}>
+            <Text style={[styles.codeLabel, { color: colors.accent }]}>{toCode}</Text>
+            <Text style={[styles.cityLabel, { textAlign: 'right' }]}>{toCity}</Text>
+          </View>
         </View>
       </View>
 
@@ -302,20 +277,11 @@ export function FlightProgressCard({
 
       {/* ── Stats row ── */}
       <View style={styles.statsRow}>
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>PROGRESS</Text>
-          <Text style={styles.statValue}>{progressPct}%</Text>
-        </View>
+        <StatCell label="Progress" value={`${progressPct}%`} colors={colors} />
         <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>ALTITUDE</Text>
-          <Text style={styles.statValue}>34,000 ft</Text>
-        </View>
+        <StatCell label="Altitude" value="34,000 ft" colors={colors} />
         <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-        <View style={styles.statCell}>
-          <Text style={styles.statLabel}>SPEED</Text>
-          <Text style={styles.statValue}>820 km/h</Text>
-        </View>
+        <StatCell label="Speed" value="820 km/h" colors={colors} />
       </View>
 
       {/* ── Separator ── */}
@@ -326,29 +292,84 @@ export function FlightProgressCard({
         style={styles.ctaButton}
         onPress={onLanded}
         accessibilityRole="button"
-        accessibilityLabel="Mark flight as landed"
+        accessibilityLabel="I've landed"
       >
-        <View style={styles.ctaIconCircle}>
-          <Svg width={18} height={18} viewBox="0 0 24 24">
-            <Path
-              d="M2.5 19.5h19M3 13.5l3.5 1.5 4-3-4.5-5 2-.5 6 4.5 4.5-2a1.5 1.5 0 0 1 1 2.8l-12 5a1 1 0 0 1-1-.2L3 13.5z"
-              fill="none"
-              stroke={CREAM}
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </Svg>
+        <View style={styles.ctaRow}>
+          <View style={styles.ctaIconCircle}>
+            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M2 22h20"
+                stroke={CREAM}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <Path
+                d="M5.5 16l14-3.5a2 2 0 00-1.4-2.4l-2-.5-4-6-2 .4 1.6 5.2-4 1-2-1.5-1.2.3z"
+                stroke={CREAM}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </View>
+          <View>
+            <Text style={styles.ctaEyebrow}>Wheels down?</Text>
+            <Text style={styles.ctaTitle}>I've landed</Text>
+          </View>
         </View>
-        <View style={styles.ctaTextGroup}>
-          <Text style={styles.ctaEyebrow}>Wheels down?</Text>
-          <Text style={styles.ctaTitle}>I've landed</Text>
-        </View>
-        <ChevronRight size={18} color={CREAM} style={{ opacity: 0.7 }} />
+        <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+          <Path
+            d="M5 12h14M13 5l7 7-7 7"
+            stroke={CREAM}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </Svg>
       </Pressable>
     </View>
   );
 }
+
+/* ── Stat cell ── */
+function StatCell({
+  label,
+  value,
+  colors,
+}: {
+  label: string;
+  value: string;
+  colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors'];
+}) {
+  return (
+    <View style={statStyles.cell}>
+      <Text style={[statStyles.label, { color: colors.text3 }]}>{label.toUpperCase()}</Text>
+      <Text style={[statStyles.value, { color: colors.ink }]}>{value}</Text>
+    </View>
+  );
+}
+
+const statStyles = StyleSheet.create({
+  cell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  label: {
+    fontSize: 8.5,
+    fontWeight: '700',
+    letterSpacing: 0.14 * 8.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  value: {
+    fontFamily: 'SpaceMono',
+    fontSize: 12,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+});
 
 /* ── Pulsing dot sub-component ── */
 function PulsingDot({
@@ -386,34 +407,33 @@ const pulsingDotStyles = StyleSheet.create({
 });
 
 /* ── Styles factory ── */
-const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
   StyleSheet.create({
-    card: {
-      backgroundColor: colors.bg2,
-      borderRadius: radius.md,
-      padding: 18,
-      marginHorizontal: spacing.lg,
-      marginTop: spacing.md,
-      borderWidth: 1,
-      borderColor: colors.border,
+    wrapper: {
+      marginHorizontal: 16,
+      paddingTop: 4,
+      paddingHorizontal: 2,
     },
 
     /* Top row */
     topRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'flex-start',
+      alignItems: 'center',
+      marginBottom: 10,
     },
     topLeft: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: 8,
       flex: 1,
     },
     eyebrow: {
       fontSize: 9.5,
       fontWeight: '700',
-      letterSpacing: 0.16 * 10,
+      letterSpacing: 0.16 * 9.5,
       textTransform: 'uppercase',
       color: colors.text3,
-      marginBottom: 2,
     },
     etaRow: {
       flexDirection: 'row',
@@ -424,7 +444,9 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       fontFamily: 'SpaceMono',
       fontSize: 15,
       fontWeight: '600',
-      color: colors.text,
+      color: colors.ink,
+      fontVariant: ['tabular-nums'],
+      letterSpacing: -0.01 * 15,
     },
     etaText: {
       fontSize: 11,
@@ -441,21 +463,25 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       borderColor: GREEN_BORDER,
       paddingHorizontal: 8,
       paddingVertical: 3,
-      borderRadius: radius.xs,
+      borderRadius: 99,
     },
     pillText: {
       fontSize: 9.5,
-      fontWeight: '600',
+      fontWeight: '700',
       color: GREEN_DARK,
+      letterSpacing: 0.04 * 9.5,
     },
 
     /* Separator */
     separator: {
       height: 1,
-      marginVertical: 12,
+      marginVertical: 10,
     },
 
-    /* SVG */
+    /* Arc */
+    arcWrap: {
+      paddingHorizontal: 4,
+    },
     svgContainer: {
       width: '100%',
       height: 56,
@@ -465,7 +491,9 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     labelRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: 4,
+      alignItems: 'center',
+      marginTop: -4,
+      paddingHorizontal: 2,
     },
     labelRight: {
       alignItems: 'flex-end',
@@ -473,76 +501,71 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     codeLabel: {
       fontSize: 11,
       fontWeight: '700',
-      color: colors.text,
+      color: colors.ink,
+      letterSpacing: 0.04 * 11,
     },
     cityLabel: {
       fontSize: 9,
       color: colors.text3,
-      marginTop: 1,
     },
 
     /* Stats */
     statsRow: {
       flexDirection: 'row',
       alignItems: 'center',
-    },
-    statCell: {
-      flex: 1,
-      alignItems: 'center',
-    },
-    statLabel: {
-      fontSize: 8.5,
-      fontWeight: '600',
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-      color: colors.text3,
-      marginBottom: 2,
-    },
-    statValue: {
-      fontFamily: 'SpaceMono',
-      fontSize: 12,
-      color: colors.text,
+      paddingTop: 8,
+      paddingBottom: 2,
     },
     statDivider: {
       width: 1,
-      height: 24,
+      height: 22,
     },
 
     /* CTA */
     ctaButton: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
       backgroundColor: ESPRESSO,
-      borderRadius: radius.sm,
+      borderRadius: 12,
       paddingVertical: 12,
       paddingHorizontal: 14,
-      shadowColor: ESPRESSO,
+      shadowColor: 'rgba(61, 36, 22, 1)',
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.32,
       shadowRadius: 16,
       elevation: 6,
     },
+    ctaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
     ctaIconCircle: {
       width: 30,
       height: 30,
-      borderRadius: 15,
-      backgroundColor: 'rgba(255, 250, 240, 0.12)',
+      borderRadius: 99,
+      backgroundColor: 'rgba(255,250,240,0.22)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,250,240,0.35)',
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: 10,
-    },
-    ctaTextGroup: {
-      flex: 1,
     },
     ctaEyebrow: {
       fontSize: 9.5,
-      fontWeight: '600',
+      fontWeight: '700',
+      letterSpacing: 0.16 * 9.5,
+      textTransform: 'uppercase',
       color: CREAM,
-      opacity: 0.6,
+      opacity: 0.85,
     },
     ctaTitle: {
       fontSize: 14,
       fontWeight: '600',
+      letterSpacing: -0.01 * 14,
       color: CREAM,
+      marginTop: 1,
     },
   });

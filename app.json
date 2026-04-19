@@ -34,6 +34,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "a804380e-5c0d-425e-ac2b-7c07b8b81fd4"
+      }
+    },
+    "owner": "afterstay"
   }
 }

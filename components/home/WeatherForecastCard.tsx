@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { Sun, Cloud, CloudRain, CloudSun, CloudSnow, CloudFog, CloudLightning, Droplets } from 'lucide-react-native';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { useTheme } from '@/constants/ThemeContext';
+import { elevation } from '@/constants/theme';
 import { CONFIG } from '../../lib/config';
 
 interface HourData {
@@ -26,19 +27,75 @@ interface CurrentWeather {
   feelsLike: number;
 }
 
-type LucideIcon = typeof Sun;
+/* ── Weather SVG icons matching the prototype ── */
+function WeatherIcon({
+  kind,
+  size = 22,
+  color,
+}: {
+  kind: string;
+  size?: number;
+  color: string;
+}) {
+  const c = kind.toLowerCase();
+  if (c.includes('sunny') || c.includes('clear')) {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <Circle cx={12} cy={12} r={4} stroke={color} strokeWidth={1.8} />
+        <Path
+          d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+          stroke={color}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+        />
+      </Svg>
+    );
+  }
+  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M7 14a4 4 0 110-8 6 6 0 0111.6 2A3.5 3.5 0 0117 14z"
+          stroke={color}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+        />
+        <Path
+          d="M9 18v2M13 18v2M17 18v2"
+          stroke={color}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+        />
+      </Svg>
+    );
+  }
+  // cloud-sun / partly cloudy / default
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={8} cy={8} r={3} stroke={color} strokeWidth={1.8} />
+      <Path
+        d="M8 2v1M8 13v1M2 8h1M13 8h1M3.8 3.8l.7.7M12.2 12.2l.7.7"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M18 20a4 4 0 100-8 6 6 0 00-10.5-2.5"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
 
-const iconForCondition = (condition: string): { Icon: LucideIcon; color: string } => {
+function getIconColor(condition: string): string {
   const c = condition.toLowerCase();
-  if (c.includes('sunny') || c.includes('clear')) return { Icon: Sun, color: '#fbbf24' };
-  if (c.includes('partly cloudy')) return { Icon: CloudSun, color: '#94a3b8' };
-  if (c.includes('thunder')) return { Icon: CloudLightning, color: '#60a5fa' };
-  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return { Icon: CloudRain, color: '#60a5fa' };
-  if (c.includes('snow') || c.includes('sleet')) return { Icon: CloudSnow, color: '#e2e8f0' };
-  if (c.includes('fog') || c.includes('mist')) return { Icon: CloudFog, color: '#94a3b8' };
-  if (c.includes('cloud') || c.includes('overcast')) return { Icon: Cloud, color: '#94a3b8' };
-  return { Icon: CloudSun, color: '#fbbf24' };
-};
+  if (c.includes('sunny') || c.includes('clear')) return '#fbbf24';
+  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower') || c.includes('thunder'))
+    return '#60a5fa';
+  return '#94a3b8';
+}
 
 const formatHourRange = (start: number, end: number): string => {
   const fmt = (h: number) => {
@@ -96,17 +153,15 @@ export const WeatherForecastCard = () => {
   const loadForecast = async () => {
     try {
       const res = await fetch(
-        `https://api.weatherapi.com/v1/forecast.json?key=${CONFIG.WEATHER_KEY}&q=Boracay,Philippines&days=5&aqi=no&alerts=no`
+        `https://api.weatherapi.com/v1/forecast.json?key=${CONFIG.WEATHER_KEY}&q=Boracay,Philippines&days=5&aqi=no&alerts=no`,
       );
       const data = await res.json();
 
       if (data.error) {
-        console.error('Weather API error:', data.error);
         setLoading(false);
         return;
       }
 
-      // Current weather
       if (data.current) {
         setCurrent({
           temp: Math.round(data.current.temp_c),
@@ -115,27 +170,29 @@ export const WeatherForecastCard = () => {
         });
       }
 
-      const forecasts: DayForecast[] = data.forecast.forecastday.map((fd: any, i: number) => {
-        const hours: HourData[] = fd.hour.map((h: any) => ({
-          hour: new Date(h.time).getHours(),
-          chance_of_rain: h.chance_of_rain,
-        }));
-        const rainWindows = findRainWindows(hours);
+      const forecasts: DayForecast[] = data.forecast.forecastday.map(
+        (fd: any, i: number) => {
+          const hours: HourData[] = fd.hour.map((h: any) => ({
+            hour: new Date(h.time).getHours(),
+            chance_of_rain: h.chance_of_rain,
+          }));
+          const rainWindows = findRainWindows(hours);
 
-        return {
-          date: fd.date,
-          dayLabel: dayLabelFor(fd.date, i),
-          maxTemp: Math.round(fd.day.maxtemp_c),
-          minTemp: Math.round(fd.day.mintemp_c),
-          chanceRain: fd.day.daily_chance_of_rain,
-          condition: fd.day.condition.text,
-          rainWindows,
-        };
-      });
+          return {
+            date: fd.date,
+            dayLabel: dayLabelFor(fd.date, i),
+            maxTemp: Math.round(fd.day.maxtemp_c),
+            minTemp: Math.round(fd.day.mintemp_c),
+            chanceRain: fd.day.daily_chance_of_rain,
+            condition: fd.day.condition.text,
+            rainWindows,
+          };
+        },
+      );
 
       setDays(forecasts);
-    } catch (e) {
-      console.error('Weather fetch failed:', e);
+    } catch {
+      // silently fail — card won't render
     } finally {
       setLoading(false);
     }
@@ -152,39 +209,50 @@ export const WeatherForecastCard = () => {
   if (days.length === 0) return null;
 
   const today = days[0];
-  const todayRain = today?.rainWindows.length > 0
-    ? today.rainWindows.reduce((a, b) => (a.maxChance > b.maxChance ? a : b))
-    : null;
+  const todayRain =
+    today?.rainWindows.length > 0
+      ? today.rainWindows.reduce((a, b) => (a.maxChance > b.maxChance ? a : b))
+      : null;
 
-  const { Icon: BigIcon, color: bigIconColor } = iconForCondition(today?.condition ?? '');
+  const bigIconColor = getIconColor(today?.condition ?? '');
 
   return (
     <View style={styles.card}>
       {/* Header with current temp */}
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.label}>Your Stay Weather {'\u00B7'} Boracay</Text>
-          {current ? (
-            <View style={styles.currentRow}>
-              <Text style={styles.currentTemp}>{today.maxTemp}{'\u00B0'}</Text>
-              <Text style={styles.currentTempLow}> / {today.minTemp}{'\u00B0'}</Text>
-            </View>
-          ) : null}
-          {today ? (
-            <Text style={styles.conditionText}>{today.condition}</Text>
-          ) : null}
+          <Text style={styles.eyebrow}>Weather {'\u00B7'} Boracay</Text>
+          <View style={styles.tempRow}>
+            <Text style={styles.tempBig}>{today.maxTemp}{'\u00B0'}</Text>
+            <Text style={styles.tempLow}> / {today.minTemp}{'\u00B0'}</Text>
+          </View>
+          <Text style={styles.conditionText}>{today.condition}</Text>
         </View>
         <View style={styles.bigIconWrap}>
-          <BigIcon color={bigIconColor} size={44} strokeWidth={1.5} />
+          <WeatherIcon kind={today.condition} size={28} color={bigIconColor} />
         </View>
       </View>
 
       {/* Rain warning chip */}
       {todayRain && (
         <View style={styles.rainChip}>
-          <Droplets size={14} color={colors.warnInk} />
+          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+            <Path
+              d="M7 14a4 4 0 110-8 6 6 0 0111.6 2A3.5 3.5 0 0117 14z"
+              stroke={colors.warn}
+              strokeWidth={1.8}
+              strokeLinecap="round"
+            />
+            <Path
+              d="M9 18v2M13 18v2M17 18v2"
+              stroke={colors.warn}
+              strokeWidth={1.8}
+              strokeLinecap="round"
+            />
+          </Svg>
           <Text style={styles.rainChipText}>
-            Rain expected {formatHourRange(todayRain.startHour, todayRain.endHour)} {'\u00B7'} {todayRain.maxChance}% chance
+            <Text style={styles.rainBold}>Rain expected</Text>
+            {' '}today {formatHourRange(todayRain.startHour, todayRain.endHour)} {'\u00B7'} {todayRain.maxChance}% chance
           </Text>
         </View>
       )}
@@ -192,20 +260,33 @@ export const WeatherForecastCard = () => {
       {/* 5-day forecast */}
       <View style={styles.daysRow}>
         {days.map((d, i) => {
-          const { Icon: WeatherIcon, color: iconColor } = iconForCondition(d.condition);
           const isToday = i === 0;
+          const iconColor = getIconColor(d.condition);
           return (
-            <View key={d.date} style={[styles.dayCol, isToday && styles.dayColToday]}>
-              <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]}>
+            <View
+              key={d.date}
+              style={[
+                styles.dayCol,
+                isToday && styles.dayColToday,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.dayLabel,
+                  isToday && styles.dayLabelToday,
+                ]}
+              >
                 {d.dayLabel}
               </Text>
-              <View style={styles.iconWrap}>
-                <WeatherIcon color={iconColor} size={22} strokeWidth={1.75} />
+              <View style={styles.dayIconWrap}>
+                <WeatherIcon kind={d.condition} size={18} color={iconColor} />
               </View>
-              <Text style={styles.maxTemp}>{d.maxTemp}{'\u00B0'}</Text>
-              <Text style={styles.minTemp}>{d.minTemp}{'\u00B0'}</Text>
-              {d.chanceRain > 0 && (
-                <Text style={styles.rainPct}>{d.chanceRain}%</Text>
+              <Text style={styles.dayHi}>
+                {d.maxTemp}{'\u00B0'}{' '}
+                <Text style={styles.dayLo}>{d.minTemp}{'\u00B0'}</Text>
+              </Text>
+              {d.chanceRain >= 50 && (
+                <Text style={styles.dayRain}>{d.chanceRain}%</Text>
               )}
             </View>
           );
@@ -215,111 +296,118 @@ export const WeatherForecastCard = () => {
   );
 };
 
-const getStyles = (colors: any) => StyleSheet.create({
-  card: {
-    backgroundColor: colors.bg2,
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 16,
-    marginVertical: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  label: {
-    color: colors.text2,
-    fontSize: 12,
-    fontWeight: '500',
-    letterSpacing: 0.3,
-  },
-  currentRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginTop: 4,
-  },
-  currentTemp: {
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  currentTempLow: {
-    color: colors.text3,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  conditionText: {
-    color: colors.text2,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  bigIconWrap: {
-    marginTop: 4,
-  },
-  rainChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.warnBg,
-    borderColor: colors.warnBorder,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 14,
-  },
-  rainChipText: {
-    color: colors.warnInk,
-    fontSize: 12,
-    fontWeight: '600',
-    flex: 1,
-  },
-  daysRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  dayCol: {
-    alignItems: 'center',
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  dayColToday: {
-    backgroundColor: colors.accentDim,
-  },
-  dayLabel: {
-    color: colors.text3,
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  dayLabelToday: {
-    color: colors.accent,
-    fontWeight: '800',
-  },
-  iconWrap: {
-    marginBottom: 6,
-    alignItems: 'center',
-  },
-  maxTemp: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  minTemp: {
-    color: colors.text3,
-    fontSize: 12,
-    marginTop: 1,
-  },
-  rainPct: {
-    color: colors.info,
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 3,
-  },
-});
+const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 22,
+      padding: 16,
+      marginHorizontal: 16,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 14,
+    },
+    eyebrow: {
+      fontSize: 10,
+      fontWeight: '600',
+      letterSpacing: 1.8,
+      textTransform: 'uppercase',
+      color: colors.text3,
+    },
+    tempRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      marginTop: 4,
+    },
+    tempBig: {
+      fontSize: 36,
+      fontWeight: '500',
+      letterSpacing: -0.8,
+      color: colors.text,
+    },
+    tempLow: {
+      fontSize: 13,
+      color: colors.text3,
+    },
+    conditionText: {
+      fontSize: 12,
+      color: colors.text2,
+    },
+    bigIconWrap: {
+      padding: 6,
+      paddingHorizontal: 8,
+      backgroundColor: colors.card2,
+      borderRadius: 12,
+    },
+    rainChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      backgroundColor: colors.warnBg,
+      borderWidth: 1,
+      borderColor: 'rgba(245, 181, 74, 0.20)',
+      borderRadius: 12,
+      marginBottom: 14,
+    },
+    rainChipText: {
+      flex: 1,
+      fontSize: 12,
+      color: colors.text,
+      fontWeight: '500',
+    },
+    rainBold: {
+      fontWeight: '600',
+      color: colors.warn,
+    },
+    daysRow: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    dayCol: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 4,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    dayColToday: {
+      backgroundColor: colors.accentBg,
+      borderColor: colors.accentBorder,
+    },
+    dayLabel: {
+      fontSize: 10,
+      fontWeight: '600',
+      letterSpacing: 0.08 * 10,
+      color: colors.text3,
+    },
+    dayLabelToday: {
+      color: colors.accent,
+    },
+    dayIconWrap: {
+      marginVertical: 6,
+    },
+    dayHi: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    dayLo: {
+      fontWeight: '400',
+      color: colors.text3,
+    },
+    dayRain: {
+      fontSize: 9,
+      fontWeight: '600',
+      color: colors.info,
+      marginTop: 2,
+    },
+  });

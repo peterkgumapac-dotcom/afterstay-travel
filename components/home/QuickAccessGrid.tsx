@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, Alert } from 'react-native';
+import {
+  Alert,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
@@ -16,17 +24,17 @@ interface Props {
 }
 
 const DEFAULT_TILES: Tile[] = [
-  { id: 'checkin', iconName: 'checkin', label: 'CHECK-IN', value: '3:00 PM' },
-  { id: 'checkout', iconName: 'checkout', label: 'CHECKOUT', value: '12:00 PM' },
-  { id: 'wifi', iconName: 'wifi', label: 'WIFI', value: 'Not set' },
-  { id: 'door', iconName: 'door', label: 'DOOR CODE', value: '\u2014' },
+  { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: '3:00 PM' },
+  { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: '12:00 PM' },
+  { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: 'Not set' },
+  { id: 'door', iconName: 'door', label: 'Door code', value: '\u2014' },
 ];
 
 const HINT_MAP: Record<string, string> = {
-  checkin: 'Early check-in available',
-  checkout: 'Late checkout on request',
-  wifi: 'Ask front desk for password',
-  door: 'Long-press to reveal',
+  checkin: 'Apr 20',
+  checkout: 'Apr 27',
+  wifi: 'Add on arrival',
+  door: 'Add on arrival',
 };
 
 const QUICK_ACCESS_KEY = 'quickAccess_v1';
@@ -37,18 +45,25 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
   const mStyles = getModalStyles(colors);
   const [tiles, setTiles] = useState<Tile[]>(() => {
     if (!initialTiles) return DEFAULT_TILES;
-    // Reorder to match 2x2: checkin, checkout, wifi, door
     const order = ['checkin', 'checkout', 'wifi', 'door'];
-    return order.map(id => initialTiles.find(t => t.id === id) ?? DEFAULT_TILES.find(t => t.id === id)!);
+    return order.map(
+      (id) =>
+        initialTiles.find((t) => t.id === id) ??
+        DEFAULT_TILES.find((t) => t.id === id)!,
+    );
   });
   const [editingTile, setEditingTile] = useState<Tile | null>(null);
   const [draft, setDraft] = useState('');
   const [loaded, setLoaded] = useState(false);
 
   React.useEffect(() => {
-    AsyncStorage.getItem(QUICK_ACCESS_KEY).then(saved => {
+    AsyncStorage.getItem(QUICK_ACCESS_KEY).then((saved) => {
       if (saved) {
-        try { setTiles(JSON.parse(saved)); } catch {}
+        try {
+          setTiles(JSON.parse(saved));
+        } catch {
+          // ignore
+        }
       }
       setLoaded(true);
     });
@@ -56,10 +71,16 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
 
   React.useEffect(() => {
     if (!loaded) return;
-    AsyncStorage.getItem(QUICK_ACCESS_KEY).then(saved => {
+    AsyncStorage.getItem(QUICK_ACCESS_KEY).then((saved) => {
       if (!saved && initialTiles) {
         const order = ['checkin', 'checkout', 'wifi', 'door'];
-        setTiles(order.map(id => initialTiles.find(t => t.id === id) ?? DEFAULT_TILES.find(t => t.id === id)!));
+        setTiles(
+          order.map(
+            (id) =>
+              initialTiles.find((t) => t.id === id) ??
+              DEFAULT_TILES.find((t) => t.id === id)!,
+          ),
+        );
       }
     });
   }, [initialTiles, loaded]);
@@ -71,7 +92,9 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
 
   const openEdit = (tile: Tile) => {
     Haptics.selectionAsync();
-    setDraft(tile.value === 'Not set' || tile.value === '\u2014' ? '' : tile.value);
+    setDraft(
+      tile.value === 'Not set' || tile.value === '\u2014' ? '' : tile.value,
+    );
     setEditingTile(tile);
   };
 
@@ -79,8 +102,13 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
     if (!editingTile) return;
     const next = tiles.map((t) =>
       t.id === editingTile.id
-        ? { ...t, value: draft.trim() || (editingTile.id === 'door' ? '\u2014' : 'Not set') }
-        : t
+        ? {
+            ...t,
+            value:
+              draft.trim() ||
+              (editingTile.id === 'door' ? '\u2014' : 'Not set'),
+          }
+        : t,
     );
     await save(next);
     setEditingTile(null);
@@ -92,9 +120,11 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
     return t.value;
   };
 
+  const isMuted = (t: Tile) =>
+    t.value === 'Not set' || t.value === '\u2014';
+
   return (
     <View style={styles.section}>
-      <Text style={styles.header}>Quick Access</Text>
       <View style={styles.grid}>
         {tiles.map((tile) => (
           <TouchableOpacity
@@ -103,14 +133,26 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
             onPress={() => openEdit(tile)}
             onLongPress={() => {
               if (tile.id === 'door') {
-                Alert.alert('Door code', tile.value === '\u2014' ? 'Not set' : tile.value);
+                Alert.alert(
+                  'Door code',
+                  tile.value === '\u2014' ? 'Not set' : tile.value,
+                );
                 Haptics.selectionAsync();
               }
             }}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`${tile.label}: ${showValue(tile)}`}
           >
-            <Text style={styles.tileLabel}>{tile.label}</Text>
-            <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+            <Text style={styles.tileLabel}>{tile.label.toUpperCase()}</Text>
+            <Text
+              style={[
+                styles.tileValue,
+                isMuted(tile) && { color: colors.text3 },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               {showValue(tile)}
             </Text>
             <Text style={styles.tileHint}>{HINT_MAP[tile.id] ?? ''}</Text>
@@ -121,18 +163,19 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
       <Modal visible={!!editingTile} transparent animationType="fade">
         <View style={mStyles.backdrop}>
           <View style={mStyles.card}>
-            <Text style={mStyles.title}>
-              {editingTile?.label}
-            </Text>
+            <Text style={mStyles.title}>{editingTile?.label}</Text>
             <TextInput
               style={mStyles.input}
               value={draft}
               onChangeText={setDraft}
               placeholder={
-                editingTile?.id === 'wifi' ? 'Network name' :
-                editingTile?.id === 'door' ? 'Door code (kept private)' :
-                editingTile?.id === 'checkin' ? '3:00 PM' :
-                '12:00 PM'
+                editingTile?.id === 'wifi'
+                  ? 'Network name'
+                  : editingTile?.id === 'door'
+                    ? 'Door code (kept private)'
+                    : editingTile?.id === 'checkin'
+                      ? '3:00 PM'
+                      : '12:00 PM'
               }
               placeholderTextColor={colors.text3}
               autoFocus
@@ -158,93 +201,94 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
   );
 };
 
-const getStyles = (colors: any) => StyleSheet.create({
-  section: {
-    marginHorizontal: 16,
-    marginVertical: 10,
-  },
-  header: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tile: {
-    width: '48.5%',
-    backgroundColor: colors.bg2,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 90,
-  },
-  tileLabel: {
-    color: colors.text3,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  tileValue: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  tileHint: {
-    color: colors.text3,
-    fontSize: 10,
-    marginTop: 4,
-  },
-});
+const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
+  StyleSheet.create({
+    section: {
+      marginHorizontal: 16,
+    },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+    },
+    tile: {
+      width: '48%',
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingTop: 14,
+      paddingHorizontal: 14,
+      paddingBottom: 12,
+    },
+    tileLabel: {
+      color: colors.text3,
+      fontSize: 10,
+      fontWeight: '600',
+      letterSpacing: 0.12 * 10,
+      textTransform: 'uppercase',
+    },
+    tileValue: {
+      fontFamily: 'SpaceMono',
+      color: colors.text,
+      fontSize: 17,
+      fontWeight: '600',
+      marginTop: 6,
+    },
+    tileHint: {
+      color: colors.text3,
+      fontSize: 10.5,
+      marginTop: 2,
+    },
+  });
 
-const getModalStyles = (colors: any) => StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: colors.bg2,
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  title: { color: colors.text, fontSize: 16, fontWeight: '700', marginBottom: 16 },
-  input: {
-    backgroundColor: colors.card,
-    color: colors.text,
-    fontSize: 15,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 20,
-    marginTop: 16,
-  },
-  cancel: { color: colors.text2, fontSize: 14, fontWeight: '500' },
-  save: { color: colors.accent, fontSize: 14, fontWeight: '700' },
-  hint: {
-    color: colors.text3,
-    fontSize: 11,
-    fontStyle: 'italic',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-});
+const getModalStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.8)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 24,
+    },
+    card: {
+      width: '100%',
+      maxWidth: 400,
+      backgroundColor: colors.bg2,
+      borderRadius: 16,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    title: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: '700',
+      marginBottom: 16,
+    },
+    input: {
+      backgroundColor: colors.card,
+      color: colors.text,
+      fontSize: 15,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    actions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 20,
+      marginTop: 16,
+    },
+    cancel: { color: colors.text2, fontSize: 14, fontWeight: '500' },
+    save: { color: colors.accent, fontSize: 14, fontWeight: '700' },
+    hint: {
+      color: colors.text3,
+      fontSize: 11,
+      fontStyle: 'italic',
+      marginTop: 8,
+      textAlign: 'center',
+    },
+  });

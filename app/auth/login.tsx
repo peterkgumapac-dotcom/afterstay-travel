@@ -17,15 +17,14 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withDelay,
-  withSpring,
   withTiming,
+  withSpring,
   Easing,
 } from 'react-native-reanimated';
-import { Mail, MessageCircle } from 'lucide-react-native';
-import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
+import Svg, { Path, Circle as SvgCircle, Rect, Line, Polyline } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
-import { spacing, radius, typography } from '@/constants/theme';
+import { spacing, radius } from '@/constants/theme';
 import ConstellationHero from '@/components/auth/ConstellationHero';
 
 type Panel = 'root' | 'email' | 'phone' | 'sent';
@@ -47,184 +46,395 @@ const COUNTRY_OPTIONS: readonly CountryOption[] = [
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function AppleIcon({ size = 18 }: { size?: number }) {
+/* ─── SVG Icons — exact copies from prototype ─── */
+
+function AppleIcon() {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor" style={{ marginTop: -2 }}>
       <Path
-        d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"
+        d="M17.6 12.6c0-2.5 2-3.7 2.1-3.8-1.2-1.7-3-2-3.7-2-1.6-.2-3.1 1-3.9 1-.8 0-2.1-.9-3.4-.9-1.7 0-3.4 1-4.3 2.6-1.8 3.2-.5 7.9 1.3 10.5.9 1.3 2 2.7 3.3 2.6 1.3 0 1.8-.8 3.4-.8 1.6 0 2.1.8 3.4.8 1.4 0 2.3-1.3 3.2-2.6 1-1.5 1.4-2.9 1.4-3-.1 0-2.7-1-2.8-4.4zM15 5.5c.7-.9 1.2-2.1 1.1-3.3-1 0-2.3.7-3 1.5-.7.8-1.3 2-1.1 3.2 1.1.1 2.3-.6 3-1.4z"
         fill="#fff"
       />
     </Svg>
   );
 }
 
-function GoogleIcon({ size = 18 }: { size?: number }) {
+function GoogleIcon() {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Path
-        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-        fill="#4285F4"
-      />
-      <Path
-        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-        fill="#34A853"
-      />
-      <Path
-        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-        fill="#FBBC05"
-      />
-      <Path
-        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-        fill="#EA4335"
-      />
+    <Svg width={18} height={18} viewBox="0 0 48 48">
+      <Path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" />
+      <Path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.4 6.3 14.7z" />
+      <Path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.5 2.4-7.2 2.4-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <Path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.1 5.6l6.2 5.2c-.4.4 6.6-4.8 6.6-14.8 0-1.3-.1-2.3-.4-3.5z" />
     </Svg>
   );
 }
 
-function StaggeredButton({
-  index,
-  onPress,
-  style,
-  children,
-}: {
-  index: number;
-  onPress: () => void;
-  style: object;
-  children: React.ReactNode;
-}) {
-  const translateY = useSharedValue(10);
-  const opacity = useSharedValue(0);
-
-  useEffect(() => {
-    translateY.value = withDelay(
-      index * 100,
-      withSpring(0, { damping: 16, stiffness: 140 }),
-    );
-    opacity.value = withDelay(
-      index * 100,
-      withTiming(1, { duration: 350, easing: Easing.out(Easing.ease) }),
-    );
-  }, [index, translateY, opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-    opacity: opacity.value,
-  }));
-
+function EmailIcon() {
   return (
-    <Animated.View style={animatedStyle}>
-      <TouchableOpacity
-        style={style}
-        onPress={onPress}
-        activeOpacity={0.8}
-      >
-        {children}
-      </TouchableOpacity>
-    </Animated.View>
+    <Svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <Rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" fill="none" />
+      <Path d="M3 7l9 6 9-6" stroke="currentColor" fill="none" />
+    </Svg>
   );
 }
 
-function SuccessIcon({
-  kind,
-  accentColor,
-}: {
-  kind: string;
-  accentColor: string;
-}) {
-  const scale = useSharedValue(0.8);
+function SMSIcon() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M21 12a8 8 0 01-11.8 7L4 20.5l1.5-4.5A8 8 0 1121 12z" stroke="currentColor" fill="none" />
+      <SvgCircle cx="8.5" cy="12" r="0.8" fill="currentColor" stroke="none" />
+      <SvgCircle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none" />
+      <SvgCircle cx="15.5" cy="12" r="0.8" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+function ArrowIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <Line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" />
+      <Polyline points="12 5 19 12 12 19" stroke="currentColor" fill="none" />
+    </Svg>
+  );
+}
+
+/* ─── Stagger animation helper ─── */
+
+function StaggeredItem({ index, children }: { index: number; children: React.ReactNode }) {
+  const translateY = useSharedValue(10);
+  const itemOpacity = useSharedValue(0);
 
   useEffect(() => {
-    scale.value = withSpring(1, { damping: 10, stiffness: 160 });
-  }, [scale]);
+    const delay = (0.45 + index * 0.07) * 1000;
+    translateY.value = withDelay(
+      delay,
+      withTiming(0, { duration: 500, easing: Easing.bezier(0.2, 0.7, 0.2, 1) }),
+    );
+    itemOpacity.value = withDelay(
+      delay,
+      withTiming(1, { duration: 500, easing: Easing.bezier(0.2, 0.7, 0.2, 1) }),
+    );
+  }, [index, translateY, itemOpacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    opacity: itemOpacity.value,
+  }));
+
+  return <Animated.View style={animatedStyle}>{children}</Animated.View>;
+}
+
+/* ─── Divider OR ─── */
+
+function DividerOr({ colors }: { colors: ReturnType<typeof useTheme>['colors'] }) {
+  return (
+    <View style={dividerStyles.row}>
+      <View style={[dividerStyles.line, { backgroundColor: colors.border }]} />
+      <Text style={[dividerStyles.text, { color: colors.text3 }]}>OR</Text>
+      <View style={[dividerStyles.line, { backgroundColor: colors.border }]} />
+    </View>
+  );
+}
+
+const dividerStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  line: {
+    flex: 1,
+    height: 1,
+  },
+  text: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.18 * 10, // 0.18em * 10
+  },
+});
+
+/* ─── SignInButton ─── */
+
+function SignInButton({
+  icon,
+  label,
+  bg,
+  fg,
+  borderColor,
+  onPress,
+  shadow,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  bg: string;
+  fg: string;
+  borderColor: string;
+  onPress: () => void;
+  shadow?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={[
+        signInStyles.button,
+        {
+          backgroundColor: bg,
+          borderColor,
+          borderWidth: 1,
+        },
+        shadow && signInStyles.shadow,
+      ]}
+    >
+      {icon}
+      <Text style={[signInStyles.label, { color: fg }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const signInStyles = StyleSheet.create({
+  button: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.01 * 14, // -0.01em
+  },
+  shadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+});
+
+/* ─── PrimaryButton ─── */
+
+function PrimaryButton({
+  children,
+  onPress,
+  disabled,
+  colors,
+}: {
+  children: React.ReactNode;
+  onPress: () => void;
+  disabled?: boolean;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.8}
+      style={[
+        primaryStyles.button,
+        {
+          backgroundColor: disabled ? colors.card2 : colors.black,
+          borderColor: disabled ? colors.border : colors.black,
+          borderWidth: 1,
+        },
+      ]}
+    >
+      {typeof children === 'string' ? (
+        <Text style={[primaryStyles.text, { color: disabled ? colors.text3 : colors.onBlack }]}>
+          {children}
+        </Text>
+      ) : (
+        children
+      )}
+    </TouchableOpacity>
+  );
+}
+
+const primaryStyles = StyleSheet.create({
+  button: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+  },
+  text: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.01 * 14,
+  },
+});
+
+/* ─── FieldLabel ─── */
+
+function FieldLabel({ children, colors }: { children: string; colors: ReturnType<typeof useTheme>['colors'] }) {
+  return (
+    <Text style={[fieldLabelStyles.label, { color: colors.text3 }]}>{children}</Text>
+  );
+}
+
+const fieldLabelStyles = StyleSheet.create({
+  label: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.14 * 10, // 0.14em
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+});
+
+/* ─── StyledInput ─── */
+
+function StyledInput({
+  value,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+  autoFocus,
+  keyboardType,
+  autoCapitalize,
+  autoComplete,
+  prefix,
+  colors,
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder: string;
+  secureTextEntry?: boolean;
+  autoFocus?: boolean;
+  keyboardType?: 'default' | 'email-address' | 'phone-pad';
+  autoCapitalize?: 'none' | 'sentences';
+  autoComplete?: 'email' | 'password' | 'tel';
+  prefix?: string;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <View
+      style={[
+        inputStyles.container,
+        {
+          backgroundColor: colors.card,
+          borderColor: focused ? colors.accent : colors.border,
+          borderWidth: 1,
+        },
+      ]}
+    >
+      {prefix ? (
+        <View style={[inputStyles.prefixWrap, { borderRightColor: colors.border }]}>
+          <Text style={[inputStyles.prefixText, { color: colors.text2 }]}>{prefix}</Text>
+        </View>
+      ) : null}
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.text3}
+        secureTextEntry={secureTextEntry}
+        autoFocus={autoFocus}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        autoComplete={autoComplete}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={[inputStyles.input, { color: colors.text }]}
+      />
+    </View>
+  );
+}
+
+const inputStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    height: 50,
+  },
+  prefixWrap: {
+    paddingRight: 8,
+    borderRightWidth: 1,
+  },
+  prefixText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: -0.01 * 15,
+  },
+});
+
+/* ─── Success icon with pop animation ─── */
+
+function SuccessIcon({
+  kind,
+  colors,
+}: {
+  kind: string;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const scale = useSharedValue(0.8);
+  const iconOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    scale.value = withSpring(1, { damping: 8, stiffness: 180 });
+    iconOpacity.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.ease) });
+  }, [scale, iconOpacity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
+    opacity: iconOpacity.value,
   }));
 
   return (
     <Animated.View style={animatedStyle}>
-      <View style={[styles.successCircle, { backgroundColor: accentColor }]}>
-        {kind === 'email' ? (
-          <Mail size={28} color="#fff" />
-        ) : (
-          <MessageCircle size={28} color="#fff" />
-        )}
+      <View style={[
+        successStyles.circle,
+        {
+          backgroundColor: colors.accentBg,
+          borderColor: colors.accentBorder,
+          borderWidth: 1,
+        },
+      ]}>
+        <View style={{ color: colors.accent } as never}>
+          {kind === 'email' ? <EmailIcon /> : <SMSIcon />}
+        </View>
       </View>
     </Animated.View>
   );
 }
 
+const successStyles = StyleSheet.create({
+  circle: {
+    width: 64,
+    height: 64,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
+/* ─── Main screen ─── */
+
 function getStyles(colors: ReturnType<typeof useTheme>['colors']) {
   return StyleSheet.create({
-    heading: {
-      fontSize: 26,
-      ...typography.display,
-      color: colors.text,
-    },
-    subtitle: {
-      fontSize: 15,
-      lineHeight: 22,
-      color: colors.text2,
-    },
-    subHeading: {
-      fontSize: 24,
-      ...typography.display,
-      color: colors.text,
-    },
-    subText: {
-      fontSize: 14,
-      lineHeight: 21,
-      color: colors.text2,
-    },
-    input: {
-      fontSize: 15,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: 14,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      backgroundColor: colors.card,
-      borderColor: colors.border,
-      color: colors.text,
-    },
-    primaryButton: {
-      paddingVertical: 15,
-      borderRadius: radius.md,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      backgroundColor: colors.accent,
-    },
-    primaryButtonText: {
-      fontSize: 15,
-      fontWeight: '700' as const,
-      color: colors.onBlack,
-    },
-    ghostButton: {
-      paddingVertical: 14,
-      borderRadius: radius.md,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      borderWidth: 1,
-      borderColor: colors.accentBorder,
-      backgroundColor: 'transparent',
-    },
-    ghostButtonText: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-      color: colors.accent,
-    },
-    backLink: {
-      paddingVertical: spacing.sm,
-    },
-    backLinkText: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-      color: colors.accent,
-    },
-    errorText: {
-      fontSize: 13,
-      color: colors.danger,
-      textAlign: 'center' as const,
-    },
+    /* nothing dynamic needed beyond inline colors */
   });
 }
 
@@ -232,7 +442,6 @@ export default function LoginScreen() {
   const { colors } = useTheme();
   const { signIn, signInWithMagicLink, session } = useAuth();
   const router = useRouter();
-  const themed = getStyles(colors);
 
   const [panel, setPanel] = useState<Panel>('root');
   const [email, setEmail] = useState('');
@@ -302,9 +511,9 @@ export default function LoginScreen() {
           bounces={false}
         >
           {panel === 'root' && <RootPanel />}
-          {panel === 'email' && <EmailPanel />}
-          {panel === 'phone' && <PhonePanel />}
-          {panel === 'sent' && <SentPanel />}
+          {panel === 'email' && <EmailPanelView />}
+          {panel === 'phone' && <PhonePanelView />}
+          {panel === 'sent' && <SentPanelView />}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -316,278 +525,361 @@ export default function LoginScreen() {
         <ConstellationHero />
 
         <View style={styles.body}>
-          <View style={styles.headingBlock}>
-            <Text style={themed.heading}>Welcome in.</Text>
-            <Text style={themed.subtitle}>
-              Your trip doesn&apos;t end at checkout. Sign in to keep the moments, the memories, the
-              next one.
-            </Text>
-          </View>
+          {/* Heading block */}
+          <StaggeredItem index={0}>
+            <View style={styles.headingBlock}>
+              <Text style={[styles.heading, { color: colors.text }]}>Welcome in.</Text>
+              <Text style={[styles.subtitle, { color: colors.text2 }]}>
+                Your trip doesn&apos;t end at checkout. Sign in to keep the moments, the memories, the next one.
+              </Text>
+            </View>
+          </StaggeredItem>
 
+          {/* Button group */}
           <View style={styles.buttonGroup}>
-            <StaggeredButton
-              index={0}
-              onPress={() =>
-                Alert.alert('Coming Soon', 'Apple Sign-In will be available soon.')
-              }
-              style={styles.appleButton}
-            >
-              <AppleIcon />
-              <Text style={styles.appleButtonText}>Continue with Apple</Text>
-            </StaggeredButton>
+            {/* Apple */}
+            <StaggeredItem index={1}>
+              <SignInButton
+                onPress={() => Alert.alert('Coming Soon', 'Apple Sign-In will be available soon.')}
+                icon={<AppleIcon />}
+                label="Continue with Apple"
+                bg="#000"
+                fg="#fff"
+                borderColor="#000"
+                shadow
+              />
+            </StaggeredItem>
 
-            <StaggeredButton
-              index={1}
-              onPress={() =>
-                Alert.alert('Coming Soon', 'Google Sign-In will be available soon.')
-              }
-              style={styles.googleButton}
-            >
-              <GoogleIcon />
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </StaggeredButton>
+            {/* Google */}
+            <StaggeredItem index={2}>
+              <SignInButton
+                onPress={() => Alert.alert('Coming Soon', 'Google Sign-In will be available soon.')}
+                icon={<GoogleIcon />}
+                label="Continue with Google"
+                bg="#fff"
+                fg="#1f1f1f"
+                borderColor="#dadce0"
+                shadow
+              />
+            </StaggeredItem>
 
-            <View style={styles.dividerRow}>
-              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-              <Text style={[styles.dividerText, { color: colors.text3 }]}>OR</Text>
-              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-            </View>
+            {/* OR divider */}
+            <StaggeredItem index={3}>
+              <DividerOr colors={colors} />
+            </StaggeredItem>
 
-            <StaggeredButton
-              index={2}
-              onPress={() => resetToPanel('email')}
-              style={[styles.optionButton, { backgroundColor: colors.card }]}
-            >
-              <Mail size={18} color={colors.text} />
-              <Text style={[styles.optionButtonText, { color: colors.text }]}>
-                Continue with email
-              </Text>
-            </StaggeredButton>
+            {/* Email */}
+            <StaggeredItem index={4}>
+              <SignInButton
+                onPress={() => resetToPanel('email')}
+                icon={<View style={{ color: colors.text } as never}><EmailIcon /></View>}
+                label="Continue with email"
+                bg={colors.card}
+                fg={colors.text}
+                borderColor={colors.border}
+              />
+            </StaggeredItem>
 
-            <StaggeredButton
-              index={3}
-              onPress={() => resetToPanel('phone')}
-              style={[styles.optionButton, { backgroundColor: colors.card }]}
-            >
-              <MessageCircle size={18} color={colors.text} />
-              <Text style={[styles.optionButtonText, { color: colors.text }]}>
-                Continue with phone
-              </Text>
-            </StaggeredButton>
+            {/* Phone */}
+            <StaggeredItem index={5}>
+              <SignInButton
+                onPress={() => resetToPanel('phone')}
+                icon={<View style={{ color: colors.text } as never}><SMSIcon /></View>}
+                label="Continue with phone"
+                bg={colors.card}
+                fg={colors.text}
+                borderColor={colors.border}
+              />
+            </StaggeredItem>
           </View>
 
-          <View style={styles.socialProof}>
-            <View style={styles.avatarRow}>
-              {['#a64d1e', '#b8892b', '#c66a36'].map((bg, i) => (
-                <View
-                  key={bg}
-                  style={[
-                    styles.avatar,
-                    { backgroundColor: bg, marginLeft: i > 0 ? -8 : 0, zIndex: 3 - i },
-                  ]}
-                />
-              ))}
+          {/* Social proof strip */}
+          <StaggeredItem index={6}>
+            <View style={[styles.socialProof, { backgroundColor: colors.card2, borderColor: colors.border }]}>
+              <View style={styles.avatarRow}>
+                {['#a64d1e', '#c66a36', '#b8892b'].map((c, i) => (
+                  <View
+                    key={c}
+                    style={[
+                      styles.avatar,
+                      {
+                        backgroundColor: c,
+                        marginLeft: i === 0 ? 0 : -6,
+                        borderColor: colors.card2,
+                        borderWidth: 2,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+              <Text style={[styles.socialText, { color: colors.text2 }]}>
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Peter, Aaron &amp; Jane</Text>
+                {' '}are already on Afterstay.
+              </Text>
             </View>
-            <Text style={[styles.socialText, { color: colors.text3 }]}>
-              Peter, Aaron &amp; Jane are already on Afterstay.
+          </StaggeredItem>
+
+          {/* Legal */}
+          <StaggeredItem index={7}>
+            <Text style={[styles.legal, { color: colors.text3 }]}>
+              By continuing you agree to our{' '}
+              <Text style={[styles.legalLink, { color: colors.accent, textDecorationColor: colors.accentBorder }]}>Terms</Text>
+              {' '}&amp;{' '}
+              <Text style={[styles.legalLink, { color: colors.accent, textDecorationColor: colors.accentBorder }]}>Privacy</Text>.
             </Text>
-          </View>
-
-          <Text style={[styles.legal, { color: colors.text3 }]}>
-            By continuing you agree to our Terms &amp; Privacy.
-          </Text>
+          </StaggeredItem>
         </View>
       </>
     );
   }
 
-  function EmailPanel() {
+  function EmailPanelView() {
     return (
-      <View style={styles.panelBody}>
-        <View style={styles.headingBlock}>
-          <Text style={themed.subHeading}>Sign in with email</Text>
-          <Text style={themed.subText}>
-            Enter your email and password, or use a magic link.
-          </Text>
-        </View>
+      <>
+        <ConstellationHero />
 
-        <View style={styles.fieldGroup}>
-          <TextInput
-            style={themed.input}
-            placeholder="you@example.com"
-            placeholderTextColor={colors.text3}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-            autoFocus
-          />
-
-          <TextInput
-            style={themed.input}
-            placeholder="Password"
-            placeholderTextColor={colors.text3}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="password"
-          />
-
-          {error ? <Text style={themed.errorText}>{error}</Text> : null}
-
-          <TouchableOpacity
-            style={[themed.primaryButton, (!isEmailValid || !password) && styles.disabledButton]}
-            onPress={handleSignInWithPassword}
-            disabled={!isEmailValid || !password || loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.onBlack} size="small" />
-            ) : (
-              <Text style={themed.primaryButtonText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1.8, color: colors.text3 }}>OR</Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+        <View style={styles.body}>
+          {/* Heading */}
+          <View style={styles.headingBlock}>
+            <Text style={[styles.subHeading, { color: colors.text }]}>Sign in with email</Text>
+            <Text style={[styles.subText, { color: colors.text2 }]}>
+              We'll send a secure link — no password to remember.
+            </Text>
           </View>
 
-          <TouchableOpacity
-            style={[themed.ghostButton, !isEmailValid && styles.disabledButton]}
-            onPress={handleSendMagicLink}
-            disabled={!isEmailValid || loading}
-            activeOpacity={0.8}
-          >
-            <Text style={themed.ghostButtonText}>Send magic link instead</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          style={themed.backLink}
-          onPress={() => resetToPanel('root')}
-        >
-          <Text style={themed.backLinkText}>{'\u2190'} Back to sign-in options</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  function PhonePanel() {
-    return (
-      <View style={styles.panelBody}>
-        <View style={styles.headingBlock}>
-          <Text style={themed.subHeading}>Sign in with phone</Text>
-          <Text style={themed.subText}>
-            Get a one-time code to verify your number.
-          </Text>
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <View style={styles.phoneRow}>
-            <View style={[styles.countryPicker, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {COUNTRY_OPTIONS.map((opt) => (
-                  <TouchableOpacity
-                    key={opt.code}
-                    onPress={() => setCountryCode(opt.code)}
-                    style={[
-                      styles.countryChip,
-                      countryCode === opt.code && { backgroundColor: colors.accentDim },
-                    ]}
-                  >
-                    <Text style={[styles.countryChipText, { color: colors.text }]}>
-                      {opt.flag} {opt.code}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+          {/* Fields */}
+          <View style={styles.fieldGroup}>
+            <View>
+              <FieldLabel colors={colors}>Email</FieldLabel>
+              <StyledInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                autoFocus
+                colors={colors}
+              />
             </View>
+
+            <View>
+              <FieldLabel colors={colors}>Password</FieldLabel>
+              <StyledInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Password"
+                secureTextEntry
+                autoComplete="password"
+                colors={colors}
+              />
+            </View>
+
+            {error ? (
+              <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+            ) : null}
+
+            {/* Sign In (password) */}
+            <PrimaryButton
+              onPress={handleSignInWithPassword}
+              disabled={!isEmailValid || !password || loading}
+              colors={colors}
+            >
+              {loading ? (
+                <ActivityIndicator color={colors.onBlack} size="small" />
+              ) : (
+                <>
+                  <Text style={[primaryStyles.text, { color: !isEmailValid || !password ? colors.text3 : colors.onBlack }]}>
+                    Sign In
+                  </Text>
+                  <ArrowIcon />
+                </>
+              )}
+            </PrimaryButton>
+
+            {/* OR divider */}
+            <DividerOr colors={colors} />
+
+            {/* Send magic link */}
+            <TouchableOpacity
+              onPress={handleSendMagicLink}
+              disabled={!isEmailValid || loading}
+              activeOpacity={0.8}
+              style={[
+                styles.ghostButton,
+                {
+                  borderColor: colors.accentBorder,
+                  opacity: !isEmailValid ? 0.5 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.ghostButtonText, { color: colors.accent }]}>
+                Send magic link instead
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <TextInput
-            style={themed.input}
-            placeholder="Phone number"
-            placeholderTextColor={colors.text3}
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            autoComplete="tel"
-          />
-
+          {/* Back link */}
           <TouchableOpacity
-            style={themed.primaryButton}
-            onPress={handlePhoneSend}
-            activeOpacity={0.8}
+            onPress={() => resetToPanel('root')}
+            style={styles.backLink}
           >
-            <Text style={themed.primaryButtonText}>Send verification code</Text>
+            <Text style={[styles.backLinkText, { color: colors.text3 }]}>
+              {'\u2190'} Back to sign-in options
+            </Text>
           </TouchableOpacity>
-
-          <Text style={[styles.metaText, { color: colors.text3 }]}>
-            We&apos;ll text you a 6-digit code. Standard message rates may apply.
-          </Text>
         </View>
-
-        <TouchableOpacity
-          style={themed.backLink}
-          onPress={() => resetToPanel('root')}
-        >
-          <Text style={themed.backLinkText}>{'\u2190'} Back</Text>
-        </TouchableOpacity>
-      </View>
+      </>
     );
   }
 
-  function SentPanel() {
+  function PhonePanelView() {
+    const phoneDigits = phone.replace(/\D/g, '');
+    const isPhoneValid = phoneDigits.length >= 7;
+
+    return (
+      <>
+        <ConstellationHero />
+
+        <View style={styles.body}>
+          {/* Heading */}
+          <View style={styles.headingBlock}>
+            <Text style={[styles.subHeading, { color: colors.text }]}>Sign in with phone</Text>
+            <Text style={[styles.subText, { color: colors.text2 }]}>
+              Get a one-time code to verify your number.
+            </Text>
+          </View>
+
+          {/* Fields */}
+          <View style={styles.fieldGroup}>
+            <View>
+              <FieldLabel colors={colors}>Mobile number</FieldLabel>
+              <View style={styles.phoneRow}>
+                {/* Country code chips */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={[
+                    styles.countryPicker,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  {COUNTRY_OPTIONS.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.code}
+                      onPress={() => setCountryCode(opt.code)}
+                      style={[
+                        styles.countryChip,
+                        countryCode === opt.code && {
+                          backgroundColor: colors.accentBg,
+                          borderColor: colors.accentBorder,
+                          borderWidth: 1,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.countryChipText, { color: colors.text, fontWeight: countryCode === opt.code ? '600' : '400' }]}>
+                        {opt.flag} {opt.code}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                {/* Phone input with prefix */}
+                <StyledInput
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="917 555 0123"
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  autoFocus
+                  prefix={countryCode}
+                  colors={colors}
+                />
+              </View>
+              <Text style={[styles.metaText, { color: colors.text3 }]}>
+                We'll text you a 6-digit code. Standard message rates may apply.
+              </Text>
+            </View>
+
+            {/* Send code */}
+            <PrimaryButton
+              onPress={handlePhoneSend}
+              disabled={!isPhoneValid}
+              colors={colors}
+            >
+              <Text style={[primaryStyles.text, { color: !isPhoneValid ? colors.text3 : colors.onBlack }]}>
+                Send verification code
+              </Text>
+              <ArrowIcon />
+            </PrimaryButton>
+          </View>
+
+          {/* Back link */}
+          <TouchableOpacity
+            onPress={() => resetToPanel('root')}
+            style={styles.backLink}
+          >
+            <Text style={[styles.backLinkText, { color: colors.text3 }]}>
+              {'\u2190'} Back to sign-in options
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }
+
+  function SentPanelView() {
     const isEmail = sentTarget.kind === 'email';
 
     return (
-      <View style={styles.sentBody}>
-        <SuccessIcon kind={sentTarget.kind} accentColor={colors.accent} />
+      <>
+        <ConstellationHero />
 
-        <View style={styles.sentTextBlock}>
-          <Text style={themed.subHeading}>
-            {isEmail ? 'Check your inbox' : 'Check your messages'}
-          </Text>
-          <Text style={themed.subText}>
-            We sent a magic link to{' '}
-            <Text style={{ color: colors.accent, fontWeight: '700' }}>
-              {sentTarget.target}
-            </Text>
-          </Text>
+        <View style={[styles.body, { alignItems: 'center' }]}>
+          <View style={styles.sentContent}>
+            {/* Success icon */}
+            <SuccessIcon kind={sentTarget.kind} colors={colors} />
+
+            {/* Text block */}
+            <View style={styles.sentTextBlock}>
+              <Text style={[styles.sentHeading, { color: colors.text }]}>
+                {isEmail ? 'Check your inbox' : 'Check your messages'}
+              </Text>
+              <Text style={[styles.sentSubtext, { color: colors.text2 }]}>
+                We sent a {isEmail ? 'magic link' : '6-digit code'} to{'\n'}
+                <Text style={{ color: colors.text, fontWeight: '600' }}>{sentTarget.target}</Text>
+              </Text>
+            </View>
+
+            {/* Continue button */}
+            <View style={{ width: '100%', marginTop: 4 }}>
+              <PrimaryButton
+                onPress={() => {
+                  if (session) {
+                    router.replace('/(tabs)/home' as never);
+                  }
+                }}
+                disabled={!session}
+                colors={colors}
+              >
+                <Text style={[primaryStyles.text, { color: !session ? colors.text3 : colors.onBlack }]}>
+                  Continue to Afterstay
+                </Text>
+              </PrimaryButton>
+            </View>
+
+            {/* Back link */}
+            <TouchableOpacity
+              onPress={() => resetToPanel(isEmail ? 'email' : 'phone')}
+              style={styles.sentBackLink}
+            >
+              <Text style={[styles.sentBackLinkText, { color: colors.text3 }]}>
+                Use a different {isEmail ? 'email' : 'number'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-
-        <Text style={{ color: colors.text3, fontSize: 12, textAlign: 'center', marginBottom: spacing.sm }}>
-          Click the link in your email, then you'll be signed in automatically.
-        </Text>
-
-        <TouchableOpacity
-          style={themed.primaryButton}
-          onPress={() => {
-            // Only navigate if session exists (user clicked magic link)
-            if (session) {
-              router.replace('/(tabs)/home' as never);
-            }
-          }}
-          activeOpacity={0.8}
-          disabled={!session}
-        >
-          <Text style={[themed.primaryButtonText, !session && { opacity: 0.5 }]}>
-            {session ? 'Continue to Afterstay' : 'Waiting for magic link…'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={themed.backLink}
-          onPress={() => resetToPanel(isEmail ? 'email' : 'phone')}
-        >
-          <Text style={themed.backLinkText}>
-            Use a different {isEmail ? 'email' : 'phone number'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      </>
     );
   }
 }
@@ -599,148 +891,149 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   body: {
-    paddingHorizontal: spacing.xxl,
-    paddingTop: spacing.xxl,
-    paddingBottom: spacing.xl,
-    gap: spacing.xxl,
-  },
-  panelBody: {
-    flex: 1,
-    paddingHorizontal: spacing.xxl,
-    paddingTop: 60,
-    gap: spacing.xxl,
-  },
-  sentBody: {
-    flex: 1,
-    paddingHorizontal: spacing.xxl,
-    paddingTop: 100,
-    alignItems: 'center',
-    gap: spacing.xxl,
-  },
-  sentTextBlock: {
-    alignItems: 'center',
-    gap: spacing.sm,
+    paddingTop: 26,
+    paddingHorizontal: 22,
+    paddingBottom: 28,
   },
   headingBlock: {
-    gap: spacing.sm,
+    marginBottom: 20,
+  },
+  heading: {
+    fontSize: 26,
+    lineHeight: 26 * 1.1,
+    letterSpacing: -0.03 * 26,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 13.5,
+    lineHeight: 13.5 * 1.5,
+    maxWidth: 310,
+  },
+  subHeading: {
+    fontSize: 24,
+    lineHeight: 24 * 1.1,
+    letterSpacing: -0.03 * 24,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  subText: {
+    fontSize: 13,
+    lineHeight: 13 * 1.45,
   },
   buttonGroup: {
-    gap: spacing.md,
+    gap: 10,
   },
   fieldGroup: {
-    gap: spacing.md,
+    gap: 14,
   },
-  appleButton: {
-    flexDirection: 'row',
+  ghostButton: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: '#000',
-    paddingVertical: 15,
-    borderRadius: radius.md,
-  },
-  appleButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: '#fff',
-    paddingVertical: 15,
-    borderRadius: radius.md,
+    paddingVertical: 14,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    backgroundColor: 'transparent',
   },
-  googleButtonText: {
-    fontSize: 15,
+  ghostButtonText: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#333',
   },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.xs,
+  backLink: {
+    alignSelf: 'center',
+    padding: 8,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
+  backLinkText: {
     fontSize: 12,
     fontWeight: '600',
-    letterSpacing: 1,
   },
-  optionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: 15,
-    borderRadius: radius.md,
-  },
-  optionButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+  errorText: {
+    fontSize: 13,
+    textAlign: 'center',
   },
   socialProof: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: 10,
+    marginTop: 22,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 12,
   },
   avatarRow: {
     flexDirection: 'row',
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: 'rgba(0,0,0,0.1)',
+    width: 22,
+    height: 22,
+    borderRadius: 999,
   },
   socialText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 11.5,
+    lineHeight: 11.5 * 1.4,
     flex: 1,
   },
   legal: {
-    fontSize: 11,
+    marginTop: 18,
+    fontSize: 10.5,
     textAlign: 'center',
-    lineHeight: 16,
+    lineHeight: 10.5 * 1.55,
+    letterSpacing: 0.01 * 10.5,
   },
-  disabledButton: {
-    opacity: 0.5,
+  legalLink: {
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   phoneRow: {
-    gap: spacing.sm,
+    gap: 8,
   },
   countryPicker: {
-    borderRadius: radius.sm,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    flexDirection: 'row',
   },
   countryChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.xs,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
   countryChipText: {
     fontSize: 14,
   },
   metaText: {
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11,
+    lineHeight: 11 * 1.5,
+    marginTop: 8,
   },
-  successCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  sentContent: {
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 16,
+    paddingTop: 6,
+  },
+  sentTextBlock: {
+    alignItems: 'center',
+  },
+  sentHeading: {
+    fontSize: 22,
+    letterSpacing: -0.02 * 22,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  sentSubtext: {
+    fontSize: 13,
+    lineHeight: 13 * 1.5,
+    textAlign: 'center',
+    maxWidth: 280,
+  },
+  sentBackLink: {
+    padding: 4,
+  },
+  sentBackLinkText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
