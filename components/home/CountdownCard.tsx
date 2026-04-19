@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { spacing } from '@/constants/theme';
 
 interface Props {
   tripStartISO: string;
@@ -17,6 +18,8 @@ export const CountdownCard: React.FC<Props> = ({
   totalDays,
   dateLabel,
 }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [now, setNow] = useState(Date.now());
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -101,7 +104,7 @@ export const CountdownCard: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.bg2,
     borderRadius: 16,

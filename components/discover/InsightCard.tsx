@@ -8,11 +8,13 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTripInsight } from '../../hooks/useTripInsight';
 import { NewsItem } from '../../lib/tripInsights';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
 export const InsightCard: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const { insight, loading, error, refresh } = useTripInsight();
   const [expanded, setExpanded] = useState(false);
 
@@ -145,32 +147,37 @@ export const InsightCard: React.FC = () => {
   );
 };
 
-const NewsItemCard: React.FC<{ item: NewsItem }> = ({ item }) => (
-  <TouchableOpacity
-    onPress={() => {
-      if (item.sourceUrl) {
-        Haptics.selectionAsync();
-        Linking.openURL(item.sourceUrl);
-      }
-    }}
-    style={styles.newsCard}
-    activeOpacity={item.sourceUrl ? 0.8 : 1}
-  >
-    <View style={styles.dateChip}>
-      <Text style={styles.dateChipText}>{item.date}</Text>
-    </View>
-    <Text style={styles.newsTitle}>{item.title}</Text>
-    <Text style={styles.newsSummary}>{item.summary}</Text>
-    {item.sourceUrl && (
-      <View style={styles.sourceRow}>
-        <ExternalLink color={colors.text2} size={12} />
-        <Text style={styles.sourceText}>
-          {item.sourceName || 'Read source'}
-        </Text>
+const NewsItemCard: React.FC<{ item: NewsItem }> = ({ item }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        if (item.sourceUrl) {
+          Haptics.selectionAsync();
+          Linking.openURL(item.sourceUrl);
+        }
+      }}
+      style={styles.newsCard}
+      activeOpacity={item.sourceUrl ? 0.8 : 1}
+    >
+      <View style={styles.dateChip}>
+        <Text style={styles.dateChipText}>{item.date}</Text>
       </View>
-    )}
-  </TouchableOpacity>
-);
+      <Text style={styles.newsTitle}>{item.title}</Text>
+      <Text style={styles.newsSummary}>{item.summary}</Text>
+      {item.sourceUrl && (
+        <View style={styles.sourceRow}>
+          <ExternalLink color={colors.text2} size={12} />
+          <Text style={styles.sourceText}>
+            {item.sourceName || 'Read source'}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+};
 
 const timeAgo = (iso: string): string => {
   const diff = Date.now() - new Date(iso).getTime();
@@ -182,7 +189,7 @@ const timeAgo = (iso: string): string => {
   return `${days} day${days > 1 ? 's' : ''} ago`;
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   cardWrap: { marginHorizontal: 16, marginVertical: 10 },
   card: {
     borderRadius: 16,

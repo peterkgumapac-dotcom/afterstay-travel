@@ -15,12 +15,15 @@ import {
 } from 'react-native';
 
 import AfterStayLoader from '@/components/AfterStayLoader';
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import { scanReceipt } from '@/lib/anthropic';
 
 type Phase = 'picking' | 'scanning' | 'error';
 
 export default function ScanReceiptScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('picking');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -177,7 +180,7 @@ export default function ScanReceiptScreen() {
   return <View style={styles.container} />;
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,

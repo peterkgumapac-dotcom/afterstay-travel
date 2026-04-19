@@ -6,11 +6,13 @@ import {
   ArrowLeft, Plane, Hotel, MapPin, Users, Wallet, Calendar,
 } from 'lucide-react-native';
 import { FLIGHTS } from '../lib/flightData';
-import { getActiveTrip, getExpenses, getGroupMembers } from '../lib/notion';
+import { getActiveTrip, getExpenses, getGroupMembers } from '../lib/supabase';
 import type { Expense, GroupMember, Trip } from '../lib/types';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 export default function TripSummary() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [tripSpent, setTripSpent] = useState(0);
   const [total, setTotal] = useState(0);
@@ -182,7 +184,7 @@ export default function TripSummary() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

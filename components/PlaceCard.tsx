@@ -2,7 +2,8 @@ import * as Haptics from 'expo-haptics';
 import { Bookmark, ExternalLink, MapPin, ThumbsDown, ThumbsUp } from 'lucide-react-native';
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { Place, PlaceVote } from '@/lib/types';
 import Pill from './Pill';
 
@@ -18,6 +19,9 @@ interface Props {
 }
 
 export default function PlaceCard({ place, onVote, onSave, saved, busy, photoUri, googleMapsUri, totalRatings }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   const cast = async (vote: PlaceVote) => {
     if (busy) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -79,18 +83,20 @@ export default function PlaceCard({ place, onVote, onSave, saved, busy, photoUri
 
       <View style={styles.voteRow}>
         <VoteButton
-          active={place.vote === '👍 Yes'}
+          active={place.vote === '\uD83D\uDC4D Yes'}
           Icon={ThumbsUp}
           color={colors.green2}
-          onPress={() => cast('👍 Yes')}
+          onPress={() => cast('\uD83D\uDC4D Yes')}
           label="Yes"
+          colors={colors}
         />
         <VoteButton
-          active={place.vote === '👎 No'}
+          active={place.vote === '\uD83D\uDC4E No'}
           Icon={ThumbsDown}
           color={colors.red}
-          onPress={() => cast('👎 No')}
+          onPress={() => cast('\uD83D\uDC4E No')}
           label="No"
+          colors={colors}
         />
         {onSave ? (
           <Pressable
@@ -132,13 +138,16 @@ function VoteButton({
   color,
   onPress,
   label,
+  colors,
 }: {
   active: boolean;
   Icon: typeof ThumbsUp;
   color: string;
   onPress: () => void;
   label: string;
+  colors: any;
 }) {
+  const styles = getStyles(colors);
   return (
     <Pressable
       onPress={onPress}
@@ -154,7 +163,7 @@ function VoteButton({
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,

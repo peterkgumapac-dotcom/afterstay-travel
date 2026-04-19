@@ -37,6 +37,17 @@ export interface Trip {
   hotelPhotos?: string; // JSON string of URL array
   budgetLimit?: number;
   budgetMode?: 'Limited' | 'Unlimited';
+  // Lifetime / past-trip fields
+  userId?: string;
+  isPastImport?: boolean;
+  confidenceLevel?: 'real' | 'user_added';
+  datePrecision?: 'exact' | 'month_year';
+  country?: string;
+  countryCode?: string;
+  latitude?: number;
+  longitude?: number;
+  totalSpent?: number;
+  totalNights?: number;
 }
 
 export type TripFileType = 'Boarding Pass' | 'Hotel Confirmation' | 'Itinerary' | 'Insurance' | 'ID/Passport' | 'Receipt' | 'Other';
@@ -167,4 +178,32 @@ export interface AIRecommendation {
   price_estimate: string;
   reason: string;
   rating: number;
+}
+
+// ---------- LIFETIME / PAST TRIPS ----------
+
+export interface LifetimeStats {
+  totalTrips: number;
+  totalCountries: number;
+  totalNights: number;
+  totalMiles: number;
+  totalSpent: number;
+  homeCurrency: string;
+  totalMoments: number;
+  countriesList: string[];
+  earliestTripDate?: string;
+}
+
+export type HighlightType =
+  | 'countries_visited' | 'miles_traveled' | 'beach_streak'
+  | 'total_moments' | 'longest_trip' | 'most_visited'
+  | 'favorite_companion' | 'first_solo' | 'first_trip'
+  | 'new_territory' | 'start_of_something';
+
+export interface Highlight {
+  id: string;
+  type: HighlightType;
+  displayText: string;
+  supportingData?: Record<string, unknown>;
+  rank: number;
 }

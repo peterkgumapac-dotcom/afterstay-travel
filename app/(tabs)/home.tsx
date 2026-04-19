@@ -18,7 +18,8 @@ import { NearbySection } from '@/components/home/NearbySection';
 import ProfileRow from '@/components/home/ProfileRow';
 import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import { FLIGHTS } from '@/lib/flightData';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
@@ -29,7 +30,7 @@ import {
   getMoments,
   getPackingList,
   getTripFiles,
-} from '@/lib/notion';
+} from '@/lib/supabase';
 import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
 import { formatDatePHT } from '@/lib/utils';
 
@@ -42,6 +43,8 @@ const FALLBACK_PHOTOS = [
 ];
 
 export default function HomeScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [moments, setMoments] = useState<Moment[]>([]);
@@ -219,25 +222,26 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  fullCenter: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  loadingText: { color: colors.text2, fontSize: 13 },
-  errorTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
-  errorText: { color: colors.text2, fontSize: 13, textAlign: 'center' },
-  retry: {
-    marginTop: spacing.md,
-    backgroundColor: colors.accent,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: radius.md,
-  },
-  retryText: { color: colors.white, fontWeight: '700' },
-});
+const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    fullCenter: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: spacing.md,
+      padding: spacing.lg,
+    },
+    loadingText: { color: colors.text2, fontSize: 13 },
+    errorTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
+    errorText: { color: colors.text2, fontSize: 13, textAlign: 'center' },
+    retry: {
+      marginTop: spacing.md,
+      backgroundColor: colors.accent,
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: radius.md,
+    },
+    retryText: { color: colors.white, fontWeight: '700' },
+  });

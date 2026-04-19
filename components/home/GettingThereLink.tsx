@@ -2,11 +2,13 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 import { FLIGHTS } from '../../lib/flightData';
 
 export const GettingThereLink = () => {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   return (
     <View style={styles.row}>
@@ -39,7 +41,7 @@ export const GettingThereLink = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 10,

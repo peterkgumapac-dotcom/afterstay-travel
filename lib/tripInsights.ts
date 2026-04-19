@@ -1,4 +1,5 @@
-import { CONFIG } from './config';
+// Notion-specific trip insights module — disabled during Supabase migration.
+// All functions return empty/default values to prevent crashes.
 
 export interface NewsItem {
   date: string;         // "Apr 14, 2026" format
@@ -15,6 +16,11 @@ export interface TripInsight {
   fetchedAt: string;         // ISO timestamp
   expiresAt: string;         // ISO, 24hr later
 }
+
+/*
+// --- Notion-specific code disabled during Supabase migration ---
+
+import { CONFIG } from './config';
 
 // Check Notion cache first
 const fetchCachedInsight = async (): Promise<TripInsight | null> => {
@@ -216,17 +222,15 @@ const saveInsightToCache = async (insight: TripInsight): Promise<void> => {
   }
 };
 
-// Main public API
-export const getTripInsight = async (forceRefresh = false): Promise<TripInsight> => {
-  if (!forceRefresh) {
-    const cached = await fetchCachedInsight();
-    if (cached) {
-      console.log('[Insights] Using cached');
-      return cached;
-    }
-  }
+// --- End of commented-out Notion code ---
+*/
 
-  const fresh = await generateFreshInsight();
-  await saveInsightToCache(fresh);
-  return fresh;
+// Stub: returns empty defaults until Supabase-backed implementation is added
+export const getTripInsight = async (_forceRefresh = false): Promise<TripInsight> => {
+  return {
+    summary: '',
+    newsItems: [],
+    fetchedAt: new Date().toISOString(),
+    expiresAt: new Date().toISOString(),
+  };
 };

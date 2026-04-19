@@ -1,6 +1,7 @@
 import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { Moment } from '@/lib/types';
 
 interface Props {
@@ -13,6 +14,9 @@ const MAX_DISPLAY = 8;
 const THUMB_SIZE = 80;
 
 export default function MomentStrip({ moments, onSeeAll, onDelete }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   if (moments.length === 0) {
     return (
       <View style={styles.empty}>
@@ -79,7 +83,7 @@ export default function MomentStrip({ moments, onSeeAll, onDelete }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   wrapper: {
     gap: spacing.sm,
   },

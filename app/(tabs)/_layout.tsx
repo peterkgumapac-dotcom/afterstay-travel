@@ -6,7 +6,7 @@ import { Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
 
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 const TAB_ICONS = {
   home: Home,
@@ -25,6 +25,7 @@ const TAB_LABELS: Record<string, string> = {
 };
 
 function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarProps) {
+  const { colors } = useTheme();
   const bottomOffset = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 16;
 
   const visibleRoutes = state.routes.filter(
@@ -129,6 +130,7 @@ function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarP
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   return (
     <Tabs

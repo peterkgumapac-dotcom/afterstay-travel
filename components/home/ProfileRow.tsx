@@ -2,7 +2,8 @@ import { useRouter } from 'expo-router';
 import { Bell, Compass } from 'lucide-react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { spacing } from '@/constants/theme';
 
 interface Props {
   userName: string;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export default function ProfileRow({ userName, avatarUrl }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const firstName = userName.split(' ')[0];
   const initial = firstName.charAt(0).toUpperCase();
@@ -50,7 +53,7 @@ export default function ProfileRow({ userName, avatarUrl }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -1,7 +1,8 @@
 import { Plane } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { Flight, Trip } from '@/lib/types';
 import { formatTimePHT, hoursUntil, safeParse } from '@/lib/utils';
 
@@ -30,6 +31,9 @@ function parseMinutes(raw: string | undefined): number | null {
 
 // Visible only in the last 48 hours before return flight.
 export default function DepartureNudge({ trip, returnFlight }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   if (!returnFlight) return null;
   const hrs = hoursUntil(returnFlight.departTime);
   if (hrs < 0 || hrs > 48) return null;
@@ -47,7 +51,7 @@ export default function DepartureNudge({ trip, returnFlight }: Props) {
 
   return (
     <View style={styles.card}>
-      <View style={styles.row}>
+      <View style={staticStyles.row}>
         <Plane size={18} color={colors.amber} />
         <Text style={styles.title}>Departure approaching</Text>
       </View>
@@ -67,7 +71,7 @@ export default function DepartureNudge({ trip, returnFlight }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.amber + '14',
     borderWidth: 1,
@@ -76,7 +80,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: 6,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   title: { color: colors.amber, fontWeight: '700', fontSize: 14 },
   body: { color: colors.text, fontSize: 13, lineHeight: 18 },
   bold: { fontWeight: '700', color: colors.white },
@@ -89,4 +92,8 @@ const styles = StyleSheet.create({
   leaveByLabel: { color: colors.amber, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   leaveByValue: { color: colors.white, fontSize: 28, fontWeight: '800', marginTop: 2 },
   leaveBySub: { color: colors.text2, fontSize: 12, marginTop: 2 },
+});
+
+const staticStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });

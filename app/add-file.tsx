@@ -19,8 +19,9 @@ import {
 
 import FormField from '@/components/FormField';
 import Select from '@/components/Select';
-import { colors, radius, spacing } from '@/constants/theme';
-import { addTripFile } from '@/lib/notion';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
+import { addTripFile } from '@/lib/supabase';
 import type { TripFileType } from '@/lib/types';
 
 const FILES_DIR = (documentDirectory ?? '') + 'trip-files/';
@@ -36,6 +37,8 @@ const FILE_TYPES: TripFileType[] = [
 ];
 
 export default function AddFileScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [fileName, setFileName] = useState('');
   const [fileType, setFileType] = useState<TripFileType>('Other');
@@ -207,7 +210,7 @@ export default function AddFileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
   sectionLabel: {

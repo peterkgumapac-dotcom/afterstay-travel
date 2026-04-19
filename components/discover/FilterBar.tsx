@@ -3,15 +3,19 @@ import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'reac
 import { ArrowUpDown, Clock, Star, SlidersHorizontal, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Filters, countActiveFilters } from '../../lib/filters';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 interface Props {
   filters: Filters;
   onUpdate: (next: Partial<Filters>) => void;
   onOpenMore: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) => {
+export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore, collapsed, onToggleCollapse }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const activeCount = countActiveFilters(filters);
 
@@ -19,6 +23,22 @@ export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) =>
     Haptics.selectionAsync();
     action();
   };
+
+  if (collapsed) {
+    return (
+      <View style={styles.bar}>
+        <TouchableOpacity
+          style={[styles.chip, activeCount > 0 && styles.chipActive]}
+          onPress={() => { Haptics.selectionAsync(); onToggleCollapse?.(); }}
+        >
+          <SlidersHorizontal color={activeCount > 0 ? colors.accent : colors.text2} size={13} strokeWidth={2} />
+          <Text style={activeCount > 0 ? styles.chipTextActive : styles.chipText}>
+            Filters{activeCount > 0 ? ` (${activeCount})` : ''}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <>
@@ -86,6 +106,16 @@ export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) =>
             </View>
           )}
         </TouchableOpacity>
+
+        {/* Collapse toggle */}
+        {onToggleCollapse && (
+          <TouchableOpacity
+            style={styles.chip}
+            onPress={() => tapChip(() => onToggleCollapse())}
+          >
+            <Text style={styles.chipText}>Hide</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Sort menu */}
@@ -126,7 +156,7 @@ export const FilterBar: React.FC<Props> = ({ filters, onUpdate, onOpenMore }) =>
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     paddingHorizontal: 16,

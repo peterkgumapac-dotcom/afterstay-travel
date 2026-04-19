@@ -1,12 +1,15 @@
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 
 interface Props extends TextInputProps {
   label: string;
 }
 
 export default function FormField({ label, style, ...rest }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   return (
     <View>
       <Text style={styles.label}>{label}</Text>
@@ -19,7 +22,7 @@ export default function FormField({ label, style, ...rest }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   label: {
     color: colors.text3,
     fontSize: 11,

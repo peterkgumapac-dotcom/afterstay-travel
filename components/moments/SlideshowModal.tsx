@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { CONFIG } from '../../lib/config';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const AUTO_ADVANCE_MS = 4000;
@@ -29,6 +29,8 @@ interface Props {
 export const SlideshowModal: React.FC<Props> = ({
   visible, moments, startIndex, onClose, onRefresh,
 }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [index, setIndex] = useState(startIndex);
   const [autoPlay, setAutoPlay] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
@@ -195,7 +197,7 @@ export const SlideshowModal: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   imageWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   image: { width: SCREEN_W, height: SCREEN_H * 0.7 },

@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 
 interface Props<T extends string> {
   label?: string;
@@ -10,6 +11,9 @@ interface Props<T extends string> {
 }
 
 export default function Select<T extends string>({ label, options, value, onChange }: Props<T>) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   return (
     <View>
       {label ? <Text style={styles.label}>{label}</Text> : null}
@@ -35,7 +39,7 @@ export default function Select<T extends string>({ label, options, value, onChan
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   label: {
     color: colors.text3,
     fontSize: 11,

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Sun, Cloud, CloudRain, CloudSun, CloudSnow, CloudFog, CloudLightning, Droplets } from 'lucide-react-native';
 
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 import { CONFIG } from '../../lib/config';
 
 interface HourData {
@@ -83,6 +83,8 @@ const dayLabelFor = (dateStr: string, index: number): string => {
 };
 
 export const WeatherForecastCard = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [days, setDays] = useState<DayForecast[]>([]);
   const [current, setCurrent] = useState<CurrentWeather | null>(null);
   const [loading, setLoading] = useState(true);
@@ -213,7 +215,7 @@ export const WeatherForecastCard = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.bg2,
     borderRadius: 16,

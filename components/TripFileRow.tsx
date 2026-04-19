@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { TripFile, TripFileType } from '@/lib/types';
 import Pill from './Pill';
 import { FilePreviewSheet } from './shared/FilePreviewSheet';
 
 const TYPE_EMOJI: Record<TripFileType, string> = {
   'Boarding Pass': '\uD83C\uDFAB',
-  'Hotel Confirmation': '🏨',
-  Itinerary: '📋',
-  Insurance: '🛡️',
-  'ID/Passport': '🪪',
-  Receipt: '🧾',
-  Other: '📄',
+  'Hotel Confirmation': '\uD83C\uDFE8',
+  Itinerary: '\uD83D\uDCCB',
+  Insurance: '\uD83D\uDEE1\uFE0F',
+  'ID/Passport': '\uD83E\uDEAA',
+  Receipt: '\uD83E\uDDFE',
+  Other: '\uD83D\uDCC4',
 };
 
 const TYPE_TONE: Record<TripFileType, 'blue' | 'amber' | 'green' | 'purple' | 'red' | 'default'> = {
@@ -31,8 +32,10 @@ interface Props {
 }
 
 export default function TripFileRow({ file }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const emoji = TYPE_EMOJI[file.type] ?? '📄';
+  const emoji = TYPE_EMOJI[file.type] ?? '\uD83D\uDCC4';
   const tone = TYPE_TONE[file.type] ?? 'default';
 
   const handlePress = () => {
@@ -68,7 +71,7 @@ export default function TripFileRow({ file }: Props) {
 
         <View style={styles.trailing}>
           <Pill label={file.type} tone={tone} />
-          {file.printRequired && <Text style={styles.printBadge}>🖨️</Text>}
+          {file.printRequired && <Text style={styles.printBadge}>{'\uD83D\uDDA8\uFE0F'}</Text>}
         </View>
       </Pressable>
 
@@ -85,7 +88,7 @@ export default function TripFileRow({ file }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',

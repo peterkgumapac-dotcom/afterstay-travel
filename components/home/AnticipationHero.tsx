@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const HERO_H = 320;
@@ -26,6 +26,8 @@ export const AnticipationHero: React.FC<Props> = ({
   roomInfo,
   bookingRef,
 }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextIndex, setNextIndex] = useState(1);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -121,7 +123,7 @@ export const AnticipationHero: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     width: SCREEN_W - 32,
     height: HERO_H,

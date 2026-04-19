@@ -3,11 +3,13 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Wallet, TrendingUp, AlertTriangle } from 'lucide-react-native';
 import { getBudgetStatus } from '../../lib/budgetAlerts';
-import { getActiveTrip, getExpenses } from '../../lib/notion';
-import { colors } from '@/constants/theme';
+import { getActiveTrip, getExpenses } from '../../lib/supabase';
+import { useTheme } from '@/constants/ThemeContext';
 import type { Expense, Trip } from '../../lib/types';
 
 export const BudgetAlertStrip: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [tripSpent, setTripSpent] = useState(0);
   const [total, setTotal] = useState(0);
@@ -93,7 +95,7 @@ export const BudgetAlertStrip: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

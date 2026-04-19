@@ -11,11 +11,7 @@ import Animated, {
   interpolate,
   type SharedValue,
 } from 'react-native-reanimated';
-import { colors } from '@/constants/theme';
-
-const BRAND_COLOR = colors.green;
-const PULSE_COLOR = colors.green2;
-const LOGO_BG = colors.bg2;
+import { useTheme } from '@/constants/ThemeContext';
 
 const LOADING_MESSAGES = [
   'Finding the best spots for you...',
@@ -36,7 +32,7 @@ interface AfterStayLoaderProps {
   readonly message?: string;
 }
 
-function PulseRing({ index }: { readonly index: number }) {
+function PulseRing({ index, pulseColor }: { readonly index: number; readonly pulseColor: string }) {
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -62,7 +58,8 @@ function PulseRing({ index }: { readonly index: number }) {
   return (
     <Animated.View
       style={[
-        styles.pulseRing,
+        staticStyles.pulseRing,
+        { borderColor: pulseColor },
         animatedStyle,
       ]}
     />
@@ -95,13 +92,14 @@ function OrbitingEmoji({
   });
 
   return (
-    <Animated.View style={[styles.emojiContainer, animatedStyle]}>
-      <Text style={styles.emoji}>{emoji}</Text>
+    <Animated.View style={[staticStyles.emojiContainer, animatedStyle]}>
+      <Text style={staticStyles.emoji}>{emoji}</Text>
     </Animated.View>
   );
 }
 
 function AnimatedDots() {
+  const { colors } = useTheme();
   const dot1 = useSharedValue(0);
   const dot2 = useSharedValue(0);
   const dot3 = useSharedValue(0);
@@ -136,15 +134,17 @@ function AnimatedDots() {
   }));
 
   return (
-    <View style={styles.dotsRow}>
-      <Animated.View style={[styles.dot, style1]} />
-      <Animated.View style={[styles.dot, style2]} />
-      <Animated.View style={[styles.dot, style3]} />
+    <View style={staticStyles.dotsRow}>
+      <Animated.View style={[staticStyles.dot, { backgroundColor: colors.green }, style1]} />
+      <Animated.View style={[staticStyles.dot, { backgroundColor: colors.green }, style2]} />
+      <Animated.View style={[staticStyles.dot, { backgroundColor: colors.green }, style3]} />
     </View>
   );
 }
 
 export default function AfterStayLoader({ message }: AfterStayLoaderProps) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [messageIndex, setMessageIndex] = useState(0);
 
   const logoScale = useSharedValue(1);
@@ -183,9 +183,9 @@ export default function AfterStayLoader({ message }: AfterStayLoaderProps) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.orbitArea}>
+      <View style={staticStyles.orbitArea}>
         {Array.from({ length: RING_COUNT }).map((_, i) => (
-          <PulseRing key={`ring-${i}`} index={i} />
+          <PulseRing key={`ring-${i}`} index={i} pulseColor={colors.green2} />
         ))}
 
         {ORBIT_EMOJIS.map((emoji, i) => (
@@ -209,13 +209,39 @@ export default function AfterStayLoader({ message }: AfterStayLoaderProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  logoCircle: {
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    borderRadius: LOGO_SIZE / 2,
+    backgroundColor: colors.bg2,
+    borderWidth: 2.5,
+    borderColor: colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoLetter: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: colors.white,
+    marginTop: -2,
+  },
+  message: {
+    fontSize: 15,
+    color: colors.text2,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+    minHeight: 22,
+  },
+});
+
+const staticStyles = StyleSheet.create({
   orbitArea: {
     width: ORBIT_RADIUS * 2 + 60,
     height: ORBIT_RADIUS * 2 + 60,
@@ -229,23 +255,6 @@ const styles = StyleSheet.create({
     height: LOGO_SIZE,
     borderRadius: LOGO_SIZE / 2,
     borderWidth: 2,
-    borderColor: PULSE_COLOR,
-  },
-  logoCircle: {
-    width: LOGO_SIZE,
-    height: LOGO_SIZE,
-    borderRadius: LOGO_SIZE / 2,
-    backgroundColor: LOGO_BG,
-    borderWidth: 2.5,
-    borderColor: BRAND_COLOR,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoLetter: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.white,
-    marginTop: -2,
   },
   emojiContainer: {
     position: 'absolute',
@@ -256,13 +265,6 @@ const styles = StyleSheet.create({
   },
   emoji: {
     fontSize: 20,
-  },
-  message: {
-    fontSize: 15,
-    color: colors.text2,
-    textAlign: 'center',
-    paddingHorizontal: 32,
-    minHeight: 22,
   },
   dotsRow: {
     flexDirection: 'row',
@@ -275,6 +277,5 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: BRAND_COLOR,
   },
 });

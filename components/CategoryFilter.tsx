@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { PlaceCategory } from '@/lib/types';
 
 export type CategoryFilterValue = 'All' | 'Saved' | PlaceCategory;
@@ -25,11 +26,14 @@ interface Props {
 }
 
 export default function CategoryFilter({ value, onChange, counts }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
+      contentContainerStyle={staticStyles.row}
     >
       {CATEGORIES.map(c => {
         const active = c === value;
@@ -55,8 +59,7 @@ export default function CategoryFilter({ value, onChange, counts }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  row: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+const getStyles = (colors: any) => StyleSheet.create({
   pill: {
     paddingHorizontal: spacing.lg,
     paddingVertical: 8,
@@ -71,4 +74,8 @@ const styles = StyleSheet.create({
   },
   label: { color: colors.text2, fontSize: 13, fontWeight: '600' },
   labelActive: { color: colors.green2 },
+});
+
+const staticStyles = StyleSheet.create({
+  row: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
 });

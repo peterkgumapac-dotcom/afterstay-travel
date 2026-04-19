@@ -15,8 +15,9 @@ import {
 
 import FormField from '@/components/FormField';
 import Select from '@/components/Select';
-import { colors, radius, spacing } from '@/constants/theme';
-import { addPlace } from '@/lib/notion';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
+import { addPlace } from '@/lib/supabase';
 import type { PlaceCategory } from '@/lib/types';
 
 const CATEGORIES: PlaceCategory[] = [
@@ -31,6 +32,7 @@ const CATEGORIES: PlaceCategory[] = [
 
 export default function AddPlaceScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const [name, setName] = useState('');
   const [category, setCategory] = useState<PlaceCategory>('Eat');
   const [distance, setDistance] = useState('');
@@ -63,7 +65,7 @@ export default function AddPlaceScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.safe}
+      style={[styles.safe, { backgroundColor: colors.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -99,19 +101,19 @@ export default function AddPlaceScreen() {
         />
 
         <Pressable
-          style={({ pressed }) => [styles.saveBtn, pressed ? { opacity: 0.8 } : null]}
+          style={({ pressed }) => [styles.saveBtn, { backgroundColor: colors.green }, pressed ? { opacity: 0.8 } : null]}
           onPress={save}
           disabled={submitting}
         >
           {submitting ? (
             <ActivityIndicator color={colors.white} />
           ) : (
-            <Text style={styles.saveText}>Save place</Text>
+            <Text style={[styles.saveText, { color: colors.white }]}>Save place</Text>
           )}
         </Pressable>
 
         <Pressable onPress={() => router.back()} style={styles.cancelBtn}>
-          <Text style={styles.cancelText}>Cancel</Text>
+          <Text style={[styles.cancelText, { color: colors.text2 }]}>Cancel</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -119,20 +121,19 @@ export default function AddPlaceScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1 },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
     paddingBottom: spacing.xxxl,
   },
   saveBtn: {
-    backgroundColor: colors.green,
     paddingVertical: 14,
     borderRadius: radius.md,
     alignItems: 'center',
     marginTop: spacing.md,
   },
-  saveText: { color: colors.white, fontWeight: '700', fontSize: 15 },
+  saveText: { fontWeight: '700', fontSize: 15 },
   cancelBtn: { alignItems: 'center', paddingVertical: spacing.md },
-  cancelText: { color: colors.text2, fontSize: 14 },
+  cancelText: { fontSize: 14 },
 });

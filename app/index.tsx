@@ -1,6 +1,10 @@
 import { Redirect } from 'expo-router';
+import { useAuth } from '@/lib/auth';
 
-// Entry: redirect to Home tab (multi-trip selector lives behind this in the future).
 export default function Index() {
+  const { session, loading } = useAuth();
+
+  if (loading) return null;
+  if (!session) return <Redirect href="/auth/login" />;
   return <Redirect href="/(tabs)/home" />;
 }

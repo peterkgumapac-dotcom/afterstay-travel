@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { Star } from 'lucide-react-native';
-import { colors } from '@/constants/theme';
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/constants/ThemeContext';
 
 interface Props {
   rating: number;
@@ -15,14 +15,16 @@ interface Props {
 export const RatingWidget: React.FC<Props> = ({
   rating, onRatingChange, notes, onNotesChange, placeName,
 }) => {
+  const { colors } = useTheme();
+
   const handleStarPress = (n: number) => {
     Haptics.selectionAsync();
     onRatingChange(n);
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>
+    <View style={[styles.container, { backgroundColor: colors.bg2, borderColor: colors.border }]}>
+      <Text style={[styles.label, { color: colors.text }]}>
         Rate {placeName ? `"${placeName}"` : 'this place'}
       </Text>
 
@@ -45,7 +47,7 @@ export const RatingWidget: React.FC<Props> = ({
       </View>
 
       <TextInput
-        style={styles.notesInput}
+        style={[styles.notesInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border2 }]}
         value={notes}
         onChangeText={onNotesChange}
         placeholder="Quick note (optional)"
@@ -54,7 +56,7 @@ export const RatingWidget: React.FC<Props> = ({
         numberOfLines={2}
       />
 
-      <Text style={styles.hint}>
+      <Text style={[styles.hint, { color: colors.text3 }]}>
         Saved to your Places list
       </Text>
     </View>
@@ -64,14 +66,12 @@ export const RatingWidget: React.FC<Props> = ({
 const styles = StyleSheet.create({
   container: {
     marginVertical: 14,
-    backgroundColor: colors.bg2,
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
   },
   label: {
-    color: colors.text, fontSize: 14, fontWeight: '600', marginBottom: 12,
+    fontSize: 14, fontWeight: '600', marginBottom: 12,
   },
   starRow: {
     flexDirection: 'row',
@@ -81,13 +81,13 @@ const styles = StyleSheet.create({
   },
   starBtn: { padding: 6 },
   notesInput: {
-    backgroundColor: colors.card, color: colors.text, fontSize: 13,
+    fontSize: 13,
     paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: 8, borderWidth: 1, borderColor: colors.border2,
+    borderRadius: 8, borderWidth: 1,
     minHeight: 60, textAlignVertical: 'top',
   },
   hint: {
-    color: colors.text3, fontSize: 11, fontStyle: 'italic',
+    fontSize: 11, fontStyle: 'italic',
     textAlign: 'center', marginTop: 8,
   },
 });

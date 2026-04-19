@@ -2,9 +2,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Alert, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { GroupMember } from '@/lib/types';
-import { updateMemberEmail } from '@/lib/notion';
+import { updateMemberEmail } from '@/lib/supabase';
 import Pill from './Pill';
 
 interface Props {
@@ -32,6 +33,8 @@ function avatarColor(name: string): string {
 }
 
 export default function GroupMemberCard({ member, onPhotoUpdate, onEmailUpdate }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const firstLetter = member.name.charAt(0).toUpperCase();
   const bgColor = avatarColor(member.name);
   const hasPhoto = Boolean(member.profilePhoto);
@@ -170,7 +173,7 @@ export default function GroupMemberCard({ member, onPhotoUpdate, onEmailUpdate }
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,

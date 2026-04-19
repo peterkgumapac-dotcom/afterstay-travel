@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Plus, Camera, FileText, Package, Receipt } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 interface FabAction {
   id: string;
@@ -17,6 +17,8 @@ interface FabAction {
 }
 
 export const FloatingActionButton: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
@@ -170,7 +172,7 @@ export const FloatingActionButton: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   fab: {
     position: 'absolute',
     bottom: 100,

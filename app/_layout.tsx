@@ -1,12 +1,13 @@
-import { DarkTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
-import { colors } from '@/constants/theme';
+import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
+import { AuthProvider, useAuth } from '@/lib/auth';
 import { verifyConfig } from '@/lib/config';
 
 export { ErrorBoundary } from 'expo-router';
@@ -17,45 +18,43 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 
-const AfterStayDarkTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: colors.bg,
-    card: colors.card,
-    border: colors.border,
-    text: colors.text,
-    primary: colors.accent,
-    notification: colors.accent,
-  },
-};
+function RootLayoutInner() {
+  const { mode, colors: c } = useTheme();
+  const { session, loading } = useAuth();
 
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
+  const navTheme = {
+    ...(mode === 'dark' ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(mode === 'dark' ? DarkTheme : DefaultTheme).colors,
+      background: c.bg,
+      card: c.card,
+      border: c.border,
+      text: c.text,
+      primary: c.accent,
+      notification: c.accent,
+    },
+  };
 
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+  if (loading) return null; // splash screen still visible
 
-  useEffect(() => {
-    verifyConfig();
-  }, []);
-
-  useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
-  }, [loaded]);
-
-  if (!loaded) return null;
+  if (!session) {
+    return (
+      <NavThemeProvider value={navTheme}>
+        <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="auth/login" />
+        </Stack>
+      </NavThemeProvider>
+    );
+  }
 
   return (
-    <ThemeProvider value={AfterStayDarkTheme}>
-      <StatusBar style="light" />
+    <NavThemeProvider value={navTheme}>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: colors.bg },
-          headerTintColor: colors.text,
+          headerStyle: { backgroundColor: c.bg },
+          headerTintColor: c.text,
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -96,6 +95,34 @@ export default function RootLayout() {
           options={{ presentation: 'modal', title: 'Place Details' }}
         />
       </Stack>
+    </NavThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  const [loaded, error] = useFonts({
+    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+  });
+
+  useEffect(() => {
+    if (error) throw error;
+  }, [error]);
+
+  useEffect(() => {
+    verifyConfig();
+  }, []);
+
+  useEffect(() => {
+    if (loaded) SplashScreen.hideAsync();
+  }, [loaded]);
+
+  if (!loaded) return null;
+
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <RootLayoutInner />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

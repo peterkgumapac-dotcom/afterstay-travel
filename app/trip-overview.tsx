@@ -27,7 +27,8 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, elevation, radius, spacing, typography } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { elevation, radius, spacing, typography } from '@/constants/theme';
 import {
   getActiveTrip,
   getChecklist,
@@ -37,7 +38,7 @@ import {
   getPackingList,
   getSavedPlaces,
   updateTripProperty,
-} from '@/lib/notion';
+} from '@/lib/supabase';
 import type {
   ChecklistItem,
   Expense,
@@ -85,7 +86,7 @@ function getCountdown(startDate: string, endDate: string): string {
   return `${days} days to go!`;
 }
 
-function progressColor(pct: number): string {
+function progressColor(pct: number, colors: any): string {
   if (pct >= 80) return colors.green;
   if (pct >= 50) return colors.amber;
   return colors.red;
@@ -104,6 +105,8 @@ function CollapsibleCard({
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [open, setOpen] = useState(defaultOpen);
   const rotation = useRef(new Animated.Value(defaultOpen ? 1 : 0)).current;
 
@@ -138,10 +141,14 @@ function CollapsibleCard({
 // ---------- non-collapsible card (header only) ----------
 
 function SimpleCard({ children }: { children: React.ReactNode }) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   return <View style={styles.card}>{children}</View>;
 }
 
 function ProgressBar({ pct, color }: { pct: number; color: string }) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   return (
     <View style={styles.progressTrack}>
       <View style={[styles.progressFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: color }]} />
@@ -150,6 +157,8 @@ function ProgressBar({ pct, color }: { pct: number; color: string }) {
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   if (!value) return null;
   return (
     <View style={styles.infoRow}>
@@ -172,6 +181,8 @@ function CopyRow({
   tripId?: string;
   onUpdate?: (newValue: string) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
@@ -255,6 +266,8 @@ function EditableInfoRow({
   tripId: string;
   onUpdate?: (newValue: string) => void;
 }) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
@@ -323,6 +336,8 @@ interface OverviewData {
 }
 
 export default function TripOverviewScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -488,9 +503,9 @@ export default function TripOverviewScreen() {
               <Text style={styles.progressLabel}>
                 {packedCount} of {packing.length} packed
               </Text>
-              <Text style={[styles.progressPct, { color: progressColor(packPct) }]}>{packPct}%</Text>
+              <Text style={[styles.progressPct, { color: progressColor(packPct, colors) }]}>{packPct}%</Text>
             </View>
-            <ProgressBar pct={packPct} color={progressColor(packPct)} />
+            <ProgressBar pct={packPct} color={progressColor(packPct, colors)} />
           </CollapsibleCard>
         ) : null}
 
@@ -514,9 +529,9 @@ export default function TripOverviewScreen() {
               <Text style={styles.progressLabel}>
                 {doneCount} of {checklist.length} done
               </Text>
-              <Text style={[styles.progressPct, { color: progressColor(checkPct) }]}>{checkPct}%</Text>
+              <Text style={[styles.progressPct, { color: progressColor(checkPct, colors) }]}>{checkPct}%</Text>
             </View>
-            <ProgressBar pct={checkPct} color={progressColor(checkPct)} />
+            <ProgressBar pct={checkPct} color={progressColor(checkPct, colors)} />
           </CollapsibleCard>
         ) : null}
 
@@ -541,7 +556,7 @@ export default function TripOverviewScreen() {
 
 // ---------- styles ----------
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: {
     flex: 1,

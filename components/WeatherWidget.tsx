@@ -8,7 +8,8 @@ import {
   View,
 } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { WeatherDay } from '@/lib/types';
 import { getForecast } from '@/lib/weather';
 import { formatDay } from '@/lib/utils';
@@ -20,6 +21,9 @@ interface Props {
 }
 
 export default function WeatherWidget({ destination, days = 5 }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   const [state, setState] = useState<{
     loading: boolean;
     error?: string;
@@ -60,8 +64,8 @@ export default function WeatherWidget({ destination, days = 5 }: Props) {
               <Text style={styles.dayLabel}>{formatDay(d.date)}</Text>
               <Image source={{ uri: d.icon }} style={styles.icon} />
               <Text style={styles.temp}>
-                {Math.round(d.maxTemp)}°
-                <Text style={styles.tempMin}>/{Math.round(d.minTemp)}°</Text>
+                {Math.round(d.maxTemp)}{'\u00B0'}
+                <Text style={styles.tempMin}>/{Math.round(d.minTemp)}{'\u00B0'}</Text>
               </Text>
               {d.chanceOfRain >= 40 && (
                 <Text style={styles.rain}>{d.chanceOfRain}% rain</Text>
@@ -74,7 +78,7 @@ export default function WeatherWidget({ destination, days = 5 }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   title: { color: colors.text, fontSize: 16, fontWeight: '700' },
   sub: { color: colors.text2, fontSize: 12, marginTop: 2, marginBottom: spacing.md },
   loading: { padding: spacing.lg, alignItems: 'center' },

@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Plane } from 'lucide-react-native';
-import { colors, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { spacing } from '@/constants/theme';
 import { FLIGHTS } from '@/lib/flightData';
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export const FlightCard: React.FC<Props> = ({ direction = 'outbound' }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const flight = direction === 'outbound' ? FLIGHTS.outbound : FLIGHTS.return;
 
   return (
@@ -65,7 +68,7 @@ export const FlightCard: React.FC<Props> = ({ direction = 'outbound' }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.bg2,
     borderRadius: 16,

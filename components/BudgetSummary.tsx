@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import { formatCurrency } from '@/lib/utils';
 
 interface Props {
@@ -17,30 +18,21 @@ interface Props {
   currentDay?: number;
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
-  Food: colors.amber,
-  Transport: colors.blue,
-  Activity: colors.green2,
-  Accommodation: colors.purple,
-  Shopping: colors.pink,
-  Other: colors.text2,
-};
+function getCategoryColors(colors: any): Record<string, string> {
+  return {
+    Food: colors.amber,
+    Transport: colors.blue,
+    Activity: colors.green2,
+    Accommodation: colors.purple,
+    Shopping: colors.pink,
+    Other: colors.text2,
+  };
+}
 
-function getProgressColor(pct: number): string {
+function getProgressColor(pct: number, colors: any): string {
   if (pct >= 0.8) return colors.red;
   if (pct >= 0.6) return colors.amber;
   return colors.green2;
-}
-
-function computeTodaySpend(
-  total: number,
-  daysElapsed: number,
-  dailyAverage: number,
-): number {
-  // Approximate: today's spend = total - (dailyAverage * (daysElapsed - 1))
-  // This is a rough estimate; the parent component can pass exact today's spend
-  const previousDaysSpend = dailyAverage * Math.max(0, daysElapsed - 1);
-  return Math.max(0, total - previousDaysSpend);
 }
 
 export default function BudgetSummary({
@@ -56,6 +48,10 @@ export default function BudgetSummary({
   totalDays = 1,
   currentDay = 1,
 }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+  const CATEGORY_COLORS = getCategoryColors(colors);
+
   const max = Math.max(1, ...Object.values(byCategory));
   const categories = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
   const travelerCount = memberNames?.length ?? travelers;
@@ -83,13 +79,13 @@ export default function BudgetSummary({
           <Text style={styles.label}>TOTAL BUDGET</Text>
           <Text style={styles.total}>{formatCurrency(budgetLimit, currency)}</Text>
 
-          <View style={styles.statRow}>
-            <View style={styles.statCol}>
+          <View style={staticStyles.statRow}>
+            <View style={staticStyles.statCol}>
               <Text style={styles.statLabel}>Spent</Text>
               <Text style={styles.statValue}>{formatCurrency(total, currency)}</Text>
               <Text style={styles.excludeNote}>excl. accommodation</Text>
             </View>
-            <View style={styles.statCol}>
+            <View style={staticStyles.statCol}>
               <Text style={styles.statLabel}>Remaining</Text>
               <Text style={[styles.statValue, lowBudget && styles.statWarning]}>
                 {formatCurrency(remaining, currency)}
@@ -101,10 +97,10 @@ export default function BudgetSummary({
           <View style={styles.progressTrack}>
             <View
               style={[
-                styles.progressFill,
+                staticStyles.progressFill,
                 {
                   width: `${spentPct * 100}%`,
-                  backgroundColor: getProgressColor(spentPct),
+                  backgroundColor: getProgressColor(spentPct, colors),
                 },
               ]}
             />
@@ -174,19 +170,19 @@ export default function BudgetSummary({
       {/* Category breakdown */}
       <View style={styles.bars}>
         {categories.length === 0 ? (
-          <Text style={styles.empty}>No expenses yet.</Text>
+          <Text style={styles.empty}>{`No expenses yet.`}</Text>
         ) : (
           categories.map(([cat, amt]) => {
             const pct = amt / max;
             const color = CATEGORY_COLORS[cat] ?? colors.text2;
             return (
-              <View key={cat} style={styles.barRow}>
-                <View style={styles.barLabelRow}>
+              <View key={cat} style={staticStyles.barRow}>
+                <View style={staticStyles.barLabelRow}>
                   <Text style={styles.catLabel}>{cat}</Text>
                   <Text style={styles.catAmount}>{formatCurrency(amt, currency)}</Text>
                 </View>
                 <View style={styles.barTrack}>
-                  <View style={[styles.barFill, { width: `${pct * 100}%`, backgroundColor: color }]} />
+                  <View style={[staticStyles.barFill, { width: `${pct * 100}%`, backgroundColor: color }]} />
                 </View>
               </View>
             );
@@ -199,7 +195,7 @@ export default function BudgetSummary({
         <View style={styles.perPersonSection}>
           <Text style={styles.sectionTitle}>PER PERSON</Text>
           {names.map(name => (
-            <View key={name} style={styles.personRow}>
+            <View key={name} style={staticStyles.personRow}>
               <Text style={styles.personName}>{name}</Text>
               <Text style={styles.personAmount}>
                 {formatCurrency(perPersonAmount, currency)}
@@ -210,7 +206,7 @@ export default function BudgetSummary({
       ) : (
         <View style={styles.perPersonSection}>
           <Text style={styles.sectionTitle}>PER PERSON</Text>
-          <View style={styles.personRow}>
+          <View style={staticStyles.personRow}>
             <Text style={styles.personName}>{travelerCount} travelers</Text>
             <Text style={styles.personAmount}>
               {formatCurrency(perPersonAmount, currency)} each
@@ -222,7 +218,7 @@ export default function BudgetSummary({
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
@@ -244,12 +240,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   perPerson: { color: colors.text2, fontSize: 12, marginTop: 4 },
-  statRow: {
-    flexDirection: 'row',
-    gap: spacing.lg,
-    marginTop: spacing.md,
-  },
-  statCol: { flex: 1 },
   statLabel: {
     color: colors.text3,
     fontSize: 10,
@@ -277,10 +267,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg3,
     overflow: 'hidden',
     marginTop: spacing.md,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
   },
   pctText: {
     color: colors.text3,
@@ -342,12 +328,9 @@ const styles = StyleSheet.create({
   },
   bars: { marginTop: spacing.lg, gap: spacing.sm },
   empty: { color: colors.text3, fontSize: 13 },
-  barRow: { gap: 6 },
-  barLabelRow: { flexDirection: 'row', justifyContent: 'space-between' },
   catLabel: { color: colors.text2, fontSize: 12, fontWeight: '600' },
   catAmount: { color: colors.text, fontSize: 12, fontWeight: '600' },
   barTrack: { height: 6, borderRadius: 3, backgroundColor: colors.bg3, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: 3 },
   perPersonSection: {
     marginTop: spacing.lg,
     paddingTop: spacing.md,
@@ -361,11 +344,27 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
+  personName: { color: colors.text2, fontSize: 13, fontWeight: '500' },
+  personAmount: { color: colors.text, fontSize: 13, fontWeight: '600' },
+});
+
+const staticStyles = StyleSheet.create({
+  statRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+    marginTop: spacing.md,
+  },
+  statCol: { flex: 1 },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  barRow: { gap: 6 },
+  barLabelRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  barFill: { height: '100%', borderRadius: 3 },
   personRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  personName: { color: colors.text2, fontSize: 13, fontWeight: '500' },
-  personAmount: { color: colors.text, fontSize: 13, fontWeight: '600' },
 });

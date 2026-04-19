@@ -33,8 +33,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import Card from '@/components/Card';
 import Pill from '@/components/Pill';
-import { colors, radius, spacing } from '@/constants/theme';
-import { getActiveTrip, getFlights, getSavedPlaces, updateTripProperty } from '@/lib/notion';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
+import { getActiveTrip, getFlights, getSavedPlaces, updateTripProperty } from '@/lib/supabase';
 import type { Flight, Place, Trip } from '@/lib/types';
 import { HOTEL_COORDS, NEARBY_ESSENTIALS } from '@/lib/boracayData';
 import { sanitizeText } from '@/lib/sanitize';
@@ -52,6 +53,8 @@ const AMENITY_ICONS: Record<string, React.ComponentType<any>> = {
 };
 
 export default function GuideScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
@@ -390,173 +393,174 @@ EMERGENCY:
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  errorText: { color: colors.danger, fontSize: 13 },
-  headerSection: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  pageTitle: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
-  pageSub: { color: colors.text2, fontSize: 13, marginTop: 2 },
-  segmented: {
-    flexDirection: 'row',
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    backgroundColor: colors.bg3,
-    borderRadius: radius.md,
-    padding: 3,
-  },
-  segBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: radius.sm,
-  },
-  segBtnActive: {
-    backgroundColor: colors.card,
-  },
-  segText: {
-    color: colors.text3,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  segTextActive: {
-    color: colors.accentLt,
-  },
-  content: { padding: spacing.lg, paddingBottom: 100, gap: spacing.lg },
-  propName: { color: colors.text, fontSize: 18, fontWeight: '700', letterSpacing: -0.2 },
-  hotelAddressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
-  hotelAddress: { color: colors.text2, fontSize: 13, flex: 1 },
-  timesGrid: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  timeBlock: {
-    flex: 1,
-    backgroundColor: colors.bg3,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-  },
-  timeLabel: {
-    color: colors.text3,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  timeValue: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  amenities: { marginTop: spacing.lg },
-  subheader: { color: colors.text3, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.md },
-  amenityGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  amenityItem: {
-    width: '30%',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.bg3,
-    borderRadius: radius.sm,
-  },
-  amenityLabel: {
-    color: colors.text2,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  contactSection: { marginTop: spacing.lg },
-  phoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  phoneText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
-  hotelLinkBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.accentDim,
-    borderRadius: radius.md,
-    alignSelf: 'flex-start',
-  },
-  hotelLinkText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
-  refCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  refLabel: { color: colors.text3, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
-  refValue: { color: colors.text, fontSize: 14, fontWeight: '600', fontFamily: 'SpaceMono' },
-  essentialsMap: { height: 200, borderRadius: radius.lg, overflow: 'hidden' },
-  nearbyHeader: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  essRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    gap: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  essName: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  essDistance: { color: colors.text2, fontSize: 12, marginTop: 2 },
-  muted: { color: colors.text2, fontSize: 13, lineHeight: 18 },
-  // Notes
-  notesHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  notesTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  notes: { color: colors.text, fontSize: 13, lineHeight: 20 },
-  notesEditContainer: { gap: spacing.md },
-  notesInput: {
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 20,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    borderWidth: 1,
-    borderColor: colors.border2,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    backgroundColor: colors.bg3,
-  },
-  notesActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
-  notesBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 72,
-  },
-  notesCancelBtn: { backgroundColor: colors.bg3 },
-  notesSaveBtn: { backgroundColor: colors.accent },
-  notesCancelText: { color: colors.text2, fontSize: 13, fontWeight: '600' },
-  notesSaveText: { color: colors.white, fontSize: 13, fontWeight: '600' },
-});
+const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+    errorText: { color: colors.danger, fontSize: 13 },
+    headerSection: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.sm,
+    },
+    pageTitle: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
+    pageSub: { color: colors.text2, fontSize: 13, marginTop: 2 },
+    segmented: {
+      flexDirection: 'row',
+      marginHorizontal: spacing.lg,
+      marginBottom: spacing.md,
+      backgroundColor: colors.bg3,
+      borderRadius: radius.md,
+      padding: 3,
+    },
+    segBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      borderRadius: radius.sm,
+    },
+    segBtnActive: {
+      backgroundColor: colors.card,
+    },
+    segText: {
+      color: colors.text3,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    segTextActive: {
+      color: colors.accentLt,
+    },
+    content: { padding: spacing.lg, paddingBottom: 100, gap: spacing.lg },
+    propName: { color: colors.text, fontSize: 18, fontWeight: '700', letterSpacing: -0.2 },
+    hotelAddressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+    hotelAddress: { color: colors.text2, fontSize: 13, flex: 1 },
+    timesGrid: {
+      flexDirection: 'row',
+      gap: spacing.md,
+      marginTop: spacing.lg,
+    },
+    timeBlock: {
+      flex: 1,
+      backgroundColor: colors.bg3,
+      borderRadius: radius.sm,
+      padding: spacing.md,
+    },
+    timeLabel: {
+      color: colors.text3,
+      fontSize: 9,
+      fontWeight: '700',
+      letterSpacing: 1,
+    },
+    timeValue: {
+      color: colors.text,
+      fontSize: 18,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    amenities: { marginTop: spacing.lg },
+    subheader: { color: colors.text3, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.md },
+    amenityGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.md,
+    },
+    amenityItem: {
+      width: '30%',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: spacing.md,
+      backgroundColor: colors.bg3,
+      borderRadius: radius.sm,
+    },
+    amenityLabel: {
+      color: colors.text2,
+      fontSize: 11,
+      fontWeight: '600',
+    },
+    contactSection: { marginTop: spacing.lg },
+    phoneRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    phoneText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
+    hotelLinkBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.lg,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      backgroundColor: colors.accentDim,
+      borderRadius: radius.md,
+      alignSelf: 'flex-start',
+    },
+    hotelLinkText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
+    refCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.md,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    refLabel: { color: colors.text3, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+    refValue: { color: colors.text, fontSize: 14, fontWeight: '600', fontFamily: 'SpaceMono' },
+    essentialsMap: { height: 200, borderRadius: radius.lg, overflow: 'hidden' },
+    nearbyHeader: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: '700',
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    essRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: spacing.md,
+      gap: spacing.md,
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    essName: { color: colors.text, fontSize: 14, fontWeight: '600' },
+    essDistance: { color: colors.text2, fontSize: 12, marginTop: 2 },
+    muted: { color: colors.text2, fontSize: 13, lineHeight: 18 },
+    // Notes
+    notesHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    notesTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+    notes: { color: colors.text, fontSize: 13, lineHeight: 20 },
+    notesEditContainer: { gap: spacing.md },
+    notesInput: {
+      color: colors.text,
+      fontSize: 13,
+      lineHeight: 20,
+      minHeight: 80,
+      textAlignVertical: 'top',
+      borderWidth: 1,
+      borderColor: colors.border2,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      backgroundColor: colors.bg3,
+    },
+    notesActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+    notesBtn: {
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 72,
+    },
+    notesCancelBtn: { backgroundColor: colors.bg3 },
+    notesSaveBtn: { backgroundColor: colors.accent },
+    notesCancelText: { color: colors.text2, fontSize: 13, fontWeight: '600' },
+    notesSaveText: { color: colors.white, fontSize: 13, fontWeight: '600' },
+  });

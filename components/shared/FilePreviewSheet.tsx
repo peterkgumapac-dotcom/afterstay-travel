@@ -7,7 +7,7 @@ import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -34,6 +34,8 @@ const isLocalFile = (url: string) => url.startsWith('file://');
 export const FilePreviewSheet: React.FC<Props> = ({
   visible, onClose, fileUrl, fileName, fileType,
 }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [imgError, setImgError] = useState(false);
   const [fileExists, setFileExists] = useState<boolean | null>(null);
   const [fileSize, setFileSize] = useState<number>(0);
@@ -195,7 +197,7 @@ export const FilePreviewSheet: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.95)',

@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 
 interface PillProps {
   label: string;
@@ -8,16 +9,17 @@ interface PillProps {
 }
 
 export default function Pill({ label, tone = 'default' }: PillProps) {
-  const bg = toneBg(tone);
-  const fg = toneFg(tone);
+  const { colors } = useTheme();
+  const bg = toneBg(tone, colors);
+  const fg = toneFg(tone, colors);
   return (
-    <View style={[styles.pill, { backgroundColor: bg, borderColor: fg + '40' }]}>
-      <Text style={[styles.text, { color: fg }]}>{label}</Text>
+    <View style={[staticStyles.pill, { backgroundColor: bg, borderColor: fg + '40' }]}>
+      <Text style={[staticStyles.text, { color: fg }]}>{label}</Text>
     </View>
   );
 }
 
-function toneBg(t: PillProps['tone']): string {
+function toneBg(t: PillProps['tone'], colors: any): string {
   switch (t) {
     case 'green': return colors.green + '22';
     case 'blue': return colors.blue + '22';
@@ -27,7 +29,7 @@ function toneBg(t: PillProps['tone']): string {
     default: return colors.bg3;
   }
 }
-function toneFg(t: PillProps['tone']): string {
+function toneFg(t: PillProps['tone'], colors: any): string {
   switch (t) {
     case 'green': return colors.green2;
     case 'blue': return colors.blue;
@@ -38,7 +40,7 @@ function toneFg(t: PillProps['tone']): string {
   }
 }
 
-const styles = StyleSheet.create({
+const staticStyles = StyleSheet.create({
   pill: {
     paddingHorizontal: spacing.md,
     paddingVertical: 4,

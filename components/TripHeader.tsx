@@ -1,7 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { ImageBackground, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing, typography } from '@/constants/theme';
 import type { Trip } from '@/lib/types';
 import { formatDateRange, tripStatusLabel } from '@/lib/utils';
 import Pill from './Pill';
@@ -21,6 +22,9 @@ function parseHotelPhotos(raw?: string): string[] {
 }
 
 export default function TripHeader({ trip }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   const status = tripStatusLabel(trip.startDate, trip.endDate, trip.nights);
   const tone = status === 'Completed' ? 'default' : 'green';
   const photos = parseHotelPhotos(trip.hotelPhotos);
@@ -77,7 +81,7 @@ export default function TripHeader({ trip }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   wrap: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,

@@ -1,20 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import type { BudgetStatus } from '../../lib/budgetAlerts';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 interface Props {
   status: BudgetStatus;
 }
 
-const COLORS = {
-  green: { bg: colors.accentBg, border: colors.accent, text: colors.accent },
-  yellow: { bg: colors.warnBg, border: colors.warn, text: colors.warn },
-  orange: { bg: 'rgba(227, 136, 104, 0.12)', border: colors.coral, text: colors.coral },
-  red: { bg: 'rgba(196, 85, 74, 0.12)', border: colors.danger, text: colors.danger },
-};
-
 export const BudgetAlertCard: React.FC<Props> = ({ status }) => {
+  const { colors } = useTheme();
+
+  const COLORS = {
+    green: { bg: colors.accentBg, border: colors.accent, text: colors.accent },
+    yellow: { bg: colors.warnBg, border: colors.warn, text: colors.warn },
+    orange: { bg: 'rgba(227, 136, 104, 0.12)', border: colors.coral, text: colors.coral },
+    red: { bg: 'rgba(196, 85, 74, 0.12)', border: colors.danger, text: colors.danger },
+  };
+
   const c = COLORS[status.level];
 
   return (

@@ -10,7 +10,8 @@ import {
   View,
 } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { MomentTag } from '@/lib/types';
 
 const ALL_TAGS: readonly MomentTag[] = [
@@ -37,6 +38,8 @@ interface Props {
 }
 
 export default function MomentForm({ photoUri, onSave, onCancel }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const [caption, setCaption] = useState('');
@@ -161,7 +164,7 @@ export default function MomentForm({ photoUri, onSave, onCancel }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -253,4 +256,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-});
+} as const);

@@ -22,8 +22,9 @@ import {
   View,
 } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
-import { updateTripProperty } from '@/lib/notion';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
+import { updateTripProperty } from '@/lib/supabase';
 import type { Trip } from '@/lib/types';
 import { mask } from '@/lib/utils';
 
@@ -55,6 +56,9 @@ interface Props {
 }
 
 export default function QuickAccess({ trip, onTripUpdate }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   const [revealDoor, setRevealDoor] = useState(false);
   const [editingTile, setEditingTile] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -124,24 +128,24 @@ export default function QuickAccess({ trip, onTripUpdate }: Props) {
   );
 
   const promptAddTile = () => {
-    Alert.prompt('New Tile — Label', 'Enter a label (e.g. "Parking")', (label) => {
+    Alert.prompt('New Tile \u2014 Label', 'Enter a label (e.g. "Parking")', (label) => {
       if (!label?.trim()) return;
-      Alert.prompt('New Tile — Value', `Value for "${label.trim()}"`, (value) => {
+      Alert.prompt('New Tile \u2014 Value', `Value for "${label.trim()}"`, (value) => {
         if (!value?.trim()) return;
         Alert.prompt(
-          'New Tile — Icon',
-          'Enter an emoji icon (e.g. 🅿️)',
+          'New Tile \u2014 Icon',
+          'Enter an emoji icon (e.g. \uD83C\uDD7F\uFE0F)',
           (icon) => {
             const newTile: CustomTile = {
               label: label.trim(),
               value: value.trim(),
-              icon: icon?.trim() || '📌',
+              icon: icon?.trim() || '\uD83D\uDCCC',
             };
             const updated = [...customTiles, newTile];
             saveCustomTiles(updated);
           },
           'plain-text',
-          '📌'
+          '\uD83D\uDCCC'
         );
       });
     });
@@ -246,6 +250,7 @@ export default function QuickAccess({ trip, onTripUpdate }: Props) {
             { text: 'Cancel', style: 'cancel' as const },
           ]);
         }}
+        colors={colors}
       />
       <Tile
         Icon={revealDoor ? Eye : EyeOff}
@@ -259,6 +264,7 @@ export default function QuickAccess({ trip, onTripUpdate }: Props) {
           }
         }}
         mono
+        colors={colors}
       />
       <Tile
         Icon={Calendar}
@@ -270,6 +276,7 @@ export default function QuickAccess({ trip, onTripUpdate }: Props) {
             ? () => copyToClipboard('Check-in', trip.checkIn!)
             : undefined
         }
+        colors={colors}
       />
       <Tile
         Icon={Calendar}
@@ -281,6 +288,7 @@ export default function QuickAccess({ trip, onTripUpdate }: Props) {
             ? () => copyToClipboard('Check-out', trip.checkOut!)
             : undefined
         }
+        colors={colors}
       />
       <Tile
         Icon={Phone}
@@ -288,6 +296,7 @@ export default function QuickAccess({ trip, onTripUpdate }: Props) {
         value={trip.hotelPhone || 'N/A'}
         onPress={() => startEditing('hotelPhone')}
         onLongPress={trip.hotelPhone ? callHotel : undefined}
+        colors={colors}
       />
       <Tile
         Icon={Hash}
@@ -300,6 +309,7 @@ export default function QuickAccess({ trip, onTripUpdate }: Props) {
             : undefined
         }
         mono
+        colors={colors}
       />
 
       {/* Custom tiles from Notion */}
@@ -311,6 +321,7 @@ export default function QuickAccess({ trip, onTripUpdate }: Props) {
           value={tile.value}
           onPress={() => copyToClipboard(tile.label, tile.value)}
           onLongPress={() => handleLongPressCustom(index, tile)}
+          colors={colors}
         />
       ))}
 
@@ -338,6 +349,7 @@ function Tile({
   onPress,
   onLongPress,
   mono,
+  colors,
 }: {
   Icon: LucideIcon;
   label: string;
@@ -346,7 +358,9 @@ function Tile({
   onPress?: () => void;
   onLongPress?: () => void;
   mono?: boolean;
+  colors: any;
 }) {
+  const styles = getStyles(colors);
   return (
     <Pressable
       onPress={onPress}
@@ -375,13 +389,16 @@ function EmojiTile({
   value,
   onPress,
   onLongPress,
+  colors,
 }: {
   emoji: string;
   label: string;
   value: string;
   onPress?: () => void;
   onLongPress?: () => void;
+  colors: any;
 }) {
+  const styles = getStyles(colors);
   return (
     <Pressable
       onPress={onPress}
@@ -400,7 +417,7 @@ function EmojiTile({
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

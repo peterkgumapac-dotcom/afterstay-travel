@@ -1,6 +1,7 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 
 interface Props {
   visible: boolean;
@@ -8,12 +9,14 @@ interface Props {
   userName: string;
 }
 
-function SettingRow({ icon, label, value, chevron }: {
+function SettingRow({ icon, label, value, chevron, colors }: {
   icon: string;
   label: string;
   value: string;
   chevron?: boolean;
+  colors: any;
 }) {
+  const rowStyles = getRowStyles(colors);
   return (
     <Pressable style={rowStyles.row}>
       <Text style={rowStyles.icon}>{icon}</Text>
@@ -27,6 +30,9 @@ function SettingRow({ icon, label, value, chevron }: {
 }
 
 export default function SettingsSheet({ visible, onClose, userName }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
@@ -35,17 +41,17 @@ export default function SettingsSheet({ visible, onClose, userName }: Props) {
           <Text style={styles.title}>Settings</Text>
 
           <ScrollView>
-            <SettingRow icon="👤" label="Name" value={userName} />
-            <SettingRow icon="📧" label="Email" value="Tap to set" />
-            <SettingRow icon="💱" label="Currency" value="PHP ₱" />
-            <SettingRow icon="🔔" label="Notifications" value="On" />
-            <SettingRow icon="🌙" label="Theme" value="Dark" />
+            <SettingRow icon="👤" label="Name" value={userName} colors={colors} />
+            <SettingRow icon="📧" label="Email" value="Tap to set" colors={colors} />
+            <SettingRow icon="💱" label="Currency" value="PHP ₱" colors={colors} />
+            <SettingRow icon="🔔" label="Notifications" value="On" colors={colors} />
+            <SettingRow icon="🌙" label="Theme" value="Dark" colors={colors} />
 
             <View style={styles.divider} />
 
-            <SettingRow icon="📱" label="Version" value="5.0.1" />
-            <SettingRow icon="ℹ️" label="About AfterStay" value="" chevron />
-            <SettingRow icon="📝" label="Send Feedback" value="" chevron />
+            <SettingRow icon="📱" label="Version" value="5.0.1" colors={colors} />
+            <SettingRow icon="ℹ️" label="About AfterStay" value="" chevron colors={colors} />
+            <SettingRow icon="📝" label="Send Feedback" value="" chevron colors={colors} />
           </ScrollView>
         </View>
       </Pressable>
@@ -53,7 +59,7 @@ export default function SettingsSheet({ visible, onClose, userName }: Props) {
   );
 }
 
-const rowStyles = StyleSheet.create({
+const getRowStyles = (colors: any) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -69,7 +75,7 @@ const rowStyles = StyleSheet.create({
   chevron: { color: colors.text3, fontSize: 22 },
 });
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.85)',

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 interface Tile {
   id: string;
@@ -32,6 +32,9 @@ const HINT_MAP: Record<string, string> = {
 const QUICK_ACCESS_KEY = 'quickAccess_v1';
 
 export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+  const mStyles = getModalStyles(colors);
   const [tiles, setTiles] = useState<Tile[]>(() => {
     if (!initialTiles) return DEFAULT_TILES;
     // Reorder to match 2x2: checkin, checkout, wifi, door
@@ -116,13 +119,13 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
       </View>
 
       <Modal visible={!!editingTile} transparent animationType="fade">
-        <View style={modalStyles.backdrop}>
-          <View style={modalStyles.card}>
-            <Text style={modalStyles.title}>
+        <View style={mStyles.backdrop}>
+          <View style={mStyles.card}>
+            <Text style={mStyles.title}>
               {editingTile?.label}
             </Text>
             <TextInput
-              style={modalStyles.input}
+              style={mStyles.input}
               value={draft}
               onChangeText={setDraft}
               placeholder={
@@ -135,16 +138,16 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
               autoFocus
               secureTextEntry={editingTile?.id === 'door'}
             />
-            <View style={modalStyles.actions}>
+            <View style={mStyles.actions}>
               <TouchableOpacity onPress={() => setEditingTile(null)}>
-                <Text style={modalStyles.cancel}>Cancel</Text>
+                <Text style={mStyles.cancel}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={saveEdit}>
-                <Text style={modalStyles.save}>Save</Text>
+                <Text style={mStyles.save}>Save</Text>
               </TouchableOpacity>
             </View>
             {editingTile?.id === 'door' && (
-              <Text style={modalStyles.hint}>
+              <Text style={mStyles.hint}>
                 Long-press the tile to view the code later
               </Text>
             )}
@@ -155,7 +158,7 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   section: {
     marginHorizontal: 16,
     marginVertical: 10,
@@ -201,7 +204,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const modalStyles = StyleSheet.create({
+const getModalStyles = (colors: any) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',

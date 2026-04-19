@@ -32,16 +32,16 @@ const NOTION_VERSION = '2022-06-28';
 
 const env = {
   key: process.env.EXPO_PUBLIC_NOTION_API_KEY ?? '',
-  tripDb: process.env.EXPO_PUBLIC_NOTION_TRIP_DB ?? '',
-  packingDb: process.env.EXPO_PUBLIC_NOTION_PACKING_DB ?? '',
-  expensesDb: process.env.EXPO_PUBLIC_NOTION_EXPENSES_DB ?? '',
-  flightsDb: process.env.EXPO_PUBLIC_NOTION_FLIGHTS_DB ?? '',
-  placesDb: process.env.EXPO_PUBLIC_NOTION_PLACES_DB ?? '',
-  groupDb: process.env.EXPO_PUBLIC_NOTION_GROUP_DB ?? '',
-  checklistDb: process.env.EXPO_PUBLIC_NOTION_CHECKLIST_DB ?? '',
-  momentsDb: process.env.EXPO_PUBLIC_NOTION_MOMENTS_DB ?? '',
-  filesDb: process.env.EXPO_PUBLIC_NOTION_FILES_DB ?? '',
-  tripPageId: process.env.EXPO_PUBLIC_TRIP_PAGE_ID ?? '',
+  tripDb: process.env.EXPO_PUBLIC_NOTION_TRIP_DB || '502d2a13-ec40-41ba-9a22-5889e566c09a',
+  packingDb: process.env.EXPO_PUBLIC_NOTION_PACKING_DB || 'de32c151-37e5-4a1b-b284-0e2f50422c2f',
+  expensesDb: process.env.EXPO_PUBLIC_NOTION_EXPENSES_DB || '77fc8651-457a-4612-bf4d-ceb160d4de94',
+  flightsDb: process.env.EXPO_PUBLIC_NOTION_FLIGHTS_DB || 'a57f4bf0-2628-4a25-ae0d-e3986dbbb28c',
+  placesDb: process.env.EXPO_PUBLIC_NOTION_PLACES_DB || 'b4c144ea-3c37-4f07-8c99-90632e5cf5e4',
+  groupDb: process.env.EXPO_PUBLIC_NOTION_GROUP_DB || '967f98fc-468b-4f13-a87f-b9f850bfeb22',
+  checklistDb: process.env.EXPO_PUBLIC_NOTION_CHECKLIST_DB || 'b2c3949d-e53d-444c-b9e1-f27da568d3e4',
+  momentsDb: process.env.EXPO_PUBLIC_NOTION_MOMENTS_DB || 'ba5fbab9-f32e-4336-ba1d-c307627169eb',
+  filesDb: process.env.EXPO_PUBLIC_NOTION_FILES_DB || '6f680533-2b9b-434a-bd32-4b2edd63e766',
+  tripPageId: process.env.EXPO_PUBLIC_TRIP_PAGE_ID || '344e56a9-1cd3-8123-aa32-da48cfbfb7c1',
 };
 
 // ---------- low-level fetch ----------
@@ -442,7 +442,7 @@ export async function addPlace(input: Omit<Place, 'id'> & { tripId?: string }) {
     Vote: P.select(input.vote),
     ...(input.photoUrl ? { Photo: { url: input.photoUrl } } : {}),
     ...(input.googlePlaceId ? { 'Google Place ID': P.richText(input.googlePlaceId) } : {}),
-    ...(input.saved != null ? { Saved: P.checkbox(input.saved) } : {}),
+    Saved: P.checkbox(input.saved ?? true),
     ...(input.googleMapsUri ? { 'Google Maps URI': P.richText(input.googleMapsUri) } : {}),
     ...(input.totalRatings != null ? { 'Total Ratings': P.number(input.totalRatings) } : {}),
     ...(input.latitude != null ? { Latitude: P.number(input.latitude) } : {}),

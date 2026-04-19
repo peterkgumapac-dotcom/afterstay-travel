@@ -2,7 +2,8 @@ import { ArrowRight, ChevronDown, ChevronUp, Luggage, Plane } from 'lucide-react
 import { useState } from 'react';
 import { LayoutAnimation, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { Flight } from '@/lib/types';
 import { flightDuration, formatTime, formatDatePHT } from '@/lib/utils';
 import Pill from './Pill';
@@ -13,6 +14,8 @@ interface Props {
 }
 
 export default function FlightCard({ flight, passengers }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [expanded, setExpanded] = useState(false);
 
   const toggle = () => {
@@ -103,7 +106,7 @@ export default function FlightCard({ flight, passengers }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,

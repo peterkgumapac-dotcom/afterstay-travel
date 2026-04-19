@@ -2,7 +2,8 @@ import * as Haptics from 'expo-haptics';
 import { Check } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { ChecklistItem } from '@/lib/types';
 
 interface Props {
@@ -12,6 +13,9 @@ interface Props {
 }
 
 export default function ChecklistItemRow({ item, onToggle, doneBy }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   const toggle = async () => {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onToggle(!item.done);
@@ -34,7 +38,7 @@ export default function ChecklistItemRow({ item, onToggle, doneBy }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',

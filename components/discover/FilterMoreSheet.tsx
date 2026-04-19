@@ -6,7 +6,7 @@ import {
 import { RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Filters } from '../../lib/filters';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -21,6 +21,9 @@ interface Props {
 export const FilterMoreSheet: React.FC<Props> = ({
   visible, filters, onUpdate, onReset, onClose,
 }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
@@ -125,7 +128,7 @@ export const FilterMoreSheet: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',

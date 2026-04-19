@@ -22,7 +22,8 @@ import { BudgetAlertCard } from '@/components/budget/BudgetAlertCard';
 import BudgetSummary from '@/components/BudgetSummary';
 import ExpenseRow from '@/components/ExpenseRow';
 import { getBudgetStatus } from '@/lib/budgetAlerts';
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import {
   deleteExpense,
   getActiveTrip,
@@ -30,7 +31,7 @@ import {
   getGroupMembers,
   updateTripBudgetLimit,
   updateTripBudgetMode,
-} from '@/lib/notion';
+} from '@/lib/supabase';
 import type { Expense, Trip } from '@/lib/types';
 import { formatCurrency, formatDatePHT, safeParse } from '@/lib/utils';
 
@@ -117,19 +118,23 @@ function getDayLabel(day: number, currentDay: number, dateStr: string): string {
   return `Day ${day} \u2014 ${dateStr}`;
 }
 
-function getDailyProgressColor(pct: number): string {
+type ThemeColors = ReturnType<typeof useTheme>['colors'];
+
+function getDailyProgressColor(pct: number, colors: ThemeColors): string {
   if (pct >= 1) return colors.danger;
   if (pct >= 0.75) return colors.warn;
   return colors.accent;
 }
 
-function getBudgetStatusLabel(pct: number): { label: string; color: string } {
+function getBudgetStatusLabel(pct: number, colors: ThemeColors): { label: string; color: string } {
   if (pct >= 1) return { label: 'Over budget', color: colors.danger };
   if (pct >= 0.75) return { label: 'Watch it', color: colors.warn };
   return { label: 'Cruising', color: colors.accent };
 }
 
 export default function BudgetScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -340,15 +345,15 @@ export default function BudgetScreen() {
                     styles.budgetBarFill,
                     {
                       width: `${Math.min(100, (total / (trip.budgetLimit ?? 1)) * 100)}%`,
-                      backgroundColor: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1)).color,
+                      backgroundColor: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1), colors).color,
                     },
                   ]}
                 />
               </View>
               <View style={styles.budgetStatusRow}>
-                <View style={[styles.statusDot, { backgroundColor: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1)).color }]} />
-                <Text style={[styles.statusText, { color: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1)).color }]}>
-                  {getBudgetStatusLabel(total / (trip.budgetLimit ?? 1)).label}
+                <View style={[styles.statusDot, { backgroundColor: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1), colors).color }]} />
+                <Text style={[styles.statusText, { color: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1), colors).color }]}>
+                  {getBudgetStatusLabel(total / (trip.budgetLimit ?? 1), colors).label}
                 </Text>
                 <Text style={styles.budgetRemaining}>
                   {formatCurrency(Math.max(0, (trip.budgetLimit ?? 0) - total), currency)} remaining
@@ -432,7 +437,7 @@ export default function BudgetScreen() {
                         styles.dailyProgressFill,
                         {
                           width: `${dailyPct * 100}%`,
-                          backgroundColor: getDailyProgressColor(dailyPct),
+                          backgroundColor: getDailyProgressColor(dailyPct, colors),
                         },
                       ]}
                     />
@@ -554,7 +559,7 @@ export default function BudgetScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: colors.red, fontSize: 13 },

@@ -1,7 +1,8 @@
 import { Check, MapPin, Plus } from 'lucide-react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import type { AIRecommendation } from '@/lib/types';
 import Pill from './Pill';
 
@@ -14,19 +15,22 @@ interface Props {
 }
 
 export default function AIRecommendationCard({ rec, saved, onSave, photoUri }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   return (
     <View style={styles.card}>
       {photoUri ? (
-        <Image source={{ uri: photoUri }} style={styles.coverImage} resizeMode="cover" />
+        <Image source={{ uri: photoUri }} style={staticStyles.coverImage} resizeMode="cover" />
       ) : null}
 
-      <View style={styles.body}>
-        <View style={styles.topRow}>
+      <View style={staticStyles.body}>
+        <View style={staticStyles.topRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>{rec.name}</Text>
-            <View style={styles.metaRow}>
+            <View style={staticStyles.metaRow}>
               <Pill label={rec.category} tone="green" />
-              <View style={styles.distance}>
+              <View style={staticStyles.distance}>
                 <MapPin size={11} color={colors.text2} />
                 <Text style={styles.distanceText}>{rec.distance}</Text>
               </View>
@@ -56,7 +60,7 @@ export default function AIRecommendationCard({ rec, saved, onSave, photoUri }: P
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
@@ -64,18 +68,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
   },
-  coverImage: {
-    width: '100%',
-    height: 120,
-  },
-  body: {
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  topRow: { flexDirection: 'row', gap: spacing.md },
   name: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs, flexWrap: 'wrap' },
-  distance: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   distanceText: { color: colors.text2, fontSize: 11 },
   rating: { color: colors.amber, fontSize: 12 },
   reason: { color: colors.text2, fontSize: 13, lineHeight: 18 },
@@ -96,4 +89,18 @@ const styles = StyleSheet.create({
     borderColor: colors.green,
   },
   saveText: { color: colors.white, fontWeight: '700', fontSize: 13 },
+});
+
+const staticStyles = StyleSheet.create({
+  coverImage: {
+    width: '100%',
+    height: 120,
+  },
+  body: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  topRow: { flexDirection: 'row', gap: spacing.md },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs, flexWrap: 'wrap' },
+  distance: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 });

@@ -17,17 +17,20 @@ import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AfterStayLoader from '@/components/AfterStayLoader';
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import { distanceFromHotel, formatDistance, estimateWalkTime } from '@/lib/distance';
 import { searchNearby, searchPlace, HOTEL_LAT, HOTEL_LNG, type NearbyPlace } from '@/lib/google-places';
 import { PlaceDetailSheet } from '@/components/discover/PlaceDetailSheet';
 import { FilterBar } from '@/components/discover/FilterBar';
 import { FilterMoreSheet } from '@/components/discover/FilterMoreSheet';
-import { InsightCard } from '@/components/discover/InsightCard';
-import { addPlace, getSavedPlaces, getActiveTrip } from '@/lib/notion';
+import PlaceCard from '@/components/PlaceCard';
+import { addPlace, getSavedPlaces, getActiveTrip, voteOnPlace, savePlace } from '@/lib/supabase';
 import { useFilters } from '@/hooks/useFilters';
 import { applyFilters } from '@/lib/filters';
-import type { Place } from '@/lib/types';
+import type { Place, PlaceVote } from '@/lib/types';
+
+type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 const DISCOVER_CATEGORIES = [
   { label: 'All', type: '', keyword: 'boracay' },
@@ -37,6 +40,8 @@ const DISCOVER_CATEGORIES = [
   { label: 'Beach', type: '', keyword: 'beach boracay' },
   { label: 'Activities', type: 'tourist_attraction', keyword: 'boracay' },
   { label: 'Spa', type: 'spa', keyword: 'boracay' },
+  { label: 'Hotels', type: 'lodging', keyword: 'hotel resort boracay' },
+  { label: 'Airbnb', type: '', keyword: 'airbnb vacation rental boracay' },
   { label: 'Shopping', type: 'shopping_mall', keyword: 'boracay' },
   { label: 'Essentials', type: '', keyword: 'pharmacy convenience boracay' },
 ] as const;
@@ -68,22 +73,26 @@ const CATEGORY_EMOJI: Record<string, string> = {
   store: '\u{1F6CD}',
   convenience_store: '\u{1F3EA}',
   pharmacy: '\u{1F48A}',
+  lodging: '\u{1F3E8}',
+  hotel: '\u{1F3E8}',
 };
 
-const CATEGORY_GRADIENT: Record<string, string> = {
-  natural_feature: colors.blue,
-  tourist_attraction: colors.gold,
-  restaurant: colors.danger,
-  food: colors.danger,
-  cafe: colors.accentDk,
-  bar: colors.purple,
-  night_club: colors.purple,
-  spa: colors.accent,
-  shopping_mall: colors.pink,
-  store: colors.pink,
-  convenience_store: colors.info,
-  pharmacy: colors.success,
-};
+function getCategoryGradient(colors: ThemeColors): Record<string, string> {
+  return {
+    natural_feature: colors.blue,
+    tourist_attraction: colors.gold,
+    restaurant: colors.danger,
+    food: colors.danger,
+    cafe: colors.accentDk,
+    bar: colors.purple,
+    night_club: colors.purple,
+    spa: colors.accent,
+    shopping_mall: colors.pink,
+    store: colors.pink,
+    convenience_store: colors.info,
+    pharmacy: colors.success,
+  };
+}
 
 function getPlaceEmoji(types: string[]): string {
   for (const t of types) {
@@ -92,9 +101,10 @@ function getPlaceEmoji(types: string[]): string {
   return '\u{1F4CD}';
 }
 
-function getPlaceColor(types: string[]): string {
+function getPlaceColor(types: string[], colors: ThemeColors): string {
+  const gradient = getCategoryGradient(colors);
   for (const t of types) {
-    if (CATEGORY_GRADIENT[t]) return CATEGORY_GRADIENT[t];
+    if (gradient[t]) return gradient[t];
   }
   return colors.green;
 }
@@ -149,6 +159,8 @@ const ITINERARY_STYLES = [
 ];
 
 export default function DiscoverScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [places, setPlaces] = useState<NearbyPlace[]>([]);
   const [activeCategory, setActiveCategory] = useState(0);
@@ -160,10 +172,13 @@ export default function DiscoverScreen() {
   const [discoverView, setDiscoverView] = useState<'explore' | 'saved'>('explore');
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
+  const [votingIds, setVotingIds] = useState<Set<string>>(new Set());
+  const [voteFilter, setVoteFilter] = useState<'all' | 'approved' | 'pending' | 'rejected'>('all');
   const [detailPlace, setDetailPlace] = useState<NearbyPlace | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [mainTab, setMainTab] = useState<'planner' | 'places'>('places');
   const [selectedStyle, setSelectedStyle] = useState<string>('relaxed');
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
   const { filters, updateFilters, resetFilters } = useFilters();
 
   const loadSavedPlaces = useCallback(async () => {
@@ -265,17 +280,17 @@ export default function DiscoverScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const onSaveToTrip = async (place: NearbyPlace) => {
+  const onRecommendToGroup = async (place: NearbyPlace) => {
     if (savingIds.has(place.place_id)) return;
     setSavingIds(prev => new Set([...prev, place.place_id]));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const mapsUri = `https://www.google.com/maps/place/?q=place_id:${place.place_id}`;
       await addPlace({
         name: place.name,
         category: mapGoogleTypeToCategory(place.types),
         rating: place.rating,
-        source: 'Manual',
+        source: 'Suggested',
         vote: 'Pending',
         photoUrl: place.photo_url ?? undefined,
         googlePlaceId: place.place_id,
@@ -287,8 +302,9 @@ export default function DiscoverScreen() {
         notes: place.address,
         priceEstimate: priceLevelString(place.price_level) || undefined,
       });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
-      // Save failed — user can retry
+      // Recommend failed — user can retry
     } finally {
       setSavingIds(prev => {
         const next = new Set(prev);
@@ -297,6 +313,30 @@ export default function DiscoverScreen() {
       });
     }
   };
+
+  const onVoteSaved = useCallback(async (placeId: string, vote: PlaceVote) => {
+    setVotingIds(prev => new Set([...prev, placeId]));
+    const original = savedPlaces.find(p => p.id === placeId)?.vote;
+    setSavedPlaces(prev => prev.map(p => p.id === placeId ? { ...p, vote } : p));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await voteOnPlace(placeId, vote);
+    } catch {
+      setSavedPlaces(prev => prev.map(p => p.id === placeId ? { ...p, vote: original ?? 'Pending' } : p));
+    } finally {
+      setVotingIds(prev => { const n = new Set(prev); n.delete(placeId); return n; });
+    }
+  }, [savedPlaces]);
+
+  const onUnsaveSaved = useCallback(async (place: Place) => {
+    setSavedPlaces(prev => prev.filter(p => p.id !== place.id));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      await savePlace(place.id, false);
+    } catch {
+      setSavedPlaces(prev => [...prev, place]);
+    }
+  }, []);
 
   const onDirections = (place: NearbyPlace) => {
     const url = `https://www.google.com/maps/dir/?api=1&origin=${HOTEL_LAT},${HOTEL_LNG}&destination=${place.lat},${place.lng}&destination_place_id=${place.place_id}`;
@@ -324,7 +364,20 @@ export default function DiscoverScreen() {
     isOpenNow: undefined as boolean | undefined,
     priceLevel: undefined as number | undefined,
   }));
-  const filteredSaved = applyFilters(enrichedSaved, filters);
+  const filteredSaved = applyFilters(enrichedSaved, filters)
+    .filter(p => {
+      if (voteFilter === 'all') return true;
+      if (voteFilter === 'approved') return p.vote === '👍 Yes';
+      if (voteFilter === 'pending') return p.vote === 'Pending';
+      if (voteFilter === 'rejected') return p.vote === '👎 No';
+      return true;
+    })
+    .sort((a, b) => {
+      const aVoted = a.vote !== 'Pending' ? 0 : 1;
+      const bVoted = b.vote !== 'Pending' ? 0 : 1;
+      if (aVoted !== bVoted) return aVoted - bVoted;
+      return (b.rating ?? 0) - (a.rating ?? 0);
+    });
 
   const renderCard = ({ item }: { item: NearbyPlace }) => {
     const isSaving = savingIds.has(item.place_id);
@@ -334,7 +387,7 @@ export default function DiscoverScreen() {
     if (priceStr) ratingParts.push(priceStr);
 
     const emoji = getPlaceEmoji(item.types);
-    const bgColor = getPlaceColor(item.types);
+    const bgColor = getPlaceColor(item.types, colors);
 
     return (
       <Pressable style={styles.card} onPress={() => onCardPress(item)}>
@@ -385,13 +438,13 @@ export default function DiscoverScreen() {
           <View style={styles.btnRow}>
             <Pressable
               style={[styles.actionBtn, styles.saveBtn]}
-              onPress={() => onSaveToTrip(item)}
+              onPress={() => onRecommendToGroup(item)}
               disabled={isSaving}
-              accessibilityLabel={isSaving ? 'Saving place' : 'Save to trip'}
+              accessibilityLabel={isSaving ? 'Recommending...' : 'Recommend to group'}
               accessibilityRole="button"
             >
               <Bookmark size={14} color={colors.white} />
-              <Text style={styles.actionBtnText}>{isSaving ? 'Saving...' : 'Save to Trip'}</Text>
+              <Text style={styles.actionBtnText}>{isSaving ? 'Recommending...' : 'Recommend'}</Text>
             </Pressable>
             <Pressable
               style={[styles.actionBtn, styles.directionsBtn]}
@@ -464,8 +517,6 @@ export default function DiscoverScreen() {
           </>
         )}
 
-        {mainTab === 'places' && discoverView === 'explore' && <InsightCard />}
-
         {mainTab === 'places' && discoverView === 'explore' && (
           <>
             <ScrollView
@@ -489,6 +540,8 @@ export default function DiscoverScreen() {
               filters={filters}
               onUpdate={updateFilters}
               onOpenMore={() => setMoreOpen(true)}
+              collapsed={filtersCollapsed}
+              onToggleCollapse={() => setFiltersCollapsed(c => !c)}
             />
           </>
         )}
@@ -499,6 +552,8 @@ export default function DiscoverScreen() {
             filters={filters}
             onUpdate={updateFilters}
             onOpenMore={() => setMoreOpen(true)}
+            collapsed={filtersCollapsed}
+            onToggleCollapse={() => setFiltersCollapsed(c => !c)}
           />
         )}
 
@@ -596,38 +651,69 @@ export default function DiscoverScreen() {
             </Text>
           </View>
         ) : (
-          <FlatList
-            data={filteredSaved}
-            keyExtractor={p => p.id}
-            contentContainerStyle={styles.list}
-            ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
-            renderItem={({ item }) => (
-              <Pressable style={styles.card}>
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
-                  {item.rating ? (
-                    <Text style={styles.cardRating}>{'★ '}{item.rating.toFixed(1)}</Text>
-                  ) : null}
-                  {item.notes ? (
-                    <Text style={styles.cardAddress} numberOfLines={2}>{item.notes}</Text>
-                  ) : null}
-                </View>
-              </Pressable>
-            )}
-            refreshControl={
-              <RefreshControl
-                refreshing={savedLoading}
-                onRefresh={loadSavedPlaces}
-                tintColor={colors.accentLt}
-              />
-            }
-          />
+          <View style={{ flex: 1 }}>
+            {/* Vote filter chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm }}>
+              {([
+                { key: 'all', label: 'All', color: colors.accent },
+                { key: 'approved', label: '👍 Approved', color: colors.green },
+                { key: 'pending', label: '⏳ Pending', color: colors.amber },
+                { key: 'rejected', label: '👎 Rejected', color: colors.red },
+              ] as const).map(chip => (
+                <Pressable
+                  key={chip.key}
+                  onPress={() => { setVoteFilter(chip.key); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  style={[
+                    styles.pill,
+                    voteFilter === chip.key && { backgroundColor: chip.color + '22', borderColor: chip.color },
+                  ]}
+                >
+                  <Text style={[
+                    styles.pillText,
+                    voteFilter === chip.key && { color: chip.color },
+                  ]}>
+                    {chip.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <FlatList
+              data={filteredSaved}
+              keyExtractor={p => p.id}
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.list}
+              ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
+              renderItem={({ item }) => (
+                <PlaceCard
+                  place={{
+                    ...item,
+                    distance: item.latitude && item.longitude
+                      ? formatDistance(distanceFromHotel(item.latitude, item.longitude))
+                      : item.distance,
+                  }}
+                  onVote={(vote) => onVoteSaved(item.id, vote)}
+                  onSave={() => onUnsaveSaved(item)}
+                  saved={true}
+                  busy={votingIds.has(item.id)}
+                  photoUri={item.photoUrl}
+                  googleMapsUri={item.googleMapsUri}
+                  totalRatings={item.totalRatings}
+                />
+              )}
+              refreshControl={
+                <RefreshControl
+                  refreshing={savedLoading}
+                  onRefresh={loadSavedPlaces}
+                  tintColor={colors.accentLt}
+                />
+              }
+            />
+          </View>
         )
       ) : loading ? (
         <AfterStayLoader message="Finding places nearby..." />
       ) : viewMode === 'map' ? (
         <MapView
-          provider="google"
           style={styles.mapView}
           initialRegion={{
             latitude: HOTEL_LAT,
@@ -653,6 +739,7 @@ export default function DiscoverScreen() {
           data={filteredExplore}
           keyExtractor={p => p.place_id}
           renderItem={renderCard}
+          style={{ flex: 1 }}
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
           refreshControl={
@@ -700,7 +787,7 @@ export default function DiscoverScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   header: {
     paddingHorizontal: spacing.lg,

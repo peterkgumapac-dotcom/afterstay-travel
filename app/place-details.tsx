@@ -15,9 +15,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AfterStayLoader from '@/components/AfterStayLoader';
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import { getPlaceDetails, type PlaceDetails } from '@/lib/google-places';
-import { addPlace } from '@/lib/notion';
+import { addPlace } from '@/lib/supabase';
 
 function priceLevelString(level?: number): string {
   if (level == null) return '';
@@ -25,6 +26,8 @@ function priceLevelString(level?: number): string {
 }
 
 export default function PlaceDetailsScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const { placeId, placeName } = useLocalSearchParams<{ placeId: string; placeName?: string }>();
   const router = useRouter();
   const [details, setDetails] = useState<PlaceDetails | null>(null);
@@ -241,7 +244,7 @@ export default function PlaceDetailsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: spacing.xxxl },

@@ -1,23 +1,27 @@
 import { StyleSheet, View, ViewProps } from 'react-native';
 
-import { colors, elevation, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { elevation, radius, spacing } from '@/constants/theme';
 
 interface CardProps extends ViewProps {
   padded?: boolean;
 }
 
 export default function Card({ style, padded = true, children, ...rest }: CardProps) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   return (
     <View
       {...rest}
-      style={[styles.card, padded && styles.padded, style]}
+      style={[styles.card, padded && staticStyles.padded, style]}
     >
       {children}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,
@@ -26,6 +30,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...elevation.card,
   },
+});
+
+const staticStyles = StyleSheet.create({
   padded: {
     padding: spacing.xl,
   },

@@ -2,7 +2,8 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View, ActivityIndicator } 
 import { Calendar as CalendarIcon, ExternalLink, Share2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { buildGoogleCalendarURL } from '@/lib/googleCalendarURL';
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import { requestCalendarPermission, syncTripToCalendar, shareCalendarInvite } from '@/lib/calendar';
 import type { Flight, GroupMember, Trip } from '@/lib/types';
 import { safeParse } from '@/lib/utils';
@@ -15,6 +16,8 @@ interface Props {
 }
 
 export default function CalendarSync({ trip, flights, packingItems, members = [] }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [syncing, setSyncing] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [openingGCal, setOpeningGCal] = useState(false);
@@ -139,7 +142,7 @@ export default function CalendarSync({ trip, flights, packingItems, members = []
   };
 
   return (
-    <View style={styles.container}>
+    <View style={staticStyles.container}>
       <Pressable
         style={({ pressed }) => [styles.btn, pressed ? { opacity: 0.8 } : null]}
         onPress={sync}
@@ -219,11 +222,7 @@ function buildShareEvents(
   return events;
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
+const getStyles = (colors: any) => StyleSheet.create({
   btn: {
     backgroundColor: colors.green,
     flexDirection: 'row',
@@ -246,4 +245,11 @@ const styles = StyleSheet.create({
     borderColor: colors.green + '40',
   },
   shareText: { color: colors.green2, fontWeight: '700', fontSize: 14 },
+});
+
+const staticStyles = StyleSheet.create({
+  container: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
 });

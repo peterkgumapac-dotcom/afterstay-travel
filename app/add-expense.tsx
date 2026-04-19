@@ -19,8 +19,9 @@ import {
 
 import FormField from '@/components/FormField';
 import Select from '@/components/Select';
-import { colors, radius, spacing } from '@/constants/theme';
-import { addExpense, getGroupMembers, updateExpense } from '@/lib/notion';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
+import { addExpense, getGroupMembers, updateExpense } from '@/lib/supabase';
 import type { Expense } from '@/lib/types';
 
 const CATEGORY_EMOJI: Record<Expense['category'], string> = {
@@ -47,6 +48,7 @@ const SPLIT_TYPES: NonNullable<Expense['splitType']>[] = ['Equal', 'Custom', 'In
 
 export default function AddExpenseScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const params = useLocalSearchParams<{
     editId?: string;
     description?: string;
@@ -161,7 +163,7 @@ export default function AddExpenseScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.safe}
+      style={[styles.safe, { backgroundColor: colors.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -188,7 +190,7 @@ export default function AddExpenseScreen() {
 
         {/* Category — pill buttons with emojis */}
         <View>
-          <Text style={styles.sectionLabel}>CATEGORY</Text>
+          <Text style={[styles.sectionLabel, { color: colors.text3 }]}>CATEGORY</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catRow}>
             {CATEGORIES.map(cat => {
               const active = cat === category;
@@ -198,12 +200,13 @@ export default function AddExpenseScreen() {
                   onPress={() => setCategory(cat)}
                   style={({ pressed }) => [
                     styles.catPill,
-                    active ? styles.catPillActive : null,
+                    { borderColor: colors.border, backgroundColor: colors.card },
+                    active ? { backgroundColor: colors.green + '22', borderColor: colors.green } : null,
                     pressed ? { opacity: 0.7 } : null,
                   ]}
                 >
                   <Text style={styles.catEmoji}>{CATEGORY_EMOJI[cat]}</Text>
-                  <Text style={[styles.catText, active ? styles.catTextActive : null]}>{cat}</Text>
+                  <Text style={[styles.catText, { color: colors.text2 }, active ? { color: colors.green2 } : null]}>{cat}</Text>
                 </Pressable>
               );
             })}
@@ -234,9 +237,9 @@ export default function AddExpenseScreen() {
         />
 
         <View>
-          <Text style={styles.sectionLabel}>NOTES</Text>
+          <Text style={[styles.sectionLabel, { color: colors.text3 }]}>NOTES</Text>
           <TextInput
-            style={styles.notesInput}
+            style={[styles.notesInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text }]}
             placeholder="Any extra details..."
             placeholderTextColor={colors.text3}
             value={notes}
@@ -249,7 +252,7 @@ export default function AddExpenseScreen() {
 
         {/* Attach Photo */}
         <View>
-          <Text style={styles.sectionLabel}>RECEIPT PHOTO</Text>
+          <Text style={[styles.sectionLabel, { color: colors.text3 }]}>RECEIPT PHOTO</Text>
           {photoUri ? (
             <View style={styles.photoPreviewRow}>
               <Image source={{ uri: photoUri }} style={styles.photoPreview} />
@@ -259,7 +262,7 @@ export default function AddExpenseScreen() {
                   style={({ pressed }) => [styles.photoBtn, pressed ? { opacity: 0.7 } : null]}
                 >
                   <Camera size={16} color={colors.green2} />
-                  <Text style={styles.photoBtnText}>Change Photo</Text>
+                  <Text style={[styles.photoBtnText, { color: colors.green2 }]}>Change Photo</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setPhotoUri('')}
@@ -272,28 +275,28 @@ export default function AddExpenseScreen() {
           ) : (
             <Pressable
               onPress={attachPhoto}
-              style={({ pressed }) => [styles.attachBtn, pressed ? { opacity: 0.7 } : null]}
+              style={({ pressed }) => [styles.attachBtn, { borderColor: colors.green + '40' }, pressed ? { opacity: 0.7 } : null]}
             >
               <Camera size={18} color={colors.green2} />
-              <Text style={styles.attachBtnText}>Attach Photo</Text>
+              <Text style={[styles.attachBtnText, { color: colors.green2 }]}>Attach Photo</Text>
             </Pressable>
           )}
         </View>
 
         <Pressable
-          style={({ pressed }) => [styles.saveBtn, pressed ? { opacity: 0.8 } : null]}
+          style={({ pressed }) => [styles.saveBtn, { backgroundColor: colors.green }, pressed ? { opacity: 0.8 } : null]}
           onPress={save}
           disabled={submitting}
         >
           {submitting ? (
             <ActivityIndicator color={colors.white} />
           ) : (
-            <Text style={styles.saveText}>{isEditing ? 'Update expense' : 'Save expense'}</Text>
+            <Text style={[styles.saveText, { color: colors.white }]}>{isEditing ? 'Update expense' : 'Save expense'}</Text>
           )}
         </Pressable>
 
         <Pressable onPress={() => router.back()} style={styles.cancelBtn}>
-          <Text style={styles.cancelText}>Cancel</Text>
+          <Text style={[styles.cancelText, { color: colors.text2 }]}>Cancel</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -301,10 +304,9 @@ export default function AddExpenseScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
   sectionLabel: {
-    color: colors.text3,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -320,37 +322,26 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  catPillActive: {
-    backgroundColor: colors.green + '22',
-    borderColor: colors.green,
   },
   catEmoji: { fontSize: 14 },
-  catText: { color: colors.text2, fontSize: 13, fontWeight: '600' },
-  catTextActive: { color: colors.green2 },
+  catText: { fontSize: 13, fontWeight: '600' },
   notesInput: {
-    backgroundColor: colors.card,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.text,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     fontSize: 15,
     minHeight: 80,
   },
   saveBtn: {
-    backgroundColor: colors.green,
     paddingVertical: 14,
     borderRadius: radius.md,
     alignItems: 'center',
     marginTop: spacing.md,
   },
-  saveText: { color: colors.white, fontWeight: '700', fontSize: 15 },
+  saveText: { fontWeight: '700', fontSize: 15 },
   cancelBtn: { alignItems: 'center', paddingVertical: spacing.md },
-  cancelText: { color: colors.text2, fontSize: 14 },
+  cancelText: { fontSize: 14 },
   attachBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -359,11 +350,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.green + '40',
     borderStyle: 'dashed',
   },
   attachBtnText: {
-    color: colors.green2,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -383,7 +372,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   photoBtnText: {
-    color: colors.green2,
     fontSize: 13,
     fontWeight: '600',
   },

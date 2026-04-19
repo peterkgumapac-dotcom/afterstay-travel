@@ -2,7 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 import { Linking } from 'react-native';
-import { colors, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { spacing } from '@/constants/theme';
 import { HOTEL_COORDS, NEARBY_ESSENTIALS } from '@/lib/boracayData';
 
 const NEARBY_ITEMS = [
@@ -12,6 +13,9 @@ const NEARBY_ITEMS = [
 ];
 
 export const NearbySection: React.FC = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   const openMap = () => {
     const url = `https://www.google.com/maps/search/essentials/@${HOTEL_COORDS.lat},${HOTEL_COORDS.lng},15z`;
     Linking.openURL(url);
@@ -48,7 +52,7 @@ export const NearbySection: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   section: {
     marginHorizontal: 16,
     marginTop: 12,

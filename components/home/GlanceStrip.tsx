@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { Wallet, Package, Paperclip, Camera } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 interface Props {
   budgetSpent: number;
@@ -26,6 +26,8 @@ export const GlanceStrip: React.FC<Props> = ({
   filesCount,
   photosCount,
 }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
 
   const budgetPct = budgetTotal > 0 ? (budgetSpent / budgetTotal) * 100 : 0;
@@ -82,7 +84,7 @@ export const GlanceStrip: React.FC<Props> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     marginHorizontal: 16,

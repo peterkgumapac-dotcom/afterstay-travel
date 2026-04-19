@@ -28,25 +28,12 @@ import * as Haptics from 'expo-haptics';
 
 import { fetchPlaceDetails, PlaceDetails, Review } from '../../lib/placeDetails';
 import { formatDistance, estimateWalkTime } from '../../lib/distance';
-import { colors } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = SCREEN_HEIGHT * 0.85;
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.92;
 const PHOTO_WIDTH = SCREEN_WIDTH - 32;
 const PHOTO_HEIGHT = 220;
-
-// ── Colors ──────────────────────────────────────────────────────────────
-const C = {
-  bg: colors.canvas,
-  card: colors.card,
-  border: colors.border2,
-  text: colors.text,
-  muted: colors.text2,
-  faint: colors.text3,
-  accent: colors.accent,
-  star: colors.warn,
-  review: colors.text,
-} as const;
 
 // ── Props ───────────────────────────────────────────────────────────────
 interface Props {
@@ -60,15 +47,16 @@ interface Props {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
-const renderStars = (rating: number) => {
+const renderStars = (rating: number, colors: any) => {
+  const starColor = colors.warn;
   const stars: React.ReactNode[] = [];
   for (let i = 1; i <= 5; i++) {
     stars.push(
       <Star
         key={i}
         size={14}
-        color={C.star}
-        fill={i <= Math.round(rating) ? C.star : 'transparent'}
+        color={starColor}
+        fill={i <= Math.round(rating) ? starColor : 'transparent'}
       />,
     );
   }
@@ -82,6 +70,8 @@ const priceLabel = (level?: number): string => {
 
 // ── Photo Gallery ───────────────────────────────────────────────────────
 const PhotoGallery = ({ photos }: { photos: string[] }) => {
+  const { colors } = useTheme();
+  const s = getStyles(colors);
   const [activeIdx, setActiveIdx] = useState(0);
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -92,7 +82,7 @@ const PhotoGallery = ({ photos }: { photos: string[] }) => {
   if (photos.length === 0) {
     return (
       <View style={[s.photoPlaceholder, { height: PHOTO_HEIGHT }]}>
-        <MapPin size={40} color={C.faint} />
+        <MapPin size={40} color={colors.text3} />
         <Text style={[s.mutedText, { marginTop: 8 }]}>No photos available</Text>
       </View>
     );
@@ -132,31 +122,36 @@ const PhotoGallery = ({ photos }: { photos: string[] }) => {
 };
 
 // ── Review Card ─────────────────────────────────────────────────────────
-const ReviewCard = ({ review }: { review: Review }) => (
-  <View style={s.reviewCard}>
-    <View style={s.reviewHeader}>
-      {review.authorPhoto ? (
-        <Image source={{ uri: review.authorPhoto }} style={s.avatar} />
-      ) : (
-        <View style={s.avatarFallback}>
-          <Text style={s.avatarLetter}>
-            {review.authorName.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-      )}
-      <View style={{ flex: 1, marginLeft: 10 }}>
-        <Text style={s.reviewAuthor}>{review.authorName}</Text>
-        <View style={s.reviewMeta}>
-          <View style={s.starRow}>{renderStars(review.rating)}</View>
-          <Text style={s.relativeTime}>{review.relativeTime}</Text>
+const ReviewCard = ({ review }: { review: Review }) => {
+  const { colors } = useTheme();
+  const s = getStyles(colors);
+
+  return (
+    <View style={s.reviewCard}>
+      <View style={s.reviewHeader}>
+        {review.authorPhoto ? (
+          <Image source={{ uri: review.authorPhoto }} style={s.avatar} />
+        ) : (
+          <View style={s.avatarFallback}>
+            <Text style={s.avatarLetter}>
+              {review.authorName.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <View style={{ flex: 1, marginLeft: 10 }}>
+          <Text style={s.reviewAuthor}>{review.authorName}</Text>
+          <View style={s.reviewMeta}>
+            <View style={s.starRow}>{renderStars(review.rating, colors)}</View>
+            <Text style={s.relativeTime}>{review.relativeTime}</Text>
+          </View>
         </View>
       </View>
+      {review.text ? (
+        <Text style={s.reviewText}>{review.text}</Text>
+      ) : null}
     </View>
-    {review.text ? (
-      <Text style={s.reviewText}>{review.text}</Text>
-    ) : null}
-  </View>
-);
+  );
+};
 
 // ── Main Component ──────────────────────────────────────────────────────
 export const PlaceDetailSheet: React.FC<Props> = ({
@@ -168,6 +163,8 @@ export const PlaceDetailSheet: React.FC<Props> = ({
   onSaveToggle,
   distanceKm,
 }) => {
+  const { colors } = useTheme();
+  const s = getStyles(colors);
   const [details, setDetails] = useState<PlaceDetails | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -234,13 +231,13 @@ export const PlaceDetailSheet: React.FC<Props> = ({
               {displayName}
             </Text>
             <TouchableOpacity onPress={onClose} hitSlop={12} style={s.closeBtn}>
-              <X size={22} color={C.muted} />
+              <X size={22} color={colors.text2} />
             </TouchableOpacity>
           </View>
 
           {loading ? (
             <View style={s.loaderWrap}>
-              <ActivityIndicator size="large" color={C.accent} />
+              <ActivityIndicator size="large" color={colors.accent} />
               <Text style={[s.mutedText, { marginTop: 12 }]}>Loading details...</Text>
             </View>
           ) : details ? (
@@ -255,7 +252,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
               <View style={s.statsRow}>
                 {details.rating != null && (
                   <View style={s.statChip}>
-                    <Star size={14} color={C.star} fill={C.star} />
+                    <Star size={14} color={colors.warn} fill={colors.warn} />
                     <Text style={s.statValue}>
                       {details.rating.toFixed(1)}
                     </Text>
@@ -268,7 +265,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
                 )}
                 {distanceKm != null && (
                   <View style={s.statChip}>
-                    <MapPin size={14} color={C.accent} />
+                    <MapPin size={14} color={colors.accent} />
                     <Text style={s.statValue}>
                       {formatDistance(distanceKm)}
                     </Text>
@@ -279,7 +276,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
                 )}
                 {details.priceLevel != null && details.priceLevel > 0 && (
                   <View style={s.statChip}>
-                    <Text style={[s.statValue, { color: C.accent }]}>
+                    <Text style={[s.statValue, { color: colors.accent }]}>
                       {priceLabel(details.priceLevel)}
                     </Text>
                   </View>
@@ -289,11 +286,11 @@ export const PlaceDetailSheet: React.FC<Props> = ({
               {/* Open now badge */}
               {details.isOpenNow != null && (
                 <View style={s.badgeRow}>
-                  <Clock size={14} color={details.isOpenNow ? C.accent : colors.danger} />
+                  <Clock size={14} color={details.isOpenNow ? colors.accent : colors.danger} />
                   <Text
                     style={[
                       s.badgeText,
-                      { color: details.isOpenNow ? C.accent : colors.danger },
+                      { color: details.isOpenNow ? colors.accent : colors.danger },
                     ]}
                   >
                     {details.isOpenNow ? 'Open now' : 'Closed'}
@@ -305,30 +302,30 @@ export const PlaceDetailSheet: React.FC<Props> = ({
               <View style={s.actionsRow}>
                 <TouchableOpacity style={s.actionBtn} onPress={handleSave}>
                   {saved ? (
-                    <BookmarkCheck size={20} color={C.accent} />
+                    <BookmarkCheck size={20} color={colors.accent} />
                   ) : (
-                    <Bookmark size={20} color={C.muted} />
+                    <Bookmark size={20} color={colors.text2} />
                   )}
-                  <Text style={[s.actionLabel, saved && { color: C.accent }]}>
+                  <Text style={[s.actionLabel, saved && { color: colors.accent }]}>
                     {saved ? 'Saved' : 'Save'}
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={s.actionBtn} onPress={handleDirections}>
-                  <Navigation size={20} color={C.accent} />
+                  <Navigation size={20} color={colors.accent} />
                   <Text style={s.actionLabel}>Directions</Text>
                 </TouchableOpacity>
 
                 {details.phone && (
                   <TouchableOpacity style={s.actionBtn} onPress={handleCall}>
-                    <Phone size={20} color={C.accent} />
+                    <Phone size={20} color={colors.accent} />
                     <Text style={s.actionLabel}>Call</Text>
                   </TouchableOpacity>
                 )}
 
                 {details.website && (
                   <TouchableOpacity style={s.actionBtn} onPress={handleWebsite}>
-                    <Globe size={20} color={C.accent} />
+                    <Globe size={20} color={colors.accent} />
                     <Text style={s.actionLabel}>Website</Text>
                   </TouchableOpacity>
                 )}
@@ -338,7 +335,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
               {details.address && (
                 <View style={s.section}>
                   <View style={s.infoRow}>
-                    <MapPin size={16} color={C.muted} />
+                    <MapPin size={16} color={colors.text2} />
                     <Text style={s.infoText}>{details.address}</Text>
                   </View>
                 </View>
@@ -384,7 +381,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
 export default PlaceDetailSheet;
 
 // ── Styles ──────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -392,7 +389,7 @@ const s = StyleSheet.create({
   },
   sheet: {
     height: SHEET_HEIGHT,
-    backgroundColor: C.bg,
+    backgroundColor: colors.canvas,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
@@ -406,7 +403,7 @@ const s = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: C.faint,
+    backgroundColor: colors.text3,
   },
   header: {
     flexDirection: 'row',
@@ -418,7 +415,7 @@ const s = StyleSheet.create({
     flex: 1,
     fontSize: 20,
     fontWeight: '700',
-    color: C.text,
+    color: colors.text,
   },
   closeBtn: {
     marginLeft: 12,
@@ -430,7 +427,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   mutedText: {
-    color: C.muted,
+    color: colors.text2,
     fontSize: 14,
   },
 
@@ -444,7 +441,7 @@ const s = StyleSheet.create({
   photoPlaceholder: {
     marginHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: C.card,
+    backgroundColor: colors.card,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -458,10 +455,10 @@ const s = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: C.faint,
+    backgroundColor: colors.text3,
   },
   dotActive: {
-    backgroundColor: C.accent,
+    backgroundColor: colors.accent,
     width: 8,
     height: 8,
     borderRadius: 4,
@@ -478,19 +475,19 @@ const s = StyleSheet.create({
   statChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.card,
+    backgroundColor: colors.card,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     gap: 4,
   },
   statValue: {
-    color: C.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
   statSub: {
-    color: C.muted,
+    color: colors.text2,
     fontSize: 12,
   },
 
@@ -518,15 +515,15 @@ const s = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: C.card,
+    backgroundColor: colors.card,
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: colors.border2,
     gap: 4,
   },
   actionLabel: {
-    color: C.muted,
+    color: colors.text2,
     fontSize: 11,
     fontWeight: '500',
   },
@@ -537,7 +534,7 @@ const s = StyleSheet.create({
     marginTop: 18,
   },
   sectionTitle: {
-    color: C.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 10,
@@ -549,33 +546,33 @@ const s = StyleSheet.create({
   },
   infoText: {
     flex: 1,
-    color: C.muted,
+    color: colors.text2,
     fontSize: 14,
     lineHeight: 20,
   },
 
   // Hours
   hoursCard: {
-    backgroundColor: C.card,
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: colors.border2,
   },
   hourLine: {
-    color: C.muted,
+    color: colors.text2,
     fontSize: 13,
     lineHeight: 22,
   },
 
   // Reviews
   reviewCard: {
-    backgroundColor: C.card,
+    backgroundColor: colors.card,
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: colors.border2,
   },
   reviewHeader: {
     flexDirection: 'row',
@@ -590,17 +587,17 @@ const s = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: C.border,
+    backgroundColor: colors.border2,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarLetter: {
-    color: C.text,
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
   },
   reviewAuthor: {
-    color: C.text,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -615,11 +612,11 @@ const s = StyleSheet.create({
     gap: 2,
   },
   relativeTime: {
-    color: C.faint,
+    color: colors.text3,
     fontSize: 12,
   },
   reviewText: {
-    color: C.review,
+    color: colors.text,
     fontSize: 13,
     lineHeight: 20,
     marginTop: 10,

@@ -22,7 +22,9 @@ import GroupMemberCard from '@/components/GroupMember';
 import PackingItemRow from '@/components/PackingItem';
 import Select from '@/components/Select';
 import TripFileRow from '@/components/TripFileRow';
-import { colors, radius, spacing, typography } from '@/constants/theme';
+import { MomentsTab } from '@/components/moments/MomentsTab';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing, typography } from '@/constants/theme';
 import {
   addPackingItem,
   getActiveTrip,
@@ -35,7 +37,7 @@ import {
   toggleChecklistItem,
   togglePacked,
   updateMemberPhoto,
-} from '@/lib/notion';
+} from '@/lib/supabase';
 import type {
   ChecklistItem,
   Flight,
@@ -47,6 +49,8 @@ import type {
   TripFile,
 } from '@/lib/types';
 import { hoursUntil, formatCurrency } from '@/lib/utils';
+
+type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 const PACKING_CATEGORIES = [
   'All',
@@ -69,10 +73,12 @@ const ADD_CATEGORIES: PackingItem['category'][] = [
 
 type PackingFilter = (typeof PACKING_CATEGORIES)[number];
 
-const TAB_KEYS = ['Overview', 'Flights', 'Packing', 'Files'] as const;
+const TAB_KEYS = ['Overview', 'Moments', 'Flights', 'Packing', 'Files'] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 export default function TripScreen() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -216,6 +222,11 @@ export default function TripScreen() {
         ))}
       </View>
 
+      {activeTab === 'Moments' && (
+        <MomentsTab tripId={trip.id} />
+      )}
+
+      {activeTab !== 'Moments' && (
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -229,7 +240,7 @@ export default function TripScreen() {
         {activeTab === 'Overview' && (
           <>
             {/* Group Members */}
-            <Section title="Group">
+            <Section title="Group" styles={styles}>
               <View style={{ gap: spacing.sm }}>
                 {members.length === 0 ? (
                   <Text style={styles.muted}>No group members yet.</Text>
@@ -263,7 +274,7 @@ export default function TripScreen() {
 
             {/* Accommodation card */}
             {trip.accommodation && (
-              <Section title="Accommodation">
+              <Section title="Accommodation" styles={styles}>
                 <View style={styles.accomCard}>
                   <Text style={styles.accomName}>{trip.accommodation}</Text>
                   {trip.address ? <Text style={styles.accomAddr}>{trip.address}</Text> : null}
@@ -296,7 +307,7 @@ export default function TripScreen() {
             )}
 
             {/* Mini flight cards */}
-            <Section title="Flights">
+            <Section title="Flights" styles={styles}>
               {outboundDeduped.length > 0 && (
                 <>
                   <Text style={styles.subLabel}>Outbound</Text>
@@ -327,7 +338,7 @@ export default function TripScreen() {
         {activeTab === 'Flights' && (
           <>
             {outboundDeduped.length > 0 && (
-              <Section title="Outbound">
+              <Section title="Outbound" styles={styles}>
                 <View style={{ gap: spacing.sm }}>
                   {outboundDeduped.map(({ flight: f, passengers }) => (
                     <FlightCard key={f.id} flight={f} passengers={passengers} />
@@ -336,7 +347,7 @@ export default function TripScreen() {
               </Section>
             )}
             {returnDeduped.length > 0 && (
-              <Section title="Return">
+              <Section title="Return" styles={styles}>
                 <View style={{ gap: spacing.sm }}>
                   {returnDeduped.map(({ flight: f, passengers }) => (
                     <FlightCard key={f.id} flight={f} passengers={passengers} />
@@ -361,6 +372,8 @@ export default function TripScreen() {
               </Text>
               <ProgressBar
                 value={packingStats.total === 0 ? 0 : packingStats.done / packingStats.total}
+                colors={colors}
+                styles={styles}
               />
             </View>
 
@@ -462,11 +475,12 @@ export default function TripScreen() {
           </>
         )}
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, styles }: { title: string; children: React.ReactNode; styles: ReturnType<typeof getStyles> }) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -475,7 +489,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ProgressBar({ value, tone = 'green' }: { value: number; tone?: 'green' | 'amber' }) {
+function ProgressBar({ value, tone = 'green', colors, styles }: { value: number; tone?: 'green' | 'amber'; colors: ThemeColors; styles: ReturnType<typeof getStyles> }) {
   const color = tone === 'green' ? colors.accent : colors.amber;
   const pct = Math.max(0, Math.min(1, value));
   return (
@@ -485,7 +499,7 @@ function ProgressBar({ value, tone = 'green' }: { value: number; tone?: 'green' 
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: colors.danger, fontSize: 13 },

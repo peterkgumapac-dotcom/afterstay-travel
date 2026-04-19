@@ -10,13 +10,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 
 interface Props {
   photos: string[];
 }
 
 export default function HotelPhotoGallery({ photos }: Props) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   if (photos.length === 0) {
@@ -61,7 +64,7 @@ export default function HotelPhotoGallery({ photos }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   scroll: {
     flexGrow: 0,
   },

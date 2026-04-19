@@ -14,11 +14,12 @@ import {
 import AfterStayLoader from '@/components/AfterStayLoader';
 import AIRecommendationCard from '@/components/AIRecommendationCard';
 import Select from '@/components/Select';
-import { colors, radius, spacing } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
+import { radius, spacing } from '@/constants/theme';
 import { generateItinerary, generateRecommendations } from '@/lib/anthropic';
 import { enrichRecommendations } from '@/lib/google-places';
 import type { ItineraryDay, ItineraryMode } from '@/lib/anthropic';
-import { addPlace } from '@/lib/notion';
+import { addPlace } from '@/lib/supabase';
 import type { AIRecommendation, PlaceCategory } from '@/lib/types';
 
 const FIRST_TIME = ['First visit', 'Been before', 'Local-ish'] as const;
@@ -58,6 +59,8 @@ type PlannerTab = 'recommendations' | 'itinerary';
 type Step = 'questions' | 'loading' | 'results';
 
 export default function TripPlannerModal() {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [tab, setTab] = useState<PlannerTab>('recommendations');
   const [step, setStep] = useState<Step>('questions');
@@ -327,7 +330,7 @@ Powered by AfterStay — your personal travel companion.
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
