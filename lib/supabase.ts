@@ -4,10 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import {
-  readAsStringAsync,
-  EncodingType,
-} from 'expo-file-system/legacy'
+import * as FileSystem from 'expo-file-system'
 import { decode } from 'base64-arraybuffer'
 
 import type {
@@ -646,8 +643,8 @@ export async function addMoment(
     const filename = input.localUri.split('/').pop() ?? 'photo.jpg'
     storagePath = `trips/${tripId}/${timestamp}-${filename}`
 
-    const base64 = await readAsStringAsync(input.localUri, {
-      encoding: EncodingType.Base64,
+    const base64 = await FileSystem.readAsStringAsync(input.localUri, {
+      encoding: 'base64' as const,
     })
 
     const { error: uploadError } = await supabase.storage
