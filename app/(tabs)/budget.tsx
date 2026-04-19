@@ -4,11 +4,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -189,6 +192,8 @@ export default function BudgetScreen() {
     count: number;
   }>({ total: 0, byCategory: {}, count: 0 });
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [budgetInput, setBudgetInput] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -301,12 +306,8 @@ export default function BudgetScreen() {
         'numeric',
       );
     } else {
-      // Android fallback — use Alert with a message prompting the user
-      Alert.alert(
-        'Set Budget Limit',
-        `Current limit: ${formatCurrency(total, 'PHP')}\n\nTo change the budget limit, use the trip settings.`,
-        [{ text: 'OK' }],
-      );
+      setBudgetInput(String(total || ''));
+      setShowBudgetModal(true);
     }
   }, [trip, total, load]);
 
@@ -672,6 +673,46 @@ export default function BudgetScreen() {
           <Path d="M12 5v14M5 12h14" />
         </Svg>
       </TouchableOpacity>
+
+      {/* Budget limit editor modal (Android) */}
+      <Modal visible={showBudgetModal} transparent animationType="fade" onRequestClose={() => setShowBudgetModal(false)}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={styles.modalOverlay} onPress={() => setShowBudgetModal(false)}>
+            <Pressable style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={() => {}}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Set Budget Limit</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: colors.bg2, borderColor: colors.border, color: colors.text }]}
+                value={budgetInput}
+                onChangeText={setBudgetInput}
+                keyboardType="numeric"
+                placeholder="Enter amount"
+                placeholderTextColor={colors.text3}
+                autoFocus
+              />
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: colors.bg2 }]}
+                  onPress={() => setShowBudgetModal(false)}
+                >
+                  <Text style={{ color: colors.text2, fontWeight: '600', fontSize: 14 }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: colors.accent }]}
+                  onPress={() => {
+                    const parsed = Number(budgetInput);
+                    if (!isNaN(parsed) && parsed > 0 && trip) {
+                      updateTripBudgetLimit(trip.id, parsed).then(() => load()).catch(() => {});
+                    }
+                    setShowBudgetModal(false);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1031,5 +1072,42 @@ const getStyles = (colors: ThemeColors) =>
       shadowOpacity: 0.18,
       shadowRadius: 20,
       elevation: 8,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalCard: {
+      width: 300,
+      borderRadius: 18,
+      borderWidth: 1,
+      padding: 24,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      marginBottom: 16,
+    },
+    modalInput: {
+      borderWidth: 1,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 18,
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
+      marginBottom: 16,
+    },
+    modalBtnRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    modalBtn: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 12,
+      alignItems: 'center',
     },
   });

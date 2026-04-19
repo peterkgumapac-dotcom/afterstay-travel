@@ -30,6 +30,7 @@ import Svg, {
 } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 
@@ -52,6 +53,7 @@ import {
   togglePacked,
   updateMemberEmail,
   updateMemberPhone,
+  updateMemberPhoto,
 } from '@/lib/supabase';
 import { formatDatePHT, formatTimePHT, formatCurrency } from '@/lib/utils';
 import type {
@@ -827,7 +829,25 @@ export default function TripScreen() {
       }
     };
 
-    Alert.alert(member.name, 'Edit contact details', [
+    const pickMemberPhoto = async () => {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
+      if (!result.canceled && result.assets[0]) {
+        try {
+          await updateMemberPhoto(member.id, result.assets[0].uri);
+          load();
+        } catch {
+          Alert.alert('Failed to update photo');
+        }
+      }
+    };
+
+    Alert.alert(member.name, 'Edit member details', [
+      { text: 'Change Photo', onPress: pickMemberPhoto },
       { text: 'Edit Email', onPress: showEmailPrompt },
       { text: 'Edit Phone', onPress: showPhonePrompt },
       { text: 'Cancel', style: 'cancel' },

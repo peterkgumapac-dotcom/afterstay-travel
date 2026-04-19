@@ -120,8 +120,13 @@ export default function AddExpenseScreen() {
     }
   };
 
+  const scanReceipt = () => {
+    router.push('/scan-receipt');
+  };
+
   const attachPhoto = () => {
     Alert.alert('Attach Photo', 'Choose a source', [
+      { text: 'Scan Receipt (AI)', onPress: scanReceipt },
       { text: 'Camera', onPress: takePhoto },
       { text: 'Photo Library', onPress: pickPhoto },
       { text: 'Cancel', style: 'cancel' },
