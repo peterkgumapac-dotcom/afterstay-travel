@@ -13,7 +13,7 @@ interface Props {
 export default function ProfileRow({
   userName,
   avatarUrl,
-  tripLabel = 'Boracay trip',
+  tripLabel = 'My trip',
 }: Props) {
   const { colors } = useTheme();
   const styles = getStyles(colors);

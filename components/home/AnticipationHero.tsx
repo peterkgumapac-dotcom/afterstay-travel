@@ -20,16 +20,13 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 import { useTheme } from '@/constants/ThemeContext';
+import type { GroupMember } from '@/lib/types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const HERO_H = 320;
 const SLIDE_DURATION = 4500; // 4.5s per slide
 
-const GROUP = [
-  { name: 'Peter', init: 'P', color: '#a64d1e' },
-  { name: 'Aaron', init: 'A', color: '#b8892b' },
-  { name: 'Jane', init: 'J', color: '#c66a36' },
-];
+const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
 
 interface Props {
   photos: string[];
@@ -39,6 +36,7 @@ interface Props {
   verified?: boolean;
   roomInfo?: string;
   bookingRef?: string;
+  members?: GroupMember[];
 }
 
 export const AnticipationHero: React.FC<Props> = ({
@@ -49,6 +47,7 @@ export const AnticipationHero: React.FC<Props> = ({
   verified,
   roomInfo,
   bookingRef,
+  members = [],
 }) => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
@@ -181,24 +180,32 @@ export const AnticipationHero: React.FC<Props> = ({
           )}
 
           {/* Group member avatars */}
-          <View style={styles.groupRow}>
-            {GROUP.map((g, i) => (
-              <View
-                key={g.name}
-                style={[
-                  styles.groupAvatar,
-                  {
-                    backgroundColor: g.color,
-                    marginLeft: i === 0 ? 0 : -8,
-                    zIndex: GROUP.length - i,
-                  },
-                ]}
-              >
-                <Text style={styles.groupAvatarText}>{g.init}</Text>
-              </View>
-            ))}
-            <Text style={styles.groupText}>You + 2 travelers</Text>
-          </View>
+          {members.length > 0 && (
+            <View style={styles.groupRow}>
+              {members.map((m, i) => (
+                <View
+                  key={m.id}
+                  style={[
+                    styles.groupAvatar,
+                    {
+                      backgroundColor: MEMBER_COLORS[i % MEMBER_COLORS.length],
+                      marginLeft: i === 0 ? 0 : -8,
+                      zIndex: members.length - i,
+                    },
+                  ]}
+                >
+                  <Text style={styles.groupAvatarText}>
+                    {m.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              ))}
+              <Text style={styles.groupText}>
+                {members.length === 1
+                  ? 'Solo traveler'
+                  : `You + ${members.length - 1} traveler${members.length > 2 ? 's' : ''}`}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </View>

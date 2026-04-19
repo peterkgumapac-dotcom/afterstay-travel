@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { AnticipationHero } from '@/components/home/AnticipationHero';
 import { ArrivedCard } from '@/components/home/ArrivedCard';
@@ -17,13 +18,13 @@ import { FlightCard } from '@/components/home/FlightCard';
 import { FlightProgressCard } from '@/components/home/FlightProgressCard';
 import { TripActiveCard } from '@/components/home/TripActiveCard';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
+import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import { NearbySection } from '@/components/home/NearbySection';
 import ProfileRow from '@/components/home/ProfileRow';
 import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
-import { FLIGHTS } from '@/lib/flightData';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
   getActiveTrip,
@@ -33,7 +34,7 @@ import {
   getMoments,
 } from '@/lib/supabase';
 import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
-import { formatDatePHT, safeParse } from '@/lib/utils';
+import { formatDatePHT, formatTimePHT, safeParse, tripStatusLabel } from '@/lib/utils';
 
 type TripPhase = 'upcoming' | 'inflight' | 'arrived' | 'active';
 
@@ -101,13 +102,15 @@ export default function HomeScreen() {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [moments, setMoments] = useState<Moment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loaderDone, setLoaderDone] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
 
   const [phase, setPhase] = useState<TripPhase>('upcoming');
   const [totalSpent, setTotalSpent] = useState(0);
-  const [userName, setUserName] = useState('Peter');
+  const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState<string>();
+  const [members, setMembers] = useState<GroupMember[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -123,6 +126,7 @@ export default function HomeScreen() {
         ]);
         setFlights(fs);
         setMoments(ms);
+        setMembers(members);
         await cacheSet(`flights:${t.id}`, fs);
 
         const primary = members.find((m) => m.role === 'Primary');
@@ -213,12 +217,13 @@ export default function HomeScreen() {
     await cacheSet('trip:phase:override', 'active');
   }, []);
 
-  if (loading) {
+  if (loading || !loaderDone) {
     return (
-      <SafeAreaView style={styles.fullCenter}>
-        <ActivityIndicator color={colors.accentLt} />
-        <Text style={styles.loadingText}>Loading your trip...</Text>
-      </SafeAreaView>
+      <LivingPostcardLoader
+        destination={trip?.destination ?? 'your trip'}
+        name={userName || 'traveler'}
+        onDone={() => setLoaderDone(true)}
+      />
     );
   }
 
@@ -290,7 +295,7 @@ export default function HomeScreen() {
 
   // Room info
   const roomInfo = trip.roomType
-    ? `${trip.roomType} \u00D7 2 \u00B7 ${totalDays} nights \u00B7 Apr 20 \u2013 27`
+    ? `${trip.roomType} \u00D7 2 \u00B7 ${totalDays} nights \u00B7 ${dateRange}`
     : undefined;
 
   return (
@@ -307,90 +312,131 @@ export default function HomeScreen() {
         }
       >
         {/* 1. Top bar */}
-        <ProfileRow userName={userName} avatarUrl={userAvatar} />
+        <ProfileRow userName={userName} avatarUrl={userAvatar} tripLabel={trip.destination ? `${trip.destination} trip` : undefined} />
 
         {/* 2. Hero slideshow */}
         <AnticipationHero
           photos={hotelPhotos}
           hotelName={trip.accommodation}
-          destination={trip.destination || 'Boracay, Philippines'}
+          destination={trip.destination || ''}
           dateRange={dateRange}
           verified={true}
           roomInfo={roomInfo}
           bookingRef={trip.bookingRef ? `Agoda #${trip.bookingRef}` : undefined}
+          members={members}
         />
 
         {/* 3. Phase card */}
+        <SectionHeader
+          kicker="Trip phase"
+          title={tripStatusLabel(trip.startDate, trip.endDate, totalDays)}
+        />
         <View style={styles.phaseSection}>
-          {phase === 'inflight' ? (
-            <FlightProgressCard onLanded={landFlight} />
-          ) : phase === 'arrived' ? (
-            <ArrivedCard onStart={goExplore} />
-          ) : phase === 'active' ? (
-            <TripActiveCard
-              trip={trip}
-              dayOfTrip={
-                countdown.status === 'active'
-                  ? countdown.dayNumber ?? 1
-                  : 1
-              }
-              totalDays={countdown.totalDays}
-              daysLeft={
-                countdown.totalDays -
-                (countdown.status === 'active'
-                  ? countdown.dayNumber ?? 1
-                  : 0)
-              }
-              budgetStatus="cruising"
-              spent={totalSpent}
-              budget={trip.budgetLimit ?? 0}
-            />
-          ) : (
-            <CountdownCard
-              tripStartISO={
-                flights.find((f) => f.direction === 'Outbound')?.departTime ??
-                FLIGHTS.outbound.depart.timeISO
-              }
-              status={countdown.status}
-              dayNumber={
-                countdown.status === 'active'
-                  ? countdown.dayNumber
-                  : undefined
-              }
-              totalDays={countdown.totalDays}
-              dateLabel={
-                flights.find((f) => f.direction === 'Outbound')?.departTime
-                  ? formatDatePHT(
-                      flights.find((f) => f.direction === 'Outbound')!
-                        .departTime,
-                    )
-                  : FLIGHTS.outbound.dateShort
-              }
-              onBoard={boardFlight}
-            />
-          )}
+          <Animated.View
+            key={phase}
+            entering={FadeIn.duration(350)}
+            exiting={FadeOut.duration(200)}
+          >
+            {phase === 'inflight' ? (
+              (() => {
+                const outbound = flights.find((f) => f.direction === 'Outbound');
+                return (
+                  <FlightProgressCard
+                    onLanded={landFlight}
+                    fromCode={outbound?.from}
+                    fromCity={outbound?.from === 'MNL' ? 'Manila' : outbound?.from}
+                    toCode={outbound?.to}
+                    toCity={outbound?.to === 'MPH' ? 'Caticlan' : outbound?.to}
+                    etaLabel={outbound?.arriveTime ? formatTimePHT(outbound.arriveTime) : undefined}
+                  />
+                );
+              })()
+            ) : phase === 'arrived' ? (
+              <ArrivedCard
+                destination={trip.destination}
+                hotelName={trip.accommodation}
+                onStart={goExplore}
+              />
+            ) : phase === 'active' ? (
+              <TripActiveCard
+                trip={trip}
+                dayOfTrip={
+                  countdown.status === 'active'
+                    ? countdown.dayNumber ?? 1
+                    : 1
+                }
+                totalDays={countdown.totalDays}
+                daysLeft={
+                  countdown.totalDays -
+                  (countdown.status === 'active'
+                    ? countdown.dayNumber ?? 1
+                    : 0)
+                }
+                budgetStatus="cruising"
+                spent={totalSpent}
+                budget={trip.budgetLimit ?? 0}
+              />
+            ) : (
+              <CountdownCard
+                tripStartISO={
+                  flights.find((f) => f.direction === 'Outbound')?.departTime ??
+                  trip.startDate
+                }
+                status={countdown.status}
+                dayNumber={
+                  countdown.status === 'active'
+                    ? countdown.dayNumber
+                    : undefined
+                }
+                totalDays={countdown.totalDays}
+                dateLabel={
+                  flights.find((f) => f.direction === 'Outbound')?.departTime
+                    ? formatDatePHT(
+                        flights.find((f) => f.direction === 'Outbound')!
+                          .departTime,
+                      )
+                    : formatDatePHT(trip.startDate)
+                }
+                onBoard={boardFlight}
+              />
+            )}
+          </Animated.View>
         </View>
 
         {/* 4. Weather — shown in active phase as "Boracay right now" */}
         {phase === 'active' && (
           <>
-            <SectionHeader kicker="Weather" title="Boracay right now" />
-            <WeatherForecastCard />
+            <SectionHeader kicker="Weather" title={`${trip.destination ?? 'Destination'} right now`} />
+            <WeatherForecastCard destination={trip.destination} />
           </>
         )}
 
         {/* 5. Flight card */}
-        <SectionHeader
-          kicker={phase === 'active' ? 'Transit \u00B7 Return' : 'Transit \u00B7 Outbound'}
-          title={phase === 'active' ? 'Flight home to Manila' : 'Flight to Caticlan'}
-        />
-        <FlightCard direction={phase === 'active' ? 'return' : 'outbound'} />
+        {(() => {
+          const activeFlight = phase === 'active'
+            ? flights.find((f) => f.direction === 'Return')
+            : flights.find((f) => f.direction === 'Outbound');
+          const dirLabel = phase === 'active' ? 'Return' : 'Outbound';
+          const destCity = activeFlight?.to ?? (phase === 'active' ? 'Home' : trip.destination ?? 'Destination');
+          return (
+            <>
+              <SectionHeader
+                kicker={`Transit \u00B7 ${dirLabel}`}
+                title={`Flight to ${destCity}`}
+              />
+              <FlightCard
+                flight={activeFlight}
+                direction={phase === 'active' ? 'return' : 'outbound'}
+              />
+            </>
+          );
+        })()}
 
         {/* 4b. Weather — shown in non-active phase as "Boracay this week" */}
         {phase !== 'active' && (
           <>
-            <SectionHeader kicker="Weather" title="Boracay this week" />
-            <WeatherForecastCard />
+            <SectionHeader kicker="Weather" title={`${trip.destination ?? 'Destination'} this week`} />
+            <WeatherForecastCard destination={trip.destination} />
           </>
         )}
 

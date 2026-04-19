@@ -24,10 +24,10 @@ const CREAM = '#fffaf0';
 const CTA_BG = '#3d2416';
 
 export function ArrivedCard({
-  destination = 'Boracay',
-  hotelName = 'Canyon Hotels',
-  distance = '2.1 km',
-  travelTime = '12 min by van',
+  destination = '',
+  hotelName = '',
+  distance = '',
+  travelTime = '',
   onStart,
 }: ArrivedCardProps) {
   const { colors } = useTheme();

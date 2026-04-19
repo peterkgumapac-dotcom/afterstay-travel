@@ -139,7 +139,11 @@ const dayLabelFor = (dateStr: string, index: number): string => {
   return d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
 };
 
-export const WeatherForecastCard = () => {
+interface WeatherForecastCardProps {
+  destination?: string;
+}
+
+export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destination }) => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
   const [days, setDays] = useState<DayForecast[]>([]);
@@ -148,12 +152,13 @@ export const WeatherForecastCard = () => {
 
   useEffect(() => {
     loadForecast();
-  }, []);
+  }, [destination]);
 
   const loadForecast = async () => {
     try {
+      const location = destination || 'Boracay,Philippines';
       const res = await fetch(
-        `https://api.weatherapi.com/v1/forecast.json?key=${CONFIG.WEATHER_KEY}&q=Boracay,Philippines&days=5&aqi=no&alerts=no`,
+        `https://api.weatherapi.com/v1/forecast.json?key=${CONFIG.WEATHER_KEY}&q=${encodeURIComponent(location)}&days=5&aqi=no&alerts=no`,
       );
       const data = await res.json();
 
@@ -221,7 +226,7 @@ export const WeatherForecastCard = () => {
       {/* Header with current temp */}
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.eyebrow}>Weather {'\u00B7'} Boracay</Text>
+          <Text style={styles.eyebrow}>Weather {'\u00B7'} {destination || 'Forecast'}</Text>
           <View style={styles.tempRow}>
             <Text style={styles.tempBig}>{today.maxTemp}{'\u00B0'}</Text>
             <Text style={styles.tempLow}> / {today.minTemp}{'\u00B0'}</Text>

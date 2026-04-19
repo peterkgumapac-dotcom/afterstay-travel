@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -7,6 +7,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
   Circle,
@@ -20,6 +28,14 @@ import { useTheme } from '@/constants/ThemeContext';
 import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import GroupHeader from '@/components/budget/GroupHeader';
 import WhoPaysPicker from '@/components/budget/WhoPaysPicker';
+import {
+  getActiveTrip,
+  getExpenses,
+  getExpenseSummary,
+  getGroupMembers,
+} from '@/lib/supabase';
+import { formatCurrency } from '@/lib/utils';
+import type { Expense, GroupMember, Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type BudgetState = 'cruising' | 'low' | 'over';
@@ -106,37 +122,48 @@ function ShoppingIcon({ color }: { color: string }) {
   );
 }
 
-/* ---------- Category data ---------- */
+/* ---------- Category config ---------- */
 
-interface Category {
+interface CategoryConfig {
   name: string;
-  amount: number;
+  matchKey: string;
   colorKey: 'chart1' | 'chart2' | 'chart3' | 'chart4';
   icon: (color: string) => React.ReactNode;
 }
 
-const CATEGORIES: ReadonlyArray<Category> = [
-  { name: 'Food & Drink', amount: 156, colorKey: 'chart1', icon: (c) => <FoodIcon color={c} /> },
-  { name: 'Transport', amount: 68, colorKey: 'chart2', icon: (c) => <TransportIcon color={c} /> },
-  { name: 'Activities', amount: 40, colorKey: 'chart3', icon: (c) => <ActivitiesIcon color={c} /> },
-  { name: 'Shopping', amount: 20, colorKey: 'chart4', icon: (c) => <ShoppingIcon color={c} /> },
+const CATEGORY_CONFIG: ReadonlyArray<CategoryConfig> = [
+  { name: 'Food & Drink', matchKey: 'Food', colorKey: 'chart1', icon: (c) => <FoodIcon color={c} /> },
+  { name: 'Transport', matchKey: 'Transport', colorKey: 'chart2', icon: (c) => <TransportIcon color={c} /> },
+  { name: 'Activities', matchKey: 'Activity', colorKey: 'chart3', icon: (c) => <ActivitiesIcon color={c} /> },
+  { name: 'Shopping', matchKey: 'Shopping', colorKey: 'chart4', icon: (c) => <ShoppingIcon color={c} /> },
 ];
 
-/* ---------- Expense data ---------- */
+/* ---------- Pulsing icon wrapper for cruising state ---------- */
 
-interface RecentExpense {
-  title: string;
-  by: string;
-  amount: number;
-  cat: string;
+function PulsingIcon({ children, pulse }: { children: React.ReactNode; pulse: boolean }) {
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    if (pulse) {
+      scale.value = withRepeat(
+        withSequence(
+          withTiming(1.08, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+        true,
+      );
+    } else {
+      scale.value = withTiming(1, { duration: 200 });
+    }
+  }, [pulse, scale]);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return <Animated.View style={style}>{children}</Animated.View>;
 }
-
-const RECENT_EXPENSES: ReadonlyArray<RecentExpense> = [
-  { title: "Lunch \u00B7 Jonah's Fruit Shake", by: 'Peter', amount: 18, cat: 'Food & Drink' },
-  { title: 'Tricycle \u00B7 Station 1 \u2192 hotel', by: 'Aaron', amount: 3, cat: 'Transport' },
-  { title: 'Island hopping deposit', by: 'Jane', amount: 40, cat: 'Activities' },
-  { title: "Coffee \u00B7 Nonie's", by: 'Peter', amount: 6, cat: 'Food & Drink' },
-];
 
 /* ---------- Main screen ---------- */
 
@@ -145,15 +172,54 @@ export default function BudgetScreen() {
   const styles = getStyles(colors);
 
   const [mode, setMode] = useState<BudgetMode>('limited');
-  const [bState] = useState<BudgetState>('cruising');
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenseSummary, setExpenseSummary] = useState<{
+    total: number;
+    byCategory: Record<string, number>;
+    count: number;
+  }>({ total: 0, byCategory: {}, count: 0 });
+  const [members, setMembers] = useState<GroupMember[]>([]);
 
-  const total = 1000;
-  const spent = bState === 'cruising' ? 284 : bState === 'low' ? 820 : 1120;
+  const load = useCallback(async () => {
+    try {
+      const t = await getActiveTrip();
+      setTrip(t);
+      if (t) {
+        const [exps, summary, mems] = await Promise.all([
+          getExpenses(t.id).catch(() => [] as Expense[]),
+          getExpenseSummary(t.id).catch(() => ({ total: 0, byCategory: {}, count: 0 })),
+          getGroupMembers(t.id).catch(() => [] as GroupMember[]),
+        ]);
+        setExpenses(exps);
+        setExpenseSummary(summary);
+        setMembers(mems);
+        if (t.budgetMode === 'Unlimited') setMode('unlimited');
+        else setMode('limited');
+      }
+    } catch {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const total = trip?.budgetLimit ?? 0;
+  const spent = expenseSummary.total;
   const remaining = total - spent;
-  const days = 8;
-  const perDay = Math.round(total / days);
+  const days = trip ? Math.max(1, Math.ceil(
+    (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / 86400000
+  ) + 1) : 1;
+  const perDay = total > 0 ? Math.round(total / days) : 0;
+  const destLabel = trip?.destination ?? '';
 
-  const status = remaining / total > 0.5 ? 'Cruising' : remaining / total > 0.2 ? 'Watch' : 'Over';
+  const bState: BudgetState = remaining / total > 0.5 ? 'cruising' : remaining / total > 0.2 ? 'low' : 'over';
+
+  const status = total > 0
+    ? (remaining / total > 0.5 ? 'Cruising' : remaining / total > 0.2 ? 'Watch' : 'Over')
+    : 'Cruising';
 
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
@@ -167,7 +233,7 @@ export default function BudgetScreen() {
           <View>
             <Text style={[styles.topBarTitle, { color: colors.text }]}>Budget</Text>
             <Text style={[styles.topBarSubtitle, { color: colors.text3 }]}>
-              Boracay \u00B7 8 days
+              {destLabel || 'Trip'} {'\u00B7'} {days} days
             </Text>
           </View>
           <TouchableOpacity
@@ -229,7 +295,7 @@ export default function BudgetScreen() {
                   <View style={styles.summaryTop}>
                     <View>
                       <Text style={styles.summaryEyebrow}>
-                        {'Total budget \u00B7 8 days'}
+                        {`Total budget \u00B7 ${days} days`}
                       </Text>
                       <View style={styles.summaryAmountRow}>
                         <Text style={[styles.summaryCurrency, { color: colors.text3 }]}>{'\u20B1'}</Text>
@@ -285,7 +351,7 @@ export default function BudgetScreen() {
             </View>
 
             {/* Accommodation — paid separately */}
-            <GroupHeader kicker="Accommodation \u00B7 Paid Mar 29" title="Canyon Hotels" />
+            <GroupHeader kicker="Accommodation" title={trip?.accommodation ?? 'Hotel'} />
             <View style={styles.sectionPadding}>
               <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.accomRow}>
@@ -303,11 +369,13 @@ export default function BudgetScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.accomTitle, { color: colors.text }]}>Paid in full</Text>
                     <Text style={[styles.accomSub, { color: colors.text3 }]}>
-                      {'\u20B1'}16,497.25 per person \u00B7 3 travelers
+                      {members.length > 0 && trip?.cost != null
+                        ? `${formatCurrency(trip.cost / members.length, trip.costCurrency || 'PHP')} per person \u00B7 ${members.length} travelers`
+                        : ''}
                     </Text>
                   </View>
                   <Text style={[styles.accomAmount, { color: colors.text }]}>
-                    {'\u20B1'}49,491
+                    {trip?.cost != null ? formatCurrency(trip.cost, trip.costCurrency || 'PHP') : '\u2014'}
                   </Text>
                 </View>
               </View>
@@ -316,22 +384,25 @@ export default function BudgetScreen() {
             {/* Categories */}
             <GroupHeader kicker="Categories" title="Where it's going" />
             <View style={styles.categoriesContainer}>
-              {CATEGORIES.map((c) => {
-                const pct = Math.round((c.amount / spent) * 100);
+              {CATEGORY_CONFIG.map((c) => {
+                const amount = expenseSummary.byCategory[c.matchKey] ?? 0;
+                const pct = spent > 0 ? Math.round((amount / spent) * 100) : 0;
                 const catColor = colors[c.colorKey];
                 return (
                   <View
                     key={c.name}
                     style={[styles.categoryRow, { backgroundColor: colors.card, borderColor: colors.border }]}
                   >
-                    <View style={[styles.categoryIcon, { backgroundColor: catColor + '20', borderColor: catColor + '40' }]}>
-                      {c.icon(catColor)}
-                    </View>
+                    <PulsingIcon pulse={bState === 'cruising'}>
+                      <View style={[styles.categoryIcon, { backgroundColor: catColor + '20', borderColor: catColor + '40' }]}>
+                        {c.icon(catColor)}
+                      </View>
+                    </PulsingIcon>
                     <View style={{ flex: 1 }}>
                       <View style={styles.categoryTopRow}>
                         <Text style={[styles.categoryName, { color: colors.text }]}>{c.name}</Text>
                         <Text style={[styles.categoryAmount, { color: colors.text }]}>
-                          {'\u20B1'}{c.amount}
+                          {'\u20B1'}{amount.toLocaleString()}
                         </Text>
                       </View>
                       <View style={[styles.categoryBar, { backgroundColor: colors.card2 }]}>
@@ -360,9 +431,9 @@ export default function BudgetScreen() {
               }
             />
             <View style={styles.expensesContainer}>
-              {RECENT_EXPENSES.map((e, i) => (
+              {expenses.slice(0, 6).map((e) => (
                 <View
-                  key={i}
+                  key={e.id}
                   style={[styles.expenseRow, { backgroundColor: colors.card, borderColor: colors.border }]}
                 >
                   <View style={{ flex: 1 }}>
@@ -370,14 +441,14 @@ export default function BudgetScreen() {
                       style={[styles.expenseTitle, { color: colors.text }]}
                       numberOfLines={1}
                     >
-                      {e.title}
+                      {e.description}
                     </Text>
                     <Text style={[styles.expenseCat, { color: colors.text3 }]}>
-                      {e.cat} {'\u00B7'} by {e.by}
+                      {e.category}{e.paidBy ? ` \u00B7 by ${e.paidBy}` : ''}
                     </Text>
                   </View>
                   <Text style={[styles.expenseAmount, { color: colors.text }]}>
-                    {'\u20B1'}{e.amount}
+                    {formatCurrency(e.amount, e.currency)}
                   </Text>
                 </View>
               ))}

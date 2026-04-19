@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +28,26 @@ import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
 import PastTripRow from '@/components/summary/PastTripRow';
 import { useTheme } from '@/constants/ThemeContext';
+import {
+  getActiveTrip,
+  getFlights,
+  getGroupMembers,
+  getPackingList,
+  getTripFiles,
+  getLifetimeStats,
+  getHighlights,
+  getPastTrips,
+  togglePacked,
+} from '@/lib/supabase';
+import { formatDatePHT, formatTimePHT, formatCurrency } from '@/lib/utils';
+import type {
+  Flight,
+  GroupMember,
+  Highlight,
+  PackingItem,
+  Trip,
+  TripFile,
+} from '@/lib/types';
 
 // ---------- TYPES ----------
 
@@ -42,238 +63,101 @@ const TAB_KEYS = [
 ] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
-// ---------- STATIC DATA (from prototype) ----------
+// ---------- CONSTANTS ----------
 
-const MEMBERS = [
-  {
-    name: 'Peter Karl Gumapoz',
-    role: 'Primary' as const,
-    init: 'P',
-    color: '#a64d1e',
-    you: true,
-  },
-  {
-    name: 'Aaron Nicholas Gumapoz',
-    role: 'Member' as const,
-    init: 'A',
-    color: '#b8892b',
-    you: false,
-  },
-  {
-    name: 'Jane Ansen Colada',
-    role: 'Member' as const,
-    init: 'J',
-    color: '#c66a36',
-    you: false,
-  },
-];
+const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
+const FILE_COLORS = ['#a64d1e', '#c66a36', '#b8892b', '#d9a441', '#8a5a2b'];
 
-const FLIGHTS_DATA = [
-  {
-    dir: 'Outbound',
-    airline: 'Cebu Pacific',
-    code: '5J',
-    num: '911',
-    ref: 'VN3HTQ',
-    logo: '#b8afa3',
-    date: 'Sun, Apr 20',
-    dep: '7:30 PM',
-    arr: '8:40 PM',
-    from: 'MNL',
-    fromCity: 'Manila',
-    to: 'MPH',
-    toCity: 'Caticlan',
-    dur: '1h 10m',
-    bags: [
-      { who: 'Peter', bag: '+20 kg' },
-      { who: 'Aaron', bag: 'Pack light' },
-      { who: 'Jane', bag: 'Pack light' },
-    ],
+interface FlightDisplayData {
+  dir: string;
+  airline: string;
+  code: string;
+  num: string;
+  ref: string;
+  logo: string;
+  date: string;
+  dep: string;
+  arr: string;
+  from: string;
+  fromCity: string;
+  to: string;
+  toCity: string;
+  dur: string;
+  bags: { who: string; bag: string }[];
+  status: string;
+}
+
+function mapFlightToDisplay(f: Flight): FlightDisplayData {
+  const code = f.flightNumber.split(' ')[0] ?? '';
+  const num = f.flightNumber.split(' ')[1] ?? f.flightNumber;
+  return {
+    dir: f.direction,
+    airline: f.airline,
+    code,
+    num,
+    ref: f.bookingRef ?? '',
+    logo: f.direction === 'Outbound' ? '#b8afa3' : '#e03838',
+    date: formatDatePHT(f.departTime),
+    dep: formatTimePHT(f.departTime),
+    arr: formatTimePHT(f.arriveTime),
+    from: f.from,
+    fromCity: f.from,
+    to: f.to,
+    toCity: f.to,
+    dur: '',
+    bags: f.baggage ? [{ who: f.passenger ?? '', bag: f.baggage }] : [],
     status: 'On time',
-  },
-  {
-    dir: 'Return',
-    airline: 'Philippines AirAsia',
-    code: 'Z2',
-    num: '214',
-    ref: 'J6FF4V',
-    logo: '#e03838',
-    date: 'Sun, Apr 27',
-    dep: '9:10 AM',
-    arr: '10:20 AM',
-    from: 'MPH',
-    fromCity: 'Caticlan',
-    to: 'MNL',
-    toCity: 'Manila',
-    dur: '1h 10m',
-    bags: [
-      { who: 'Peter', bag: '+15 kg' },
-      { who: 'Aaron', bag: 'Pack light' },
-      { who: 'Jane', bag: 'Pack light' },
-    ],
-    status: 'On time',
-  },
-];
+  };
+}
 
-const PACKING_DATA: Record<
-  string,
-  { t: string; by: string; d: boolean }[]
-> = {
-  Essentials: [
-    { t: 'Passport + ID', by: 'Peter', d: true },
-    { t: 'Phone charger', by: 'Peter', d: true },
-    { t: 'Hotel vouchers', by: 'Peter', d: true },
-    { t: 'Toiletries kit', by: 'Aaron', d: false },
-    { t: 'Prescription meds', by: 'Jane', d: false },
-  ],
-  Beach: [
-    { t: 'Swimsuits \u00D7 3', by: 'Everyone', d: true },
-    { t: 'Sunscreen (SPF 50)', by: 'Aaron', d: true },
-    { t: 'Beach towels \u00D7 3', by: 'Peter', d: false },
-    { t: 'Waterproof pouch', by: 'Jane', d: false },
-    { t: 'Reef-safe flip flops', by: 'Peter', d: false },
-  ],
-  Electronics: [
-    { t: 'GoPro + mount', by: 'Peter', d: true },
-    { t: 'Power bank', by: 'Aaron', d: false },
-    { t: 'Universal adapter', by: 'Peter', d: false },
-  ],
+interface PackingGroup {
+  [category: string]: { t: string; by: string; d: boolean; id: string }[];
+}
+
+function groupPackingItems(items: PackingItem[]): PackingGroup {
+  const groups: PackingGroup = {};
+  for (const item of items) {
+    const cat = item.category || 'Other';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push({ t: item.item, by: item.owner ?? '', d: item.packed, id: item.id });
+  }
+  return groups;
+}
+
+interface PastTripDisplay {
+  flag: string;
+  dest: string;
+  country: string;
+  dates: string;
+  nights: number;
+  spent: number;
+  miles: number;
+  rating: number;
+}
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  JP: '\u{1F1EF}\u{1F1F5}',
+  VN: '\u{1F1FB}\u{1F1F3}',
+  PH: '\u{1F1F5}\u{1F1ED}',
+  TH: '\u{1F1F9}\u{1F1ED}',
+  SG: '\u{1F1F8}\u{1F1EC}',
+  US: '\u{1F1FA}\u{1F1F8}',
+  KR: '\u{1F1F0}\u{1F1F7}',
+  ID: '\u{1F1EE}\u{1F1E9}',
 };
 
-const FILES_DATA = [
-  {
-    n: 'Booking_ID_1712826310_ETicket.pdf',
-    size: '842 KB',
-    t: 'Ticket',
-    who: 'Peter',
-    icon: '#a64d1e',
-  },
-  {
-    n: 'AGODA_Receipt_Canyon_Hotels.pdf',
-    size: '1.2 MB',
-    t: 'Receipt',
-    who: 'Peter',
-    icon: '#c66a36',
-  },
-  {
-    n: 'Z2_214_Boarding_Passes.pdf',
-    size: '640 KB',
-    t: 'Boarding',
-    who: 'Peter',
-    icon: '#b8892b',
-  },
-  {
-    n: 'Travel_Insurance_Policy.pdf',
-    size: '320 KB',
-    t: 'Insurance',
-    who: 'Peter',
-    icon: '#d9a441',
-  },
-];
-
-const PAST_TRIPS = [
-  {
-    flag: '\u{1F1EF}\u{1F1F5}',
-    dest: 'Tokyo',
-    country: 'Japan',
-    dates: 'Nov 2 \u2013 9, 2025',
-    nights: 7,
-    spent: 68200,
-    miles: 1860,
-    rating: 5,
-  },
-  {
-    flag: '\u{1F1FB}\u{1F1F3}',
-    dest: 'Da Nang',
-    country: 'Vietnam',
-    dates: 'Jul 14 \u2013 19, 2025',
-    nights: 5,
-    spent: 32400,
-    miles: 1085,
-    rating: 4,
-  },
-  {
-    flag: '\u{1F1F5}\u{1F1ED}',
-    dest: 'Siargao',
-    country: 'Philippines',
-    dates: 'Mar 8 \u2013 13, 2025',
-    nights: 5,
-    spent: 28900,
-    miles: 450,
-    rating: 5,
-  },
-  {
-    flag: '\u{1F1F9}\u{1F1ED}',
-    dest: 'Bangkok',
-    country: 'Thailand',
-    dates: 'Dec 20 \u2013 27, 2024',
-    nights: 7,
-    spent: 45600,
-    miles: 1370,
-    rating: 4,
-  },
-  {
-    flag: '\u{1F1F8}\u{1F1EC}',
-    dest: 'Singapore',
-    country: 'Singapore',
-    dates: 'Aug 3 \u2013 6, 2024',
-    nights: 3,
-    spent: 39800,
-    miles: 1480,
-    rating: 5,
-  },
-];
-
-const HIGHLIGHTS = [
-  {
-    icon: '\u{1F30F}',
-    label: '5 countries',
-    sub: 'JP \u00B7 VN \u00B7 TH \u00B7 SG \u00B7 PH',
-    tint: '#c66a36',
-  },
-  {
-    icon: '\u2708\uFE0F',
-    label: '6,245 miles',
-    sub: '25\u00D7 around Boracay',
-    tint: '#a64d1e',
-  },
-  {
-    icon: '\u{1F3DD}',
-    label: 'Beach streak',
-    sub: '4 trips in a row',
-    tint: '#b8892b',
-  },
-  {
-    icon: '\u{1F4F8}',
-    label: '238 moments',
-    sub: 'Across all trips',
-    tint: '#d9a441',
-  },
-  {
-    icon: '\u{1F5D3}',
-    label: 'Longest trip',
-    sub: '7 nights \u00B7 Tokyo',
-    tint: '#8a5a2b',
-  },
-  {
-    icon: '\u{1F4B8}',
-    label: 'Best value',
-    sub: '\u20B15,780/night \u00B7 Siargao',
-    tint: '#7e9f5b',
-  },
-  {
-    icon: '\u{1F465}',
-    label: 'Trip crew',
-    sub: 'Aaron \u00B7 Jane',
-    tint: '#c06c4a',
-  },
-  {
-    icon: '\u2B50',
-    label: 'Top-rated',
-    sub: '3 perfect trips',
-    tint: '#e0a23f',
-  },
-];
+function mapTripToPastDisplay(t: Trip): PastTripDisplay {
+  return {
+    flag: COUNTRY_FLAGS[t.countryCode ?? ''] ?? '\u{1F30D}',
+    dest: t.destination ?? t.name,
+    country: t.country ?? '',
+    dates: `${formatDatePHT(t.startDate)} \u2013 ${formatDatePHT(t.endDate)}`,
+    nights: t.totalNights ?? t.nights ?? 0,
+    spent: t.totalSpent ?? 0,
+    miles: 0,
+    rating: 0,
+  };
+}
 
 // ---------- PULSING DOT ----------
 
@@ -370,7 +254,7 @@ function MiniFlightCard({
   f,
   colors,
 }: {
-  f: (typeof FLIGHTS_DATA)[number];
+  f: FlightDisplayData;
   colors: ThemeColors;
 }) {
   const styles = miniFlightStyles(colors);
@@ -490,7 +374,7 @@ function FullFlightCard({
   f,
   colors,
 }: {
-  f: (typeof FLIGHTS_DATA)[number];
+  f: FlightDisplayData;
   colors: ThemeColors;
 }) {
   const styles = fullFlightStyles(colors);
@@ -719,7 +603,70 @@ export default function TripScreen() {
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [addOpen, setAddOpen] = useState(false);
-  const [packingState, setPackingState] = useState(PACKING_DATA);
+  const [loading, setLoading] = useState(true);
+
+  // Data from Supabase
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [membersData, setMembersData] = useState<GroupMember[]>([]);
+  const [flightsData, setFlightsData] = useState<Flight[]>([]);
+  const [packingItems, setPackingItems] = useState<PackingItem[]>([]);
+  const [filesData, setFilesData] = useState<TripFile[]>([]);
+  const [pastTripsData, setPastTripsData] = useState<Trip[]>([]);
+  const [highlightsData, setHighlightsData] = useState<Highlight[]>([]);
+  const [lifetimeStats, setLifetimeStats] = useState<{
+    totalTrips: number;
+    totalCountries: number;
+    totalNights: number;
+    totalMiles: number;
+    totalSpent: number;
+  } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const t = await getActiveTrip();
+      setTrip(t);
+      if (t) {
+        const [ms, fs, pk, tf] = await Promise.all([
+          getGroupMembers(t.id).catch(() => [] as GroupMember[]),
+          getFlights(t.id).catch(() => [] as Flight[]),
+          getPackingList(t.id).catch(() => [] as PackingItem[]),
+          getTripFiles(t.id).catch(() => [] as TripFile[]),
+        ]);
+        setMembersData(ms);
+        setFlightsData(fs);
+        setPackingItems(pk);
+        setFilesData(tf);
+      }
+      // Load lifetime data (userId not required for now — loads all)
+      const [stats, highlights, past] = await Promise.all([
+        getLifetimeStats('').catch(() => null),
+        getHighlights('').catch(() => [] as Highlight[]),
+        getPastTrips('').catch(() => [] as Trip[]),
+      ]);
+      if (stats) setLifetimeStats(stats);
+      setHighlightsData(highlights);
+      setPastTripsData(past);
+    } catch {
+      // silent — UI shows empty state
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Derived display data
+  const flightsDisplay = useMemo(
+    () => flightsData.map(mapFlightToDisplay),
+    [flightsData],
+  );
+
+  const packingState = useMemo(
+    () => groupPackingItems(packingItems),
+    [packingItems],
+  );
 
   // Compute packing stats
   const packingStats = useMemo(() => {
@@ -735,22 +682,53 @@ export default function TripScreen() {
   }, [packingState]);
 
   const togglePackingItem = (group: string, itemText: string) => {
-    setPackingState((prev) => ({
-      ...prev,
-      [group]: prev[group].map((it) =>
-        it.t === itemText ? { ...it, d: !it.d } : it,
+    setPackingItems((prev) =>
+      prev.map((it) =>
+        it.item === itemText ? { ...it, packed: !it.packed } : it,
       ),
-    }));
+    );
+    const item = packingItems.find((it) => it.item === itemText);
+    if (item) {
+      togglePacked(item.id, !item.packed).catch(() => {
+        // revert on failure
+        setPackingItems((prev) =>
+          prev.map((it) =>
+            it.item === itemText ? { ...it, packed: !it.packed } : it,
+          ),
+        );
+      });
+    }
   };
 
+  const pastTripsDisplay = useMemo(
+    () => pastTripsData.map(mapTripToPastDisplay),
+    [pastTripsData],
+  );
+
   // Summary computed values
-  const totalTrips = PAST_TRIPS.length + 1;
-  const totalSpent =
-    PAST_TRIPS.reduce((s, t) => s + t.spent, 0) + 18400;
-  const totalNights =
-    PAST_TRIPS.reduce((s, t) => s + t.nights, 0) + 2;
-  const totalMiles = PAST_TRIPS.reduce((s, t) => s + t.miles, 0);
-  const countriesCount = new Set(PAST_TRIPS.map((t) => t.flag)).size;
+  const totalTrips = (lifetimeStats?.totalTrips ?? pastTripsDisplay.length) + 1;
+  const totalSpent = lifetimeStats?.totalSpent ?? pastTripsDisplay.reduce((s, t) => s + t.spent, 0);
+  const totalNights = lifetimeStats?.totalNights ?? pastTripsDisplay.reduce((s, t) => s + t.nights, 0);
+  const totalMiles = lifetimeStats?.totalMiles ?? 0;
+  const countriesCount = lifetimeStats?.totalCountries ?? new Set(pastTripsDisplay.map((t) => t.flag)).size;
+
+  const highlightsForStrip = useMemo(() => {
+    if (highlightsData.length > 0) {
+      return highlightsData.map((h, i) => ({
+        icon: '\u2B50',
+        label: h.displayText,
+        sub: '',
+        tint: MEMBER_COLORS[i % MEMBER_COLORS.length],
+      }));
+    }
+    return [];
+  }, [highlightsData]);
+
+  // Trip destination label
+  const destLabel = trip?.destination ?? '';
+  const dateRangeLabel = trip
+    ? `${formatDatePHT(trip.startDate)}\u2013${formatDatePHT(trip.endDate)}`
+    : '';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -830,7 +808,7 @@ export default function TripScreen() {
             <View style={styles.activePill}>
               <PulsingDot color={colors.accent} />
               <Text style={styles.activePillText}>
-                LIVE {'\u00B7'} BORACAY {'\u00B7'} APR 20{'\u2013'}27
+                LIVE {'\u00B7'} {destLabel.toUpperCase() || 'TRIP'} {'\u00B7'} {dateRangeLabel.toUpperCase()}
               </Text>
             </View>
           </View>
@@ -866,7 +844,7 @@ export default function TripScreen() {
           <>
             {/* Group */}
             <GroupHeader
-              kicker="Group \u00B7 3 travelers"
+              kicker={`Group \u00B7 ${membersData.length} traveler${membersData.length !== 1 ? 's' : ''}`}
               title="Who's going"
               action={
                 <TouchableOpacity>
@@ -876,20 +854,20 @@ export default function TripScreen() {
               colors={colors}
             />
             <View style={styles.listContainer}>
-              {MEMBERS.map((m) => (
-                <View key={m.name} style={styles.memberRow}>
+              {membersData.map((m, idx) => (
+                <View key={m.id} style={styles.memberRow}>
                   <View
                     style={[
                       styles.memberAvatar,
-                      { backgroundColor: m.color },
+                      { backgroundColor: MEMBER_COLORS[idx % MEMBER_COLORS.length] },
                     ]}
                   >
-                    <Text style={styles.memberInit}>{m.init}</Text>
+                    <Text style={styles.memberInit}>{m.name.charAt(0).toUpperCase()}</Text>
                   </View>
                   <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>
                       {m.name}
-                      {m.you && (
+                      {m.role === 'Primary' && (
                         <Text style={styles.youBadge}> YOU</Text>
                       )}
                     </Text>
@@ -923,7 +901,7 @@ export default function TripScreen() {
             {/* Accommodation */}
             <GroupHeader
               kicker="Accommodation"
-              title="Canyon Hotels & Resorts"
+              title={trip?.accommodation ?? 'Hotel'}
               action={
                 <View style={styles.paidChip}>
                   <Text style={styles.paidChipText}>Paid</Text>
@@ -937,10 +915,10 @@ export default function TripScreen() {
                   <View style={styles.accomThumb} />
                   <View style={styles.accomHeaderInfo}>
                     <Text style={styles.accomTitle}>
-                      Executive Suite {'\u00D7'} 2
+                      {trip?.roomType || trip?.accommodation || 'Room'}
                     </Text>
                     <Text style={styles.accomAddr}>
-                      Station B, Sitio Sinagpa, Balabag
+                      {trip?.address || ''}
                     </Text>
                   </View>
                 </View>
@@ -948,29 +926,33 @@ export default function TripScreen() {
                   <View>
                     <Text style={styles.accomGridLabel}>CHECK-IN</Text>
                     <Text style={styles.accomGridValue}>
-                      Apr 20 {'\u00B7'} 3:00 PM
+                      {trip ? formatDatePHT(trip.startDate) : ''} {'\u00B7'} {trip?.checkIn || '3:00 PM'}
                     </Text>
                   </View>
                   <View>
                     <Text style={styles.accomGridLabel}>CHECKOUT</Text>
                     <Text style={styles.accomGridValue}>
-                      Apr 27 {'\u00B7'} 12:00 PM
+                      {trip ? formatDatePHT(trip.endDate) : ''} {'\u00B7'} {trip?.checkOut || '12:00 PM'}
                     </Text>
                   </View>
-                  <View>
-                    <Text style={styles.accomGridLabel}>TOTAL</Text>
-                    <Text style={styles.accomGridValue}>
-                      {'\u20B1'}49,491.74
-                    </Text>
-                  </View>
-                  <View>
-                    <Text style={styles.accomGridLabel}>
-                      SPLIT / PERSON
-                    </Text>
-                    <Text style={styles.accomGridValue}>
-                      {'\u20B1'}16,497.25
-                    </Text>
-                  </View>
+                  {trip?.cost != null && (
+                    <View>
+                      <Text style={styles.accomGridLabel}>TOTAL</Text>
+                      <Text style={styles.accomGridValue}>
+                        {formatCurrency(trip.cost, trip.costCurrency || 'PHP')}
+                      </Text>
+                    </View>
+                  )}
+                  {trip?.cost != null && membersData.length > 0 && (
+                    <View>
+                      <Text style={styles.accomGridLabel}>
+                        SPLIT / PERSON
+                      </Text>
+                      <Text style={styles.accomGridValue}>
+                        {formatCurrency(trip.cost / membersData.length, trip.costCurrency || 'PHP')}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.accomFooter}>
                   <TouchableOpacity style={styles.syncBtn}>
@@ -987,8 +969,8 @@ export default function TripScreen() {
               colors={colors}
             />
             <View style={styles.flightsList}>
-              {FLIGHTS_DATA.map((f) => (
-                <MiniFlightCard key={f.ref} f={f} colors={colors} />
+              {flightsDisplay.map((f, i) => (
+                <MiniFlightCard key={f.ref || i} f={f} colors={colors} />
               ))}
             </View>
           </>
@@ -1011,11 +993,11 @@ export default function TripScreen() {
               title="Your travel story"
               colors={colors}
             />
-            <HighlightsStrip highlights={HIGHLIGHTS} />
+            <HighlightsStrip highlights={highlightsForStrip} />
 
             {/* Past trips */}
             <GroupHeader
-              kicker={`Past trips \u00B7 ${PAST_TRIPS.length}`}
+              kicker={`Past trips \u00B7 ${pastTripsDisplay.length}`}
               title="Where you've been"
               action={
                 <TouchableOpacity>
@@ -1025,7 +1007,7 @@ export default function TripScreen() {
               colors={colors}
             />
             <View style={styles.listContainer}>
-              {PAST_TRIPS.map((t, i) => (
+              {pastTripsDisplay.map((t, i) => (
                 <PastTripRow key={i} trip={t} />
               ))}
 
@@ -1101,8 +1083,8 @@ export default function TripScreen() {
         {/* ===================== FLIGHTS ===================== */}
         {activeTab === 'flights' && (
           <View style={styles.fullFlightsList}>
-            {FLIGHTS_DATA.map((f) => (
-              <FullFlightCard key={f.ref} f={f} colors={colors} />
+            {flightsDisplay.map((f, i) => (
+              <FullFlightCard key={f.ref || i} f={f} colors={colors} />
             ))}
           </View>
         )}
@@ -1186,7 +1168,7 @@ export default function TripScreen() {
           <>
             <View style={styles.filesHeader}>
               <Text style={styles.filesCount}>
-                {FILES_DATA.length} files {'\u00B7'} 3.0 MB
+                {filesData.length} file{filesData.length !== 1 ? 's' : ''}
               </Text>
               <TouchableOpacity style={styles.uploadBtn}>
                 <Text style={styles.uploadBtnText}>+ Upload</Text>
@@ -1194,14 +1176,16 @@ export default function TripScreen() {
             </View>
 
             <View style={styles.filesList}>
-              {FILES_DATA.map((f) => (
-                <View key={f.n} style={styles.fileRow}>
+              {filesData.map((f, idx) => {
+                const iconColor = FILE_COLORS[idx % FILE_COLORS.length];
+                return (
+                <View key={f.id} style={styles.fileRow}>
                   <View
                     style={[
                       styles.fileIcon,
                       {
-                        backgroundColor: f.icon + '20',
-                        borderColor: f.icon + '40',
+                        backgroundColor: iconColor + '20',
+                        borderColor: iconColor + '40',
                       },
                     ]}
                   >
@@ -1213,14 +1197,14 @@ export default function TripScreen() {
                     >
                       <Path
                         d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"
-                        stroke={f.icon}
+                        stroke={iconColor}
                         strokeWidth={1.7}
                         strokeLinecap="round"
                         strokeLinejoin="round"
                       />
                       <Polyline
                         points="14 3 14 8 19 8"
-                        stroke={f.icon}
+                        stroke={iconColor}
                         strokeWidth={1.7}
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -1232,15 +1216,15 @@ export default function TripScreen() {
                       style={styles.fileName}
                       numberOfLines={1}
                     >
-                      {f.n}
+                      {f.fileName}
                     </Text>
                     <Text style={styles.fileMeta}>
-                      {f.t} {'\u00B7'} {f.size} {'\u00B7'} by {f.who}
+                      {f.type}{f.notes ? ` \u00B7 ${f.notes}` : ''}
                     </Text>
                   </View>
                   <TouchableOpacity
                     style={styles.downloadBtn}
-                    accessibilityLabel={`Download ${f.n}`}
+                    accessibilityLabel={`Download ${f.fileName}`}
                   >
                     <Svg
                       width={14}
@@ -1274,7 +1258,8 @@ export default function TripScreen() {
                     </Svg>
                   </TouchableOpacity>
                 </View>
-              ))}
+                );
+              })}
             </View>
           </>
         )}

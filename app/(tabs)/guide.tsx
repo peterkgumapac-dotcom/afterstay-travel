@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Linking,
   ScrollView,
@@ -27,6 +27,9 @@ import Svg, {
 } from 'react-native-svg';
 
 import { useTheme } from '@/constants/ThemeContext';
+import { getActiveTrip } from '@/lib/supabase';
+import { formatDatePHT } from '@/lib/utils';
+import type { Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'property' | 'nearby' | 'notes';
@@ -156,7 +159,7 @@ function AmenityIcon({ id, color }: { id: string; color: string }) {
 
 // ── Pulsing dot for map pin ─────────────────────────────────────────────
 
-function PulsingMapPin({ colors }: { colors: ThemeColors }) {
+function PulsingMapPin({ colors, label }: { colors: ThemeColors; label: string }) {
   const scale = useSharedValue(1);
 
   useState(() => {
@@ -197,7 +200,7 @@ function PulsingMapPin({ colors }: { colors: ThemeColors }) {
         </Svg>
       </View>
       <Text style={[styles_static.pinLabel, { color: colors.text }]}>
-        Canyon Hotels
+        {label}
       </Text>
     </Animated.View>
   );
@@ -232,6 +235,19 @@ export default function GuideScreen() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
   const [tab, setTab] = useState<TabId>('property');
+  const [trip, setTrip] = useState<Trip | null>(null);
+
+  useEffect(() => {
+    getActiveTrip().then((t) => { if (t) setTrip(t); }).catch(() => {});
+  }, []);
+
+  const hotelName = trip?.accommodation ?? PROPERTY.name;
+  const hotelAddr = trip?.address ?? PROPERTY.desc;
+  const checkInTime = trip?.checkIn ?? PROPERTY.checkIn;
+  const checkOutTime = trip?.checkOut ?? PROPERTY.checkOut;
+  const destLabel = trip?.destination ?? 'Boracay';
+  const checkInDate = trip ? formatDatePHT(trip.startDate) : '';
+  const checkOutDate = trip ? formatDatePHT(trip.endDate) : '';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -239,7 +255,7 @@ export default function GuideScreen() {
       <View style={styles.topBar}>
         <View>
           <Text style={styles.title}>Guide</Text>
-          <Text style={styles.subtitle}>Canyon Hotels {'\u00B7'} Boracay</Text>
+          <Text style={styles.subtitle}>{hotelName} {'\u00B7'} {destLabel}</Text>
         </View>
         <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Search">
           <Svg
@@ -304,8 +320,8 @@ export default function GuideScreen() {
                   {/* Gradient overlay */}
                   <View style={styles.heroGradient} />
                   <View style={styles.heroTextBlock}>
-                    <Text style={styles.heroName}>{PROPERTY.name}</Text>
-                    <Text style={styles.heroDesc}>{PROPERTY.desc}</Text>
+                    <Text style={styles.heroName}>{hotelName}</Text>
+                    <Text style={styles.heroDesc}>{hotelAddr}</Text>
                   </View>
                 </View>
               </View>
@@ -316,13 +332,13 @@ export default function GuideScreen() {
               <View style={styles.timesGrid}>
                 <View style={styles.timeCard}>
                   <Text style={styles.timeEyebrow}>Check-in</Text>
-                  <Text style={styles.timeValue}>{PROPERTY.checkIn}</Text>
-                  <Text style={styles.timeDate}>Sun, Apr 20</Text>
+                  <Text style={styles.timeValue}>{checkInTime}</Text>
+                  <Text style={styles.timeDate}>{checkInDate}</Text>
                 </View>
                 <View style={styles.timeCard}>
                   <Text style={styles.timeEyebrow}>Check-out</Text>
-                  <Text style={styles.timeValue}>{PROPERTY.checkOut}</Text>
-                  <Text style={styles.timeDate}>Sun, Apr 27</Text>
+                  <Text style={styles.timeValue}>{checkOutTime}</Text>
+                  <Text style={styles.timeDate}>{checkOutDate}</Text>
                 </View>
               </View>
             </View>
@@ -354,14 +370,13 @@ export default function GuideScreen() {
               {/* Phone */}
               <TouchableOpacity
                 style={styles.contactRow}
-                onPress={() =>
-                  Linking.openURL(
-                    `tel:${PROPERTY.phone.replace(/[^+\d]/g, '')}`,
-                  )
-                }
+                onPress={() => {
+                  const phone = trip?.hotelPhone ?? PROPERTY.phone;
+                  Linking.openURL(`tel:${phone.replace(/[^+\d]/g, '')}`);
+                }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel={`Call ${PROPERTY.phone}`}
+                accessibilityLabel={`Call ${trip?.hotelPhone ?? PROPERTY.phone}`}
               >
                 <View style={styles.contactIcon}>
                   <Svg
@@ -378,7 +393,7 @@ export default function GuideScreen() {
                   </Svg>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.contactTitle}>{PROPERTY.phone}</Text>
+                  <Text style={styles.contactTitle}>{trip?.hotelPhone ?? PROPERTY.phone}</Text>
                   <Text style={styles.contactMeta}>
                     Reception {'\u00B7'} 24 hours
                   </Text>
@@ -449,7 +464,7 @@ export default function GuideScreen() {
 
                 {/* Hotel pin (centered) */}
                 <View style={styles.mapPinCenter}>
-                  <PulsingMapPin colors={colors} />
+                  <PulsingMapPin colors={colors} label={hotelName} />
                 </View>
 
                 {/* Scattered secondary pins */}

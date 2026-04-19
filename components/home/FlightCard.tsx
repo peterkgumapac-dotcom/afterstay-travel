@@ -3,26 +3,39 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
 import { elevation } from '@/constants/theme';
-import { FLIGHTS } from '@/lib/flightData';
+import { formatDatePHT, formatTimePHT } from '@/lib/utils';
+import type { Flight } from '@/lib/types';
 
 interface Props {
+  flight?: Flight;
   direction?: 'outbound' | 'return';
 }
 
-export const FlightCard: React.FC<Props> = ({ direction = 'outbound' }) => {
+export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'outbound' }) => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
-  const flight = direction === 'outbound' ? FLIGHTS.outbound : FLIGHTS.return;
 
-  const depCode = flight.depart.code;
-  const arrCode = flight.arrive.code;
-  const depTime = flight.depart.time;
-  const arrTime = flight.arrive.time;
-  const depCity = depCode === 'MNL' ? 'Manila' : 'Caticlan';
-  const arrCity = arrCode === 'MPH' ? 'Caticlan' : 'Manila';
-  const flightCode = flight.number;
-  const ref = flight.ref;
-  const dateShort = flight.dateShort;
+  if (!flightProp) {
+    return (
+      <View style={styles.card}>
+        <Text style={{ color: colors.text3, fontSize: 13, textAlign: 'center', paddingVertical: 20 }}>
+          No {direction} flight data available
+        </Text>
+      </View>
+    );
+  }
+
+  const depCode = flightProp.from;
+  const arrCode = flightProp.to;
+  const depTime = formatTimePHT(flightProp.departTime);
+  const arrTime = formatTimePHT(flightProp.arriveTime);
+  const depCity = flightProp.from;
+  const arrCity = flightProp.to;
+  const flightCode = flightProp.flightNumber;
+  const ref = flightProp.bookingRef ?? '';
+  const dateShort = formatDatePHT(flightProp.departTime);
+  const airline = flightProp.airline ?? '';
+  const airlineCode = flightCode.split(' ')[0] ?? '';
 
   return (
     <View style={styles.card}>
@@ -30,11 +43,11 @@ export const FlightCard: React.FC<Props> = ({ direction = 'outbound' }) => {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.airlineLogo}>
-            <Text style={styles.airlineLogoText}>5J</Text>
+            <Text style={styles.airlineLogoText}>{airlineCode}</Text>
           </View>
           <View>
-            <Text style={styles.airlineName}>Cebu Pacific {'\u00B7'} {flightCode}</Text>
-            <Text style={styles.refText}>Ref {ref} {'\u00B7'} {dateShort}</Text>
+            <Text style={styles.airlineName}>{airline} {'\u00B7'} {flightCode}</Text>
+            <Text style={styles.refText}>{ref ? `Ref ${ref} \u00B7 ` : ''}{dateShort}</Text>
           </View>
         </View>
         <View style={styles.onTimePill}>
@@ -79,11 +92,17 @@ export const FlightCard: React.FC<Props> = ({ direction = 'outbound' }) => {
 
       {/* Footer stats */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Duration {flight.duration}</Text>
+        <Text style={styles.footerText}>
+          {depCode} {'\u2192'} {arrCode}
+        </Text>
         <Text style={styles.footerDot}>{'\u2022'}</Text>
-        <Text style={styles.footerText}>3 passengers</Text>
-        <Text style={styles.footerDot}>{'\u2022'}</Text>
-        <Text style={styles.footerText}>Peter +20kg bag</Text>
+        <Text style={styles.footerText}>{dateShort}</Text>
+        {flightProp.baggage ? (
+          <>
+            <Text style={styles.footerDot}>{'\u2022'}</Text>
+            <Text style={styles.footerText}>{flightProp.baggage}</Text>
+          </>
+        ) : null}
       </View>
     </View>
   );
