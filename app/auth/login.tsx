@@ -198,6 +198,20 @@ function getStyles(colors: ReturnType<typeof useTheme>['colors']) {
       fontWeight: '700' as const,
       color: colors.onBlack,
     },
+    ghostButton: {
+      paddingVertical: 14,
+      borderRadius: radius.md,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      backgroundColor: 'transparent',
+    },
+    ghostButtonText: {
+      fontSize: 14,
+      fontWeight: '600' as const,
+      color: colors.accent,
+    },
     backLink: {
       paddingVertical: spacing.sm,
     },
@@ -216,12 +230,13 @@ function getStyles(colors: ReturnType<typeof useTheme>['colors']) {
 
 export default function LoginScreen() {
   const { colors } = useTheme();
-  const { signInWithMagicLink, session } = useAuth();
+  const { signIn, signInWithMagicLink, session } = useAuth();
   const router = useRouter();
   const themed = getStyles(colors);
 
   const [panel, setPanel] = useState<Panel>('root');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [countryCode, setCountryCode] = useState('+63');
   const [sentTarget, setSentTarget] = useState({ kind: '', target: '' });
@@ -236,6 +251,19 @@ export default function LoginScreen() {
   }, [session, panel, router]);
 
   const isEmailValid = EMAIL_REGEX.test(email.trim());
+
+  const handleSignInWithPassword = async () => {
+    if (!isEmailValid || !password) return;
+    setLoading(true);
+    setError(null);
+    const { error: err } = await signIn(email.trim(), password);
+    if (err) {
+      setError(err);
+      setLoading(false);
+    } else {
+      router.replace('/(tabs)/home' as never);
+    }
+  };
 
   const handleSendMagicLink = async () => {
     if (!isEmailValid) return;
@@ -379,7 +407,7 @@ export default function LoginScreen() {
         <View style={styles.headingBlock}>
           <Text style={themed.subHeading}>Sign in with email</Text>
           <Text style={themed.subText}>
-            We&apos;ll send a secure link — no password to remember.
+            Enter your email and password, or use a magic link.
           </Text>
         </View>
 
@@ -396,19 +424,44 @@ export default function LoginScreen() {
             autoFocus
           />
 
+          <TextInput
+            style={themed.input}
+            placeholder="Password"
+            placeholderTextColor={colors.text3}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="password"
+          />
+
           {error ? <Text style={themed.errorText}>{error}</Text> : null}
 
           <TouchableOpacity
-            style={[themed.primaryButton, !isEmailValid && styles.disabledButton]}
-            onPress={handleSendMagicLink}
-            disabled={!isEmailValid || loading}
+            style={[themed.primaryButton, (!isEmailValid || !password) && styles.disabledButton]}
+            onPress={handleSignInWithPassword}
+            disabled={!isEmailValid || !password || loading}
             activeOpacity={0.8}
           >
             {loading ? (
               <ActivityIndicator color={colors.onBlack} size="small" />
             ) : (
-              <Text style={themed.primaryButtonText}>Send magic link</Text>
+              <Text style={themed.primaryButtonText}>Sign In</Text>
             )}
+          </TouchableOpacity>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            <Text style={{ fontSize: 10, fontWeight: '600', letterSpacing: 1.8, color: colors.text3 }}>OR</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+          </View>
+
+          <TouchableOpacity
+            style={[themed.ghostButton, !isEmailValid && styles.disabledButton]}
+            onPress={handleSendMagicLink}
+            disabled={!isEmailValid || loading}
+            activeOpacity={0.8}
+          >
+            <Text style={themed.ghostButtonText}>Send magic link instead</Text>
           </TouchableOpacity>
         </View>
 
