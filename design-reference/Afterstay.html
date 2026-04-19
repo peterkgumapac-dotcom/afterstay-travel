@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Afterstay — Travel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=switzer@300,400,500,600,700,800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/tokens.css?v=37">
+<style>
+  html, body, #root { height: 100%; }
+  body {
+    background: var(--bg) !important;
+    color: var(--text);
+    margin: 0;
+  }
+  .stage-wrap {
+    min-height: 100vh; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px; box-sizing: border-box;
+    background: var(--bg);
+    position: relative;
+  }
+  /* iPhone-ish frame */
+  .device {
+    position: relative;
+    width: 390px; height: 844px;
+    background: var(--bg);
+    border-radius: 54px;
+    border: 1px solid var(--border);
+    box-shadow:
+      0 0 0 12px #0a0c10,
+      0 0 0 13px #202632,
+      var(--shadow-lg);
+    overflow: hidden;
+  }
+  [data-theme="light"] .device {
+    background: var(--bg);
+    box-shadow:
+      0 0 0 12px #3a2e1c,
+      0 0 0 13px #5a4a32,
+      var(--shadow-lg);
+  }
+  .screen {
+    position: absolute; inset: 0;
+    background: var(--bg);
+    overflow: hidden;
+  }
+  /* Dynamic island */
+  .island {
+    position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 36px; border-radius: 20px;
+    background: #000;
+    z-index: 100;
+  }
+  /* home indicator */
+  .home-ind {
+    position: absolute; bottom: 7px; left: 50%; transform: translateX(-50%);
+    width: 134px; height: 5px; border-radius: 99px;
+    background: var(--text);
+    opacity: 0.35;
+    z-index: 100;
+  }
+
+  /* Tweaks panel */
+  .tweaks {
+    position: fixed; right: 24px; top: 24px;
+    width: 280px; padding: 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    font-family: var(--font-sans);
+    color: var(--text);
+    z-index: 9999;
+    display: none;
+  }
+  .tweaks.open { display: block; }
+  .tweaks h3 {
+    margin: 0 0 14px; font-size: 13px; font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .tweaks .row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 12px;
+  }
+  .tweaks label { font-size: 11.5px; color: var(--text-2); font-weight: 600; }
+  .tweaks select, .tweaks button.pill {
+    padding: 6px 10px;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 11px; font-weight: 600;
+    font-family: var(--font-sans);
+    cursor: pointer;
+  }
+  .tweaks .toggle {
+    display: inline-flex; background: var(--card-2);
+    border: 1px solid var(--border); border-radius: 999px; padding: 2px;
+  }
+  .tweaks .toggle button {
+    padding: 5px 10px; border: none; background: transparent;
+    color: var(--text-3); font-size: 10.5px; font-weight: 700;
+    border-radius: 999px; cursor: pointer; letter-spacing: 0.04em;
+  }
+  .tweaks .toggle button.on {
+    background: var(--black); color: var(--on-black);
+  }
+</style>
+</head>
+<body>
+
+<div class="stage stage-wrap">
+  <div class="device" id="device">
+    <div class="island"></div>
+    <div class="screen" id="screen"></div>
+    <div class="home-ind"></div>
+  </div>
+</div>
+
+<!-- Tweaks panel -->
+<div class="tweaks" id="tweaks">
+  <h3>Tweaks</h3>
+  <div class="row">
+    <label>Theme</label>
+    <div class="toggle" id="tog-theme">
+      <button data-v="dark" class="on">Dark</button>
+      <button data-v="light">Light</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>Density</label>
+    <div class="toggle" id="tog-density">
+      <button data-v="cozy" class="on">Cozy</button>
+      <button data-v="compact">Compact</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>Start screen</label>
+    <select id="sel-start">
+      <option value="login">Login</option>
+      <option value="home">Home</option>
+      <option value="guide">Guide</option>
+      <option value="discover">Discover</option>
+      <option value="budget">Budget</option>
+      <option value="trip">Trips</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>Moments layout</label>
+    <div class="toggle" id="tog-moments">
+      <button data-v="mosaic" class="on">Mosaic</button>
+      <button data-v="diary">Diary</button>
+      <button data-v="map">Map</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>Budget state</label>
+    <div class="toggle" id="tog-budget">
+      <button data-v="cruising" class="on">Cruising</button>
+      <button data-v="low">Low</button>
+      <button data-v="over">Over</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>Trip phase</label>
+    <div class="toggle" id="tog-phase">
+      <button data-v="upcoming" class="on">Upcoming</button>
+      <button data-v="inflight">In-flight</button>
+      <button data-v="arrived">Arrived</button>
+      <button data-v="active">Active</button>
+    </div>
+  </div>
+  <div class="row">
+    <label>Summary state</label>
+    <div class="toggle" id="tog-summary">
+      <button data-v="populated" class="on">Has trips</button>
+      <button data-v="empty">Empty</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "density": "cozy",
+  "startScreen": "login",
+  "momentsLayout": "diary",
+  "budgetState": "cruising",
+  "tripPhase": "upcoming",
+  "summaryState": "populated"
+}/*EDITMODE-END*/;
+
+const savedTweaks = { ...TWEAK_DEFAULTS };
+try { Object.assign(savedTweaks, JSON.parse(localStorage.getItem('afterstay_tweaks') || '{}')); } catch {}
+
+function applyTweaks() {
+  document.documentElement.dataset.theme = savedTweaks.theme;
+  document.documentElement.dataset.density = savedTweaks.density;
+  // update toggles
+  document.querySelectorAll('#tog-theme button').forEach(b => b.classList.toggle('on', b.dataset.v === savedTweaks.theme));
+  document.querySelectorAll('#tog-density button').forEach(b => b.classList.toggle('on', b.dataset.v === savedTweaks.density));
+  document.querySelectorAll('#tog-moments button').forEach(b => b.classList.toggle('on', b.dataset.v === savedTweaks.momentsLayout));
+  document.querySelectorAll('#tog-budget button').forEach(b => b.classList.toggle('on', b.dataset.v === savedTweaks.budgetState));
+  document.querySelectorAll('#tog-phase button').forEach(b => b.classList.toggle('on', b.dataset.v === savedTweaks.tripPhase));
+  document.querySelectorAll('#tog-summary button').forEach(b => b.classList.toggle('on', b.dataset.v === savedTweaks.summaryState));
+  const sel = document.getElementById('sel-start');
+  if (sel) sel.value = savedTweaks.startScreen;
+  if (window.__setMomentsLayout) window.__setMomentsLayout(savedTweaks.momentsLayout);
+  if (window.__setBudgetState) window.__setBudgetState(savedTweaks.budgetState);
+  if (window.__setTripPhase) window.__setTripPhase(savedTweaks.tripPhase);
+  // Broadcast so every mounted component updates (setter-chain can lose subscribers)
+  window.dispatchEvent(new CustomEvent('afterstay:tweaks', { detail: { ...savedTweaks } }));
+}
+applyTweaks();
+
+function saveTweaks(patch) {
+  Object.assign(savedTweaks, patch);
+  localStorage.setItem('afterstay_tweaks', JSON.stringify(savedTweaks));
+  applyTweaks();
+  window.parent.postMessage({ type: '__edit_mode_set_keys', edits: patch }, '*');
+  if ('startScreen' in patch && window.__setActive) window.__setActive(patch.startScreen);
+}
+
+document.querySelectorAll('#tog-theme button').forEach(b => {
+  b.addEventListener('click', () => saveTweaks({ theme: b.dataset.v }));
+});
+document.querySelectorAll('#tog-density button').forEach(b => {
+  b.addEventListener('click', () => saveTweaks({ density: b.dataset.v }));
+});
+document.querySelectorAll('#tog-moments button').forEach(b => {
+  b.addEventListener('click', () => saveTweaks({ momentsLayout: b.dataset.v }));
+});
+document.querySelectorAll('#tog-budget button').forEach(b => {
+  b.addEventListener('click', () => saveTweaks({ budgetState: b.dataset.v }));
+});
+document.querySelectorAll('#tog-phase button').forEach(b => {
+  b.addEventListener('click', () => saveTweaks({ tripPhase: b.dataset.v }));
+});
+document.querySelectorAll('#tog-summary button').forEach(b => {
+  b.addEventListener('click', () => saveTweaks({ summaryState: b.dataset.v }));
+});
+document.getElementById('sel-start').addEventListener('change', e => saveTweaks({ startScreen: e.target.value }));
+
+// Edit mode bridge
+window.addEventListener('message', (e) => {
+  const d = e.data || {};
+  if (d.type === '__activate_edit_mode') document.getElementById('tweaks').classList.add('open');
+  if (d.type === '__deactivate_edit_mode') document.getElementById('tweaks').classList.remove('open');
+});
+window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+</script>
+
+<script type="text/babel" src="components/shell.jsx"></script>
+<script type="text/babel" src="screens/login.jsx"></script>
+<script type="text/babel" src="screens/loader.jsx"></script>
+<script type="text/babel" src="screens/home.jsx"></script>
+<script type="text/babel" src="screens/guide.jsx"></script>
+<script type="text/babel" src="screens/discover.jsx"></script>
+<script type="text/babel" src="screens/budget.jsx"></script>
+<script type="text/babel" src="screens/trip.jsx"></script>
+<script type="text/babel" src="screens/moments.jsx"></script>
+
+<script type="text/babel">
+function App() {
+  const [active, setActive] = React.useState(() => {
+    try { return localStorage.getItem('afterstay_active') || savedTweaks.startScreen || 'home'; } catch { return 'home'; }
+  });
+
+  React.useEffect(() => {
+    window.__setActive = setActive;
+    try { localStorage.setItem('afterstay_active', active); } catch {}
+  }, [active]);
+
+  const screens = {
+    home:     <HomeScreen />,
+    guide:    <GuideScreen />,
+    discover: <DiscoverScreen />,
+    budget:   <BudgetScreen />,
+    trip:     <TripScreen />,
+  };
+
+  if (active === 'login') {
+    return (
+      <>
+        <StatusBar />
+        <div style={{ position: 'absolute', top: 44, left: 0, right: 0, bottom: 0 }}>
+          <LoginScreen onSignedIn={() => setActive('loading')} />
+        </div>
+      </>
+    );
+  }
+
+  if (active === 'loading') {
+    return (
+      <>
+        <StatusBar />
+        <div style={{ position: 'absolute', top: 44, left: 0, right: 0, bottom: 0 }}>
+          <ItineraryLoader onDone={() => setActive('home')} />
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <StatusBar />
+      <div style={{ position: 'absolute', top: 44, left: 0, right: 0, bottom: 0 }}>
+        {screens[active]}
+        <TabBar active={active} onChange={setActive} />
+      </div>
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('screen'));
+root.render(<App />);
+</script>
+
+</body>
+</html>

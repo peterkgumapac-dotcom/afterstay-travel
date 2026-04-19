@@ -1,0 +1,530 @@
+/* Afterstay — Design Tokens
+   Elegant, modern, cozy. Dark = warm espresso (default). Light = cool cloud white.
+   Unified: Switzer everywhere. Accent: warm sand/ochre (no neon, no green). */
+
+/* ==========================================================
+   DARK (default) — warm espresso, candlelit
+   ========================================================== */
+:root {
+  --bg: #141210;
+  --bg-1: #1b1814;
+  --bg-2: #231e19;
+  --canvas: #0f0d0b;
+  --card: #1f1b17;
+  --card-2: #262019;
+  --elevated: #2c251e;
+  --border: #2e2822;
+  --border-2: #3e362e;
+  --ink: #f2ece3;
+
+  /* text */
+  --text: #f1ebe2;
+  --text-2: #b8afa3;
+  --text-3: #857d70;
+  --text-dim: #544b41;
+
+  /* Accent — warm sand (unified w/ brand) */
+  --accent: #d8ab7a;
+  --accent-dk: #c49460;
+  --accent-lt: #e6c196;
+  --accent-dim: rgba(216, 171, 122, 0.14);
+  --accent-bg: rgba(216, 171, 122, 0.10);
+  --accent-border: rgba(216, 171, 122, 0.32);
+
+  /* semantic */
+  --warn: #e2b361;
+  --info: #c49460;          /* was steel-blue — now warm cognac */
+  --success: #d8ab7a;       /* warm sand instead of green */
+
+  /* FAB radial colors — all warm */
+  --fab-1: #c49460;
+  --fab-2: #d17858;
+  --fab-3: #b89478;
+  --fab-4: #d9a441;
+
+  /* violet — used by Discover / AI planner */
+  --violet: #c49460;        /* replaced purple w/ warm cognac */
+  --teal: #d8ab7a;
+  --teal-dk: #c49460;
+  --teal-lt: #e6c196;
+  --teal-dim: rgba(216, 171, 122, 0.14);
+  --teal-bg: rgba(216, 171, 122, 0.10);
+  --teal2: #d8ab7a;
+  --teal2-dk: #c49460;
+  --teal2-bg: rgba(216, 171, 122, 0.10);
+
+  /* inverse surface — on dark, "black" button is cream */
+  --black: #f1ebe2;
+  --black-2: #e0d7c8;
+  --on-black: #18140f;
+
+  /* utility — stable across themes */
+  --gold: #d9a441;
+  --coral: #e38868;
+  --danger: #c4554a;
+  --warn-bg: rgba(217, 164, 65, 0.14);
+  --warn-ink: #e2b361;
+
+  /* chart colors */
+  --chart-1: #d8ab7a;
+  --chart-2: #d17858;
+  --chart-3: #b89478;
+  --chart-4: #d9a441;
+  --chart-5: #c49460;
+
+  /* shadows — soft dark ambient */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 2px 6px rgba(0,0,0,0.22);
+  --shadow-md: 0 2px 6px rgba(0,0,0,0.32), 0 10px 28px rgba(0,0,0,0.38);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.35), 0 24px 60px rgba(0,0,0,0.5);
+
+  --grain-opacity: 0.03;
+
+  /* radius */
+  --r-xs: 8px; --r-sm: 12px; --r-md: 16px;
+  --r-lg: 22px; --r-xl: 28px; --r-2xl: 36px;
+
+  /* fonts — UNIFIED: Switzer everywhere */
+  --font-sans: 'Switzer', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: 'Switzer', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'Switzer', ui-sans-serif, system-ui, sans-serif;
+  --font-hand: 'Switzer', ui-sans-serif, system-ui, sans-serif;
+
+  /* density */
+  --pad-card: 18px;
+  --pad-stack: 16px;
+  --card-gap: 14px;
+  --row-v: 14px;
+}
+
+[data-density="compact"] {
+  --pad-card: 13px;
+  --pad-stack: 11px;
+  --card-gap: 10px;
+  --row-v: 10px;
+}
+
+/* ==========================================================
+   LIGHT — warm ivory / golden hour, editorial elegance
+   ========================================================== */
+[data-theme="light"] {
+  --bg: #f6efe2;          /* softer ivory — less saturated */
+  --bg-1: #efe6d2;
+  --bg-2: #e8dcc0;
+  --canvas: #faf4e8;
+  --card: #fefaf0;        /* near-white warm cream */
+  --card-2: #f4ecd8;
+  --elevated: #fffcf3;
+  --border: #e8dcc0;      /* hairline, low-contrast */
+  --border-2: #d6c498;
+  --ink: #2b1d0c;
+
+  --text: #3d2a12;
+  --text-2: #6b5131;
+  --text-3: #9a7d52;
+  --text-dim: #c2a472;
+
+  /* Accent — rich burnt sienna / cognac — reads strong on ivory */
+  --accent: #a64d1e;
+  --accent-dk: #7f3712;
+  --accent-lt: #c66a36;
+  --accent-dim: rgba(166, 77, 30, 0.14);
+  --accent-bg: rgba(166, 77, 30, 0.10);
+  --accent-border: rgba(166, 77, 30, 0.32);
+
+  --warn: #8e5f14;
+  --info: #a64d1e;          /* warm terracotta, no cool blue */
+  --success: #a64d1e;
+
+  --fab-1: #7f3712;
+  --fab-2: #c66a36;
+  --fab-3: #b8892b;
+  --fab-4: #a64d1e;
+
+  --violet: #a64d1e;        /* terracotta instead of purple */
+
+  /* legacy aliases */
+  --teal: #a64d1e;
+  --teal-dk: #7f3712;
+  --teal-lt: #c66a36;
+  --teal-dim: rgba(166, 77, 30, 0.14);
+  --teal-bg: rgba(166, 77, 30, 0.10);
+  --teal2: #a64d1e;
+  --teal2-dk: #7f3712;
+  --teal2-bg: rgba(166, 77, 30, 0.10);
+
+  --black: #2a1d0d;
+  --black-2: #1a1006;
+  --on-black: #f9f1de;
+
+  --gold: #b8892b;
+  --coral: #c66a36;
+  --danger: #9c3a2d;
+  --warn-bg: rgba(184, 137, 43, 0.16);
+  --warn-ink: #7a5a18;
+
+  --chart-1: #a64d1e;
+  --chart-2: #c66a36;
+  --chart-3: #b8892b;
+  --chart-4: #7f3712;
+  --chart-5: #d08a5a;
+
+  /* softer, precision shadows */
+  --shadow-sm: 0 1px 1px rgba(107, 64, 14, 0.04), 0 1px 2px rgba(107, 64, 14, 0.05);
+  --shadow-md: 0 1px 2px rgba(107, 64, 14, 0.05), 0 4px 14px rgba(107, 64, 14, 0.07);
+  --shadow-lg: 0 2px 6px rgba(107, 64, 14, 0.07), 0 16px 36px rgba(107, 64, 14, 0.10);
+
+  --grain-opacity: 0.03;
+}
+
+/* Cards — clean cream, no gradient overlay for elegance */
+[data-theme="light"] .card {
+  background-image: none;
+  border-color: rgba(214, 196, 152, 0.55);
+}
+[data-theme="light"] .device {
+  background: var(--bg);
+}
+
+[data-theme="light"] body { background: var(--bg) !important; color: var(--text); }
+[data-theme="light"] .stage { background: var(--bg); }
+
+/* ==========================================================
+   Base
+   ========================================================== */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'ss01', 'cv11';
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: 0.02em;
+}
+.display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+.hand {
+  font-family: var(--font-hand);
+  font-weight: 500;
+}
+
+/* ==========================================================
+   TRAVEL VIBES — stamps, tickets, postcards
+   ========================================================== */
+
+/* Rubber-stamp badge — outline, tilted, weathered */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  transform: rotate(-3deg);
+  position: relative;
+  opacity: 0.88;
+}
+.stamp::before,
+.stamp::after {
+  content: '';
+  position: absolute;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.stamp::before { inset: -3px -3px auto auto; width: 6px; height: 6px; border-bottom: none; border-left: none; }
+.stamp::after  { inset: auto auto -3px -3px; width: 6px; height: 6px; border-top: none; border-right: none; }
+.stamp.round { border-radius: 999px; padding: 6px 14px; }
+.stamp.round::before, .stamp.round::after { display: none; }
+
+/* Dashed boarding-pass divider */
+.ticket-divider {
+  height: 1px;
+  background-image: linear-gradient(to right, currentColor 60%, transparent 40%);
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+  color: var(--border-2);
+  position: relative;
+  margin: 14px 0;
+}
+.ticket-divider::before,
+.ticket-divider::after {
+  content: '';
+  position: absolute;
+  width: 18px; height: 18px;
+  background: var(--bg);
+  border-radius: 999px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.ticket-divider::before { left: -9px; }
+.ticket-divider::after  { right: -9px; }
+
+/* Ticket card — with semicircle notches on sides */
+.ticket {
+  position: relative;
+  background: var(--card);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+.ticket::before,
+.ticket::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  background: var(--bg);
+  border-radius: 999px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 1px solid var(--border);
+}
+.ticket::before { left: -9px; }
+.ticket::after  { right: -9px; }
+
+/* Map grid watermark — subtle cartographic pattern */
+.map-grid {
+  background-image:
+    linear-gradient(to right, currentColor 1px, transparent 1px),
+    linear-gradient(to bottom, currentColor 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: rgba(166, 77, 30, 0.05);
+}
+[data-theme="light"] .map-grid { color: rgba(166, 77, 30, 0.06); }
+:root .map-grid, [data-theme="dark"] .map-grid { color: rgba(216, 171, 122, 0.04); }
+
+/* Postcard border — classic dashed edge */
+.postcard {
+  border: 1px dashed var(--border-2);
+  border-radius: var(--r-sm);
+  padding: 14px;
+  position: relative;
+}
+
+/* Compass / bearing mark — decorative */
+.compass-mark {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  position: relative;
+}
+.compass-mark::before {
+  content: 'N';
+  position: absolute;
+  top: -11px; left: 50%; transform: translateX(-50%);
+  font-size: 7px; font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* Itinerary dot — timeline pin */
+.route-dot {
+  width: 10px; height: 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.no-scroll::-webkit-scrollbar { display: none; }
+.no-scroll { scrollbar-width: none; }
+
+/* hero keyframes */
+@keyframes slideshow {
+  0%, 18% { opacity: 1; }
+  22%, 96% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes kenburns {
+  0%   { transform: scale(1.05) translate(0, 0); }
+  100% { transform: scale(1.18) translate(-2%, -1%); }
+}
+
+/* ==========================================================
+   Cards
+   ========================================================== */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--pad-card);
+  position: relative;
+  box-shadow: var(--shadow-sm);
+}
+.card.flat { background: var(--card-2); box-shadow: none; }
+.card.ink  { background: var(--black); color: var(--on-black); border-color: var(--black); }
+.card.accent { background: var(--accent-bg); border-color: rgba(216,171,122,0.3); }
+
+/* ==========================================================
+   Buttons
+   ========================================================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border-2);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: all 0.15s ease;
+}
+.btn:hover { background: var(--card-2); }
+.btn.primary, .btn.teal {
+  background: var(--black);
+  color: var(--on-black);
+  border-color: var(--black);
+}
+.btn.primary:hover, .btn.teal:hover { filter: brightness(1.1); }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.sm { padding: 8px 12px; font-size: 12px; }
+.btn.lg { padding: 15px 20px; font-size: 14px; }
+.btn.violet {
+  background: var(--violet);
+  color: #fff;
+  border-color: var(--violet);
+}
+.btn.violet:hover { filter: brightness(1.08); }
+
+.icon-btn {
+  width: 40px; height: 40px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  display: grid; place-items: center;
+  cursor: pointer;
+  color: var(--text);
+  transition: all .15s;
+}
+.icon-btn:hover { background: var(--card-2); }
+.icon-btn.ink { background: var(--black); color: var(--on-black); border-color: var(--black); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px; font-weight: 500;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  white-space: nowrap; cursor: pointer;
+  font-family: var(--font-sans);
+}
+.chip.active, .chip.teal-active {
+  background: var(--black);
+  border-color: var(--black);
+  color: var(--on-black);
+}
+
+.hairline { height: 1px; background: var(--border); }
+
+.section-title {
+  font-family: var(--font-display);
+  font-weight: 600; font-size: 22px;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+.section-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.img-ph {
+  background: linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 100%);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+  font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; font-weight: 600;
+}
+
+.media-bookmark {
+  position: absolute; top: 12px; right: 12px;
+  width: 36px; height: 36px; border-radius: 999px;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(10px);
+  display: grid; place-items: center;
+  border: none; cursor: pointer;
+  color: #18140f;
+}
+
+.stat-num { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.03em; }
+
+.reviews {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 500; color: var(--text-2);
+}
+
+.stat-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.seg {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  gap: 2px;
+}
+.seg button {
+  flex: 1;
+  padding: 8px 12px;
+  border: none; background: transparent;
+  color: var(--text-3);
+  font-size: 12px; font-weight: 600;
+  border-radius: 9px; cursor: pointer;
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.seg button.active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.icon-btn.round { border-radius: 999px; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
