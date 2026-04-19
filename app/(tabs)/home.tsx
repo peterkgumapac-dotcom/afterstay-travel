@@ -234,11 +234,13 @@ export default function HomeScreen() {
 
   if (loading || !loaderDone) {
     return (
-      <LivingPostcardLoader
-        destination={trip?.destination ?? 'your trip'}
-        name={userName || 'traveler'}
-        onDone={() => setLoaderDone(true)}
-      />
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: -100, zIndex: 999 }}>
+        <LivingPostcardLoader
+          destination={trip?.destination ?? 'your trip'}
+          name={userName || 'traveler'}
+          onDone={() => setLoaderDone(true)}
+        />
+      </View>
     );
   }
 
@@ -398,12 +400,8 @@ export default function HomeScreen() {
                   flights.find((f) => f.direction === 'Outbound')?.departTime ??
                   trip.startDate
                 }
-                status={countdown.status}
-                dayNumber={
-                  countdown.status === 'active'
-                    ? countdown.dayNumber
-                    : undefined
-                }
+                status={'upcoming'}
+                dayNumber={undefined}
                 totalDays={countdown.totalDays}
                 dateLabel={
                   flights.find((f) => f.direction === 'Outbound')?.departTime
