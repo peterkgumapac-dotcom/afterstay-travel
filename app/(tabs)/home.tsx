@@ -6,12 +6,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { AnticipationHero } from '@/components/home/AnticipationHero';
+import { HomeMomentsPreview } from '@/components/home/HomeMomentsPreview';
 import { ArrivedCard } from '@/components/home/ArrivedCard';
 import { CountdownCard } from '@/components/home/CountdownCard';
 import { FlightCard } from '@/components/home/FlightCard';
@@ -97,6 +100,7 @@ const sectionHeaderStyles = StyleSheet.create({
 
 export default function HomeScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const styles = getStyles(colors);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -448,7 +452,20 @@ export default function HomeScreen() {
         <QuickAccessGrid tiles={quickAccessTiles} />
 
         {/* 7. Moments preview */}
-        <SectionHeader kicker="Moments \u00B7 Day 1" title="Trip so far" />
+        <SectionHeader
+          kicker="Moments \u00B7 Day 1"
+          title="Trip so far"
+          action={
+            <TouchableOpacity onPress={() => router.push('/(tabs)/trip' as never)}>
+              <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>All {'\u2192'}</Text>
+            </TouchableOpacity>
+          }
+        />
+        <HomeMomentsPreview
+          moments={moments}
+          members={members}
+          onViewAll={() => router.push('/(tabs)/trip' as never)}
+        />
 
         {/* 8. Nearby */}
         <SectionHeader kicker="Nearby" title="Around the hotel" />

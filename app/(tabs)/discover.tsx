@@ -21,6 +21,7 @@ import {
 } from '@/components/discover/DiscoverPlaceCard';
 import { SuggestionList } from '@/components/discover/SuggestionList';
 import { TrendingCard, type TrendingItem } from '@/components/discover/TrendingCard';
+import MiniLoader from '@/components/loader/MiniLoader';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
 import { distanceFromHotel, formatDistance } from '@/lib/distance';
@@ -115,6 +116,11 @@ function mapNearbyToDiscoverPlace(place: NearbyPlace): DiscoverPlace {
     price: place.price_level ?? 0,
     openNow: place.open_now ?? false,
     img: place.photo_url ?? 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80',
+    placeId: place.place_id,
+    lat: place.lat,
+    lng: place.lng,
+    totalRatings: place.total_ratings,
+    types: place.types,
   };
 }
 
@@ -574,12 +580,16 @@ export default function DiscoverScreen() {
           await addPlace({
             tripId,
             name: placeData.n,
-            category: 'Do' as PlaceCategory,
+            category: (placeData.types ? resolveCategory(placeData.types) : 'Do') as PlaceCategory,
             distance: placeData.d,
             rating: placeData.r,
             source: 'Manual',
             vote: 'Pending' as PlaceVote,
             photoUrl: placeData.img,
+            googlePlaceId: placeData.placeId,
+            latitude: placeData.lat,
+            longitude: placeData.lng,
+            totalRatings: placeData.totalRatings,
             saved: true,
           });
         } catch {
@@ -626,12 +636,16 @@ export default function DiscoverScreen() {
           await addPlace({
             tripId,
             name: placeData.n,
-            category: 'Do' as PlaceCategory,
+            category: (placeData.types ? resolveCategory(placeData.types) : 'Do') as PlaceCategory,
             distance: placeData.d,
             rating: placeData.r,
             source: 'Suggested',
             vote: '\uD83D\uDC4D Yes' as PlaceVote,
             photoUrl: placeData.img,
+            googlePlaceId: placeData.placeId,
+            latitude: placeData.lat,
+            longitude: placeData.lng,
+            totalRatings: placeData.totalRatings,
             saved: true,
           });
         } catch {
@@ -683,7 +697,17 @@ export default function DiscoverScreen() {
           <Text style={styles.title}>Discover</Text>
           <Text style={styles.subtitle}>Boracay</Text>
         </View>
-        <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Filters">
+        <TouchableOpacity
+          style={styles.iconBtn}
+          accessibilityLabel="Filters"
+          accessibilityRole="button"
+          activeOpacity={0.7}
+          onPress={() => {
+            setTab('places');
+            setShowFilters((s) => !s);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+        >
           <Svg
             width={16}
             height={16}
@@ -919,7 +943,13 @@ export default function DiscoverScreen() {
                   What everyone{'\u2019'}s doing
                 </Text>
               </View>
-              <TouchableOpacity activeOpacity={0.7}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  setTab('places');
+                  setPlaceCategoryChip('Activity');
+                }}
+              >
                 <Text style={styles.backLink}>All {'\u2192'}</Text>
               </TouchableOpacity>
             </View>
@@ -1156,10 +1186,7 @@ export default function DiscoverScreen() {
               )}
               {placesLoading ? (
                 <View style={styles.emptyPlaces}>
-                  <ActivityIndicator size="small" color={colors.accent} />
-                  <Text style={[styles.emptyText, { marginTop: 8 }]}>
-                    Loading places...
-                  </Text>
+                  <MiniLoader message="Finding places\u2026" />
                 </View>
               ) : filteredPlaces.length === 0 ? (
                 <View style={styles.emptyPlaces}>
@@ -1188,10 +1215,7 @@ export default function DiscoverScreen() {
           <View style={styles.placeList}>
             {savedLoading ? (
               <View style={styles.emptyPlaces}>
-                <ActivityIndicator size="small" color={colors.accent} />
-                <Text style={[styles.emptyText, { marginTop: 8 }]}>
-                  Loading saved places...
-                </Text>
+                <MiniLoader message="Loading saved places\u2026" />
               </View>
             ) : savedPlaces.length === 0 && saved.size === 0 ? (
               <View style={styles.emptyCard}>

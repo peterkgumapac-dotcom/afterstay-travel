@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { useTheme } from '@/constants/ThemeContext';
+import MiniLoader from '@/components/loader/MiniLoader';
 import { elevation } from '@/constants/theme';
 import { CONFIG } from '../../lib/config';
 
@@ -206,7 +207,7 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
   if (loading) {
     return (
       <View style={styles.card}>
-        <ActivityIndicator color={colors.accentLt} />
+        <MiniLoader size={40} message="Reading the skies\u2026" />
       </View>
     );
   }

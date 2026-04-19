@@ -1,3 +1,5 @@
+import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Pressable,
@@ -33,6 +35,7 @@ import {
   getExpenses,
   getExpenseSummary,
   getGroupMembers,
+  updateTripBudgetMode,
 } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
 import type { Expense, GroupMember, Trip } from '@/lib/types';
@@ -169,6 +172,7 @@ function PulsingIcon({ children, pulse }: { children: React.ReactNode; pulse: bo
 
 export default function BudgetScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const styles = getStyles(colors);
 
   const [mode, setMode] = useState<BudgetMode>('limited');
@@ -241,6 +245,7 @@ export default function BudgetScreen() {
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Settings"
+            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
           >
             <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
               <Circle cx={12} cy={12} r={3} stroke={colors.text} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
@@ -264,7 +269,13 @@ export default function BudgetScreen() {
                 <Pressable
                   key={m}
                   style={[styles.segBtn, active && [styles.segBtnActive, { backgroundColor: colors.card }]]}
-                  onPress={() => setMode(m)}
+                  onPress={() => {
+                    setMode(m);
+                    if (trip) {
+                      const supabaseMode = m === 'limited' ? 'Limited' : 'Unlimited';
+                      updateTripBudgetMode(trip.id, supabaseMode).catch(() => {});
+                    }
+                  }}
                 >
                   <Text style={[styles.segText, { color: colors.text3 }, active && { color: colors.text }]}>
                     {m === 'limited' ? 'Limited' : 'Unlimited'}
@@ -425,16 +436,25 @@ export default function BudgetScreen() {
               kicker="Recent"
               title="Expenses"
               action={
-                <TouchableOpacity activeOpacity={0.7}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                >
                   <Text style={[styles.allAction, { color: colors.accent }]}>All {'\u2192'}</Text>
                 </TouchableOpacity>
               }
             />
             <View style={styles.expensesContainer}>
               {expenses.slice(0, 6).map((e) => (
-                <View
+                <TouchableOpacity
                   key={e.id}
                   style={[styles.expenseRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${e.description}, ${formatCurrency(e.amount, e.currency)}`}
+                  onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
                 >
                   <View style={{ flex: 1 }}>
                     <Text
@@ -450,7 +470,7 @@ export default function BudgetScreen() {
                   <Text style={[styles.expenseAmount, { color: colors.text }]}>
                     {formatCurrency(e.amount, e.currency)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </>
@@ -486,6 +506,9 @@ export default function BudgetScreen() {
               <TouchableOpacity
                 style={[styles.addExpenseBtn, { backgroundColor: colors.black }]}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Add expense"
+                onPress={() => router.push('/add-expense' as never)}
               >
                 <Text style={[styles.addExpenseBtnText, { color: colors.onBlack }]}>+ Add expense</Text>
               </TouchableOpacity>

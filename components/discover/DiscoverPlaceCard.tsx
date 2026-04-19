@@ -1,4 +1,4 @@
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -15,6 +15,11 @@ export interface DiscoverPlace {
   price: number;
   openNow: boolean;
   img: string;
+  placeId?: string;
+  lat?: number;
+  lng?: number;
+  totalRatings?: number;
+  types?: string[];
 }
 
 interface DiscoverPlaceCardProps {
@@ -23,6 +28,7 @@ interface DiscoverPlaceCardProps {
   isRecommended: boolean;
   onSave: () => void;
   onRecommend: () => void;
+  onExplore?: () => void;
 }
 
 export function DiscoverPlaceCard({
@@ -31,6 +37,7 @@ export function DiscoverPlaceCard({
   isRecommended,
   onSave,
   onRecommend,
+  onExplore,
 }: DiscoverPlaceCardProps) {
   const { colors } = useTheme();
   const styles = getStyles(colors);
@@ -89,7 +96,20 @@ export function DiscoverPlaceCard({
           style={styles.exploreBtn}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Explore"
+          accessibilityLabel={`Explore ${place.n}`}
+          onPress={() => {
+            if (onExplore) {
+              onExplore();
+            } else if (place.lat != null && place.lng != null) {
+              Linking.openURL(
+                `https://maps.google.com/?q=${place.lat},${place.lng}`,
+              );
+            } else {
+              Linking.openURL(
+                `https://maps.google.com/maps/search/${encodeURIComponent(place.n)}`,
+              );
+            }
+          }}
         >
           <Svg
             width={13}

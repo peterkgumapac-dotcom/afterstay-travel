@@ -13,6 +13,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
+import MiniLoader from '@/components/loader/MiniLoader';
 import {
   X,
   Star,
@@ -237,8 +238,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
 
           {loading ? (
             <View style={s.loaderWrap}>
-              <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={[s.mutedText, { marginTop: 12 }]}>Loading details...</Text>
+              <MiniLoader size={56} message="Loading details\u2026" />
             </View>
           ) : details ? (
             <ScrollView

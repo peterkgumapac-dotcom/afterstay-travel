@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -22,13 +27,19 @@ import Svg, {
   Path,
   Polyline,
 } from 'react-native-svg';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
 
 import AddTripSheet from '@/components/summary/AddTripSheet';
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
+import { MomentsTab } from '@/components/moments/MomentsTab';
 import PastTripRow from '@/components/summary/PastTripRow';
 import { useTheme } from '@/constants/ThemeContext';
 import {
+  addPackingItem,
   getActiveTrip,
   getFlights,
   getGroupMembers,
@@ -600,10 +611,13 @@ const fullFlightStyles = (colors: ThemeColors) =>
 export default function TripScreen() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [addOpen, setAddOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [addingItem, setAddingItem] = useState(false);
+  const [newItemText, setNewItemText] = useState('');
 
   // Data from Supabase
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -730,6 +744,82 @@ export default function TripScreen() {
     ? `${formatDatePHT(trip.startDate)}\u2013${formatDatePHT(trip.endDate)}`
     : '';
 
+  // Hotel photos
+  const hotelPhotos = useMemo(() => {
+    if (!trip?.hotelPhotos) return [];
+    try {
+      const parsed: unknown = JSON.parse(trip.hotelPhotos);
+      return Array.isArray(parsed) ? (parsed as string[]) : [];
+    } catch {
+      return [];
+    }
+  }, [trip?.hotelPhotos]);
+
+  // Button handlers
+  const handleShare = () => {
+    Share.share({ message: `Check out our trip to ${trip?.destination ?? 'somewhere amazing'}!` });
+  };
+
+  const handleMore = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleInvite = async () => {
+    await Clipboard.setStringAsync('https://afterstay.app/invite/boracay-2026');
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Copied', 'Invite link copied to clipboard!');
+  };
+
+  const handleMemberChat = (member: GroupMember) => {
+    if (member.phone) {
+      Linking.openURL(`sms:${member.phone}`);
+    } else if (member.email) {
+      Linking.openURL(`mailto:${member.email}`);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const handleSync = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    load();
+  };
+
+  const handleAddPackingItem = async () => {
+    const text = newItemText.trim();
+    if (!text) return;
+    const tempId = `temp-${Date.now()}`;
+    const newItem: PackingItem = {
+      id: tempId,
+      item: text,
+      category: 'Other',
+      packed: false,
+      owner: '',
+    };
+    setPackingItems((prev) => [...prev, newItem]);
+    setNewItemText('');
+    setAddingItem(false);
+    try {
+      await addPackingItem({ item: text, category: 'Other', tripId: trip?.id });
+      // Refresh to get the real ID from the server
+      if (trip) {
+        const updated = await getPackingList(trip.id).catch(() => [] as PackingItem[]);
+        setPackingItems(updated);
+      }
+    } catch {
+      // Revert on failure
+      setPackingItems((prev) => prev.filter((it) => it.id !== tempId));
+    }
+  };
+
+  const handleUpload = () => {
+    router.push('/add-file');
+  };
+
+  const handleDownload = (fileUrl: string) => {
+    WebBrowser.openBrowserAsync(fileUrl);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
@@ -740,7 +830,7 @@ export default function TripScreen() {
         <View style={styles.topBar}>
           <Text style={styles.topBarTitle}>Trips</Text>
           <View style={styles.topBarRight}>
-            <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Share">
+            <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Share" onPress={handleShare}>
               <Svg
                 width={16}
                 height={16}
@@ -772,7 +862,7 @@ export default function TripScreen() {
                 />
               </Svg>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} accessibilityLabel="More">
+            <TouchableOpacity style={styles.iconBtn} accessibilityLabel="More" onPress={handleMore}>
               <Svg
                 width={16}
                 height={16}
@@ -847,7 +937,7 @@ export default function TripScreen() {
               kicker={`Group \u00B7 ${membersData.length} traveler${membersData.length !== 1 ? 's' : ''}`}
               title="Who's going"
               action={
-                <TouchableOpacity>
+                <TouchableOpacity onPress={handleInvite}>
                   <Text style={styles.ghostAction}>Invite +</Text>
                 </TouchableOpacity>
               }
@@ -878,6 +968,7 @@ export default function TripScreen() {
                   <TouchableOpacity
                     style={styles.memberChatBtn}
                     accessibilityLabel={`Message ${m.name}`}
+                    onPress={() => handleMemberChat(m)}
                   >
                     <Svg
                       width={14}
@@ -912,7 +1003,15 @@ export default function TripScreen() {
             <View style={styles.sectionPadding}>
               <View style={styles.accomCard}>
                 <View style={styles.accomHeader}>
-                  <View style={styles.accomThumb} />
+                  {hotelPhotos[0] ? (
+                    <Image
+                      source={{ uri: hotelPhotos[0] }}
+                      style={styles.accomThumb}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.accomThumb} />
+                  )}
                   <View style={styles.accomHeaderInfo}>
                     <Text style={styles.accomTitle}>
                       {trip?.roomType || trip?.accommodation || 'Room'}
@@ -955,7 +1054,7 @@ export default function TripScreen() {
                   )}
                 </View>
                 <View style={styles.accomFooter}>
-                  <TouchableOpacity style={styles.syncBtn}>
+                  <TouchableOpacity style={styles.syncBtn} onPress={handleSync}>
                     <Text style={styles.syncBtnText}>Sync details</Text>
                   </TouchableOpacity>
                 </View>
@@ -1073,11 +1172,7 @@ export default function TripScreen() {
 
         {/* ===================== MOMENTS ===================== */}
         {activeTab === 'moments' && (
-          <View style={styles.momentsPadding}>
-            <Text style={styles.placeholderText}>
-              Moments tab coming soon
-            </Text>
-          </View>
+          <MomentsTab tripId={trip?.id} />
         )}
 
         {/* ===================== FLIGHTS ===================== */}
@@ -1099,10 +1194,30 @@ export default function TripScreen() {
                 </Text>{' '}
                 of {packingStats.total} packed
               </Text>
-              <TouchableOpacity style={styles.addItemBtn}>
+              <TouchableOpacity style={styles.addItemBtn} onPress={() => setAddingItem(true)}>
                 <Text style={styles.addItemBtnText}>+ Add item</Text>
               </TouchableOpacity>
             </View>
+
+            {addingItem && (
+              <View style={styles.addItemRow}>
+                <TextInput
+                  style={styles.addItemInput}
+                  value={newItemText}
+                  onChangeText={setNewItemText}
+                  placeholder="Item name"
+                  placeholderTextColor={colors.text3}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleAddPackingItem}
+                  onBlur={() => {
+                    if (!newItemText.trim()) {
+                      setAddingItem(false);
+                    }
+                  }}
+                />
+              </View>
+            )}
 
             {Object.entries(packingState).map(([group, items]) => (
               <View key={group}>
@@ -1170,7 +1285,7 @@ export default function TripScreen() {
               <Text style={styles.filesCount}>
                 {filesData.length} file{filesData.length !== 1 ? 's' : ''}
               </Text>
-              <TouchableOpacity style={styles.uploadBtn}>
+              <TouchableOpacity style={styles.uploadBtn} onPress={handleUpload}>
                 <Text style={styles.uploadBtnText}>+ Upload</Text>
               </TouchableOpacity>
             </View>
@@ -1225,6 +1340,7 @@ export default function TripScreen() {
                   <TouchableOpacity
                     style={styles.downloadBtn}
                     accessibilityLabel={`Download ${f.fileName}`}
+                    onPress={() => f.fileUrl && handleDownload(f.fileUrl)}
                   >
                     <Svg
                       width={14}
@@ -1498,6 +1614,7 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.card2,
       borderWidth: 1,
       borderColor: colors.border,
+      overflow: 'hidden' as const,
     },
     accomHeaderInfo: {
       flex: 1,
@@ -1602,6 +1719,21 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 12,
       fontWeight: '600',
       color: colors.onBlack,
+    },
+    addItemRow: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+    },
+    addItemInput: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      fontSize: 13,
+      fontWeight: '500',
+      color: colors.text,
     },
     packingList: {
       paddingHorizontal: 16,

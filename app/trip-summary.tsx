@@ -5,15 +5,17 @@ import { useRouter } from 'expo-router';
 import {
   ArrowLeft, Plane, Hotel, MapPin, Users, Wallet, Calendar,
 } from 'lucide-react-native';
-import { FLIGHTS } from '../lib/flightData';
-import { getActiveTrip, getExpenses, getGroupMembers } from '../lib/supabase';
-import type { Expense, GroupMember, Trip } from '../lib/types';
+import { getActiveTrip, getExpenses, getFlights, getGroupMembers } from '../lib/supabase';
+import type { Expense, Flight, GroupMember, Trip } from '../lib/types';
 import { useTheme } from '@/constants/ThemeContext';
+import { formatDatePHT, formatTimePHT, safeParse } from '@/lib/utils';
 
 export default function TripSummary() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
   const router = useRouter();
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [flights, setFlights] = useState<Flight[]>([]);
   const [tripSpent, setTripSpent] = useState(0);
   const [total, setTotal] = useState(0);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -22,14 +24,18 @@ export default function TripSummary() {
     let cancelled = false;
     (async () => {
       try {
-        const trip = await getActiveTrip();
-        if (cancelled || !trip) return;
+        const t = await getActiveTrip();
+        if (cancelled || !t) return;
+        setTrip(t);
 
-        const [expenses, grp] = await Promise.all([
-          getExpenses(trip.id).catch(() => [] as Expense[]),
-          getGroupMembers(trip.id).catch(() => [] as GroupMember[]),
+        const [fs, expenses, grp] = await Promise.all([
+          getFlights(t.id).catch(() => [] as Flight[]),
+          getExpenses(t.id).catch(() => [] as Expense[]),
+          getGroupMembers(t.id).catch(() => [] as GroupMember[]),
         ]);
         if (cancelled) return;
+
+        setFlights(fs);
 
         const isAccommodation = (e: Expense) => {
           const desc = (e.description ?? '').toLowerCase();
@@ -40,17 +46,21 @@ export default function TripSummary() {
           .reduce((sum, e) => sum + e.amount, 0);
 
         setTripSpent(dailyTotal);
-        setTotal(trip.budgetLimit ?? 0);
+        setTotal(t.budgetLimit ?? 0);
         setMembers(grp);
       } catch {}
     })();
     return () => { cancelled = true; };
   }, []);
 
-  const TRIP_START = new Date('2026-04-20T00:00:00+08:00');
-  const TRIP_DAYS = 7;
-  const days = Array.from({ length: TRIP_DAYS }, (_, i) => {
-    const d = new Date(TRIP_START);
+  const outbound = flights.find((f) => f.direction === 'Outbound');
+  const returnFlight = flights.find((f) => f.direction === 'Return');
+
+  const tripStart = trip ? safeParse(trip.startDate) : new Date();
+  const tripEnd = trip ? safeParse(trip.endDate) : new Date();
+  const tripDays = Math.max(1, Math.ceil((tripEnd.getTime() - tripStart.getTime()) / 86400000) + 1);
+  const days = Array.from({ length: tripDays }, (_, i) => {
+    const d = new Date(tripStart);
     d.setDate(d.getDate() + i);
     return d;
   });
@@ -67,8 +77,10 @@ export default function TripSummary() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <Text style={styles.heroTitle}>Boracay 2026</Text>
-          <Text style={styles.heroDates}>Apr 20 – Apr 27 · 7 nights</Text>
+          <Text style={styles.heroTitle}>{trip?.destination ?? 'Trip'} {tripEnd.getFullYear()}</Text>
+          <Text style={styles.heroDates}>
+            {trip ? `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)} \u00B7 ${tripDays - 1} nights` : ''}
+          </Text>
         </View>
 
         <View style={styles.section}>
@@ -91,29 +103,39 @@ export default function TripSummary() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Flights</Text>
 
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Plane color={colors.accent} size={18} strokeWidth={2} />
-              <Text style={styles.cardTitle}>Outbound</Text>
+          {outbound && (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Plane color={colors.accent} size={18} strokeWidth={2} />
+                <Text style={styles.cardTitle}>Outbound</Text>
+              </View>
+              <Text style={styles.cardLine}>{outbound.airline} {outbound.flightNumber}</Text>
+              <Text style={styles.cardSubLine}>
+                {outbound.from} {formatTimePHT(outbound.departTime)} {'\u2192'} {outbound.to} {formatTimePHT(outbound.arriveTime)}
+              </Text>
+              {outbound.bookingRef && <Text style={styles.cardMeta}>Ref: {outbound.bookingRef}</Text>}
             </View>
-            <Text style={styles.cardLine}>{FLIGHTS.outbound.airline} {FLIGHTS.outbound.number}</Text>
-            <Text style={styles.cardSubLine}>
-              {FLIGHTS.outbound.depart.code} {FLIGHTS.outbound.depart.time} {'\u2192'} {FLIGHTS.outbound.arrive.code} {FLIGHTS.outbound.arrive.time}
-            </Text>
-            <Text style={styles.cardMeta}>Ref: {FLIGHTS.outbound.ref}</Text>
-          </View>
+          )}
 
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Plane color={colors.accent} size={18} strokeWidth={2} style={{ transform: [{ rotate: '180deg' }] }} />
-              <Text style={styles.cardTitle}>Return</Text>
+          {returnFlight && (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Plane color={colors.accent} size={18} strokeWidth={2} style={{ transform: [{ rotate: '180deg' }] }} />
+                <Text style={styles.cardTitle}>Return</Text>
+              </View>
+              <Text style={styles.cardLine}>{returnFlight.airline} {returnFlight.flightNumber}</Text>
+              <Text style={styles.cardSubLine}>
+                {returnFlight.from} {formatTimePHT(returnFlight.departTime)} {'\u2192'} {returnFlight.to} {formatTimePHT(returnFlight.arriveTime)}
+              </Text>
+              {returnFlight.bookingRef && <Text style={styles.cardMeta}>Ref: {returnFlight.bookingRef}</Text>}
             </View>
-            <Text style={styles.cardLine}>{FLIGHTS.return.airline} {FLIGHTS.return.number}</Text>
-            <Text style={styles.cardSubLine}>
-              {FLIGHTS.return.depart.code} {FLIGHTS.return.depart.time} {'\u2192'} {FLIGHTS.return.arrive.code} {FLIGHTS.return.arrive.time}
-            </Text>
-            <Text style={styles.cardMeta}>Ref: {FLIGHTS.return.ref}</Text>
-          </View>
+          )}
+
+          {!outbound && !returnFlight && (
+            <View style={styles.card}>
+              <Text style={styles.cardSubLine}>No flights added yet</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>

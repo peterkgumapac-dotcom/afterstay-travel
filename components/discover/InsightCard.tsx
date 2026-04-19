@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTripInsight } from '../../hooks/useTripInsight';
 import { NewsItem } from '../../lib/tripInsights';
 import { useTheme } from '@/constants/ThemeContext';
+import MiniLoader from '@/components/loader/MiniLoader';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -22,8 +23,7 @@ export const InsightCard: React.FC = () => {
   if (loading && !insight) {
     return (
       <View style={[styles.card, styles.cardLoading]}>
-        <ActivityIndicator color={colors.accent} size="small" />
-        <Text style={styles.loadingText}>Loading Boracay insights...</Text>
+        <MiniLoader size={40} message="Loading Boracay insights\u2026" />
       </View>
     );
   }

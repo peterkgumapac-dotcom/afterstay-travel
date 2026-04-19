@@ -3,12 +3,20 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
-import { FLIGHTS } from '../../lib/flightData';
+import type { Flight } from '@/lib/types';
+import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 
-export const GettingThereLink = () => {
+interface GettingThereLinkProps {
+  flights: Flight[];
+}
+
+export const GettingThereLink = ({ flights }: GettingThereLinkProps) => {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = getStyles(colors);
+
+  const outbound = flights.find((f) => f.direction === 'Outbound');
+  const returnFlight = flights.find((f) => f.direction === 'Return');
 
   return (
     <View style={styles.row}>
@@ -19,7 +27,7 @@ export const GettingThereLink = () => {
       >
         <Text style={styles.label}>Getting There</Text>
         <Text style={styles.title}>
-          {FLIGHTS.outbound.dateShort} · {FLIGHTS.outbound.depart.time}
+          {outbound ? `${formatDatePHT(outbound.departTime)} \u00B7 ${formatTimePHT(outbound.departTime)}` : 'No flight yet'}
         </Text>
         <Text style={styles.subtitle}>Flight · Boat · Trike</Text>
         <Text style={styles.arrow}>View →</Text>
@@ -32,7 +40,7 @@ export const GettingThereLink = () => {
       >
         <Text style={styles.label}>Plan Your Departure</Text>
         <Text style={styles.title}>
-          {FLIGHTS.return.dateShort} · {FLIGHTS.return.depart.time}
+          {returnFlight ? `${formatDatePHT(returnFlight.departTime)} \u00B7 ${formatTimePHT(returnFlight.departTime)}` : 'No flight yet'}
         </Text>
         <Text style={styles.subtitle}>Checkout 12:00 PM</Text>
         <Text style={styles.arrow}>View →</Text>

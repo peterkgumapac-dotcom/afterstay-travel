@@ -1,6 +1,8 @@
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   Linking,
   ScrollView,
   StyleSheet,
@@ -257,7 +259,13 @@ export default function GuideScreen() {
           <Text style={styles.title}>Guide</Text>
           <Text style={styles.subtitle}>{hotelName} {'\u00B7'} {destLabel}</Text>
         </View>
-        <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Search">
+        <TouchableOpacity
+          style={styles.iconBtn}
+          accessibilityLabel="Search"
+          accessibilityRole="button"
+          onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+          activeOpacity={0.7}
+        >
           <Svg
             width={16}
             height={16}
@@ -491,6 +499,11 @@ export default function GuideScreen() {
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel="Open map"
+                  onPress={() => {
+                    const lat = 11.9710;
+                    const lng = 121.9215;
+                    Linking.openURL(`https://maps.google.com/?q=${lat},${lng}`);
+                  }}
                 >
                   <Text style={styles.openMapBtnText}>Open map {'\u2192'}</Text>
                 </TouchableOpacity>
@@ -536,6 +549,17 @@ export default function GuideScreen() {
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="New note"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  Alert.prompt(
+                    'New note',
+                    'Add a quick note for the group',
+                    (_text) => {
+                      // Note creation will be wired to Supabase
+                    },
+                    'plain-text',
+                  );
+                }}
               >
                 <Text style={styles.newNoteBtnText}>+ New note</Text>
               </TouchableOpacity>
