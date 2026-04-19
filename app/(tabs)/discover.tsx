@@ -22,6 +22,8 @@ import {
 import { SuggestionList } from '@/components/discover/SuggestionList';
 import { TrendingCard, type TrendingItem } from '@/components/discover/TrendingCard';
 import MiniLoader from '@/components/loader/MiniLoader';
+import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
+import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
 import { distanceFromHotel, formatDistance } from '@/lib/distance';
@@ -52,6 +54,7 @@ const CATEGORY_SEARCH_MAP: Record<string, { type?: string; keyword?: string }> =
   nightlife: { type: 'bar', keyword: 'nightlife bar club' },
   photo: { keyword: 'viewpoint scenic photo spot' },
   wellness: { type: 'spa', keyword: 'spa wellness massage yoga' },
+  coffee: { type: 'cafe', keyword: 'coffee cafe espresso' },
 };
 
 // Map Google Places types to display labels
@@ -159,6 +162,7 @@ const CATEGORIES: readonly CategoryItem[] = [
   { id: 'nightlife', label: 'Nightlife', emoji: '\uD83C\uDF79', color: '#b66a8a' },
   { id: 'photo', label: 'Photo spots', emoji: '\uD83D\uDCF8', color: '#8b6f5a' },
   { id: 'wellness', label: 'Wellness', emoji: '\uD83E\uDDD8', color: '#7ba88a' },
+  { id: 'coffee', label: 'Coffee', emoji: '\u2615', color: '#a0845c' },
 ] as const;
 
 const CATEGORY_SUGGESTIONS: Record<string, readonly string[]> = {
@@ -203,6 +207,13 @@ const CATEGORY_SUGGESTIONS: Record<string, readonly string[]> = {
     'Spa day',
     'Wellness retreats',
     'Juice & smoothie bars',
+  ],
+  coffee: [
+    'Best espresso spots',
+    'Beachfront cafes',
+    'Pour-over & specialty',
+    'Iced coffee stops',
+    'Brunch & coffee',
   ],
 };
 
@@ -283,6 +294,7 @@ const PLACE_CATEGORY_CHIPS = [
   'All',
   'Beach',
   'Food',
+  'Coffee',
   'Activity',
   'Shopping',
   'Landmark',
@@ -452,7 +464,13 @@ export default function DiscoverScreen() {
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
   const [itineraryLoading, setItineraryLoading] = useState(false);
   const [itineraryError, setItineraryError] = useState<string | null>(null);
+  const [itineraryScope, setItineraryScope] = useState<'whole' | 'day' | 'surprise'>('whole');
   const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
+
+  // PlaceDetailSheet state
+  const [detailPlaceId, setDetailPlaceId] = useState<string | null>(null);
+  const [detailPlaceName, setDetailPlaceName] = useState('');
+  const [showDetail, setShowDetail] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load trip ID on mount
@@ -665,12 +683,16 @@ export default function DiscoverScreen() {
     setItineraryError(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const interests = STYLE_TO_INTERESTS[style] ?? ['beach', 'food', 'activities'];
+      const chosenStyle = itineraryScope === 'surprise'
+        ? ITINERARY_STYLES[Math.floor(Math.random() * ITINERARY_STYLES.length)].id
+        : style;
+      const interests = STYLE_TO_INTERESTS[chosenStyle] ?? ['beach', 'food', 'activities'];
       const promptInterests = prompt.trim()
         ? [...interests, prompt.trim()]
         : interests;
+      const mode = itineraryScope === 'day' ? 'Lite in 7 Days' : 'Surprise Me';
       const result = await generateItinerary({
-        mode: 'Surprise Me',
+        mode,
         interests: promptInterests,
       });
       setItinerary(result);
@@ -680,7 +702,7 @@ export default function DiscoverScreen() {
     } finally {
       setItineraryLoading(false);
     }
-  }, [style, prompt]);
+  }, [style, prompt, itineraryScope]);
 
   const activeFilterCount = countActiveFilters(filters);
   const filteredPlaces = applyPlaceFilters(places, filters);
@@ -753,187 +775,187 @@ export default function DiscoverScreen() {
         {/* ═══════ PLANNER TAB ═══════ */}
         {tab === 'planner' && (
           <>
-            {/* AI prompt card */}
-            <View style={styles.promptCard}>
-              {/* Glow */}
-              <View style={styles.promptGlow} />
-              <View style={styles.promptInner}>
-                {/* Header row */}
-                <View style={styles.promptHeaderRow}>
-                  <View style={styles.promptIconBox}>
-                    <Svg
-                      width={15}
-                      height={15}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#fff"
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <Path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
-                    </Svg>
-                  </View>
-                  <View>
-                    <Text style={styles.promptTitle}>Trip Planner</Text>
-                    <Text style={styles.promptSub}>
-                      AI-generated day-by-day for Boracay
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Text input */}
-                <View style={styles.promptInputBox}>
-                  <TextInput
-                    value={prompt}
-                    onChangeText={setPrompt}
-                    placeholder="What do you want to do on this trip?"
-                    placeholderTextColor={colors.text3}
-                    style={styles.promptInput}
-                    multiline
-                  />
-                </View>
-
-                {/* Generate button */}
-                <TouchableOpacity
-                  style={[styles.generateBtn, itineraryLoading && { opacity: 0.6 }]}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Generate Itinerary"
-                  onPress={handleGenerateItinerary}
-                  disabled={itineraryLoading}
-                >
-                  {itineraryLoading ? (
-                    <ActivityIndicator size="small" color={colors.onBlack} />
-                  ) : (
-                    <Svg
-                      width={16}
-                      height={16}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke={colors.onBlack}
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <Path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
-                    </Svg>
-                  )}
-                  <Text style={styles.generateBtnText}>
-                    {itineraryLoading ? 'Generating...' : 'Generate Itinerary'}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Itinerary error */}
-                {itineraryError && (
-                  <Text style={styles.errorText}>{itineraryError}</Text>
-                )}
+            {/* AI loading — full animated loader */}
+            {itineraryLoading ? (
+              <View style={{ height: 400, marginHorizontal: -16 }}>
+                <LivingPostcardLoader
+                  destination="Boracay"
+                  name="traveler"
+                  onDone={() => {}}
+                  durationMs={30000}
+                />
               </View>
-            </View>
-
-            {/* Generated itinerary results */}
-            {itinerary.length > 0 && (
+            ) : (
               <>
-                <View style={styles.sectionHeader}>
-                  <View>
-                    <Text style={styles.eyebrow}>Your itinerary</Text>
-                    <Text style={styles.sectionTitle}>Day-by-day plan</Text>
+                {/* AI prompt card */}
+                <View style={styles.promptCard}>
+                  {/* Glow */}
+                  <View style={styles.promptGlow} />
+                  <View style={styles.promptInner}>
+                    {/* Header row */}
+                    <View style={styles.promptHeaderRow}>
+                      <View style={styles.promptIconBox}>
+                        <Svg
+                          width={15}
+                          height={15}
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="#fff"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <Path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
+                        </Svg>
+                      </View>
+                      <View>
+                        <Text style={styles.promptTitle}>Trip Planner</Text>
+                        <Text style={styles.promptSub}>
+                          AI-generated day-by-day for Boracay
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Scope selector */}
+                    <View style={styles.scopeRow}>
+                      {([
+                        { id: 'whole', label: 'Whole trip' },
+                        { id: 'day', label: 'Just today' },
+                        { id: 'surprise', label: 'Surprise me' },
+                      ] as const).map((s) => {
+                        const active = itineraryScope === s.id;
+                        return (
+                          <TouchableOpacity
+                            key={s.id}
+                            style={[styles.scopePill, active && styles.scopePillActive]}
+                            onPress={() => setItineraryScope(s.id)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.scopePillText, active && styles.scopePillTextActive]}>
+                              {s.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {/* Style selector — hidden for "surprise me" */}
+                    {itineraryScope !== 'surprise' && (
+                      <View style={styles.styleList}>
+                        {ITINERARY_STYLES.map((s) => {
+                          const active = style === s.id;
+                          return (
+                            <TouchableOpacity
+                              key={s.id}
+                              style={[styles.styleCard, active && styles.styleCardActive]}
+                              onPress={() => setStyle(s.id)}
+                              activeOpacity={0.7}
+                            >
+                              <View
+                                style={[
+                                  styles.styleRadio,
+                                  active && styles.styleRadioActive,
+                                ]}
+                              >
+                                {active && <View style={styles.styleRadioDot} />}
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.styleLabel}>{s.label}</Text>
+                                <Text style={styles.styleSub}>{s.sub}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {/* Text input */}
+                    <View style={styles.promptInputBox}>
+                      <TextInput
+                        value={prompt}
+                        onChangeText={setPrompt}
+                        placeholder="What do you want to do on this trip?"
+                        placeholderTextColor={colors.text3}
+                        style={styles.promptInput}
+                        multiline
+                      />
+                    </View>
+
+                    {/* Generate button */}
+                    <TouchableOpacity
+                      style={styles.generateBtn}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel="Generate Itinerary"
+                      onPress={handleGenerateItinerary}
+                    >
+                      <Svg
+                        width={16}
+                        height={16}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={colors.onBlack}
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <Path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
+                      </Svg>
+                      <Text style={styles.generateBtnText}>Generate Itinerary</Text>
+                    </TouchableOpacity>
+
+                    {/* Itinerary error */}
+                    {itineraryError && (
+                      <Text style={styles.errorText}>{itineraryError}</Text>
+                    )}
                   </View>
                 </View>
-                <View style={styles.styleList}>
-                  {itinerary.map((day) => (
-                    <View key={day.day} style={styles.itineraryCard}>
-                      <View style={styles.itineraryDayHeader}>
-                        <Text style={styles.itineraryDayLabel}>Day {day.day}</Text>
-                        <Text style={styles.itineraryDate}>{day.date}</Text>
+
+                {/* Generated itinerary results */}
+                {itinerary.length > 0 && (
+                  <>
+                    <View style={styles.sectionHeader}>
+                      <View>
+                        <Text style={styles.eyebrow}>Your itinerary</Text>
+                        <Text style={styles.sectionTitle}>Day-by-day plan</Text>
                       </View>
-                      <Text style={styles.itineraryTheme}>{day.theme}</Text>
-                      <View style={styles.itinerarySlot}>
-                        <Text style={styles.itinerarySlotLabel}>Morning</Text>
-                        <Text style={styles.itinerarySlotText}>{day.morning}</Text>
-                      </View>
-                      <View style={styles.itinerarySlot}>
-                        <Text style={styles.itinerarySlotLabel}>Afternoon</Text>
-                        <Text style={styles.itinerarySlotText}>{day.afternoon}</Text>
-                      </View>
-                      <View style={styles.itinerarySlot}>
-                        <Text style={styles.itinerarySlotLabel}>Evening</Text>
-                        <Text style={styles.itinerarySlotText}>{day.evening}</Text>
-                      </View>
-                      <View style={styles.itinerarySlot}>
-                        <Text style={styles.itinerarySlotLabel}>Dining</Text>
-                        <Text style={styles.itinerarySlotText}>{day.dining}</Text>
-                      </View>
-                      {day.tips ? (
-                        <View style={styles.itineraryTipBox}>
-                          <Text style={styles.itineraryTipText}>{day.tips}</Text>
-                        </View>
-                      ) : null}
                     </View>
-                  ))}
-                </View>
+                    <View style={styles.styleList}>
+                      {itinerary.map((day) => (
+                        <View key={day.day} style={styles.itineraryCard}>
+                          <View style={styles.itineraryDayHeader}>
+                            <Text style={styles.itineraryDayLabel}>Day {day.day}</Text>
+                            <Text style={styles.itineraryDate}>{day.date}</Text>
+                          </View>
+                          <Text style={styles.itineraryTheme}>{day.theme}</Text>
+                          <View style={styles.itinerarySlot}>
+                            <Text style={styles.itinerarySlotLabel}>Morning</Text>
+                            <Text style={styles.itinerarySlotText}>{day.morning}</Text>
+                          </View>
+                          <View style={styles.itinerarySlot}>
+                            <Text style={styles.itinerarySlotLabel}>Afternoon</Text>
+                            <Text style={styles.itinerarySlotText}>{day.afternoon}</Text>
+                          </View>
+                          <View style={styles.itinerarySlot}>
+                            <Text style={styles.itinerarySlotLabel}>Evening</Text>
+                            <Text style={styles.itinerarySlotText}>{day.evening}</Text>
+                          </View>
+                          <View style={styles.itinerarySlot}>
+                            <Text style={styles.itinerarySlotLabel}>Dining</Text>
+                            <Text style={styles.itinerarySlotText}>{day.dining}</Text>
+                          </View>
+                          {day.tips ? (
+                            <View style={styles.itineraryTipBox}>
+                              <Text style={styles.itineraryTipText}>{day.tips}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                )}
               </>
             )}
-
-            {/* Quick suggestions header */}
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.eyebrow}>Quick suggestions</Text>
-                <Text style={styles.sectionTitle}>
-                  {cat && selectedCategory ? selectedCategory.label : 'Pick a vibe'}
-                </Text>
-              </View>
-              {cat && (
-                <TouchableOpacity onPress={() => setCat(null)} activeOpacity={0.7}>
-                  <Text style={styles.backLink}>{'\u2190'} Categories</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Category grid or suggestions */}
-            {!cat ? (
-              <CategoryGrid categories={CATEGORIES} onSelect={(id) => setCat(id)} />
-            ) : (
-              <SuggestionList
-                suggestions={CATEGORY_SUGGESTIONS[cat] ?? []}
-                emoji={selectedCategory?.emoji ?? ''}
-                onSelect={(s) => setPrompt(s)}
-              />
-            )}
-
-            {/* Itinerary styles */}
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.eyebrow}>Style</Text>
-                <Text style={styles.sectionTitle}>Pick your pace</Text>
-              </View>
-            </View>
-            <View style={styles.styleList}>
-              {ITINERARY_STYLES.map((s) => {
-                const active = style === s.id;
-                return (
-                  <TouchableOpacity
-                    key={s.id}
-                    style={[styles.styleCard, active && styles.styleCardActive]}
-                    onPress={() => setStyle(s.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.styleRadio,
-                        active && styles.styleRadioActive,
-                      ]}
-                    >
-                      {active && <View style={styles.styleRadioDot} />}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.styleLabel}>{s.label}</Text>
-                      <Text style={styles.styleSub}>{s.sub}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
 
             {/* Trending */}
             <View style={styles.sectionHeader}>
@@ -1203,6 +1225,11 @@ export default function DiscoverScreen() {
                     isRecommended={recommended.has(p.n)}
                     onSave={() => toggleSave(p.n)}
                     onRecommend={() => toggleRecommend(p.n)}
+                    onExplore={() => {
+                      setDetailPlaceId(p.placeId ?? null);
+                      setDetailPlaceName(p.n);
+                      setShowDetail(true);
+                    }}
                   />
                 ))
               )}
@@ -1274,6 +1301,14 @@ export default function DiscoverScreen() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      <PlaceDetailSheet
+        visible={showDetail}
+        placeId={detailPlaceId}
+        initialName={detailPlaceName}
+        saved={saved.has(detailPlaceName)}
+        onClose={() => setShowDetail(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1467,6 +1502,32 @@ const getStyles = (colors: ThemeColors) =>
     },
 
     // Style cards
+    scopeRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 12,
+    },
+    scopePill: {
+      flex: 1,
+      paddingVertical: 10,
+      alignItems: 'center',
+      borderRadius: 12,
+      backgroundColor: colors.card2,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    scopePillActive: {
+      backgroundColor: colors.accentBg,
+      borderColor: colors.accentBorder,
+    },
+    scopePillText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.text3,
+    },
+    scopePillTextActive: {
+      color: colors.accent,
+    },
     styleList: {
       paddingHorizontal: 16,
       paddingBottom: 16,

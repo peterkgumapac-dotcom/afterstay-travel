@@ -2,6 +2,9 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActionSheetIOS,
+  Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -35,6 +38,7 @@ import {
   getExpenses,
   getExpenseSummary,
   getGroupMembers,
+  updateTripBudgetLimit,
   updateTripBudgetMode,
 } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
@@ -225,6 +229,99 @@ export default function BudgetScreen() {
     ? (remaining / total > 0.5 ? 'Cruising' : remaining / total > 0.2 ? 'Watch' : 'Over')
     : 'Cruising';
 
+  /* ---------- FAB menu ---------- */
+
+  const showAddMenu = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel', 'Add Expense', 'Scan Receipt'], cancelButtonIndex: 0 },
+        (i) => {
+          if (i === 1) router.push('/add-expense' as never);
+          if (i === 2) router.push('/scan-receipt' as never);
+        },
+      );
+    } else {
+      Alert.alert('Add', '', [
+        { text: 'Add Expense', onPress: () => router.push('/add-expense' as never) },
+        { text: 'Scan Receipt', onPress: () => router.push('/scan-receipt' as never) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }, [router]);
+
+  /* ---------- Budget limit editor ---------- */
+
+  const promptBudgetLimit = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!trip) return;
+
+    if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'Set Budget Limit',
+        'Enter the new budget limit',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Save',
+            onPress: (value?: string) => {
+              const parsed = Number(value);
+              if (!value || isNaN(parsed) || parsed <= 0) return;
+              updateTripBudgetLimit(trip.id, parsed).then(() => load()).catch(() => {});
+            },
+          },
+        ],
+        'plain-text',
+        String(total || ''),
+        'numeric',
+      );
+    } else {
+      // Android fallback — use Alert with a message prompting the user
+      Alert.alert(
+        'Set Budget Limit',
+        `Current limit: ${formatCurrency(total, 'PHP')}\n\nTo change the budget limit, use the trip settings.`,
+        [{ text: 'OK' }],
+      );
+    }
+  }, [trip, total, load]);
+
+  /* ---------- Settings gear menu ---------- */
+
+  const showSettingsMenu = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const modeLabel = mode === 'limited' ? 'Switch to Unlimited' : 'Switch to Limited';
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel', 'Set budget limit', modeLabel], cancelButtonIndex: 0 },
+        (i) => {
+          if (i === 1) promptBudgetLimit();
+          if (i === 2 && trip) {
+            const nextMode: BudgetMode = mode === 'limited' ? 'unlimited' : 'limited';
+            setMode(nextMode);
+            const supabaseMode = nextMode === 'limited' ? 'Limited' : 'Unlimited';
+            updateTripBudgetMode(trip.id, supabaseMode).catch(() => {});
+          }
+        },
+      );
+    } else {
+      Alert.alert('Budget Settings', '', [
+        { text: 'Set budget limit', onPress: () => promptBudgetLimit() },
+        {
+          text: modeLabel,
+          onPress: () => {
+            if (!trip) return;
+            const nextMode: BudgetMode = mode === 'limited' ? 'unlimited' : 'limited';
+            setMode(nextMode);
+            const supabaseMode = nextMode === 'limited' ? 'Limited' : 'Unlimited';
+            updateTripBudgetMode(trip.id, supabaseMode).catch(() => {});
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }, [mode, trip, promptBudgetLimit, load]);
+
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
       <ScrollView
@@ -245,7 +342,7 @@ export default function BudgetScreen() {
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Settings"
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+            onPress={showSettingsMenu}
           >
             <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
               <Circle cx={12} cy={12} r={3} stroke={colors.text} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
@@ -308,12 +405,29 @@ export default function BudgetScreen() {
                       <Text style={styles.summaryEyebrow}>
                         {`Total budget \u00B7 ${days} days`}
                       </Text>
-                      <View style={styles.summaryAmountRow}>
+                      <TouchableOpacity
+                        style={styles.summaryAmountRow}
+                        onPress={promptBudgetLimit}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel="Edit budget limit"
+                      >
                         <Text style={[styles.summaryCurrency, { color: colors.text3 }]}>{'\u20B1'}</Text>
                         <Text style={[styles.summaryAmount, { color: colors.text }]}>
                           {total.toLocaleString()}
                         </Text>
-                      </View>
+                        <View style={styles.editIcon}>
+                          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                            <Path
+                              d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+                              stroke={colors.text3}
+                              strokeWidth={1.8}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </Svg>
+                        </View>
+                      </TouchableOpacity>
                       <Text style={[styles.summaryPerDay, { color: colors.text3 }]}>
                         {'\u20B1'}{perDay}/day target
                       </Text>
@@ -519,6 +633,19 @@ export default function BudgetScreen() {
         {/* Bottom spacer */}
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* FAB — outside ScrollView, absolute within SafeAreaView */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={showAddMenu}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Add expense or scan receipt"
+      >
+        <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={colors.bg} strokeWidth={2.4} strokeLinecap="round">
+          <Path d="M12 5v14M5 12h14" />
+        </Svg>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -854,5 +981,29 @@ const getStyles = (colors: ThemeColors) =>
     addExpenseBtnText: {
       fontSize: 12,
       fontWeight: '600',
+    },
+
+    /* Edit icon next to budget amount */
+    editIcon: {
+      marginLeft: 6,
+      opacity: 0.5,
+    },
+
+    /* FAB */
+    fab: {
+      position: 'absolute',
+      right: 18,
+      bottom: 90,
+      width: 56,
+      height: 56,
+      borderRadius: 999,
+      backgroundColor: colors.ink,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.18,
+      shadowRadius: 20,
+      elevation: 8,
     },
   });

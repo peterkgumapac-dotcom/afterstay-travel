@@ -20,6 +20,8 @@ interface DayForecast {
   chanceRain: number;
   condition: string;
   rainWindows: { startHour: number; endHour: number; maxChance: number }[];
+  sunrise?: string;
+  sunset?: string;
 }
 
 interface CurrentWeather {
@@ -192,6 +194,8 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
             chanceRain: fd.day.daily_chance_of_rain,
             condition: fd.day.condition.text,
             rainWindows,
+            sunrise: fd.astro?.sunrise,
+            sunset: fd.astro?.sunset,
           };
         },
       );
@@ -233,6 +237,18 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
             <Text style={styles.tempLow}> / {today.minTemp}{'\u00B0'}</Text>
           </View>
           <Text style={styles.conditionText}>{today.condition}</Text>
+          {today.sunrise && today.sunset && (
+            <View style={styles.sunRow}>
+              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <Path d="M12 2v4M4.9 7.9l2.9 2.9M2 16h4M18 16h4M19.1 7.9l-2.9 2.9M12 10a6 6 0 00-6 6M18 16a6 6 0 00-6-6" stroke={colors.gold} strokeWidth={1.6} strokeLinecap="round" />
+              </Svg>
+              <Text style={styles.sunText}>{today.sunrise}</Text>
+              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <Path d="M12 10v4M4.9 7.9l2.9 2.9M2 16h4M18 16h4M19.1 7.9l-2.9 2.9M12 22v-4M12 10a6 6 0 00-6 6M18 16a6 6 0 00-6-6" stroke={colors.coral} strokeWidth={1.6} strokeLinecap="round" />
+              </Svg>
+              <Text style={styles.sunText}>{today.sunset}</Text>
+            </View>
+          )}
         </View>
         <View style={styles.bigIconWrap}>
           <WeatherIcon kind={today.condition} size={28} color={bigIconColor} />
@@ -343,6 +359,18 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     conditionText: {
       fontSize: 12,
       color: colors.text2,
+    },
+    sunRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: 6,
+    },
+    sunText: {
+      fontSize: 11,
+      color: colors.text3,
+      fontWeight: '500',
+      marginRight: 8,
     },
     bigIconWrap: {
       padding: 6,

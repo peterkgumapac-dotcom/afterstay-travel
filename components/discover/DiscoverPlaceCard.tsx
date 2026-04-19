@@ -45,12 +45,21 @@ export function DiscoverPlaceCard({
   const priceLabel = place.price === 0 ? 'Free' : '$'.repeat(place.price);
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.85}
+      onPress={() => {
+        if (onExplore) onExplore();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`View details for ${place.n}`}
+    >
       {/* Top row: image + info */}
       <View style={styles.topRow}>
         <Image
           source={{ uri: place.img }}
           style={styles.image}
+          resizeMode="cover"
           accessibilityLabel={`Photo of ${place.n}`}
         />
         <View style={styles.info}>
@@ -185,7 +194,7 @@ export function DiscoverPlaceCard({
           {isRecommended ? 'Recommended to group \u2713' : 'Recommend to group'}
         </Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -204,9 +213,9 @@ const getStyles = (colors: ThemeColors) =>
       gap: 12,
     },
     image: {
-      width: 90,
-      height: 90,
-      borderRadius: 10,
+      width: 110,
+      height: 110,
+      borderRadius: 12,
     },
     info: {
       flex: 1,

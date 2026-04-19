@@ -4,7 +4,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 import { decode } from 'base64-arraybuffer'
 
 import type {
@@ -153,7 +153,28 @@ function mapTrip(row: Record<string, unknown>): Trip {
   }
 }
 
+/**
+ * Supabase returns timestamptz in UTC (e.g. "2026-04-20T03:30:00+00:00").
+ * If the original flight time was entered as PHT but stored without offset,
+ * the time displays 8 hours ahead. This normalizes by ensuring the ISO string
+ * has the +08:00 offset when Supabase returns +00:00 for a PHT timestamp.
+ */
+function ensurePhtOffset(iso: string): string {
+  if (!iso) return iso;
+  // If already has +08:00, leave it
+  if (iso.includes('+08:00') || iso.includes('+08')) return iso;
+  // If ends with Z or +00:00, Supabase returned UTC — the original was PHT
+  // Subtract 8h would double-convert. Instead, replace the offset to treat as-is PHT.
+  if (iso.endsWith('Z') || iso.includes('+00:00') || iso.includes('+00')) {
+    return iso.replace(/Z$/, '+08:00').replace(/\+00:00$/, '+08:00').replace(/\+00$/, '+08:00');
+  }
+  // No timezone info — assume PHT
+  return iso + '+08:00';
+}
+
 function mapFlight(row: Record<string, unknown>): Flight {
+  const rawDepart = (row.departure_time as string) ?? (row.depart_time as string) ?? '';
+  const rawArrive = (row.arrival_time as string) ?? (row.arrive_time as string) ?? '';
   return {
     id: row.id as string,
     direction: ((row.direction as string) || 'Outbound') as Flight['direction'],
@@ -161,8 +182,8 @@ function mapFlight(row: Record<string, unknown>): Flight {
     airline: (row.airline as string) ?? '',
     from: (row.origin as string) ?? (row.from_city as string) ?? '',
     to: (row.destination as string) ?? (row.to_city as string) ?? '',
-    departTime: (row.departure_time as string) ?? (row.depart_time as string) ?? '',
-    arriveTime: (row.arrival_time as string) ?? (row.arrive_time as string) ?? '',
+    departTime: ensurePhtOffset(rawDepart),
+    arriveTime: ensurePhtOffset(rawArrive),
     bookingRef: (row.booking_ref as string) ?? undefined,
     baggage: (row.baggage as string) ?? undefined,
     passenger: (row.passenger as string) ?? undefined,

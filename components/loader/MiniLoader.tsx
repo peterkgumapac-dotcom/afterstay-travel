@@ -157,8 +157,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 16,
+    paddingVertical: 12,
   },
   needleOverlay: {
     position: 'absolute',
@@ -167,5 +166,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     letterSpacing: 0.2,
+    marginTop: 6,
   },
 });
