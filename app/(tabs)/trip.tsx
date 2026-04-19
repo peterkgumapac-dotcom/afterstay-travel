@@ -71,11 +71,8 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 const TAB_KEYS = [
   'overview',
-  'summary',
   'moments',
-  'flights',
-  'packing',
-  'files',
+  'essentials',
 ] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
@@ -1203,7 +1200,7 @@ export default function TripScreen() {
         )}
 
         {/* ===================== SUMMARY ===================== */}
-        {activeTab === 'summary' && (
+        {activeTab === 'overview' && (
           <>
             <ConstellationHero
               miles={totalMiles}
@@ -1303,7 +1300,7 @@ export default function TripScreen() {
         )}
 
         {/* ===================== FLIGHTS ===================== */}
-        {activeTab === 'flights' && (
+        {activeTab === 'overview' && flightsDisplay.length > 0 && (
           <View style={styles.fullFlightsList}>
             {flightsDisplay.map((f, i) => (
               <FullFlightCard key={f.ref || i} f={f} colors={colors} />
@@ -1312,7 +1309,7 @@ export default function TripScreen() {
         )}
 
         {/* ===================== PACKING + FILES ===================== */}
-        {(activeTab === 'packing' || activeTab === 'files') && (
+        {activeTab === 'essentials' && (
           <>
             <View style={styles.packingHeader}>
               <Text style={styles.packingCount}>
