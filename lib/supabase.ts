@@ -159,10 +159,12 @@ function mapFlight(row: Record<string, unknown>): Flight {
     direction: ((row.direction as string) || 'Outbound') as Flight['direction'],
     flightNumber: (row.flight_number as string) ?? '',
     airline: (row.airline as string) ?? '',
-    from: (row.origin as string) ?? '',
-    to: (row.destination as string) ?? '',
-    departTime: (row.departure_time as string) ?? '',
-    arriveTime: (row.arrival_time as string) ?? '',
+    from: (row.origin as string) ?? (row.from_city as string) ?? '',
+    to: (row.destination as string) ?? (row.to_city as string) ?? '',
+    departTime: (row.departure_time as string) ?? (row.depart_time as string) ?? '',
+    arriveTime: (row.arrival_time as string) ?? (row.arrive_time as string) ?? '',
+    bookingRef: (row.booking_ref as string) ?? undefined,
+    baggage: (row.baggage as string) ?? undefined,
     passenger: (row.passenger as string) ?? undefined,
   }
 }

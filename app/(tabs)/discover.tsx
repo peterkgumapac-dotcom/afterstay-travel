@@ -1,6 +1,7 @@
 import * as Haptics from 'expo-haptics';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -21,6 +22,17 @@ import {
 import { SuggestionList } from '@/components/discover/SuggestionList';
 import { TrendingCard, type TrendingItem } from '@/components/discover/TrendingCard';
 import { useTheme } from '@/constants/ThemeContext';
+import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
+import { distanceFromHotel, formatDistance } from '@/lib/distance';
+import { searchNearby, type NearbyPlace } from '@/lib/google-places';
+import {
+  addPlace,
+  getActiveTrip,
+  getSavedPlaces,
+  savePlace,
+  voteOnPlace,
+} from '@/lib/supabase';
+import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'planner' | 'places' | 'saved';
@@ -29,6 +41,107 @@ type FilterState = {
   openNow: boolean;
   nearby: boolean;
   maxPrice: number;
+};
+
+// Map UI category IDs to Google Places API types/keywords
+const CATEGORY_SEARCH_MAP: Record<string, { type?: string; keyword?: string }> = {
+  beach: { keyword: 'beach' },
+  food: { type: 'restaurant', keyword: 'food' },
+  activity: { keyword: 'water sports activities tours' },
+  nightlife: { type: 'bar', keyword: 'nightlife bar club' },
+  photo: { keyword: 'viewpoint scenic photo spot' },
+  wellness: { type: 'spa', keyword: 'spa wellness massage yoga' },
+};
+
+// Map Google Places types to display labels
+function resolveTypeLabel(types: string[]): string {
+  const typeMap: Record<string, string> = {
+    restaurant: 'Restaurant',
+    bar: 'Bar',
+    cafe: 'Cafe',
+    spa: 'Spa',
+    beach: 'Beach',
+    park: 'Park',
+    shopping_mall: 'Shopping',
+    store: 'Shopping',
+    tourist_attraction: 'Attraction',
+    point_of_interest: 'Landmark',
+    natural_feature: 'Nature',
+    gym: 'Wellness',
+    lodging: 'Hotel',
+    church: 'Culture',
+  };
+  for (const t of types) {
+    if (typeMap[t]) return typeMap[t];
+  }
+  return 'Place';
+}
+
+// Map Google Places type to PlaceCategory for Supabase storage
+function resolveCategory(types: string[]): PlaceCategory {
+  const mapping: Record<string, PlaceCategory> = {
+    restaurant: 'Eat',
+    bar: 'Nightlife',
+    cafe: 'Coffee',
+    spa: 'Wellness',
+    gym: 'Wellness',
+    tourist_attraction: 'Do',
+    natural_feature: 'Nature',
+    park: 'Nature',
+    shopping_mall: 'Essentials',
+    store: 'Essentials',
+    church: 'Culture',
+  };
+  for (const t of types) {
+    if (mapping[t]) return mapping[t];
+  }
+  return 'Do';
+}
+
+function formatReviewCount(count: number): string {
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+  return String(count);
+}
+
+function mapNearbyToDiscoverPlace(place: NearbyPlace): DiscoverPlace {
+  const km = distanceFromHotel(place.lat, place.lng);
+  return {
+    n: place.name,
+    t: resolveTypeLabel(place.types),
+    r: place.rating,
+    rv: formatReviewCount(place.total_ratings),
+    d: formatDistance(km),
+    dn: km,
+    price: place.price_level ?? 0,
+    openNow: place.open_now ?? false,
+    img: place.photo_url ?? 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80',
+  };
+}
+
+function mapSavedPlaceToDiscoverPlace(place: Place): DiscoverPlace {
+  const km = place.latitude && place.longitude
+    ? distanceFromHotel(place.latitude, place.longitude)
+    : 0;
+  return {
+    n: place.name,
+    t: place.category,
+    r: place.rating ?? 0,
+    rv: formatReviewCount(place.totalRatings ?? 0),
+    d: place.distance ?? formatDistance(km),
+    dn: km,
+    price: 0,
+    openNow: true,
+    img: place.photoUrl ?? 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80',
+  };
+}
+
+// Itinerary style ID → interests for the Anthropic API
+const STYLE_TO_INTERESTS: Record<string, string[]> = {
+  relaxed: ['spa', 'beach', 'sunset viewing', 'cafes'],
+  adventure: ['water sports', 'island hopping', 'snorkeling', 'hiking'],
+  foodie: ['local restaurants', 'street food', 'seafood', 'markets'],
+  family: ['kid-friendly beaches', 'easy activities', 'family dining'],
+  culture: ['history', 'local markets', 'cultural sites', 'community'],
 };
 
 // ── Data ────────────────────────────────────────────────────────────────
@@ -323,7 +436,110 @@ export default function DiscoverScreen() {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
 
-  const toggleSave = useCallback((name: string) => {
+  // API-wired state
+  const [tripId, setTripId] = useState<string | null>(null);
+  const [places, setPlaces] = useState<readonly DiscoverPlace[]>(PLACES);
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const [placesError, setPlacesError] = useState<string | null>(null);
+  const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
+  const [itineraryLoading, setItineraryLoading] = useState(false);
+  const [itineraryError, setItineraryError] = useState<string | null>(null);
+  const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load trip ID on mount
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const trip = await getActiveTrip();
+        if (!cancelled && trip) {
+          setTripId(trip.id);
+        }
+      } catch {
+        // Trip load failure is non-fatal; features degrade gracefully
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Load saved places when Saved tab is selected or tripId changes
+  const loadSavedPlaces = useCallback(async () => {
+    if (!tripId) return;
+    setSavedLoading(true);
+    try {
+      const result = await getSavedPlaces(tripId);
+      setSavedPlaces(result);
+      setSaved(new Set(result.filter((p) => p.saved !== false).map((p) => p.name)));
+    } catch {
+      // Saved places load failure is non-fatal
+    } finally {
+      setSavedLoading(false);
+    }
+  }, [tripId]);
+
+  useEffect(() => {
+    if (tab === 'saved' && tripId) {
+      loadSavedPlaces();
+    }
+  }, [tab, tripId, loadSavedPlaces]);
+
+  // Search places via Google Places API
+  const searchPlaces = useCallback(async (keyword?: string, type?: string) => {
+    setPlacesLoading(true);
+    setPlacesError(null);
+    try {
+      const results = await searchNearby(type, keyword);
+      if (results.length > 0) {
+        setPlaces(results.map(mapNearbyToDiscoverPlace));
+      } else {
+        setPlaces(PLACES);
+        setPlacesError('No results found. Showing curated places.');
+      }
+    } catch {
+      setPlaces(PLACES);
+      setPlacesError('Could not load places. Showing curated places.');
+    } finally {
+      setPlacesLoading(false);
+    }
+  }, []);
+
+  // Load places when category chip changes
+  useEffect(() => {
+    if (tab !== 'places') return;
+    if (placeCategoryChip === 'All') {
+      searchPlaces();
+    } else {
+      const chipKey = placeCategoryChip.toLowerCase();
+      const searchConfig = CATEGORY_SEARCH_MAP[chipKey];
+      searchPlaces(searchConfig?.keyword ?? chipKey, searchConfig?.type);
+    }
+  }, [placeCategoryChip, tab, searchPlaces]);
+
+  // Debounced search input
+  useEffect(() => {
+    if (tab !== 'places') return;
+    if (!q.trim()) {
+      // Reset to category-based search when query is cleared
+      if (placeCategoryChip === 'All') {
+        searchPlaces();
+      }
+      return;
+    }
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      searchPlaces(q.trim());
+    }, 500);
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [q, tab, placeCategoryChip, searchPlaces]);
+
+  const toggleSave = useCallback(async (name: string) => {
+    // Optimistic local update
     setSaved((s) => {
       const next = new Set(s);
       if (next.has(name)) {
@@ -334,9 +550,51 @@ export default function DiscoverScreen() {
       return next;
     });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
 
-  const toggleRecommend = useCallback((name: string) => {
+    // Persist to Supabase
+    if (!tripId) return;
+    const existingPlace = savedPlaces.find((p) => p.name === name);
+    if (existingPlace) {
+      try {
+        await savePlace(existingPlace.id, !existingPlace.saved);
+      } catch {
+        // Revert on failure
+        setSaved((s) => {
+          const next = new Set(s);
+          if (existingPlace.saved) next.add(name);
+          else next.delete(name);
+          return next;
+        });
+      }
+    } else {
+      // Find the place data in current places list to save it
+      const placeData = places.find((p) => p.n === name);
+      if (placeData) {
+        try {
+          await addPlace({
+            tripId,
+            name: placeData.n,
+            category: 'Do' as PlaceCategory,
+            distance: placeData.d,
+            rating: placeData.r,
+            source: 'Manual',
+            vote: 'Pending' as PlaceVote,
+            photoUrl: placeData.img,
+            saved: true,
+          });
+        } catch {
+          setSaved((s) => {
+            const next = new Set(s);
+            next.delete(name);
+            return next;
+          });
+        }
+      }
+    }
+  }, [tripId, savedPlaces, places]);
+
+  const toggleRecommend = useCallback(async (name: string) => {
+    // Optimistic local update
     setRecommended((s) => {
       const next = new Set(s);
       if (next.has(name)) {
@@ -347,10 +605,71 @@ export default function DiscoverScreen() {
       return next;
     });
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
+
+    // Persist to Supabase as a suggested place
+    if (!tripId) return;
+    const existingPlace = savedPlaces.find((p) => p.name === name);
+    if (existingPlace) {
+      try {
+        await voteOnPlace(existingPlace.id, '\uD83D\uDC4D Yes' as PlaceVote);
+      } catch {
+        setRecommended((s) => {
+          const next = new Set(s);
+          next.delete(name);
+          return next;
+        });
+      }
+    } else {
+      const placeData = places.find((p) => p.n === name);
+      if (placeData) {
+        try {
+          await addPlace({
+            tripId,
+            name: placeData.n,
+            category: 'Do' as PlaceCategory,
+            distance: placeData.d,
+            rating: placeData.r,
+            source: 'Suggested',
+            vote: '\uD83D\uDC4D Yes' as PlaceVote,
+            photoUrl: placeData.img,
+            saved: true,
+          });
+        } catch {
+          setRecommended((s) => {
+            const next = new Set(s);
+            next.delete(name);
+            return next;
+          });
+        }
+      }
+    }
+  }, [tripId, savedPlaces, places]);
+
+  // Generate itinerary via Anthropic
+  const handleGenerateItinerary = useCallback(async () => {
+    setItineraryLoading(true);
+    setItineraryError(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const interests = STYLE_TO_INTERESTS[style] ?? ['beach', 'food', 'activities'];
+      const promptInterests = prompt.trim()
+        ? [...interests, prompt.trim()]
+        : interests;
+      const result = await generateItinerary({
+        mode: 'Surprise Me',
+        interests: promptInterests,
+      });
+      setItinerary(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to generate itinerary';
+      setItineraryError(message);
+    } finally {
+      setItineraryLoading(false);
+    }
+  }, [style, prompt]);
 
   const activeFilterCount = countActiveFilters(filters);
-  const filteredPlaces = applyPlaceFilters(PLACES, filters);
+  const filteredPlaces = applyPlaceFilters(places, filters);
 
   const selectedCategory = cat
     ? CATEGORIES.find((c) => c.id === cat)
@@ -453,27 +772,84 @@ export default function DiscoverScreen() {
 
                 {/* Generate button */}
                 <TouchableOpacity
-                  style={styles.generateBtn}
+                  style={[styles.generateBtn, itineraryLoading && { opacity: 0.6 }]}
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel="Generate Itinerary"
+                  onPress={handleGenerateItinerary}
+                  disabled={itineraryLoading}
                 >
-                  <Svg
-                    width={16}
-                    height={16}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={colors.onBlack}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <Path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
-                  </Svg>
-                  <Text style={styles.generateBtnText}>Generate Itinerary</Text>
+                  {itineraryLoading ? (
+                    <ActivityIndicator size="small" color={colors.onBlack} />
+                  ) : (
+                    <Svg
+                      width={16}
+                      height={16}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke={colors.onBlack}
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <Path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
+                    </Svg>
+                  )}
+                  <Text style={styles.generateBtnText}>
+                    {itineraryLoading ? 'Generating...' : 'Generate Itinerary'}
+                  </Text>
                 </TouchableOpacity>
+
+                {/* Itinerary error */}
+                {itineraryError && (
+                  <Text style={styles.errorText}>{itineraryError}</Text>
+                )}
               </View>
             </View>
+
+            {/* Generated itinerary results */}
+            {itinerary.length > 0 && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <View>
+                    <Text style={styles.eyebrow}>Your itinerary</Text>
+                    <Text style={styles.sectionTitle}>Day-by-day plan</Text>
+                  </View>
+                </View>
+                <View style={styles.styleList}>
+                  {itinerary.map((day) => (
+                    <View key={day.day} style={styles.itineraryCard}>
+                      <View style={styles.itineraryDayHeader}>
+                        <Text style={styles.itineraryDayLabel}>Day {day.day}</Text>
+                        <Text style={styles.itineraryDate}>{day.date}</Text>
+                      </View>
+                      <Text style={styles.itineraryTheme}>{day.theme}</Text>
+                      <View style={styles.itinerarySlot}>
+                        <Text style={styles.itinerarySlotLabel}>Morning</Text>
+                        <Text style={styles.itinerarySlotText}>{day.morning}</Text>
+                      </View>
+                      <View style={styles.itinerarySlot}>
+                        <Text style={styles.itinerarySlotLabel}>Afternoon</Text>
+                        <Text style={styles.itinerarySlotText}>{day.afternoon}</Text>
+                      </View>
+                      <View style={styles.itinerarySlot}>
+                        <Text style={styles.itinerarySlotLabel}>Evening</Text>
+                        <Text style={styles.itinerarySlotText}>{day.evening}</Text>
+                      </View>
+                      <View style={styles.itinerarySlot}>
+                        <Text style={styles.itinerarySlotLabel}>Dining</Text>
+                        <Text style={styles.itinerarySlotText}>{day.dining}</Text>
+                      </View>
+                      {day.tips ? (
+                        <View style={styles.itineraryTipBox}>
+                          <Text style={styles.itineraryTipText}>{day.tips}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
 
             {/* Quick suggestions header */}
             <View style={styles.sectionHeader}>
@@ -592,17 +968,24 @@ export default function DiscoverScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.chipRow}
             >
-              {PLACE_CATEGORY_CHIPS.map((c, i) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.chip, i === 0 && styles.chipActive]}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipText, i === 0 && styles.chipTextActive]}>
-                    {c}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {PLACE_CATEGORY_CHIPS.map((c) => {
+                const isActive = placeCategoryChip === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.chip, isActive && styles.chipActive]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setPlaceCategoryChip(c);
+                      setQ('');
+                    }}
+                  >
+                    <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                      {c}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
 
             {/* Filter bar */}
@@ -766,7 +1149,19 @@ export default function DiscoverScreen() {
 
             {/* Place cards */}
             <View style={styles.placeList}>
-              {filteredPlaces.length === 0 ? (
+              {placesError && (
+                <View style={styles.emptyPlaces}>
+                  <Text style={styles.errorText}>{placesError}</Text>
+                </View>
+              )}
+              {placesLoading ? (
+                <View style={styles.emptyPlaces}>
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={[styles.emptyText, { marginTop: 8 }]}>
+                    Loading places...
+                  </Text>
+                </View>
+              ) : filteredPlaces.length === 0 ? (
                 <View style={styles.emptyPlaces}>
                   <Text style={styles.emptyText}>
                     No places match these filters.
@@ -791,7 +1186,14 @@ export default function DiscoverScreen() {
         {/* ═══════ SAVED TAB ═══════ */}
         {tab === 'saved' && (
           <View style={styles.placeList}>
-            {saved.size === 0 ? (
+            {savedLoading ? (
+              <View style={styles.emptyPlaces}>
+                <ActivityIndicator size="small" color={colors.accent} />
+                <Text style={[styles.emptyText, { marginTop: 8 }]}>
+                  Loading saved places...
+                </Text>
+              </View>
+            ) : savedPlaces.length === 0 && saved.size === 0 ? (
               <View style={styles.emptyCard}>
                 <Svg
                   width={28}
@@ -815,28 +1217,32 @@ export default function DiscoverScreen() {
               <>
                 <View style={styles.savedHeaderRow}>
                   <Text style={styles.savedCount}>
-                    {saved.size} saved {'\u00B7'} {recommended.size} recommended
+                    {savedPlaces.length} saved {'\u00B7'} {recommended.size} recommended
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
                       setSaved(new Set());
                       setRecommended(new Set());
+                      setSavedPlaces([]);
                     }}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.clearAllText}>Clear all</Text>
                   </TouchableOpacity>
                 </View>
-                {PLACES.filter((p) => saved.has(p.n)).map((p) => (
-                  <DiscoverPlaceCard
-                    key={p.n}
-                    place={p}
-                    isSaved={true}
-                    isRecommended={recommended.has(p.n)}
-                    onSave={() => toggleSave(p.n)}
-                    onRecommend={() => toggleRecommend(p.n)}
-                  />
-                ))}
+                {savedPlaces.map((p) => {
+                  const dp = mapSavedPlaceToDiscoverPlace(p);
+                  return (
+                    <DiscoverPlaceCard
+                      key={p.id}
+                      place={dp}
+                      isSaved={true}
+                      isRecommended={recommended.has(p.name)}
+                      onSave={() => toggleSave(p.name)}
+                      onRecommend={() => toggleRecommend(p.name)}
+                    />
+                  );
+                })}
               </>
             )}
           </View>
@@ -1255,5 +1661,73 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 12,
       fontWeight: '600',
       color: colors.text3,
+    },
+
+    // Error text
+    errorText: {
+      fontSize: 12,
+      color: colors.danger,
+      textAlign: 'center',
+      paddingVertical: 4,
+    },
+
+    // Itinerary cards
+    itineraryCard: {
+      padding: 14,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      gap: 8,
+    },
+    itineraryDayHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    itineraryDayLabel: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.accent,
+    },
+    itineraryDate: {
+      fontSize: 11,
+      color: colors.text3,
+      fontWeight: '600',
+    },
+    itineraryTheme: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 2,
+    },
+    itinerarySlot: {
+      gap: 2,
+    },
+    itinerarySlotLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+      color: colors.text3,
+    },
+    itinerarySlotText: {
+      fontSize: 12,
+      color: colors.text2,
+      lineHeight: 17,
+    },
+    itineraryTipBox: {
+      marginTop: 4,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      backgroundColor: colors.accentBg,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    itineraryTipText: {
+      fontSize: 11,
+      color: colors.accent,
+      fontWeight: '500',
     },
   });
