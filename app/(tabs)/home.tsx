@@ -273,10 +273,11 @@ export default function HomeScreen() {
   const tripStartMs = safeParse(trip.startDate).getTime();
   const tripEndMs = safeParse(trip.endDate).getTime();
   const nowMs = Date.now();
-  const totalDays = Math.max(
+  const totalNights = Math.max(
     1,
-    Math.ceil((tripEndMs - tripStartMs) / 86400000) + 1,
+    Math.ceil((tripEndMs - tripStartMs) / 86400000),
   );
+  const totalDays = totalNights;
 
   const countdown = (() => {
     if (nowMs < tripStartMs) {
@@ -299,7 +300,7 @@ export default function HomeScreen() {
 
   // Room info
   const roomInfo = trip.roomType
-    ? `${trip.roomType} \u00D7 2 \u00B7 ${totalDays} nights \u00B7 ${dateRange}`
+    ? `${trip.roomType} \u00D7 2 \u00B7 ${totalNights} nights \u00B7 ${dateRange}`
     : undefined;
 
   return (
