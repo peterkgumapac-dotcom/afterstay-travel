@@ -353,10 +353,6 @@ export default function HomeScreen() {
         />
 
         {/* 3. Phase card */}
-        <SectionHeader
-          kicker="Trip phase"
-          title={tripStatusLabel(trip.startDate, trip.endDate, totalDays)}
-        />
         <View style={styles.phaseSection}>
           <Animated.View
             key={phase}
@@ -471,7 +467,7 @@ export default function HomeScreen() {
 
         {/* 7. Moments preview */}
         <SectionHeader
-          kicker="Moments \u00B7 Day 1"
+          kicker={`Moments · Day ${countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1}`}
           title="Trip so far"
           action={
             <TouchableOpacity onPress={() => router.push('/(tabs)/trip' as never)}>
@@ -520,6 +516,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     },
     retryText: { color: colors.white, fontWeight: '700' },
     phaseSection: {
+      paddingHorizontal: 16,
       paddingBottom: 14,
     },
   });
