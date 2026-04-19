@@ -11,8 +11,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnticipationHero } from '@/components/home/AnticipationHero';
+import { ArrivedCard } from '@/components/home/ArrivedCard';
 import { CountdownCard } from '@/components/home/CountdownCard';
 import { FlightCard } from '@/components/home/FlightCard';
+import { FlightProgressCard } from '@/components/home/FlightProgressCard';
+import { TripActiveCard } from '@/components/home/TripActiveCard';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { NearbySection } from '@/components/home/NearbySection';
 import ProfileRow from '@/components/home/ProfileRow';
@@ -32,7 +35,9 @@ import {
   getTripFiles,
 } from '@/lib/supabase';
 import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
-import { formatDatePHT } from '@/lib/utils';
+import { formatDatePHT, safeParse } from '@/lib/utils';
+
+type TripPhase = 'upcoming' | 'inflight' | 'arrived' | 'active';
 
 const FALLBACK_PHOTOS = [
   'https://www.canyon.ph/wp-content/uploads/2023/01/CHRBoracay-Rooms-Executive-Suite-01.jpg',
@@ -52,6 +57,8 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
 
+  const [phase, setPhase] = useState<TripPhase>('upcoming');
+  const [totalSpent, setTotalSpent] = useState(0);
   const [userName, setUserName] = useState('Traveler');
   const [userAvatar, setUserAvatar] = useState<string>();
 
@@ -76,12 +83,44 @@ export default function HomeScreen() {
           setUserName(primary.name);
           if (primary.profilePhoto) setUserAvatar(primary.profilePhoto);
         }
+
+        // Compute trip phase from flight data
+        const outbound = fs.find(f => f.direction === 'Outbound');
+        if (outbound) {
+          const departMs = safeParse(outbound.departTime).getTime();
+          const arriveMs = safeParse(outbound.arriveTime).getTime();
+          const nowMs = Date.now();
+
+          // Clear stale phase override if trip changed
+          const cachedTripId = await cacheGet<string>('trip:phase:tripId');
+          if (cachedTripId && cachedTripId !== t.id) {
+            await cacheSet('trip:phase:override', null);
+          }
+          await cacheSet('trip:phase:tripId', t.id);
+
+          const override = await cacheGet<TripPhase>('trip:phase:override');
+          if (override) {
+            setPhase(override);
+          } else if (nowMs < departMs) {
+            setPhase('upcoming');
+          } else if (nowMs >= departMs && nowMs < arriveMs) {
+            setPhase('inflight');
+          } else if (nowMs >= arriveMs && nowMs < arriveMs + 4 * 3600000) {
+            setPhase('arrived');
+          } else {
+            setPhase('active');
+          }
+        }
+
+        // Fetch expense summary for active phase
+        const summary = await getExpenseSummary(t.id).catch(() => ({ total: 0, byCategory: {}, count: 0 }));
+        setTotalSpent(summary.total);
       } else {
         setFlights([]);
         setMoments([]);
       }
-    } catch (e: any) {
-      setError(e?.message ?? 'Unable to load trip');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Unable to load trip');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -106,6 +145,21 @@ export default function HomeScreen() {
     load();
   };
 
+  const boardFlight = useCallback(async () => {
+    setPhase('inflight');
+    await cacheSet('trip:phase:override', 'inflight');
+  }, []);
+
+  const landFlight = useCallback(async () => {
+    setPhase('arrived');
+    await cacheSet('trip:phase:override', 'arrived');
+  }, []);
+
+  const goExplore = useCallback(async () => {
+    setPhase('active');
+    await cacheSet('trip:phase:override', 'active');
+  }, []);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.fullCenter}>
@@ -119,7 +173,7 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={styles.fullCenter}>
         <Text style={styles.errorTitle}>Couldn't load trip</Text>
-        <Text style={styles.errorText}>{error ?? 'No active trip found in Notion.'}</Text>
+        <Text style={styles.errorText}>{error ?? 'No active trip found.'}</Text>
         <Pressable
           style={styles.retry}
           onPress={() => { setLoading(true); load(); }}
@@ -147,8 +201,8 @@ export default function HomeScreen() {
   const dateRange = `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}`;
 
   // Countdown computation
-  const tripStartMs = new Date(trip.startDate).getTime();
-  const tripEndMs = new Date(trip.endDate).getTime();
+  const tripStartMs = safeParse(trip.startDate).getTime();
+  const tripEndMs = safeParse(trip.endDate).getTime();
   const nowMs = Date.now();
   const totalDays = Math.max(1, Math.ceil((tripEndMs - tripStartMs) / 86400000) + 1);
 
@@ -201,13 +255,30 @@ export default function HomeScreen() {
           bookingRef={trip.bookingRef ? `Agoda #${trip.bookingRef}` : undefined}
         />
 
-        <CountdownCard
-          tripStartISO={FLIGHTS.outbound.depart.timeISO}
-          status={countdown.status}
-          dayNumber={countdown.status === 'active' ? countdown.dayNumber : undefined}
-          totalDays={countdown.totalDays}
-          dateLabel={FLIGHTS.outbound.dateShort}
-        />
+        {phase === 'inflight' ? (
+          <FlightProgressCard onLanded={landFlight} />
+        ) : phase === 'arrived' ? (
+          <ArrivedCard onStart={goExplore} />
+        ) : phase === 'active' ? (
+          <TripActiveCard
+            trip={trip}
+            dayOfTrip={countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1}
+            totalDays={countdown.totalDays}
+            daysLeft={countdown.totalDays - (countdown.status === 'active' ? countdown.dayNumber ?? 1 : 0)}
+            budgetStatus="cruising"
+            spent={totalSpent}
+            budget={trip.budgetLimit ?? 0}
+          />
+        ) : (
+          <CountdownCard
+            tripStartISO={flights.find(f => f.direction === 'Outbound')?.departTime ?? FLIGHTS.outbound.depart.timeISO}
+            status={countdown.status}
+            dayNumber={countdown.status === 'active' ? countdown.dayNumber : undefined}
+            totalDays={countdown.totalDays}
+            dateLabel={flights.find(f => f.direction === 'Outbound')?.departTime ? formatDatePHT(flights.find(f => f.direction === 'Outbound')!.departTime) : FLIGHTS.outbound.dateShort}
+            onBoard={boardFlight}
+          />
+        )}
 
         <FlightCard direction="outbound" />
 

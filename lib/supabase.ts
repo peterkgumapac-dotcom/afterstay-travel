@@ -16,6 +16,7 @@ import type {
   Flight,
   GroupMember,
   Highlight,
+  HighlightType,
   LifetimeStats,
   Moment,
   MomentTag,
@@ -809,12 +810,12 @@ export async function updateProfile(
 
 // ---------- TRIP PHASE / FLIGHT STATUS ----------
 
-export type TripPhase = 'upcoming' | 'in-flight' | 'arrived'
+export type TripPhase = 'upcoming' | 'inflight' | 'arrived' | 'active'
 export type FlightStatus = 'scheduled' | 'boarding' | 'in-flight' | 'landed'
 
 export async function updateTripPhase(tripId: string, phase: TripPhase): Promise<void> {
   const updates: Record<string, unknown> = { trip_phase: phase }
-  if (phase === 'in-flight') updates.flight_departed_at = new Date().toISOString()
+  if (phase === 'inflight') updates.flight_departed_at = new Date().toISOString()
   if (phase === 'arrived') updates.flight_arrived_at = new Date().toISOString()
   const { error } = await supabase.from('trips').update(updates).eq('id', tripId)
   if (error) throw new Error(`updateTripPhase: ${error.message}`)
@@ -883,4 +884,122 @@ export async function getRelevantFlight(tripId: string): Promise<Flight | null> 
     return mapFlight(any)
   }
   return mapFlight(data)
+}
+
+// ---------- LIFETIME STATS & HIGHLIGHTS ----------
+
+/** Re-export the trip mapper so lifetimeStats.ts can reuse it. */
+export const mapTripRow = mapTrip
+
+export async function getLifetimeStats(userId: string): Promise<LifetimeStats | null> {
+  const { data } = await supabase
+    .from('lifetime_stats')
+    .select('*')
+    .eq('user_id', userId)
+    .single()
+  if (!data) return null
+  return {
+    totalTrips: data.total_trips,
+    totalCountries: data.total_countries,
+    totalNights: data.total_nights,
+    totalMiles: data.total_miles,
+    totalSpent: data.total_spent,
+    homeCurrency: data.home_currency,
+    totalMoments: data.total_moments,
+    countriesList: data.countries_list ?? [],
+    earliestTripDate: data.earliest_trip_date,
+  }
+}
+
+export async function upsertLifetimeStats(
+  userId: string,
+  stats: LifetimeStats,
+): Promise<void> {
+  const { error } = await supabase.from('lifetime_stats').upsert({
+    user_id: userId,
+    total_trips: stats.totalTrips,
+    total_countries: stats.totalCountries,
+    total_nights: stats.totalNights,
+    total_miles: stats.totalMiles,
+    total_spent: stats.totalSpent,
+    home_currency: stats.homeCurrency,
+    total_moments: stats.totalMoments,
+    countries_list: stats.countriesList,
+    earliest_trip_date: stats.earliestTripDate,
+    updated_at: new Date().toISOString(),
+  })
+  if (error) throw new Error(`upsertLifetimeStats: ${error.message}`)
+}
+
+export async function getHighlights(userId: string): Promise<Highlight[]> {
+  const { data } = await supabase
+    .from('highlights')
+    .select('*')
+    .eq('user_id', userId)
+    .order('rank')
+  if (!data) return []
+  return data.map((h): Highlight => ({
+    id: h.id as string,
+    type: h.type as HighlightType,
+    displayText: h.display_text as string,
+    supportingData: (h.supporting_data as Record<string, unknown>) ?? undefined,
+    rank: h.rank as number,
+  }))
+}
+
+export async function saveHighlights(
+  userId: string,
+  highlights: Highlight[],
+): Promise<void> {
+  const { error: delErr } = await supabase.from('highlights').delete().eq('user_id', userId)
+  if (delErr) throw new Error(`saveHighlights delete: ${delErr.message}`)
+  if (highlights.length > 0) {
+    const { error: insErr } = await supabase.from('highlights').insert(
+      highlights.map((h, i) => ({
+        user_id: userId,
+        type: h.type,
+        display_text: h.displayText,
+        supporting_data: h.supportingData ?? {},
+        rank: i,
+      })),
+    )
+    if (insErr) throw new Error(`saveHighlights insert: ${insErr.message}`)
+  }
+}
+
+export async function getPastTrips(userId: string): Promise<Trip[]> {
+  const { data } = await supabase
+    .from(T.trips)
+    .select('*')
+    .eq('user_id', userId)
+    .or('is_past_import.eq.true,status.eq.Completed')
+    .order('start_date', { ascending: false })
+  if (!data) return []
+  return data.map(mapTrip)
+}
+
+export async function addPastTrip(
+  input: Partial<Trip> & { userId: string },
+): Promise<Trip | null> {
+  const { data } = await supabase
+    .from(T.trips)
+    .insert({
+      name: input.name ?? input.destination ?? 'Past Trip',
+      destination: input.destination,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      status: 'Completed',
+      is_past_import: true,
+      user_id: input.userId,
+      country: input.country,
+      country_code: input.countryCode,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      total_spent: input.totalSpent ?? 0,
+      total_nights: input.totalNights ?? 0,
+    })
+    .select()
+    .single()
+  if (!data) return null
+  return mapTrip(data)
 }

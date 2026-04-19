@@ -7,6 +7,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signInWithMagicLink: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   loading: true,
   signIn: async () => ({ error: null }),
+  signInWithMagicLink: async () => ({ error: null }),
   signOut: async () => {},
 });
 
@@ -48,6 +50,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: error?.message ?? null };
   };
 
+  const signInWithMagicLink = async (email: string) => {
+    const { error } = await supabase.auth.signInWithOtp({ email });
+    return { error: error?.message ?? null };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -61,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         loading,
         signIn,
+        signInWithMagicLink,
         signOut,
       },
     },

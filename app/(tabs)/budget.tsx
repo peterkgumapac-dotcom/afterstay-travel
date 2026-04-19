@@ -19,6 +19,8 @@ import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler'
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BudgetAlertCard } from '@/components/budget/BudgetAlertCard';
+import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
+import WhoPaysPicker from '@/components/budget/WhoPaysPicker';
 import BudgetSummary from '@/components/BudgetSummary';
 import ExpenseRow from '@/components/ExpenseRow';
 import { getBudgetStatus } from '@/lib/budgetAlerts';
@@ -32,7 +34,7 @@ import {
   updateTripBudgetLimit,
   updateTripBudgetMode,
 } from '@/lib/supabase';
-import type { Expense, Trip } from '@/lib/types';
+import type { Expense, GroupMember, Trip } from '@/lib/types';
 import { formatCurrency, formatDatePHT, safeParse } from '@/lib/utils';
 
 type BudgetMode = 'Limited' | 'Unlimited';
@@ -139,6 +141,7 @@ export default function BudgetScreen() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [travelers, setTravelers] = useState(3);
+  const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
@@ -158,9 +161,10 @@ export default function BudgetScreen() {
         getGroupMembers(t.id).catch(() => []),
       ]);
       setExpenses(exp);
+      setMembers(mem);
       if (mem.length > 0) setTravelers(mem.length);
-    } catch (e: any) {
-      setError(e?.message ?? 'Unable to load expenses');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Unable to load expenses');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -299,6 +303,13 @@ export default function BudgetScreen() {
   const isLimited = budgetMode === 'Limited' && trip?.budgetLimit != null && trip.budgetLimit > 0;
   const dailyAllowance = isLimited ? (trip?.budgetLimit ?? 0) / totalDays : 0;
   const currency = trip?.costCurrency ?? 'PHP';
+
+  const budgetLimit = trip?.budgetLimit ?? 0;
+  const tripSpent = total;
+  const budgetStatus: 'cruising' | 'low' | 'over' = budgetLimit > 0
+    ? (tripSpent / budgetLimit > 1 ? 'over' : tripSpent / budgetLimit > 0.7 ? 'low' : 'cruising')
+    : 'cruising';
+  const remaining = budgetLimit - tripSpent;
 
   const sections = useMemo(
     () =>
@@ -468,6 +479,16 @@ export default function BudgetScreen() {
               />
             )}
 
+            {/* Budget status banner */}
+            {budgetMode === 'Limited' && budgetLimit > 0 && (
+              <BudgetStatusBanner
+                status={budgetStatus}
+                remaining={remaining}
+                daysLeft={daysLeft}
+                currency={trip?.costCurrency ?? '\u20B1'}
+              />
+            )}
+
             {/* Editable budget limit for Limited mode */}
             {budgetMode === 'Limited' && (
               <Pressable
@@ -537,6 +558,9 @@ export default function BudgetScreen() {
               totalDays={totalDays}
               currentDay={currentDay}
             />
+
+            {/* Who pays picker */}
+            <WhoPaysPicker members={members} />
           </View>
         }
         ListEmptyComponent={

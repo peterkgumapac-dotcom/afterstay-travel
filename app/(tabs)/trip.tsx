@@ -23,15 +23,23 @@ import PackingItemRow from '@/components/PackingItem';
 import Select from '@/components/Select';
 import TripFileRow from '@/components/TripFileRow';
 import { MomentsTab } from '@/components/moments/MomentsTab';
+import ConstellationHero from '@/components/summary/ConstellationHero';
+import EmptyTripsState from '@/components/summary/EmptyTripsState';
+import HighlightsStrip from '@/components/summary/HighlightsStrip';
+import PastTripRow from '@/components/summary/PastTripRow';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing, typography } from '@/constants/theme';
+import { useAuth } from '@/lib/auth';
 import {
   addPackingItem,
   getActiveTrip,
   getChecklist,
   getFlights,
   getGroupMembers,
+  getHighlights,
+  getLifetimeStats,
   getPackingList,
+  getPastTrips,
   getSavedPlaces,
   getTripFiles,
   toggleChecklistItem,
@@ -42,13 +50,15 @@ import type {
   ChecklistItem,
   Flight,
   GroupMember,
+  Highlight,
+  LifetimeStats,
   PackingItem,
   Place,
   PlaceCategory,
   Trip,
   TripFile,
 } from '@/lib/types';
-import { hoursUntil, formatCurrency } from '@/lib/utils';
+import { hoursUntil, formatCurrency, formatDatePHT } from '@/lib/utils';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
@@ -73,13 +83,14 @@ const ADD_CATEGORIES: PackingItem['category'][] = [
 
 type PackingFilter = (typeof PACKING_CATEGORIES)[number];
 
-const TAB_KEYS = ['Overview', 'Moments', 'Flights', 'Packing', 'Files'] as const;
+const TAB_KEYS = ['Summary', 'Overview', 'Moments', 'Flights', 'Packing', 'Files'] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 export default function TripScreen() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
   const router = useRouter();
+  const { user } = useAuth();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -87,6 +98,9 @@ export default function TripScreen() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [files, setFiles] = useState<TripFile[]>([]);
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
+  const [lifetimeStats, setLifetimeStats] = useState<LifetimeStats | null>(null);
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [pastTrips, setPastTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
@@ -117,13 +131,20 @@ export default function TripScreen() {
       setChecklist(cl);
       setFiles(fl);
       setSavedPlaces(places.filter(p => p.saved));
-    } catch (e: any) {
-      setError(e?.message ?? 'Unable to load');
+
+      // Load summary data
+      if (user?.id) {
+        getPastTrips(user.id).then(setPastTrips).catch(() => {});
+        getHighlights(user.id).then(setHighlights).catch(() => {});
+        getLifetimeStats(user.id).then(setLifetimeStats).catch(() => {});
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Unable to load');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -203,7 +224,7 @@ export default function TripScreen() {
       <View style={styles.headerSection}>
         <Text style={styles.pageTitle}>Our Trip</Text>
         <Text style={styles.pageSub}>
-          {trip.destination || 'Boracay'} {'\u00B7'} Apr 20 {'\u2013'} 27
+          {trip.destination || 'Boracay'} {'\u00B7'} {formatDatePHT(trip.startDate)} {'\u2013'} {formatDatePHT(trip.endDate)}
         </Text>
       </View>
 
@@ -226,7 +247,64 @@ export default function TripScreen() {
         <MomentsTab tripId={trip.id} />
       )}
 
-      {activeTab !== 'Moments' && (
+      {activeTab === 'Summary' && (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { setRefreshing(true); load(); }}
+              tintColor={colors.accentLt}
+            />
+          }
+        >
+          {pastTrips.length === 0 && !lifetimeStats ? (
+            <EmptyTripsState
+              onPlanTrip={() => router.push('/plan-trip' as any)}
+              onAddPastTrip={() => router.push('/add-past-trip' as any)}
+            />
+          ) : (
+            <>
+              <ConstellationHero
+                totalMiles={lifetimeStats?.totalMiles ?? 0}
+                destinations={pastTrips
+                  .filter((t) => t.latitude != null && t.longitude != null)
+                  .map((t) => ({
+                    name: t.destination || t.name,
+                    lat: t.latitude!,
+                    lng: t.longitude!,
+                  }))}
+              />
+
+              {highlights.length > 0 && (
+                <Section title="Highlights" styles={styles}>
+                  <HighlightsStrip highlights={highlights} />
+                </Section>
+              )}
+
+              <Section title="Past trips" styles={styles}>
+                <View style={{ gap: spacing.sm }}>
+                  {pastTrips.map((t) => (
+                    <PastTripRow key={t.id} trip={t} />
+                  ))}
+                </View>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.addPastTripBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                  onPress={() => router.push('/add-past-trip' as any)}
+                >
+                  <Plus size={16} color={colors.accentLt} />
+                  <Text style={styles.addPastTripText}>Add a past trip</Text>
+                </Pressable>
+              </Section>
+            </>
+          )}
+        </ScrollView>
+      )}
+
+      {activeTab !== 'Moments' && activeTab !== 'Summary' && (
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -529,7 +607,7 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   segText: {
     color: colors.text3,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
   },
   segTextActive: {
@@ -649,6 +727,24 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     borderStyle: 'dashed',
   },
   addFileText: {
+    color: colors.accentLt,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Summary tab
+  addPastTripBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.accent + '40',
+    borderStyle: 'dashed' as const,
+    marginTop: spacing.sm,
+  },
+  addPastTripText: {
     color: colors.accentLt,
     fontSize: 14,
     fontWeight: '600',
