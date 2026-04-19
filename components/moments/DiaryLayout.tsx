@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
+import { Avatar } from './Avatar';
 import { MosaicTile } from './MosaicTile';
 import { VoiceNote } from './VoiceNote';
-import type { MomentDisplay } from './types';
+import type { MomentDisplay, PeopleMap } from './types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -13,16 +13,12 @@ import type { MomentDisplay } from './types';
 interface DiaryLayoutProps {
   items: MomentDisplay[];
   onOpen: (moment: MomentDisplay) => void;
-  people: Record<string, { name: string; color: string }>;
+  people: PeopleMap;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function reactionScore(m: MomentDisplay): number {
-  return Object.values(m.reactions || {}).reduce((a, b) => a + b, 0);
-}
 
 /**
  * Pick up to 3 most-distinct place names from a day's moments.
@@ -50,55 +46,6 @@ function dayOneLiner(ms: MomentDisplay[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Avatar stack (inline, small)
-// ---------------------------------------------------------------------------
-
-function AvatarStack({
-  keys,
-  people,
-}: {
-  keys: string[];
-  people: Record<string, { name: string; color: string }>;
-}) {
-  const { colors } = useTheme();
-
-  return (
-    <View style={{ flexDirection: 'row' }}>
-      {keys.map((k, i) => {
-        const person = people[k];
-        if (!person) return null;
-        return (
-          <View
-            key={k}
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: 999,
-              backgroundColor: person.color,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginLeft: i === 0 ? 0 : -6,
-              borderWidth: 2,
-              borderColor: colors.card,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 9,
-                fontWeight: '600',
-                color: colors.onBlack,
-              }}
-            >
-              {k}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -122,7 +69,7 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
   }, [items]);
 
   return (
-    <View style={{ paddingHorizontal: spacing.lg, gap: 26 }}>
+    <View style={styles.root}>
       {dayGroups.map((grp, idx) => {
         const ms = grp.items;
         const weather = ms[0].weather;
@@ -141,6 +88,7 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
         // First moment is hero; next 3 are supporting.
         const hero = ms[0];
         const supporting = ms.slice(1, 4);
+        const supportingCount = Math.min(supporting.length, 3);
 
         // Pull-quote: use the first moment's caption & author.
         const quoteAuthorKey = hero.authorKey || '';
@@ -154,7 +102,7 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
         return (
           <View key={grp.day}>
             {/* ---- Day header ---- */}
-            <View style={{ marginBottom: spacing.md }}>
+            <View style={styles.dayHeader}>
               {/* Eyebrow row */}
               <View style={styles.eyebrowRow}>
                 <Text
@@ -165,9 +113,25 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
                 >
                   Day {idx + 1} {'\u00b7'} {grp.day}
                 </Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={styles.eyebrowRight}>
+                  {/* Avatar stack */}
                   {peopleKeys.length > 0 && (
-                    <AvatarStack keys={peopleKeys} people={people} />
+                    <View style={styles.avatarStack}>
+                      {peopleKeys.map((k, i) => (
+                        <View
+                          key={k}
+                          style={{ marginLeft: i === 0 ? 0 : -6 }}
+                        >
+                          <Avatar
+                            authorKey={k}
+                            people={people}
+                            size={20}
+                            ring
+                            ringColor={colors.card}
+                          />
+                        </View>
+                      ))}
+                    </View>
                   )}
                   {weather ? (
                     <View
@@ -189,19 +153,18 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
 
               {/* Auto one-liner headline */}
               <Text
-                style={{
-                  fontSize: 19,
-                  fontWeight: '500',
-                  lineHeight: 19 * 1.2,
-                  color: colors.text,
-                  letterSpacing: -0.01 * 19,
-                }}
+                style={[
+                  styles.oneLiner,
+                  {
+                    color: colors.text,
+                  },
+                ]}
               >
                 {oneLiner}
               </Text>
 
               {/* Quiet meta row */}
-              <View style={[styles.metaRow, { marginTop: 4 }]}>
+              <View style={styles.metaRow}>
                 <Text style={[styles.metaText, { color: colors.text3 }]}>
                   {ms.length} {ms.length === 1 ? 'moment' : 'moments'}
                 </Text>
@@ -240,11 +203,12 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
             {/* ---- Supporting row ---- */}
             {supporting.length > 0 && (
               <View
-                style={{
-                  flexDirection: 'row',
-                  gap: 6,
-                  marginTop: 6,
-                }}
+                style={[
+                  styles.supportingRow,
+                  {
+                    // Match prototype: repeat(min(count, 3), 1fr)
+                  },
+                ]}
               >
                 {supporting.map((m) => (
                   <View key={m.id} style={{ flex: 1 }}>
@@ -261,12 +225,10 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
 
             {/* ---- Voice note ---- */}
             {voiceMoment && voiceMoment.voice && voiceMoment.authorKey && (
-              <View style={{ marginTop: spacing.sm }}>
-                <VoiceNote
-                  duration={voiceMoment.voice.duration}
-                  authorColor={people[voiceMoment.authorKey]?.color || colors.accent}
-                />
-              </View>
+              <VoiceNote
+                duration={voiceMoment.voice.duration}
+                authorColor={people[voiceMoment.authorKey]?.color || colors.accent}
+              />
             )}
 
             {/* ---- Pull-quote caption card ---- */}
@@ -301,6 +263,13 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
+  root: {
+    paddingHorizontal: 16,
+    gap: 26,
+  },
+  dayHeader: {
+    marginBottom: 12,
+  },
   eyebrowRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -313,6 +282,14 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1.8,
   },
+  eyebrowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  avatarStack: {
+    flexDirection: 'row',
+  },
   weatherChip: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -321,12 +298,19 @@ const styles = StyleSheet.create({
   },
   weatherText: {
     fontSize: 10,
-    fontWeight: '550',
+    fontWeight: '600',
+  },
+  oneLiner: {
+    fontSize: 19,
+    fontWeight: '500',
+    lineHeight: 19 * 1.2,
+    letterSpacing: -0.19,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    marginTop: 4,
   },
   metaText: {
     fontSize: 10.5,
@@ -334,12 +318,17 @@ const styles = StyleSheet.create({
   metaDot: {
     fontSize: 10.5,
   },
+  supportingRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+  },
   quoteCard: {
     marginTop: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
     borderLeftWidth: 3,
-    borderRadius: radius.sm,
+    borderRadius: 12,
   },
 });

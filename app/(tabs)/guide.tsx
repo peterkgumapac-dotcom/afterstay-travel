@@ -1,566 +1,962 @@
-import { useFocusEffect } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import {
-  Building2,
-  Edit3,
-  ExternalLink,
-  MapPin,
-  Phone,
-  Plane,
-  ShieldCheck,
-  Sparkles,
-  Wifi,
-  Waves,
-  UtensilsCrossed,
-  Dumbbell,
-  Bus,
-  Coffee,
-} from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Linking,
-  Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, {
+  Circle,
+  Defs,
+  Path,
+  Pattern,
+  Polyline,
+  Rect,
+  Line,
+} from 'react-native-svg';
 
-import Card from '@/components/Card';
-import Pill from '@/components/Pill';
 import { useTheme } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
-import { getActiveTrip, getFlights, getSavedPlaces, updateTripProperty } from '@/lib/supabase';
-import type { Flight, Place, Trip } from '@/lib/types';
-import { HOTEL_COORDS, NEARBY_ESSENTIALS } from '@/lib/boracayData';
-import { sanitizeText } from '@/lib/sanitize';
 
-const TAB_KEYS = ['Property', 'Nearby', 'Notes'] as const;
-type TabKey = (typeof TAB_KEYS)[number];
+type ThemeColors = ReturnType<typeof useTheme>['colors'];
+type TabId = 'property' | 'nearby' | 'notes';
 
-const AMENITY_ICONS: Record<string, React.ComponentType<any>> = {
-  'Pool': Waves,
-  'WiFi': Wifi,
-  'Breakfast': UtensilsCrossed,
-  'Gym': Dumbbell,
-  'Shuttle': Bus,
-  'Spa': Coffee,
-};
+// ── Data ────────────────────────────────────────────────────────────────
+
+const PROPERTY = {
+  name: 'Canyon Hotels & Resorts Boracay',
+  desc: 'Station B, Sitio Sinagpa, Balabag, Malay, Aklan 5608',
+  checkIn: '3:00 PM',
+  checkOut: '12:00 PM',
+  phone: '+63 36 288 5888',
+  email: 'reservations@canyonhotels.ph',
+} as const;
+
+const AMENITIES = [
+  { n: 'Infinity pool', iconId: 'pool' },
+  { n: 'Free WiFi', iconId: 'wifi' },
+  { n: 'Breakfast', iconId: 'breakfast' },
+  { n: 'Gym', iconId: 'gym' },
+  { n: 'Shuttle', iconId: 'shuttle' },
+  { n: 'Spa', iconId: 'spa' },
+] as const;
+
+const NEARBY = [
+  { n: 'CityMall Boracay', d: '470 m', t: 'Shopping mall', w: '6 min walk', pin: 'M' },
+  { n: "D'Mall", d: '1.6 km', t: 'Shopping street', w: '20 min walk', pin: 'D' },
+  { n: 'Island Clinic', d: '830 m', t: 'Medical', w: '10 min walk', pin: '+' },
+  { n: 'White Beach Path 2', d: '1.1 km', t: 'Beach access', w: '14 min walk', pin: '~' },
+  { n: 'Puka Beach', d: '4.2 km', t: 'Beach', w: '15 min ride', pin: '~' },
+] as const;
+
+const NOTES = [
+  {
+    title: 'Check-in tip',
+    body: 'Agoda vouchers required at the front desk \u2014 already saved to Files.',
+    time: '2h ago',
+    by: 'Peter',
+  },
+  {
+    title: 'Tricycle fare',
+    body: "Fixed rate \u20B13\u20135/person short hops. Don't pay more than \u20B1150 flag-down from Caticlan.",
+    time: 'Yesterday',
+    by: 'Aaron',
+  },
+  {
+    title: 'Sunset plan',
+    body: 'Try Station 2 first night \u2014 golden hour 5:40 PM. Bring the GoPro.',
+    time: '2 days ago',
+    by: 'Jane',
+  },
+] as const;
+
+const HOTEL_PHOTO =
+  'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80';
+
+const MAP_PINS = [
+  { x: '20%', y: '30%' },
+  { x: '75%', y: '25%' },
+  { x: '30%', y: '75%' },
+  { x: '80%', y: '70%' },
+] as const;
+
+// ── Amenity icon renderer ───────────────────────────────────────────────
+
+function AmenityIcon({ id, color }: { id: string; color: string }) {
+  const props = {
+    width: 18,
+    height: 18,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: color,
+    strokeWidth: 1.7,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  switch (id) {
+    case 'pool':
+      return (
+        <Svg {...props}>
+          <Path d="M2 20c2 0 2-2 5-2s3 2 5 2 3-2 5-2 3 2 5 2" />
+          <Path d="M2 15c2 0 2-2 5-2s3 2 5 2 3-2 5-2 3 2 5 2" />
+          <Path d="M8 11V4a2 2 0 012-2h2a2 2 0 012 2v7" />
+        </Svg>
+      );
+    case 'wifi':
+      return (
+        <Svg {...props}>
+          <Path d="M5 12.5a10 10 0 0114 0" />
+          <Path d="M8.5 15.5a5 5 0 017 0" />
+          <Circle cx={12} cy={19} r={1} fill={color} />
+        </Svg>
+      );
+    case 'breakfast':
+      return (
+        <Svg {...props}>
+          <Path d="M3 12h14a4 4 0 010 8H5a2 2 0 01-2-2z" />
+          <Path d="M8 7a2 2 0 014 0 2 2 0 004 0M17 12v-2a3 3 0 016 0v2" />
+        </Svg>
+      );
+    case 'gym':
+      return (
+        <Svg {...props} strokeLinejoin={undefined}>
+          <Path d="M6 8v8M18 8v8M2 12h4M18 12h4M9 10v4M15 10v4" />
+        </Svg>
+      );
+    case 'shuttle':
+      return (
+        <Svg {...props}>
+          <Rect x={3} y={6} width={18} height={12} rx={2} />
+          <Path d="M3 12h18M7 18v2M17 18v2" />
+          <Circle cx={7} cy={14} r={1} fill={color} />
+          <Circle cx={17} cy={14} r={1} fill={color} />
+        </Svg>
+      );
+    case 'spa':
+      return (
+        <Svg {...props}>
+          <Path d="M12 22c-6 0-10-4-10-10 0-3 2-6 4-6s4 2 4 4M12 22c6 0 10-4 10-10 0-3-2-6-4-6s-4 2-4 4" />
+        </Svg>
+      );
+    default:
+      return null;
+  }
+}
+
+// ── Pulsing dot for map pin ─────────────────────────────────────────────
+
+function PulsingMapPin({ colors }: { colors: ThemeColors }) {
+  const scale = useSharedValue(1);
+
+  useState(() => {
+    scale.value = withRepeat(
+      withTiming(1.15, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true,
+    );
+  });
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={[styles_static.pinContainer, animStyle]}>
+      <View
+        style={[
+          styles_static.pinOuter,
+          {
+            backgroundColor: colors.accent,
+            shadowColor: colors.accent,
+          },
+        ]}
+      >
+        <Svg
+          width={18}
+          height={18}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={colors.onBlack}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <Path d="M12 22s-8-7.5-8-13a8 8 0 1116 0c0 5.5-8 13-8 13z" />
+          <Circle cx={12} cy={9} r={2.5} />
+        </Svg>
+      </View>
+      <Text style={[styles_static.pinLabel, { color: colors.text }]}>
+        Canyon Hotels
+      </Text>
+    </Animated.View>
+  );
+}
+
+// Some styles that don't depend on theme
+const styles_static = StyleSheet.create({
+  pinContainer: {
+    alignItems: 'center',
+  },
+  pinOuter: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  pinLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 6,
+  },
+});
+
+// ── Main screen ─────────────────────────────────────────────────────────
 
 export default function GuideScreen() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const [flights, setFlights] = useState<Flight[]>([]);
-  const [places, setPlaces] = useState<Place[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string>();
-  const [activeTab, setActiveTab] = useState<TabKey>('Property');
-  const [editingNotes, setEditingNotes] = useState(false);
-  const [draftNotes, setDraftNotes] = useState('');
-  const [savingNotes, setSavingNotes] = useState(false);
-
-  const DEFAULT_NOTES_TEMPLATE = `AIRPORT & TRAVEL RULES:
-\u2022 Arrive at NAIA 2 hours before domestic flight
-\u2022 Cabin baggage: 7kg max, 56\u00D736\u00D723cm
-\u2022 Peter: 20kg checked (outbound only)
-\u2022 Aaron & Jane: NO checked bags
-\u2022 Tickets non-changeable, non-refundable
-\u2022 Valid ID required for domestic flights
-
-HOTEL CHECK-IN:
-\u2022 Photo ID + credit card required
-\u2022 \u20B12,000 refundable deposit (cash)
-\u2022 Booking ref: Agoda #1712826310
-\u2022 24-hour check-in available
-\u2022 Luggage storage available
-
-EMERGENCY:
-\u2022 Hotel: +63 36 286 2320
-\u2022 Island Clinic: 830m from hotel`;
-
-  const load = useCallback(async () => {
-    try {
-      setError(undefined);
-      const t = await getActiveTrip();
-      setTrip(t);
-      if (t) {
-        const [fs, ps] = await Promise.all([
-          getFlights(t.id).catch(() => [] as Flight[]),
-          getSavedPlaces(t.id).catch(() => [] as Place[]),
-        ]);
-        setFlights(fs);
-        setPlaces(ps);
-      }
-    } catch (e: any) {
-      setError(e?.message ?? 'Unable to load guide');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator color={colors.accentLt} />
-      </SafeAreaView>
-    );
-  }
-
-  if (error || !trip) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.errorText}>{error ?? 'No trip found.'}</Text>
-      </SafeAreaView>
-    );
-  }
-
-  const essentials = places.filter(p => p.category === 'Essentials');
+  const [tab, setTab] = useState<TabId>('property');
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
-      <View style={styles.headerSection}>
-        <Text style={styles.pageTitle}>Guide</Text>
-        <Text style={styles.pageSub}>{trip.accommodation}</Text>
+      {/* Top bar */}
+      <View style={styles.topBar}>
+        <View>
+          <Text style={styles.title}>Guide</Text>
+          <Text style={styles.subtitle}>Canyon Hotels {'\u00B7'} Boracay</Text>
+        </View>
+        <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Search">
+          <Svg
+            width={16}
+            height={16}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={colors.text}
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <Circle cx={11} cy={11} r={8} />
+            <Line x1={21} y1={21} x2={16.6} y2={16.6} />
+          </Svg>
+        </TouchableOpacity>
       </View>
 
       {/* Segmented control */}
-      <View style={styles.segmented}>
-        {TAB_KEYS.map((tab) => (
-          <Pressable
-            key={tab}
-            style={[styles.segBtn, activeTab === tab && styles.segBtnActive]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={[styles.segText, activeTab === tab && styles.segTextActive]}>
-              {tab}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={styles.segWrapper}>
+        <View style={styles.seg}>
+          {(['property', 'nearby', 'notes'] as const).map((id) => {
+            const label =
+              id === 'property'
+                ? 'Property'
+                : id === 'nearby'
+                  ? 'Nearby'
+                  : 'Notes';
+            return (
+              <TouchableOpacity
+                key={id}
+                style={[styles.segBtn, tab === id && styles.segBtnActive]}
+                onPress={() => {
+                  setTab(id);
+                  Haptics.selectionAsync();
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.segText, tab === id && styles.segTextActive]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); load(); }}
-            tintColor={colors.accentLt}
-          />
-        }
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {activeTab === 'Property' && (
+        {/* ═══════ PROPERTY TAB ═══════ */}
+        {tab === 'property' && (
           <>
-            {/* Property info */}
-            <Card>
-              <Text style={styles.propName}>{trip.accommodation}</Text>
-              {trip.address ? (
-                <View style={styles.hotelAddressRow}>
-                  <MapPin size={14} color={colors.text2} />
-                  <Text style={styles.hotelAddress}>{trip.address}</Text>
+            {/* Hero image */}
+            <View style={styles.heroWrapper}>
+              <View style={styles.heroCard}>
+                <View style={styles.heroImageBg}>
+                  {/* Gradient overlay */}
+                  <View style={styles.heroGradient} />
+                  <View style={styles.heroTextBlock}>
+                    <Text style={styles.heroName}>{PROPERTY.name}</Text>
+                    <Text style={styles.heroDesc}>{PROPERTY.desc}</Text>
+                  </View>
                 </View>
-              ) : null}
+              </View>
+            </View>
 
-              {/* Check-in/out times */}
+            {/* Check-in / Check-out times */}
+            <View style={styles.timesWrapper}>
               <View style={styles.timesGrid}>
-                <View style={styles.timeBlock}>
-                  <Text style={styles.timeLabel}>CHECK-IN</Text>
-                  <Text style={styles.timeValue}>{trip.checkIn || '3:00 PM'}</Text>
+                <View style={styles.timeCard}>
+                  <Text style={styles.timeEyebrow}>Check-in</Text>
+                  <Text style={styles.timeValue}>{PROPERTY.checkIn}</Text>
+                  <Text style={styles.timeDate}>Sun, Apr 20</Text>
                 </View>
-                <View style={styles.timeBlock}>
-                  <Text style={styles.timeLabel}>CHECKOUT</Text>
-                  <Text style={styles.timeValue}>{trip.checkOut || '12:00 PM'}</Text>
+                <View style={styles.timeCard}>
+                  <Text style={styles.timeEyebrow}>Check-out</Text>
+                  <Text style={styles.timeValue}>{PROPERTY.checkOut}</Text>
+                  <Text style={styles.timeDate}>Sun, Apr 27</Text>
                 </View>
               </View>
+            </View>
 
-              {/* Amenities grid */}
-              {trip.amenities && trip.amenities.length > 0 ? (
-                <View style={styles.amenities}>
-                  <Text style={styles.subheader}>Amenities</Text>
-                  <View style={styles.amenityGrid}>
-                    {trip.amenities.map(a => {
-                      const AmenIcon = AMENITY_ICONS[a];
-                      return (
-                        <View key={a} style={styles.amenityItem}>
-                          {AmenIcon ? <AmenIcon size={18} color={colors.accent} /> : null}
-                          <Text style={styles.amenityLabel}>{a}</Text>
-                        </View>
-                      );
-                    })}
+            {/* Amenities */}
+            <View style={styles.groupHeader}>
+              <Text style={styles.eyebrow}>Amenities</Text>
+              <Text style={styles.groupTitle}>What{'\u2019'}s included</Text>
+            </View>
+            <View style={styles.amenityGridWrapper}>
+              <View style={styles.amenityGrid}>
+                {AMENITIES.map((a) => (
+                  <View key={a.n} style={styles.amenityCell}>
+                    <View style={{ marginBottom: 8 }}>
+                      <AmenityIcon id={a.iconId} color={colors.accent} />
+                    </View>
+                    <Text style={styles.amenityLabel}>{a.n}</Text>
                   </View>
-                </View>
-              ) : null}
+                ))}
+              </View>
+            </View>
 
-              {/* Contact */}
-              {trip.hotelPhone ? (
-                <View style={styles.contactSection}>
-                  <Text style={styles.subheader}>Contact</Text>
-                  <Pressable
-                    style={styles.phoneRow}
-                    onPress={() => Linking.openURL(`tel:${trip.hotelPhone?.replace(/[^+\d]/g, '')}`)}
+            {/* Contact */}
+            <View style={styles.groupHeader}>
+              <Text style={styles.eyebrow}>Contact</Text>
+              <Text style={styles.groupTitle}>Reach the property</Text>
+            </View>
+            <View style={styles.contactList}>
+              {/* Phone */}
+              <TouchableOpacity
+                style={styles.contactRow}
+                onPress={() =>
+                  Linking.openURL(
+                    `tel:${PROPERTY.phone.replace(/[^+\d]/g, '')}`,
+                  )
+                }
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Call ${PROPERTY.phone}`}
+              >
+                <View style={styles.contactIcon}>
+                  <Svg
+                    width={16}
+                    height={16}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={colors.accent}
+                    strokeWidth={1.8}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   >
-                    <Phone size={16} color={colors.accent} />
-                    <Text style={styles.phoneText}>{trip.hotelPhone}</Text>
-                  </Pressable>
+                    <Path d="M22 16.9v3a2 2 0 01-2.2 2 20 20 0 01-8.6-3.1 19.5 19.5 0 01-6-6A20 20 0 012 4.2 2 2 0 014 2h3a2 2 0 012 1.7c.1 1 .3 1.9.6 2.8a2 2 0 01-.5 2.1L8 9.8a16 16 0 006 6l1.2-1.1a2 2 0 012.1-.5c.9.3 1.8.5 2.8.6a2 2 0 011.7 2z" />
+                  </Svg>
                 </View>
-              ) : null}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.contactTitle}>{PROPERTY.phone}</Text>
+                  <Text style={styles.contactMeta}>
+                    Reception {'\u00B7'} 24 hours
+                  </Text>
+                </View>
+              </TouchableOpacity>
 
-              {trip.hotelUrl ? (
-                <Pressable
-                  style={({ pressed }) => [styles.hotelLinkBtn, pressed && { opacity: 0.7 }]}
-                  onPress={() => WebBrowser.openBrowserAsync(trip.hotelUrl!)}
-                >
-                  <Text style={styles.hotelLinkText}>View Hotel Website</Text>
-                  <ExternalLink size={14} color={colors.accent} />
-                </Pressable>
-              ) : null}
-            </Card>
-
-            {trip.bookingRef ? (
-              <View style={styles.refCard}>
-                <Text style={styles.refLabel}>BOOKING REF</Text>
-                <Text style={styles.refValue}>{trip.bookingRef}</Text>
-              </View>
-            ) : null}
+              {/* Email */}
+              <TouchableOpacity
+                style={styles.contactRow}
+                onPress={() => Linking.openURL(`mailto:${PROPERTY.email}`)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Email ${PROPERTY.email}`}
+              >
+                <View style={styles.contactIcon}>
+                  <Svg
+                    width={16}
+                    height={16}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={colors.accent}
+                    strokeWidth={1.8}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <Rect x={3} y={5} width={18} height={14} rx={2} />
+                    <Polyline points="3 7 12 13 21 7" />
+                  </Svg>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.contactTitle}>{PROPERTY.email}</Text>
+                  <Text style={styles.contactMeta}>Reservations</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </>
         )}
 
-        {activeTab === 'Nearby' && (
+        {/* ═══════ NEARBY TAB ═══════ */}
+        {tab === 'nearby' && (
           <>
-            {/* Mini map */}
-            <MapView
-              provider="google"
-              style={styles.essentialsMap}
-              initialRegion={{
-                latitude: HOTEL_COORDS.lat,
-                longitude: HOTEL_COORDS.lng,
-                latitudeDelta: 0.025,
-                longitudeDelta: 0.025,
-              }}
-            >
-              <Marker
-                coordinate={{ latitude: HOTEL_COORDS.lat, longitude: HOTEL_COORDS.lng }}
-                title="Canyon Hotels"
-                pinColor={colors.accent}
-              />
-              {NEARBY_ESSENTIALS.map((e) => (
-                <Marker
-                  key={e.name}
-                  coordinate={{ latitude: e.lat, longitude: e.lng }}
-                  title={e.name}
-                  description={e.distance}
-                />
-              ))}
-            </MapView>
-
-            <Text style={styles.nearbyHeader}>Essential Locations</Text>
-            {essentials.length === 0 ? (
-              <Card>
-                <Text style={styles.muted}>
-                  No essentials saved yet. Add ATM, pharmacy, clinic, grocery from Discover.
-                </Text>
-              </Card>
-            ) : (
-              <View style={{ gap: spacing.sm }}>
-                {essentials.map(p => {
-                  const mapsUrl =
-                    p.latitude != null && p.longitude != null
-                      ? `https://www.google.com/maps/dir/?api=1&origin=${trip.address ? encodeURIComponent(trip.address) : `${HOTEL_COORDS.lat},${HOTEL_COORDS.lng}`}&destination=${p.latitude},${p.longitude}`
-                      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name + ' ' + (trip.destination || 'Boracay'))}`;
-                  return (
-                    <Pressable
-                      key={p.id}
-                      onPress={() => Linking.openURL(mapsUrl)}
-                      accessibilityRole="link"
+            {/* Mini map card */}
+            <View style={styles.mapCardWrapper}>
+              <View style={styles.mapCard}>
+                {/* Grid pattern background */}
+                <Svg
+                  width="100%"
+                  height="100%"
+                  style={StyleSheet.absoluteFill}
+                >
+                  <Defs>
+                    <Pattern
+                      id="grid"
+                      width={24}
+                      height={24}
+                      patternUnits="userSpaceOnUse"
                     >
-                      <View style={styles.essRow}>
-                        <MapPin size={16} color={colors.accent} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.essName}>{p.name}</Text>
-                          {p.distance ? (
-                            <Text style={styles.essDistance}>{p.distance}</Text>
-                          ) : null}
-                        </View>
-                        <ExternalLink size={16} color={colors.text3} />
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
+                      <Path
+                        d="M 24 0 L 0 0 0 24"
+                        fill="none"
+                        stroke={colors.border}
+                        strokeWidth={0.5}
+                      />
+                    </Pattern>
+                  </Defs>
+                  <Rect width="100%" height="100%" fill="url(#grid)" opacity={0.25} />
+                </Svg>
 
-            {/* Static nearby list */}
-            <Text style={[styles.nearbyHeader, { marginTop: spacing.lg }]}>Around the Hotel</Text>
-            <View style={{ gap: spacing.sm }}>
-              {NEARBY_ESSENTIALS.map(e => (
-                <View key={e.name} style={styles.essRow}>
-                  <MapPin size={16} color={colors.text3} />
+                {/* Hotel pin (centered) */}
+                <View style={styles.mapPinCenter}>
+                  <PulsingMapPin colors={colors} />
+                </View>
+
+                {/* Scattered secondary pins */}
+                {MAP_PINS.map((p, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.mapDot,
+                      { left: p.x as unknown as number, top: p.y as unknown as number },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.mapDotInner,
+                        { backgroundColor: colors.text3 },
+                      ]}
+                    />
+                  </View>
+                ))}
+
+                {/* Open map button */}
+                <TouchableOpacity
+                  style={styles.openMapBtn}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open map"
+                >
+                  <Text style={styles.openMapBtnText}>Open map {'\u2192'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Essentials header */}
+            <View style={styles.groupHeader}>
+              <Text style={styles.eyebrow}>Essentials</Text>
+              <Text style={styles.groupTitle}>Around the hotel</Text>
+            </View>
+
+            {/* Nearby list */}
+            <View style={styles.nearbyList}>
+              {NEARBY.map((n) => (
+                <View key={n.n} style={styles.nearbyRow}>
+                  <View style={styles.nearbyPin}>
+                    <Text style={styles.nearbyPinText}>{n.pin}</Text>
+                  </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.essName}>{e.name}</Text>
+                    <Text style={styles.nearbyName}>{n.n}</Text>
+                    <Text style={styles.nearbyMeta}>
+                      {n.t} {'\u00B7'} {n.w}
+                    </Text>
                   </View>
-                  <Text style={styles.essDistance}>{e.distance}</Text>
+                  <Text style={styles.nearbyDist}>{n.d}</Text>
                 </View>
               ))}
             </View>
           </>
         )}
 
-        {activeTab === 'Notes' && (
+        {/* ═══════ NOTES TAB ═══════ */}
+        {tab === 'notes' && (
           <>
-            <View style={styles.notesHeaderRow}>
-              <Text style={styles.notesTitle}>Shared Notes</Text>
-              {!editingNotes ? (
-                <Pressable
-                  onPress={() => {
-                    setDraftNotes(trip.notes || DEFAULT_NOTES_TEMPLATE);
-                    setEditingNotes(true);
-                  }}
-                  hitSlop={8}
-                >
-                  <Edit3 size={18} color={colors.text3} />
-                </Pressable>
-              ) : null}
+            {/* Notes header */}
+            <View style={styles.notesHeader}>
+              <Text style={styles.notesCount}>
+                {NOTES.length} notes {'\u00B7'} shared with group
+              </Text>
+              <TouchableOpacity
+                style={styles.newNoteBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="New note"
+              >
+                <Text style={styles.newNoteBtnText}>+ New note</Text>
+              </TouchableOpacity>
             </View>
 
-            <Card>
-              {editingNotes ? (
-                <View style={styles.notesEditContainer}>
-                  <TextInput
-                    style={styles.notesInput}
-                    value={draftNotes}
-                    onChangeText={setDraftNotes}
-                    multiline
-                    autoFocus
-                    placeholderTextColor={colors.text3}
-                    placeholder="Add notes..."
-                  />
-                  <View style={styles.notesActions}>
-                    <Pressable
-                      style={[styles.notesBtn, styles.notesCancelBtn]}
-                      onPress={() => setEditingNotes(false)}
-                      disabled={savingNotes}
-                    >
-                      <Text style={styles.notesCancelText}>Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.notesBtn, styles.notesSaveBtn]}
-                      onPress={async () => {
-                        setSavingNotes(true);
-                        try {
-                          await updateTripProperty(trip.id, 'Notes', draftNotes);
-                          setTrip({ ...trip, notes: draftNotes });
-                          setEditingNotes(false);
-                        } catch {
-                          // keep editing open
-                        } finally {
-                          setSavingNotes(false);
-                        }
-                      }}
-                      disabled={savingNotes}
-                    >
-                      {savingNotes ? (
-                        <ActivityIndicator size="small" color={colors.white} />
-                      ) : (
-                        <Text style={styles.notesSaveText}>Save</Text>
-                      )}
-                    </Pressable>
+            {/* Notes list */}
+            <View style={styles.notesList}>
+              {NOTES.map((n, i) => (
+                <View key={i} style={styles.noteCard}>
+                  <View style={styles.noteTopRow}>
+                    <Text style={styles.noteTitle}>{n.title}</Text>
+                    <Text style={styles.noteTime}>{n.time}</Text>
+                  </View>
+                  <Text style={styles.noteBody}>{n.body}</Text>
+                  <View style={styles.noteFooter}>
+                    <Text style={styles.noteByLabel}>
+                      by{' '}
+                      <Text style={styles.noteByName}>{n.by}</Text>
+                    </Text>
                   </View>
                 </View>
-              ) : trip.notes ? (
-                <Text style={styles.notes}>{sanitizeText(trip.notes)}</Text>
-              ) : (
-                <Text style={styles.muted}>No notes yet. Tap the pencil to add some.</Text>
-              )}
-            </Card>
+              ))}
+            </View>
           </>
         )}
+
+        <View style={{ height: 20 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+// ── Styles ──────────────────────────────────────────────────────────────
+
+const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.bg },
-    centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-    errorText: { color: colors.danger, fontSize: 13 },
-    headerSection: {
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md,
-      paddingBottom: spacing.sm,
+    safe: {
+      flex: 1,
+      backgroundColor: colors.bg,
     },
-    pageTitle: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
-    pageSub: { color: colors.text2, fontSize: 13, marginTop: 2 },
-    segmented: {
+    scroll: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: 100,
+    },
+
+    // Top bar
+    topBar: {
       flexDirection: 'row',
-      marginHorizontal: spacing.lg,
-      marginBottom: spacing.md,
-      backgroundColor: colors.bg3,
-      borderRadius: radius.md,
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 8,
+    },
+    title: {
+      fontSize: 22,
+      fontWeight: '600',
+      letterSpacing: -0.66,
+      color: colors.text,
+    },
+    subtitle: {
+      fontSize: 11,
+      color: colors.text3,
+      letterSpacing: 1.76,
+      textTransform: 'uppercase',
+      fontWeight: '600',
+      marginTop: 2,
+    },
+    iconBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    // Segmented control
+    segWrapper: {
+      paddingHorizontal: 16,
+      paddingBottom: 16,
+    },
+    seg: {
+      flexDirection: 'row',
       padding: 3,
+      backgroundColor: colors.card2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      gap: 2,
     },
     segBtn: {
       flex: 1,
       paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 9,
       alignItems: 'center',
-      borderRadius: radius.sm,
     },
     segBtnActive: {
       backgroundColor: colors.card,
     },
     segText: {
-      color: colors.text3,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '600',
+      color: colors.text3,
+      letterSpacing: -0.12,
     },
     segTextActive: {
-      color: colors.accentLt,
+      color: colors.text,
     },
-    content: { padding: spacing.lg, paddingBottom: 100, gap: spacing.lg },
-    propName: { color: colors.text, fontSize: 18, fontWeight: '700', letterSpacing: -0.2 },
-    hotelAddressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
-    hotelAddress: { color: colors.text2, fontSize: 13, flex: 1 },
+
+    // Hero
+    heroWrapper: {
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+    },
+    heroCard: {
+      height: 200,
+      borderRadius: 20,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    heroImageBg: {
+      flex: 1,
+      backgroundColor: colors.card2,
+    },
+    heroGradient: {
+      ...StyleSheet.absoluteFillObject,
+      // Simulated gradient overlay — can't do CSS gradient in RN,
+      // but the card background serves as the base
+    },
+    heroTextBlock: {
+      position: 'absolute',
+      left: 16,
+      right: 16,
+      bottom: 14,
+    },
+    heroName: {
+      fontSize: 20,
+      fontWeight: '500',
+      letterSpacing: -0.6,
+      color: colors.text,
+      lineHeight: 22,
+      marginBottom: 3,
+    },
+    heroDesc: {
+      fontSize: 11,
+      color: colors.text2,
+    },
+
+    // Times
+    timesWrapper: {
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+    },
     timesGrid: {
       flexDirection: 'row',
-      gap: spacing.md,
-      marginTop: spacing.lg,
+      gap: 10,
     },
-    timeBlock: {
+    timeCard: {
       flex: 1,
-      backgroundColor: colors.bg3,
-      borderRadius: radius.sm,
-      padding: spacing.md,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 22,
+      padding: 14,
     },
-    timeLabel: {
+    timeEyebrow: {
+      fontSize: 10,
+      fontWeight: '600',
+      letterSpacing: 1.6,
+      textTransform: 'uppercase',
       color: colors.text3,
-      fontSize: 9,
-      fontWeight: '700',
-      letterSpacing: 1,
     },
     timeValue: {
+      fontSize: 20,
+      fontWeight: '600',
       color: colors.text,
-      fontSize: 18,
-      fontWeight: '700',
-      marginTop: 4,
+      marginTop: 6,
+      letterSpacing: 0.4,
     },
-    amenities: { marginTop: spacing.lg },
-    subheader: { color: colors.text3, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.md },
+    timeDate: {
+      fontSize: 10.5,
+      color: colors.text3,
+      marginTop: 2,
+    },
+
+    // Group headers
+    groupHeader: {
+      paddingHorizontal: 20,
+      paddingBottom: 10,
+    },
+    eyebrow: {
+      fontSize: 10,
+      fontWeight: '600',
+      letterSpacing: 1.6,
+      textTransform: 'uppercase',
+      color: colors.text3,
+    },
+    groupTitle: {
+      fontSize: 16,
+      fontWeight: '500',
+      letterSpacing: -0.48,
+      color: colors.text,
+      marginTop: 2,
+    },
+
+    // Amenities
+    amenityGridWrapper: {
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+    },
     amenityGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: spacing.md,
+      gap: 8,
     },
-    amenityItem: {
-      width: '30%',
+    amenityCell: {
+      width: '31%',
+      paddingVertical: 14,
+      paddingHorizontal: 10,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
       alignItems: 'center',
-      gap: 6,
-      paddingVertical: spacing.md,
-      backgroundColor: colors.bg3,
-      borderRadius: radius.sm,
     },
     amenityLabel: {
-      color: colors.text2,
       fontSize: 11,
       fontWeight: '600',
+      color: colors.text,
+      lineHeight: 13.2,
+      textAlign: 'center',
     },
-    contactSection: { marginTop: spacing.lg },
-    phoneRow: {
+
+    // Contact
+    contactList: {
+      paddingHorizontal: 16,
+      gap: 8,
+    },
+    contactRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
-    },
-    phoneText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
-    hotelLinkBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      marginTop: spacing.lg,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      backgroundColor: colors.accentDim,
-      borderRadius: radius.md,
-      alignSelf: 'flex-start',
-    },
-    hotelLinkText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
-    refCard: {
+      gap: 12,
+      padding: 14,
       backgroundColor: colors.card,
-      borderRadius: radius.md,
       borderWidth: 1,
       borderColor: colors.border,
-      padding: spacing.md,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
+      borderRadius: 14,
     },
-    refLabel: { color: colors.text3, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
-    refValue: { color: colors.text, fontSize: 14, fontWeight: '600', fontFamily: 'SpaceMono' },
-    essentialsMap: { height: 200, borderRadius: radius.lg, overflow: 'hidden' },
-    nearbyHeader: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: '700',
-      marginTop: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    essRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: spacing.md,
-      gap: spacing.md,
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
+    contactIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: colors.accentBg,
       borderWidth: 1,
-      borderColor: colors.border,
-    },
-    essName: { color: colors.text, fontSize: 14, fontWeight: '600' },
-    essDistance: { color: colors.text2, fontSize: 12, marginTop: 2 },
-    muted: { color: colors.text2, fontSize: 13, lineHeight: 18 },
-    // Notes
-    notesHeaderRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    notesTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-    notes: { color: colors.text, fontSize: 13, lineHeight: 20 },
-    notesEditContainer: { gap: spacing.md },
-    notesInput: {
-      color: colors.text,
-      fontSize: 13,
-      lineHeight: 20,
-      minHeight: 80,
-      textAlignVertical: 'top',
-      borderWidth: 1,
-      borderColor: colors.border2,
-      borderRadius: radius.md,
-      padding: spacing.md,
-      backgroundColor: colors.bg3,
-    },
-    notesActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
-    notesBtn: {
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.lg,
-      borderRadius: radius.md,
+      borderColor: colors.accentBorder,
       alignItems: 'center',
       justifyContent: 'center',
-      minWidth: 72,
     },
-    notesCancelBtn: { backgroundColor: colors.bg3 },
-    notesSaveBtn: { backgroundColor: colors.accent },
-    notesCancelText: { color: colors.text2, fontSize: 13, fontWeight: '600' },
-    notesSaveText: { color: colors.white, fontSize: 13, fontWeight: '600' },
+    contactTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    contactMeta: {
+      fontSize: 11,
+      color: colors.text3,
+      marginTop: 2,
+    },
+
+    // Map card
+    mapCardWrapper: {
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+    },
+    mapCard: {
+      height: 150,
+      borderRadius: 20,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    mapPinCenter: {
+      position: 'absolute',
+      top: '45%',
+      left: '50%',
+      transform: [{ translateX: -19 }, { translateY: -19 }],
+    },
+    mapDot: {
+      position: 'absolute',
+    },
+    mapDotInner: {
+      width: 8,
+      height: 8,
+      borderRadius: 999,
+      opacity: 0.6,
+    },
+    openMapBtn: {
+      position: 'absolute',
+      right: 12,
+      bottom: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    openMapBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.text,
+    },
+
+    // Nearby list
+    nearbyList: {
+      paddingHorizontal: 16,
+      gap: 8,
+    },
+    nearbyRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 14,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+    },
+    nearbyPin: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    nearbyPinText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    nearbyName: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    nearbyMeta: {
+      fontSize: 11,
+      color: colors.text3,
+      marginTop: 2,
+    },
+    nearbyDist: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      letterSpacing: 0.26,
+    },
+
+    // Notes
+    notesHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingBottom: 12,
+    },
+    notesCount: {
+      fontSize: 12,
+      color: colors.text3,
+    },
+    newNoteBtn: {
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      backgroundColor: colors.black,
+    },
+    newNoteBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.onBlack,
+    },
+    notesList: {
+      paddingHorizontal: 16,
+      gap: 10,
+    },
+    noteCard: {
+      padding: 16,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+    },
+    noteTopRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 6,
+    },
+    noteTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    noteTime: {
+      fontSize: 10,
+      color: colors.text3,
+    },
+    noteBody: {
+      fontSize: 12.5,
+      color: colors.text2,
+      lineHeight: 18.125, // 12.5 * 1.45
+    },
+    noteFooter: {
+      marginTop: 10,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    noteByLabel: {
+      fontSize: 10.5,
+      color: colors.text3,
+    },
+    noteByName: {
+      color: colors.accent,
+      fontWeight: '600',
+    },
   });

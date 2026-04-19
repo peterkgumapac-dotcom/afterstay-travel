@@ -10,18 +10,17 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { Camera } from 'lucide-react-native';
+import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
 import { getMoments, getGroupMembers } from '@/lib/supabase';
 import type { Moment, GroupMember } from '@/lib/types';
-import type { MomentDisplay } from './types';
+import type { MomentDisplay, PeopleMap } from './types';
 import { StatBlock } from './StatBlock';
 import { DayChips } from './DayChips';
 import { MosaicLayout } from './MosaicLayout';
 import { DiaryLayout } from './DiaryLayout';
-import { MomentLightbox } from './MomentLightbox';
 import { MapLayout } from './MapLayout';
+import { MomentLightbox } from './MomentLightbox';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -52,15 +51,14 @@ interface MomentsTabProps {
 
 function buildPeopleMap(
   members: GroupMember[],
-): Record<string, { name: string; color: string }> {
-  const people: Record<string, { name: string; color: string }> = {};
+): PeopleMap {
+  const people: PeopleMap = {};
   members.forEach((m, i) => {
     const initial = m.name.charAt(0).toUpperCase();
     people[initial] = {
       name: m.name,
       color: PEOPLE_COLORS[i % PEOPLE_COLORS.length],
     };
-    // Also map by full name for takenBy lookups
     people[m.name] = {
       name: m.name,
       color: PEOPLE_COLORS[i % PEOPLE_COLORS.length],
@@ -98,6 +96,7 @@ function computeDayCounts(moments: MomentDisplay[]): Record<string, number> {
 export function MomentsTab({ tripId }: MomentsTabProps) {
   const { colors } = useTheme();
   const router = useRouter();
+  const s = getStyles(colors);
 
   const [rawMoments, setRawMoments] = useState<Moment[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -172,7 +171,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={s.loadingContainer}>
         <ActivityIndicator color={colors.accentLt} />
       </View>
     );
@@ -181,11 +180,11 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   return (
     <>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* ---- Stats strip ---- */}
-        <View style={styles.statsRow}>
+        <View style={s.statsRow}>
           <StatBlock label="Moments" value={allMoments.length} />
           <StatBlock label="Places" value={uniquePlaces} />
           <StatBlock label="Days" value={dayCount} />
@@ -200,38 +199,26 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         />
 
         {/* ---- Layout switcher ---- */}
-        <View style={styles.switcherRow}>
-          <Text style={[styles.momentCountText, { color: colors.text3 }]}>
+        <View style={s.switcherRow}>
+          <Text style={s.momentCountText}>
             {filtered.length} {filtered.length === 1 ? 'moment' : 'moments'}
             {activeDay !== 'all' ? ` on ${activeDay}` : ''}
           </Text>
 
-          <View
-            style={[
-              styles.segmented,
-              { backgroundColor: colors.bg3 },
-            ]}
-          >
+          <View style={s.segmented}>
             {LAYOUT_OPTIONS.map((opt) => (
               <Pressable
                 key={opt.value}
                 onPress={() => handleLayoutChange(opt.value)}
                 style={[
-                  styles.segBtn,
-                  layout === opt.value && {
-                    backgroundColor: colors.card,
-                  },
+                  s.segBtn,
+                  layout === opt.value && s.segBtnActive,
                 ]}
               >
                 <Text
                   style={[
-                    styles.segText,
-                    {
-                      color:
-                        layout === opt.value
-                          ? colors.accentLt
-                          : colors.text3,
-                    },
+                    s.segText,
+                    { color: layout === opt.value ? colors.text : colors.text3 },
                   ]}
                 >
                   {opt.label}
@@ -267,22 +254,31 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         )}
 
         {/* ---- Upload CTA ---- */}
-        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.xl }}>
+        <View style={s.ctaWrapper}>
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => router.push('/add-moment' as any)}
-            style={[
-              styles.addButton,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border2,
-              },
-            ]}
+            onPress={() => router.push('/add-moment' as never)}
+            style={s.addButton}
           >
-            <Camera size={16} color={colors.text2} strokeWidth={1.8} />
-            <Text style={[styles.addButtonText, { color: colors.text2 }]}>
-              Add moment
-            </Text>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M14.5 4l1.5 2h3a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h3l1.5-2z"
+                stroke={colors.text2}
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              <SvgCircle
+                cx={12}
+                cy={13}
+                r={3.5}
+                stroke={colors.text2}
+                strokeWidth={1.8}
+                fill="none"
+              />
+            </Svg>
+            <Text style={s.addButtonText}>Add moment</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -312,72 +308,84 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Styles
+// Styles — getStyles factory pattern per CLAUDE.md
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 60,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: 14,
-    gap: 8,
-  },
-  switcherRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: 14,
-  },
-  momentCountText: {
-    fontSize: 11,
-  },
-  segmented: {
-    flexDirection: 'row',
-    borderRadius: radius.sm,
-    padding: 2,
-  },
-  segBtn: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: radius.sm - 2,
-  },
-  segText: {
-    fontSize: 10.5,
-    fontWeight: '600',
-  },
-  mapPlaceholder: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapPlaceholderText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: radius.sm + 2,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-  },
-  addButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-});
+const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+  StyleSheet.create({
+    loadingContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: 60,
+    },
+    scrollContent: {
+      paddingBottom: 100,
+    },
+    statsRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+      gap: 8,
+    },
+    switcherRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+    },
+    momentCountText: {
+      fontSize: 11,
+      color: colors.text3,
+    },
+    segmented: {
+      flexDirection: 'row',
+      padding: 2,
+      backgroundColor: colors.card2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      gap: 2,
+    },
+    segBtn: {
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: 9,
+    },
+    segBtnActive: {
+      backgroundColor: colors.card,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.30,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    segText: {
+      fontSize: 10.5,
+      fontWeight: '600',
+      letterSpacing: -0.1,
+    },
+    ctaWrapper: {
+      paddingHorizontal: 16,
+      paddingTop: 20,
+    },
+    addButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: colors.border2,
+      borderRadius: 14,
+    },
+    addButtonText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text2,
+    },
+  });

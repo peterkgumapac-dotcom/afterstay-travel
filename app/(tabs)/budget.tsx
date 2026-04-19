@@ -1,816 +1,764 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import { Plus } from 'lucide-react-native';
-import { useCallback, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  ActionSheetIOS,
-  ActivityIndicator,
-  Alert,
-  Platform,
   Pressable,
-  RefreshControl,
-  SectionList,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
-import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, {
+  Circle,
+  Path,
+  Polyline,
+  Rect,
+} from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BudgetAlertCard } from '@/components/budget/BudgetAlertCard';
-import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
-import WhoPaysPicker from '@/components/budget/WhoPaysPicker';
-import BudgetSummary from '@/components/BudgetSummary';
-import ExpenseRow from '@/components/ExpenseRow';
-import { getBudgetStatus } from '@/lib/budgetAlerts';
 import { useTheme } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
-import {
-  deleteExpense,
-  getActiveTrip,
-  getExpenses,
-  getGroupMembers,
-  updateTripBudgetLimit,
-  updateTripBudgetMode,
-} from '@/lib/supabase';
-import type { Expense, GroupMember, Trip } from '@/lib/types';
-import { formatCurrency, formatDatePHT, safeParse } from '@/lib/utils';
-
-type BudgetMode = 'Limited' | 'Unlimited';
-
-const CATEGORY_EMOJI: Record<string, string> = {
-  Food: '\u{1F37D}',
-  Transport: '\u{1F6FA}',
-  Activity: '\u{1F3AF}',
-  Accommodation: '\u{1F3E8}',
-  Shopping: '\u{1F6CD}',
-  Other: '\u{1F4E6}',
-};
-
-/** Parse date string with PHT timezone suffix to avoid Android UTC-shift. */
-function parseDatePht(dateStr: string): Date {
-  return safeParse(dateStr);
-}
-
-function computeDaysElapsed(startDate: string): number {
-  const start = parseDatePht(startDate);
-  const now = Date.now();
-  const ms = now - start.getTime();
-  return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-}
-
-function computeDaysLeft(endDate: string): number {
-  const end = parseDatePht(endDate);
-  const now = Date.now();
-  const ms = end.getTime() - now;
-  return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-}
-
-function computeTotalDays(startDate: string, endDate: string): number {
-  const start = parseDatePht(startDate);
-  const end = parseDatePht(endDate);
-  const ms = end.getTime() - start.getTime();
-  return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)) + 1);
-}
-
-function getExpenseDay(expenseDate: string, tripStartDate: string): number {
-  const exp = parseDatePht(expenseDate);
-  const start = parseDatePht(tripStartDate);
-  return Math.floor((exp.getTime() - start.getTime()) / 86400000) + 1;
-}
-
-interface DayGroup {
-  day: number;
-  date: string;
-  expenses: Expense[];
-  total: number;
-}
-
-function buildDayGroups(expenses: ReadonlyArray<Expense>, tripStartDate: string): readonly DayGroup[] {
-  const groups = new Map<number, { expenses: Expense[]; total: number; date: string }>();
-
-  for (const expense of expenses) {
-    const day = getExpenseDay(expense.date, tripStartDate);
-    const existing = groups.get(day);
-    if (existing) {
-      groups.set(day, {
-        ...existing,
-        expenses: [...existing.expenses, expense],
-        total: existing.total + expense.amount,
-      });
-    } else {
-      groups.set(day, {
-        expenses: [expense],
-        total: expense.amount,
-        date: formatDatePHT(expense.date),
-      });
-    }
-  }
-
-  return Array.from(groups.entries())
-    .map(([day, data]) => ({ day, ...data }))
-    .sort((a, b) => b.day - a.day);
-}
-
-function getDayLabel(day: number, currentDay: number, dateStr: string): string {
-  if (day <= 0) return `Pre-trip \u2014 ${dateStr}`;
-  if (day === currentDay) return `Today (Day ${day} \u2014 ${dateStr})`;
-  if (day === currentDay - 1) return `Yesterday (Day ${day} \u2014 ${dateStr})`;
-  return `Day ${day} \u2014 ${dateStr}`;
-}
+import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
+import GroupHeader from '@/components/budget/GroupHeader';
+import WhoPaysPicker from '@/components/budget/WhoPaysPicker';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
+type BudgetState = 'cruising' | 'low' | 'over';
+type BudgetMode = 'limited' | 'unlimited';
 
-function getDailyProgressColor(pct: number, colors: ThemeColors): string {
-  if (pct >= 1) return colors.danger;
-  if (pct >= 0.75) return colors.warn;
-  return colors.accent;
+/* ---------- Category icon components (verbatim SVG paths from prototype) ---------- */
+
+function FoodIcon({ color }: { color: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6 2v9a4 4 0 008 0V2M10 2v4M18 5v16M14 5c0-1 1-3 4-3v8a2 2 0 01-2 2h-2"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
 }
 
-function getBudgetStatusLabel(pct: number, colors: ThemeColors): { label: string; color: string } {
-  if (pct >= 1) return { label: 'Over budget', color: colors.danger };
-  if (pct >= 0.75) return { label: 'Watch it', color: colors.warn };
-  return { label: 'Cruising', color: colors.accent };
+function TransportIcon({ color }: { color: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Rect
+        x={4} y={4} width={16} height={16} rx={2}
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M4 14h16M8 20v-2M16 20v-2"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Circle cx={8} cy={17} r={1} fill={color} />
+      <Circle cx={16} cy={17} r={1} fill={color} />
+    </Svg>
+  );
 }
+
+function ActivitiesIcon({ color }: { color: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Circle
+        cx={12} cy={12} r={3}
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function ShoppingIcon({ color }: { color: string }) {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M3 6h18M16 10a4 4 0 01-8 0"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+/* ---------- Category data ---------- */
+
+interface Category {
+  name: string;
+  amount: number;
+  colorKey: 'chart1' | 'chart2' | 'chart3' | 'chart4';
+  icon: (color: string) => React.ReactNode;
+}
+
+const CATEGORIES: ReadonlyArray<Category> = [
+  { name: 'Food & Drink', amount: 156, colorKey: 'chart1', icon: (c) => <FoodIcon color={c} /> },
+  { name: 'Transport', amount: 68, colorKey: 'chart2', icon: (c) => <TransportIcon color={c} /> },
+  { name: 'Activities', amount: 40, colorKey: 'chart3', icon: (c) => <ActivitiesIcon color={c} /> },
+  { name: 'Shopping', amount: 20, colorKey: 'chart4', icon: (c) => <ShoppingIcon color={c} /> },
+];
+
+/* ---------- Expense data ---------- */
+
+interface RecentExpense {
+  title: string;
+  by: string;
+  amount: number;
+  cat: string;
+}
+
+const RECENT_EXPENSES: ReadonlyArray<RecentExpense> = [
+  { title: "Lunch \u00B7 Jonah's Fruit Shake", by: 'Peter', amount: 18, cat: 'Food & Drink' },
+  { title: 'Tricycle \u00B7 Station 1 \u2192 hotel', by: 'Aaron', amount: 3, cat: 'Transport' },
+  { title: 'Island hopping deposit', by: 'Jane', amount: 40, cat: 'Activities' },
+  { title: "Coffee \u00B7 Nonie's", by: 'Peter', amount: 6, cat: 'Food & Drink' },
+];
+
+/* ---------- Main screen ---------- */
 
 export default function BudgetScreen() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
-  const router = useRouter();
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [travelers, setTravelers] = useState(3);
-  const [members, setMembers] = useState<GroupMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string>();
-  const [editingBudget, setEditingBudget] = useState(false);
-  const [budgetInput, setBudgetInput] = useState('');
 
-  const budgetMode: BudgetMode = trip?.budgetMode ?? 'Unlimited';
+  const [mode, setMode] = useState<BudgetMode>('limited');
+  const [bState] = useState<BudgetState>('cruising');
 
-  const load = useCallback(async () => {
-    try {
-      setError(undefined);
-      const t = await getActiveTrip();
-      setTrip(t);
-      if (!t) return;
-      const [exp, mem] = await Promise.all([
-        getExpenses(t.id),
-        getGroupMembers(t.id).catch(() => []),
-      ]);
-      setExpenses(exp);
-      setMembers(mem);
-      if (mem.length > 0) setTravelers(mem.length);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unable to load expenses');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const total = 1000;
+  const spent = bState === 'cruising' ? 284 : bState === 'low' ? 820 : 1120;
+  const remaining = total - spent;
+  const days = 8;
+  const perDay = Math.round(total / days);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  const handleModeToggle = async (mode: BudgetMode) => {
-    if (!trip || mode === budgetMode) return;
-    const updated: Trip = { ...trip, budgetMode: mode };
-    setTrip(updated);
-    try {
-      await updateTripBudgetMode(trip.id, mode);
-    } catch {
-      // revert on failure
-      setTrip(trip);
-    }
-  };
-
-  const handleBudgetSave = async () => {
-    if (!trip) return;
-    const parsed = parseFloat(budgetInput);
-    if (isNaN(parsed) || parsed <= 0) {
-      setEditingBudget(false);
-      return;
-    }
-    const updated: Trip = { ...trip, budgetLimit: parsed };
-    setTrip(updated);
-    setEditingBudget(false);
-    try {
-      await updateTripBudgetLimit(trip.id, parsed);
-    } catch {
-      setTrip(trip);
-    }
-  };
-
-  const handleDeleteExpense = (expenseId: string) => {
-    Alert.alert('Delete Expense', 'Are you sure you want to delete this expense?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          setExpenses(prev => prev.filter(e => e.id !== expenseId));
-          try {
-            await deleteExpense(expenseId);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          } catch {
-            // Reload on failure to restore state
-            load();
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleEditExpense = (expense: Expense) => {
-    router.push({
-      pathname: '/add-expense',
-      params: {
-        editId: expense.id,
-        description: expense.description,
-        amount: String(expense.amount),
-        currency: expense.currency,
-        category: expense.category,
-        placeName: expense.placeName ?? '',
-        notes: expense.notes ?? '',
-        photoUri: expense.photo ?? '',
-        date: expense.date,
-        paidBy: expense.paidBy ?? '',
-        splitType: expense.splitType ?? 'Equal',
-      },
-    });
-  };
-
-  const handleFabPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', 'Manual Entry', 'Scan Receipt'],
-          cancelButtonIndex: 0,
-        },
-        (index) => {
-          if (index === 1) router.push('/add-expense');
-          if (index === 2) router.push('/scan-receipt');
-        },
-      );
-    } else {
-      Alert.alert('Add Expense', 'Choose an option', [
-        { text: 'Manual Entry', onPress: () => router.push('/add-expense') },
-        { text: 'Scan Receipt', onPress: () => router.push('/scan-receipt') },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
-  };
-
-  // Separate accommodation expenses from daily spending
-  const isAccommodation = (e: Expense) => {
-    const desc = (e.description ?? '').toLowerCase();
-    return e.category === 'Accommodation' || desc.includes('hotel') || desc.includes('canyon');
-  };
-  const dailyExpenses = expenses.filter(e => !isAccommodation(e));
-  const accommodationExpenses = expenses.filter(isAccommodation);
-  const accommodationTotal = accommodationExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const accommodationCost = accommodationTotal || (trip?.cost ?? 0);
-
-  const byCategory: Record<string, number> = {};
-  let total = 0;
-  for (const e of dailyExpenses) {
-    byCategory[e.category] = (byCategory[e.category] ?? 0) + e.amount;
-    total += e.amount;
-  }
-
-  const daysElapsed = trip ? computeDaysElapsed(trip.startDate) : 1;
-  const daysLeft = trip ? computeDaysLeft(trip.endDate) : 0;
-  const totalDays = trip ? computeTotalDays(trip.startDate, trip.endDate) : 1;
-  const currentDay = daysElapsed;
-
-  // Only show expenses during the trip (filter out pre-trip payments)
-  const tripDailyExpenses = useMemo(
-    () => {
-      if (!trip) return dailyExpenses;
-      const tripStart = parseDatePht(trip.startDate).getTime();
-      return dailyExpenses.filter(e => parseDatePht(e.date).getTime() >= tripStart);
-    },
-    [dailyExpenses, trip],
-  );
-
-  const dayGroups = useMemo(
-    () => (trip ? buildDayGroups(tripDailyExpenses, trip.startDate) : []),
-    [tripDailyExpenses, trip],
-  );
-
-  const isLimited = budgetMode === 'Limited' && trip?.budgetLimit != null && trip.budgetLimit > 0;
-  const dailyAllowance = isLimited ? (trip?.budgetLimit ?? 0) / totalDays : 0;
-  const currency = trip?.costCurrency ?? 'PHP';
-
-  const budgetLimit = trip?.budgetLimit ?? 0;
-  const tripSpent = total;
-  const budgetStatus: 'cruising' | 'low' | 'over' = budgetLimit > 0
-    ? (tripSpent / budgetLimit > 1 ? 'over' : tripSpent / budgetLimit > 0.7 ? 'low' : 'cruising')
-    : 'cruising';
-  const remaining = budgetLimit - tripSpent;
-
-  const sections = useMemo(
-    () =>
-      dayGroups.map((group) => ({
-        day: group.day,
-        date: group.date,
-        total: group.total,
-        data: group.expenses,
-      })),
-    [dayGroups],
-  );
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <ActivityIndicator color={colors.accentLt} />
-      </SafeAreaView>
-    );
-  }
-  if (error || !trip) {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.errorText}>{error ?? 'No trip found.'}</Text>
-      </SafeAreaView>
-    );
-  }
+  const status = remaining / total > 0.5 ? 'Cruising' : remaining / total > 0.2 ? 'Watch' : 'Over';
 
   return (
-    <GestureHandlerRootView style={styles.safe}>
-      <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bg }}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Budget</Text>
-          {isLimited ? (
-            <View style={styles.budgetHero}>
-              <Text style={styles.budgetSpent}>
-                {formatCurrency(total, currency)}
-              </Text>
-              <Text style={styles.budgetOfTotal}>
-                of {formatCurrency(trip.budgetLimit ?? 0, currency)}
-              </Text>
-              <View style={styles.budgetBar}>
-                <View
-                  style={[
-                    styles.budgetBarFill,
-                    {
-                      width: `${Math.min(100, (total / (trip.budgetLimit ?? 1)) * 100)}%`,
-                      backgroundColor: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1), colors).color,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.budgetStatusRow}>
-                <View style={[styles.statusDot, { backgroundColor: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1), colors).color }]} />
-                <Text style={[styles.statusText, { color: getBudgetStatusLabel(total / (trip.budgetLimit ?? 1), colors).color }]}>
-                  {getBudgetStatusLabel(total / (trip.budgetLimit ?? 1), colors).label}
-                </Text>
-                <Text style={styles.budgetRemaining}>
-                  {formatCurrency(Math.max(0, (trip.budgetLimit ?? 0) - total), currency)} remaining
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <Text style={styles.sub}>
-              {dailyExpenses.length} {dailyExpenses.length === 1 ? 'expense' : 'expenses'} logged
+    <SafeAreaView edges={['top']} style={styles.safe}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* TopBar */}
+        <View style={styles.topBar}>
+          <View>
+            <Text style={[styles.topBarTitle, { color: colors.text }]}>Budget</Text>
+            <Text style={[styles.topBarSubtitle, { color: colors.text3 }]}>
+              Boracay \u00B7 8 days
             </Text>
-          )}
-        </View>
-
-        {/* Mode toggle */}
-        <View style={styles.toggleRow}>
-          {(['Limited', 'Unlimited'] as const).map((mode) => {
-            const active = budgetMode === mode;
-            return (
-              <Pressable
-                key={mode}
-                style={[styles.toggleBtn, active && styles.toggleBtnActive]}
-                onPress={() => handleModeToggle(mode)}
-              >
-                <Text style={[styles.toggleText, active && styles.toggleTextActive]}>
-                  {mode}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </SafeAreaView>
-
-      <SectionList
-        sections={sections}
-        keyExtractor={(e) => e.id}
-        renderItem={({ item }) => (
-          <Swipeable
-            renderRightActions={() => (
-              <Pressable
-                onPress={() => handleDeleteExpense(item.id)}
-                style={styles.deleteAction}
-              >
-                <Text style={styles.deleteActionText}>Delete</Text>
-              </Pressable>
-            )}
-          >
-            <Pressable
-              style={styles.expenseItem}
-              onPress={() => handleEditExpense(item)}
-            >
-              <View style={styles.expenseItemHeader}>
-                <Text style={styles.expenseEmoji}>
-                  {CATEGORY_EMOJI[item.category] ?? CATEGORY_EMOJI.Other}
-                </Text>
-                <View style={styles.expenseItemInfo}>
-                  <Text style={styles.expenseDesc} numberOfLines={1}>
-                    {item.description}
-                  </Text>
-                  {item.paidBy ? (
-                    <Text style={styles.expensePaidBy}>Paid by {item.paidBy}</Text>
-                  ) : null}
-                </View>
-                <Text style={styles.expenseAmount}>
-                  {formatCurrency(item.amount, item.currency)}
-                </Text>
-              </View>
-            </Pressable>
-          </Swipeable>
-        )}
-        renderSectionHeader={({ section }) => {
-          const label = getDayLabel(section.day, currentDay, section.date);
-          const dailyPct = dailyAllowance > 0 ? Math.min(1, section.total / dailyAllowance) : 0;
-          return (
-            <View style={styles.dayHeader}>
-              <Text style={styles.dayLabel}>{label}</Text>
-              {isLimited && (
-                <>
-                  <View style={styles.dailyProgressTrack}>
-                    <View
-                      style={[
-                        styles.dailyProgressFill,
-                        {
-                          width: `${dailyPct * 100}%`,
-                          backgroundColor: getDailyProgressColor(dailyPct, colors),
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.dailyProgressText}>
-                    {formatCurrency(section.total, currency)} of{' '}
-                    {formatCurrency(dailyAllowance, currency)}
-                  </Text>
-                </>
-              )}
-              {!isLimited && (
-                <Text style={styles.dailyProgressText}>
-                  {formatCurrency(section.total, currency)}
-                </Text>
-              )}
-            </View>
-          );
-        }}
-        ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-        SectionSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
-        contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          <View style={{ marginBottom: spacing.lg }}>
-            {/* Budget alert card */}
-            {isLimited && (
-              <BudgetAlertCard
-                status={getBudgetStatus(total, trip.budgetLimit ?? 0, daysLeft)}
-              />
-            )}
-
-            {/* Budget status banner */}
-            {budgetMode === 'Limited' && budgetLimit > 0 && (
-              <BudgetStatusBanner
-                status={budgetStatus}
-                remaining={remaining}
-                daysLeft={daysLeft}
-                currency={trip?.costCurrency ?? '\u20B1'}
-              />
-            )}
-
-            {/* Editable budget limit for Limited mode */}
-            {budgetMode === 'Limited' && (
-              <Pressable
-                style={styles.editBudgetRow}
-                onPress={() => {
-                  setBudgetInput(String(trip.budgetLimit ?? ''));
-                  setEditingBudget(true);
-                }}
-              >
-                {editingBudget ? (
-                  <View style={styles.editInputRow}>
-                    <Text style={styles.editLabel}>Budget: {currency}</Text>
-                    <TextInput
-                      style={styles.editInput}
-                      value={budgetInput}
-                      onChangeText={setBudgetInput}
-                      keyboardType="numeric"
-                      autoFocus
-                      onSubmitEditing={handleBudgetSave}
-                      onBlur={handleBudgetSave}
-                      placeholder="Enter amount"
-                      placeholderTextColor={colors.text3}
-                    />
-                  </View>
-                ) : (
-                  <Text style={styles.editHint}>
-                    {trip.budgetLimit
-                      ? 'Tap to edit budget limit'
-                      : 'Tap to set a budget limit'}
-                  </Text>
-                )}
-              </Pressable>
-            )}
-
-            {accommodationCost > 0 && (
-              <View style={styles.accommodationCard}>
-                <Text style={styles.accommodationHeader}>🏨 ACCOMMODATION (Paid)</Text>
-                <Text style={styles.accommodationAmount}>
-                  {formatCurrency(accommodationCost, currency)}
-                </Text>
-                {accommodationExpenses.length > 0 && (
-                  <View style={{ gap: 2, marginTop: spacing.sm }}>
-                    {accommodationExpenses.map(e => (
-                      <Text key={e.id} style={styles.accommodationDetail}>
-                        {e.description} · Paid {formatDatePHT(e.date)}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-                {travelers > 1 && (
-                  <Text style={styles.accommodationPerPerson}>
-                    Per person: {formatCurrency(accommodationCost / travelers, currency)} each
-                  </Text>
-                )}
-              </View>
-            )}
-
-            <BudgetSummary
-              total={total}
-              currency={currency}
-              byCategory={byCategory}
-              travelers={travelers}
-              budgetMode={budgetMode}
-              budgetLimit={trip.budgetLimit}
-              daysLeft={daysLeft}
-              daysElapsed={daysElapsed}
-              totalDays={totalDays}
-              currentDay={currentDay}
-            />
-
-            {/* Who pays picker */}
-            <WhoPaysPicker members={members} />
           </View>
-        }
-        ListEmptyComponent={
-          <Text style={styles.empty}>No expenses yet. Tap + to add one.</Text>
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); load(); }}
-            tintColor={colors.accentLt}
-          />
-        }
-        stickySectionHeadersEnabled={false}
-      />
+          <TouchableOpacity
+            style={[styles.iconBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Circle cx={12} cy={12} r={3} stroke={colors.text} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+              <Path
+                d="M12 1v6m0 10v6M4.2 4.2l4.3 4.3m7 7l4.3 4.3M1 12h6m10 0h6M4.2 19.8l4.3-4.3m7-7l4.3-4.3"
+                stroke={colors.text}
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </TouchableOpacity>
+        </View>
 
-      <Pressable style={styles.fab} onPress={handleFabPress}>
-        <Plus size={24} color={colors.white} />
-      </Pressable>
-    </GestureHandlerRootView>
+        {/* Mode toggle — Limited / Unlimited */}
+        <View style={styles.togglePadding}>
+          <View style={[styles.segControl, { backgroundColor: colors.card2, borderColor: colors.border }]}>
+            {(['limited', 'unlimited'] as const).map((m) => {
+              const active = mode === m;
+              return (
+                <Pressable
+                  key={m}
+                  style={[styles.segBtn, active && [styles.segBtnActive, { backgroundColor: colors.card }]]}
+                  onPress={() => setMode(m)}
+                >
+                  <Text style={[styles.segText, { color: colors.text3 }, active && { color: colors.text }]}>
+                    {m === 'limited' ? 'Limited' : 'Unlimited'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {mode === 'limited' && (
+          <>
+            {/* Animated status banner */}
+            <View style={styles.bannerPadding}>
+              <BudgetStatusBanner state={bState} spent={spent} total={total} />
+            </View>
+
+            {/* Main summary card */}
+            <View style={styles.sectionPadding}>
+              <View style={[styles.summaryCardOuter, { borderColor: colors.border }]}>
+                <LinearGradient
+                  colors={[colors.card, colors.card2]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={styles.summaryCard}
+                >
+                  {/* Top row */}
+                  <View style={styles.summaryTop}>
+                    <View>
+                      <Text style={styles.summaryEyebrow}>
+                        {'Total budget \u00B7 8 days'}
+                      </Text>
+                      <View style={styles.summaryAmountRow}>
+                        <Text style={[styles.summaryCurrency, { color: colors.text3 }]}>{'\u20B1'}</Text>
+                        <Text style={[styles.summaryAmount, { color: colors.text }]}>
+                          {total.toLocaleString()}
+                        </Text>
+                      </View>
+                      <Text style={[styles.summaryPerDay, { color: colors.text3 }]}>
+                        {'\u20B1'}{perDay}/day target
+                      </Text>
+                    </View>
+                    <View style={[styles.statusPill, { backgroundColor: colors.accentBg, borderColor: colors.accentBorder }]}>
+                      <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                        <Path
+                          d="M5 15l7-7 7 7"
+                          stroke={colors.accent}
+                          strokeWidth={2.4}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </Svg>
+                      <Text style={[styles.statusPillText, { color: colors.accent }]}>{status}</Text>
+                    </View>
+                  </View>
+
+                  {/* Progress bar */}
+                  <View style={[styles.progressTrack, { backgroundColor: colors.card2 }]}>
+                    <LinearGradient
+                      colors={[colors.chart1, colors.chart2]}
+                      start={{ x: 0, y: 0.5 }}
+                      end={{ x: 1, y: 0.5 }}
+                      style={[styles.progressFill, { width: `${(spent / total) * 100}%` }]}
+                    />
+                  </View>
+
+                  {/* Spent / Left */}
+                  <View style={styles.spentLeftRow}>
+                    <Text style={[styles.spentLeftLabel, { color: colors.text3 }]}>
+                      Spent{' '}
+                      <Text style={[styles.spentLeftValue, { color: colors.text }]}>
+                        {'\u20B1'}{spent}
+                      </Text>
+                    </Text>
+                    <Text style={[styles.spentLeftLabel, { color: colors.text3 }]}>
+                      Left{' '}
+                      <Text style={[styles.spentLeftValue, { color: colors.accent }]}>
+                        {'\u20B1'}{remaining.toLocaleString()}
+                      </Text>
+                    </Text>
+                  </View>
+                </LinearGradient>
+              </View>
+            </View>
+
+            {/* Accommodation — paid separately */}
+            <GroupHeader kicker="Accommodation \u00B7 Paid Mar 29" title="Canyon Hotels" />
+            <View style={styles.sectionPadding}>
+              <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.accomRow}>
+                  <View style={[styles.accomIcon, { backgroundColor: colors.accentBg, borderColor: colors.accentBorder }]}>
+                    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                      <Polyline
+                        points="20 6 9 17 4 12"
+                        stroke={colors.accent}
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </Svg>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.accomTitle, { color: colors.text }]}>Paid in full</Text>
+                    <Text style={[styles.accomSub, { color: colors.text3 }]}>
+                      {'\u20B1'}16,497.25 per person \u00B7 3 travelers
+                    </Text>
+                  </View>
+                  <Text style={[styles.accomAmount, { color: colors.text }]}>
+                    {'\u20B1'}49,491
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Categories */}
+            <GroupHeader kicker="Categories" title="Where it's going" />
+            <View style={styles.categoriesContainer}>
+              {CATEGORIES.map((c) => {
+                const pct = Math.round((c.amount / spent) * 100);
+                const catColor = colors[c.colorKey];
+                return (
+                  <View
+                    key={c.name}
+                    style={[styles.categoryRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
+                    <View style={[styles.categoryIcon, { backgroundColor: catColor + '20', borderColor: catColor + '40' }]}>
+                      {c.icon(catColor)}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.categoryTopRow}>
+                        <Text style={[styles.categoryName, { color: colors.text }]}>{c.name}</Text>
+                        <Text style={[styles.categoryAmount, { color: colors.text }]}>
+                          {'\u20B1'}{c.amount}
+                        </Text>
+                      </View>
+                      <View style={[styles.categoryBar, { backgroundColor: colors.card2 }]}>
+                        <View
+                          style={[styles.categoryBarFill, { width: `${pct}%`, backgroundColor: catColor }]}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Who pays? — roulette picker */}
+            <GroupHeader kicker="Who pays?" title="Let fate decide" />
+            <WhoPaysPicker />
+
+            {/* Recent expenses */}
+            <GroupHeader
+              kicker="Recent"
+              title="Expenses"
+              action={
+                <TouchableOpacity activeOpacity={0.7}>
+                  <Text style={[styles.allAction, { color: colors.accent }]}>All {'\u2192'}</Text>
+                </TouchableOpacity>
+              }
+            />
+            <View style={styles.expensesContainer}>
+              {RECENT_EXPENSES.map((e, i) => (
+                <View
+                  key={i}
+                  style={[styles.expenseRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[styles.expenseTitle, { color: colors.text }]}
+                      numberOfLines={1}
+                    >
+                      {e.title}
+                    </Text>
+                    <Text style={[styles.expenseCat, { color: colors.text3 }]}>
+                      {e.cat} {'\u00B7'} by {e.by}
+                    </Text>
+                  </View>
+                  <Text style={[styles.expenseAmount, { color: colors.text }]}>
+                    {'\u20B1'}{e.amount}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {mode === 'unlimited' && (
+          <View style={styles.unlimitedPadding}>
+            <View style={[styles.unlimitedCard, { backgroundColor: colors.card, borderColor: colors.border2 }]}>
+              <View style={[styles.unlimitedIcon, { backgroundColor: colors.accentBg }]}>
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M18.4 10.6a7 7 0 11-12.8 0 7 7 0 0112.8 0z"
+                    stroke={colors.accent}
+                    strokeWidth={1.8}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    rotation={90}
+                    origin="12, 12"
+                  />
+                  <Path
+                    d="M8 12h8"
+                    stroke={colors.accent}
+                    strokeWidth={1.8}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+              </View>
+              <Text style={[styles.unlimitedTitle, { color: colors.text }]}>No budget cap</Text>
+              <Text style={[styles.unlimitedDesc, { color: colors.text3 }]}>
+                Track expenses without a limit. We'll still categorize and summarize everything.
+              </Text>
+              <TouchableOpacity
+                style={[styles.addExpenseBtn, { backgroundColor: colors.black }]}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.addExpenseBtnText, { color: colors.onBlack }]}>+ Add expense</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Bottom spacer */}
+        <View style={{ height: 20 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const getStyles = (colors: ThemeColors) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  centered: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
-  errorText: { color: colors.red, fontSize: 13 },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
-  title: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
-  sub: { color: colors.text2, fontSize: 13, marginTop: 2 },
-  budgetHero: {
-    marginTop: spacing.sm,
-  },
-  budgetSpent: {
-    color: colors.text,
-    fontSize: 32,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  budgetOfTotal: {
-    color: colors.text3,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  budgetBar: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.bg3,
-    overflow: 'hidden',
-    marginTop: spacing.sm,
-  },
-  budgetBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  budgetStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    gap: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  budgetRemaining: {
-    color: colors.text3,
-    fontSize: 12,
-    marginLeft: 'auto',
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    backgroundColor: colors.bg3,
-    borderRadius: radius.md,
-    padding: 3,
-  },
-  toggleBtn: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: radius.sm,
-  },
-  toggleBtnActive: {
-    backgroundColor: colors.accent,
-  },
-  toggleText: {
-    color: colors.text3,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  toggleTextActive: {
-    color: colors.white,
-  },
-  editBudgetRow: {
-    marginBottom: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.bg3,
-    borderRadius: radius.md,
-  },
-  editHint: {
-    color: colors.accentLt,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  editInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  editLabel: {
-    color: colors.text2,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  editInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.accentLt,
-  },
-  accommodationCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  accommodationHeader: {
-    color: colors.text3,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
-  },
-  accommodationAmount: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '800',
-    marginTop: 4,
-  },
-  accommodationDetail: {
-    color: colors.text2,
-    fontSize: 12,
-  },
-  accommodationPerPerson: {
-    color: colors.text3,
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: spacing.sm,
-  },
-  list: { padding: spacing.lg, paddingBottom: 120 },
-  empty: { color: colors.text2, fontSize: 13, textAlign: 'center', paddingVertical: spacing.xl },
-  // Day header styles
-  dayHeader: {
-    paddingVertical: spacing.sm,
-    gap: 6,
-  },
-  dayLabel: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  dailyProgressTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.bg3,
-    overflow: 'hidden',
-  },
-  dailyProgressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  dailyProgressText: {
-    color: colors.text3,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  // Expense item styles (inline within section)
-  expenseItem: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  expenseItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  expenseEmoji: {
-    fontSize: 20,
-  },
-  expenseItemInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  expenseDesc: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  expensePaidBy: {
-    color: colors.text3,
-    fontSize: 11,
-  },
-  expenseAmount: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  deleteAction: {
-    backgroundColor: colors.red,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    borderRadius: radius.md,
-    marginLeft: spacing.sm,
-  },
-  deleteActionText: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  fab: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: 100,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-});
+/* ---------- Styles ---------- */
+
+const getStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    scroll: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: 100,
+    },
+
+    /* TopBar */
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 20,
+      paddingTop: 8,
+      paddingBottom: 12,
+    },
+    topBarTitle: {
+      fontSize: 22,
+      fontWeight: '600',
+      letterSpacing: -0.7,
+    },
+    topBarSubtitle: {
+      fontSize: 11,
+      fontWeight: '600',
+      letterSpacing: 1.7,
+      textTransform: 'uppercase',
+      marginTop: 2,
+    },
+    iconBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 999,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    /* Mode toggle */
+    togglePadding: {
+      paddingHorizontal: 20,
+      paddingBottom: 14,
+    },
+    segControl: {
+      flexDirection: 'row',
+      padding: 3,
+      borderWidth: 1,
+      borderRadius: 12,
+      gap: 2,
+    },
+    segBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 9,
+      alignItems: 'center',
+    },
+    segBtnActive: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.22,
+      shadowRadius: 3,
+      elevation: 2,
+    },
+    segText: {
+      fontSize: 12,
+      fontWeight: '600',
+      letterSpacing: -0.12,
+    },
+
+    /* Banner */
+    bannerPadding: {
+      paddingHorizontal: 16,
+      paddingBottom: 12,
+    },
+
+    /* Sections */
+    sectionPadding: {
+      paddingHorizontal: 16,
+    },
+
+    /* Summary card */
+    summaryCardOuter: {
+      borderRadius: 22,
+      borderWidth: 1,
+      overflow: 'hidden',
+      marginBottom: 14,
+    },
+    summaryCard: {
+      padding: 20,
+    },
+    summaryTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 18,
+    },
+    summaryEyebrow: {
+      fontSize: 10,
+      fontWeight: '600',
+      letterSpacing: 1.6,
+      textTransform: 'uppercase',
+      color: colors.text3,
+    },
+    summaryAmountRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: 6,
+      marginTop: 4,
+    },
+    summaryCurrency: {
+      fontSize: 18,
+      fontWeight: '600',
+    },
+    summaryAmount: {
+      fontSize: 36,
+      fontWeight: '500',
+      letterSpacing: -0.9,
+      fontVariant: ['tabular-nums'],
+    },
+    summaryPerDay: {
+      fontSize: 11,
+      marginTop: 2,
+    },
+    statusPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+    statusPillText: {
+      fontSize: 11,
+      fontWeight: '600',
+    },
+
+    /* Progress bar */
+    progressTrack: {
+      height: 8,
+      borderRadius: 99,
+      overflow: 'hidden',
+      marginBottom: 10,
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 99,
+    },
+
+    /* Spent / Left */
+    spentLeftRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    spentLeftLabel: {
+      fontSize: 12,
+    },
+    spentLeftValue: {
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
+    },
+
+    /* Card (generic) */
+    card: {
+      borderRadius: 22,
+      borderWidth: 1,
+      padding: 18,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+
+    /* Accommodation */
+    accomRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    accomIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 10,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    accomTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    accomSub: {
+      fontSize: 11,
+      marginTop: 2,
+    },
+    accomAmount: {
+      fontSize: 18,
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
+      letterSpacing: -0.3,
+    },
+
+    /* Categories */
+    categoriesContainer: {
+      paddingHorizontal: 16,
+      gap: 8,
+    },
+    categoryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 13,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+    },
+    categoryIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    categoryTopRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    categoryName: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    categoryAmount: {
+      fontSize: 13,
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
+    },
+    categoryBar: {
+      height: 4,
+      borderRadius: 99,
+      overflow: 'hidden',
+    },
+    categoryBarFill: {
+      height: '100%',
+      borderRadius: 99,
+    },
+
+    /* Recent expenses */
+    allAction: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    expensesContainer: {
+      paddingHorizontal: 16,
+      gap: 6,
+    },
+    expenseRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    expenseTitle: {
+      fontSize: 12.5,
+      fontWeight: '600',
+    },
+    expenseCat: {
+      fontSize: 10,
+      marginTop: 1,
+    },
+    expenseAmount: {
+      fontSize: 13,
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
+    },
+
+    /* Unlimited mode */
+    unlimitedPadding: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+    },
+    unlimitedCard: {
+      paddingVertical: 40,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+      borderRadius: 20,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+    },
+    unlimitedIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 14,
+    },
+    unlimitedTitle: {
+      fontSize: 18,
+      fontWeight: '500',
+      letterSpacing: -0.54,
+      marginBottom: 6,
+    },
+    unlimitedDesc: {
+      fontSize: 12,
+      textAlign: 'center',
+      maxWidth: 260,
+      marginBottom: 16,
+      lineHeight: 17,
+    },
+    addExpenseBtn: {
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+    },
+    addExpenseBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+  });

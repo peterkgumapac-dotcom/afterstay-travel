@@ -1,103 +1,119 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native';
 
-import { useTheme } from '@/constants/ThemeContext'
-import { radius, spacing } from '@/constants/theme'
-import type { Trip } from '@/lib/types'
-import { formatDatePHT, formatCurrency } from '@/lib/utils'
+import { useTheme } from '@/constants/ThemeContext';
+
+// ---------- TYPES ----------
+
+interface PastTrip {
+  flag: string;
+  dest: string;
+  country: string;
+  dates: string;
+  nights: number;
+  spent: number;
+  miles: number;
+  rating: number;
+}
 
 interface PastTripRowProps {
-  trip: Trip
+  trip: PastTrip;
 }
 
-function countryFlag(countryCode?: string): string {
-  if (!countryCode || countryCode.length !== 2) return '\uD83C\uDF0D'
-  const codePoints = countryCode
-    .toUpperCase()
-    .split('')
-    .map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)
-  return String.fromCodePoint(...codePoints)
-}
+type ThemeColors = ReturnType<typeof useTheme>['colors'];
+
+// ---------- COMPONENT ----------
 
 export default function PastTripRow({ trip }: PastTripRowProps) {
-  const { colors } = useTheme()
-  const styles = getStyles(colors)
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
-  const flag = countryFlag(trip.countryCode)
-  const nights = trip.totalNights ?? trip.nights ?? 0
-  const dateRange =
-    trip.startDate && trip.endDate
-      ? `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}`
-      : trip.startDate
-        ? formatDatePHT(trip.startDate)
-        : ''
+  const fullStars = '\u2605'.repeat(trip.rating);
+  const emptyStars = '\u2605'.repeat(5 - trip.rating);
 
   return (
     <View style={styles.row}>
-      <Text style={styles.flag}>{flag}</Text>
-      <View style={styles.info}>
-        <Text style={styles.destination} numberOfLines={1}>
-          {trip.destination || trip.name}
-        </Text>
-        {dateRange ? <Text style={styles.dates}>{dateRange}</Text> : null}
+      <View style={styles.flagContainer}>
+        <Text style={styles.flag}>{trip.flag}</Text>
       </View>
+
+      <View style={styles.info}>
+        <Text style={styles.dest}>{trip.dest}</Text>
+        <Text style={styles.dates}>
+          {trip.dates} {'\u00B7'} {trip.nights} nights
+        </Text>
+      </View>
+
       <View style={styles.meta}>
-        {nights > 0 && (
-          <Text style={styles.nights}>
-            {nights}n
-          </Text>
-        )}
-        {trip.totalSpent != null && trip.totalSpent > 0 && (
-          <Text style={styles.cost}>
-            {formatCurrency(trip.totalSpent, trip.costCurrency ?? 'PHP')}
-          </Text>
-        )}
+        <Text style={styles.spent}>
+          {'\u20B1'}{trip.spent.toLocaleString()}
+        </Text>
+        <Text style={styles.rating}>
+          {fullStars}
+          <Text style={styles.ratingEmpty}>{emptyStars}</Text>
+        </Text>
       </View>
     </View>
-  )
+  );
 }
 
-type ThemeColors = ReturnType<typeof useTheme>['colors']
+// ---------- STYLES ----------
 
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     row: {
       flexDirection: 'row',
       alignItems: 'center',
+      gap: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
       backgroundColor: colors.card,
-      borderRadius: radius.lg,
       borderWidth: 1,
       borderColor: colors.border,
-      padding: spacing.md,
-      gap: spacing.md,
+      borderRadius: 14,
+    },
+    flagContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: colors.card2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     flag: {
-      fontSize: 24,
+      fontSize: 20,
     },
     info: {
       flex: 1,
-      gap: 2,
+      minWidth: 0,
     },
-    destination: {
+    dest: {
+      fontSize: 13,
+      fontWeight: '600',
       color: colors.text,
-      fontSize: 15,
-      fontWeight: '700',
     },
     dates: {
+      fontSize: 11,
       color: colors.text3,
-      fontSize: 12,
+      marginTop: 2,
     },
     meta: {
       alignItems: 'flex-end',
-      gap: 2,
     },
-    nights: {
-      color: colors.text2,
-      fontSize: 13,
+    spent: {
+      fontSize: 12,
       fontWeight: '600',
+      color: colors.text,
+      letterSpacing: 0.24,
     },
-    cost: {
+    rating: {
+      fontSize: 10,
       color: colors.text3,
-      fontSize: 11,
-      fontFamily: 'SpaceMono',
+      marginTop: 2,
+      letterSpacing: 1,
     },
-  })
+    ratingEmpty: {
+      opacity: 0.25,
+    },
+  });

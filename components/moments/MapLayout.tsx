@@ -12,15 +12,16 @@ import Svg, {
   Circle,
   Defs,
   Ellipse,
-  Line,
   LinearGradient,
   Path,
+  Polygon,
   RadialGradient,
+  Rect,
   Stop,
 } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { radius } from '@/constants/theme';
-import type { MomentDisplay } from './types';
+import { Avatar } from './Avatar';
+import type { MomentDisplay, PeopleMap } from './types';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -29,11 +30,11 @@ import type { MomentDisplay } from './types';
 interface MapLayoutProps {
   items: MomentDisplay[];
   onOpen: (moment: MomentDisplay) => void;
-  people: Record<string, { name: string; color: string }>;
+  people: PeopleMap;
 }
 
 // ---------------------------------------------------------------------------
-// GPS → map-percentage conversion
+// GPS -> map-percentage conversion
 // ---------------------------------------------------------------------------
 
 const BOUNDS = {
@@ -52,7 +53,7 @@ function gpsToMapPos(lat: number, lng: number): { x: number; y: number } {
   };
 }
 
-// Fallback positions by location name keywords
+// Fallback positions by location name keywords (matching prototype posByImg)
 const FALLBACK_POSITIONS: Record<string, { x: number; y: number }> = {
   puka: { x: 55, y: 16 },
   'mt. luho': { x: 62, y: 28 },
@@ -60,30 +61,27 @@ const FALLBACK_POSITIONS: Record<string, { x: number; y: number }> = {
   luho: { x: 62, y: 28 },
   diniwid: { x: 44, y: 40 },
   crystal: { x: 70, y: 36 },
-  "ariel": { x: 34, y: 46 },
+  ariel: { x: 34, y: 46 },
   nonie: { x: 54, y: 48 },
   canyon: { x: 56, y: 52 },
   "d'mall": { x: 50, y: 54 },
   dmall: { x: 50, y: 54 },
   'station 2': { x: 46, y: 60 },
-  "willy": { x: 44, y: 66 },
+  willy: { x: 44, y: 66 },
   mandala: { x: 58, y: 62 },
   'station 1': { x: 45, y: 82 },
   'white beach': { x: 46, y: 60 },
 };
 
 function positionOf(m: MomentDisplay): { x: number; y: number } {
-  // Use GPS if available
   const moment = m as MomentDisplay & { latitude?: number; longitude?: number };
   if (moment.latitude && moment.longitude) {
     return gpsToMapPos(moment.latitude, moment.longitude);
   }
-  // Fallback: match location name
   const loc = (m.place ?? m.location ?? '').toLowerCase();
   for (const [key, pos] of Object.entries(FALLBACK_POSITIONS)) {
     if (loc.includes(key)) return pos;
   }
-  // Default center
   return { x: 50, y: 50 };
 }
 
@@ -106,7 +104,7 @@ function parseHour(t?: string): number {
 const HOME = { x: 55, y: 52 };
 
 // ---------------------------------------------------------------------------
-// Area labels
+// Area labels — matching prototype positions verbatim
 // ---------------------------------------------------------------------------
 
 const AREA_LABELS = [
@@ -120,7 +118,7 @@ const AREA_LABELS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Island SVG path
+// Island SVG path — verbatim from prototype
 // ---------------------------------------------------------------------------
 
 const ISLAND_PATH =
@@ -136,9 +134,10 @@ interface PinProps {
   isCurrent: boolean;
   authorColor: string;
   onPress: () => void;
+  people: PeopleMap;
 }
 
-function AnimatedPin({ cluster, isRevealed, isCurrent, authorColor, onPress }: PinProps) {
+function AnimatedPin({ cluster, isRevealed, isCurrent, authorColor, onPress, people }: PinProps) {
   const { colors } = useTheme();
   const anim = useRef(new Animated.Value(isRevealed ? 1 : 0)).current;
 
@@ -289,7 +288,6 @@ interface CustomSliderProps {
 }
 
 function CustomSlider({ value, max, onValueChange, accentColor, trackColor }: CustomSliderProps) {
-  const trackRef = useRef<View>(null);
   const trackWidth = useRef(0);
 
   const panResponder = useRef(
@@ -313,7 +311,6 @@ function CustomSlider({ value, max, onValueChange, accentColor, trackColor }: Cu
 
   return (
     <View
-      ref={trackRef}
       onLayout={(e) => {
         trackWidth.current = e.nativeEvent.layout.width;
       }}
@@ -436,7 +433,6 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
         style={[
           styles.mapCard,
           {
-            borderRadius: 18,
             borderColor: colors.border,
             borderWidth: 1,
             backgroundColor: colors.bg,
@@ -444,12 +440,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
         ]}
       >
         {/* Water background layer */}
-        <View
-          style={[
-            styles.waterLayer,
-            { backgroundColor: 'rgba(120,180,200,0.06)' },
-          ]}
-        />
+        <View style={styles.waterLayer} />
 
         {/* Island SVG */}
         <Svg
@@ -472,22 +463,12 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
 
           {/* Coast ripple rings */}
           <Ellipse
-            cx={50}
-            cy={70}
-            rx={42}
-            ry={62}
-            fill="none"
-            stroke="rgba(120,180,200,0.12)"
-            strokeWidth={0.25}
+            cx={50} cy={70} rx={42} ry={62}
+            fill="none" stroke="rgba(120,180,200,0.12)" strokeWidth={0.25}
           />
           <Ellipse
-            cx={50}
-            cy={70}
-            rx={38}
-            ry={58}
-            fill="none"
-            stroke="rgba(120,180,200,0.08)"
-            strokeWidth={0.25}
+            cx={50} cy={70} rx={38} ry={58}
+            fill="none" stroke="rgba(120,180,200,0.08)" strokeWidth={0.25}
           />
 
           {/* Island silhouette */}
@@ -503,20 +484,14 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
           {/* White Beach west coast strip */}
           <Path
             d="M 44 56 Q 42 66 42 78 Q 44 86 47 90"
-            fill="none"
-            stroke="#fff1d4"
-            strokeWidth={1.1}
-            strokeLinecap="round"
-            opacity={0.6}
+            fill="none" stroke="#fff1d4" strokeWidth={1.1}
+            strokeLinecap="round" opacity={0.6}
           />
           {/* Puka Beach north strip */}
           <Path
             d="M 48 12 Q 54 11 60 14"
-            fill="none"
-            stroke="#fff1d4"
-            strokeWidth={1.1}
-            strokeLinecap="round"
-            opacity={0.55}
+            fill="none" stroke="#fff1d4" strokeWidth={1.1}
+            strokeLinecap="round" opacity={0.55}
           />
 
           {/* Willy's Rock offshore */}
@@ -525,23 +500,13 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
 
           {/* Crystal Cove offshore east */}
           <Ellipse
-            cx={69}
-            cy={36}
-            rx={2}
-            ry={1.3}
-            fill="url(#land-fill)"
-            stroke="rgba(170,130,80,0.4)"
-            strokeWidth={0.15}
+            cx={69} cy={36} rx={2} ry={1.3}
+            fill="url(#land-fill)" stroke="rgba(170,130,80,0.4)" strokeWidth={0.15}
           />
           {/* Ariel's Point offshore west */}
           <Ellipse
-            cx={34}
-            cy={46}
-            rx={1.8}
-            ry={1.2}
-            fill="url(#land-fill)"
-            stroke="rgba(170,130,80,0.4)"
-            strokeWidth={0.15}
+            cx={34} cy={46} rx={1.8} ry={1.2}
+            fill="url(#land-fill)" stroke="rgba(170,130,80,0.4)" strokeWidth={0.15}
           />
 
           {/* Dashed route path */}
@@ -580,12 +545,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
             />
             <Circle cx={12} cy={9} r={2.5} stroke={colors.text2} strokeWidth={2.2} fill="none" />
           </Svg>
-          <Text
-            style={[
-              styles.compassText,
-              { color: colors.text2 },
-            ]}
-          >
+          <Text style={[styles.compassText, { color: colors.text2 }]}>
             BORACAY {'\u00B7'} {items.length}
           </Text>
         </View>
@@ -621,9 +581,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
             {l.align === 'left' && (
               <View style={[styles.labelLine, { backgroundColor: colors.text3 }]} />
             )}
-            <Text
-              style={[styles.areaLabelText, { color: colors.text3 }]}
-            >
+            <Text style={[styles.areaLabelText, { color: colors.text3 }]}>
               {l.label}
             </Text>
             {l.align === 'right' && (
@@ -686,6 +644,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
               isCurrent={isCurrent}
               authorColor={authorColor}
               onPress={() => onOpen(primary)}
+              people={people}
             />
           );
         })}
@@ -737,12 +696,12 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
           >
             {playing ? (
               <Svg width={10} height={10} viewBox="0 0 24 24">
-                <Path d="M6 5 L10 5 L10 19 L6 19 Z" fill={colors.onBlack} />
-                <Path d="M14 5 L18 5 L18 19 L14 19 Z" fill={colors.onBlack} />
+                <Rect x={6} y={5} width={4} height={14} rx={1} fill={colors.onBlack} />
+                <Rect x={14} y={5} width={4} height={14} rx={1} fill={colors.onBlack} />
               </Svg>
             ) : (
               <Svg width={10} height={10} viewBox="0 0 24 24">
-                <Path d="M6 4 L20 12 L6 20 Z" fill={colors.onBlack} />
+                <Polygon points="6,4 20,12 6,20" fill={colors.onBlack} />
               </Svg>
             )}
           </TouchableOpacity>
@@ -757,24 +716,18 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
             />
           </View>
 
-          <Text
-            style={[
-              styles.counterText,
-              { color: colors.text2 },
-            ]}
-          >
+          <Text style={[styles.counterText, { color: colors.text2 }]}>
             {cursor}/{ordered.length}
           </Text>
         </View>
       </View>
 
-      {/* Chronological list */}
+      {/* Chronological list below map */}
       <View style={styles.listContainer}>
         {ordered.map((m, i) => {
           const isRevealed = i < cursor;
           const authorKey = m.authorKey ?? m.takenBy ?? '';
           const authorColor = people[authorKey]?.color ?? colors.accent;
-          const authorInitial = authorKey.charAt(0).toUpperCase();
 
           return (
             <TouchableOpacity
@@ -829,15 +782,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
                   {m.time ? ` \u00B7 ${m.time}` : ''}
                 </Text>
               </View>
-              {/* Author avatar */}
-              <View
-                style={[
-                  styles.listAvatar,
-                  { backgroundColor: authorColor },
-                ]}
-              >
-                <Text style={styles.listAvatarText}>{authorInitial}</Text>
-              </View>
+              <Avatar authorKey={authorKey} people={people} size={20} />
             </TouchableOpacity>
           );
         })}
@@ -857,10 +802,12 @@ const styles = StyleSheet.create({
   mapCard: {
     position: 'relative',
     aspectRatio: 3 / 4,
+    borderRadius: 18,
     overflow: 'hidden',
   },
   waterLayer: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(120,180,200,0.06)',
   },
   svgLayer: {
     position: 'absolute',
@@ -1047,7 +994,7 @@ const styles = StyleSheet.create({
   },
   captionDate: {
     fontSize: 9,
-    fontWeight: '500',
+    fontWeight: '600',
     marginTop: 1,
   },
 
@@ -1153,17 +1100,5 @@ const styles = StyleSheet.create({
   listDate: {
     fontSize: 10.5,
     marginTop: 1,
-  },
-  listAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listAvatarText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#0b0f14',
   },
 });

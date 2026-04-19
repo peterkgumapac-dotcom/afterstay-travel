@@ -1,68 +1,74 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native';
 
-import { useTheme } from '@/constants/ThemeContext'
-import { radius, spacing } from '@/constants/theme'
-import type { Highlight, HighlightType } from '@/lib/types'
+import { useTheme } from '@/constants/ThemeContext';
 
 // ---------- TYPES ----------
 
 interface HighlightCardProps {
-  highlight: Highlight
+  icon: string;
+  label: string;
+  sub: string;
+  tint: string;
 }
 
-// ---------- EMOJI MAP ----------
-
-const TYPE_EMOJI: Record<HighlightType, string> = {
-  countries_visited: '\uD83C\uDF0D',
-  miles_traveled: '\u2708\uFE0F',
-  beach_streak: '\uD83C\uDF19',
-  total_moments: '\uD83D\uDCF8',
-  longest_trip: '\u23F1',
-  most_visited: '\uD83D\uDCCD',
-  favorite_companion: '\uD83E\uDDD1\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1',
-  first_solo: '\uD83E\uDDD3',
-  first_trip: '\u2B50',
-  new_territory: '\uD83C\uDD95',
-  start_of_something: '\uD83C\uDF1F',
-}
+type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 // ---------- COMPONENT ----------
 
-export default function HighlightCard({ highlight }: HighlightCardProps) {
-  const { colors } = useTheme()
-  const styles = getStyles(colors)
-  const emoji = TYPE_EMOJI[highlight.type] ?? '\u2728'
+export default function HighlightCard({ icon, label, sub, tint }: HighlightCardProps) {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.emoji}>{emoji}</Text>
-      <Text style={styles.displayText} numberOfLines={2}>
-        {highlight.displayText}
-      </Text>
+      {/* Background tint circle */}
+      <View style={[styles.tintCircle, { backgroundColor: tint }]} />
+
+      <Text style={styles.icon}>{icon}</Text>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.sub}>{sub}</Text>
     </View>
-  )
+  );
 }
 
 // ---------- STYLES ----------
-
-type ThemeColors = ReturnType<typeof useTheme>['colors']
 
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     card: {
       width: 140,
-      backgroundColor: colors.accentDim,
-      borderRadius: radius.lg,
-      padding: spacing.md,
-      gap: spacing.sm,
+      paddingTop: 14,
+      paddingHorizontal: 14,
+      paddingBottom: 16,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      overflow: 'hidden',
+      position: 'relative',
     },
-    emoji: {
+    tintCircle: {
+      position: 'absolute',
+      top: -20,
+      right: -20,
+      width: 60,
+      height: 60,
+      borderRadius: 999,
+      opacity: 0.08,
+    },
+    icon: {
       fontSize: 22,
+      marginBottom: 8,
     },
-    displayText: {
-      color: colors.text,
+    label: {
       fontSize: 13,
-      fontWeight: '700',
-      lineHeight: 17,
+      fontWeight: '600',
+      color: colors.text,
     },
-  })
+    sub: {
+      fontSize: 10.5,
+      color: colors.text3,
+      marginTop: 3,
+      lineHeight: 14.175,
+    },
+  });

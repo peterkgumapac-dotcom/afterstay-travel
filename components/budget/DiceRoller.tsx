@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
@@ -15,143 +17,135 @@ interface DiceMember {
   color: string;
 }
 
+export interface DiceRollerRef {
+  roll: () => void;
+}
+
 interface DiceRollerProps {
   members: DiceMember[];
   onResult: (winner: DiceMember) => void;
+  onRollStart: () => void;
 }
 
 const DICE_SIZE = 120;
 const TICK_MS = 80;
-const MIN_TICKS = 12;
-const MAX_TICKS = 18;
 
-export default function DiceRoller({ members, onResult }: DiceRollerProps) {
-  const { colors } = useTheme();
-  const styles = getStyles(colors);
+const DiceRoller = forwardRef<DiceRollerRef, DiceRollerProps>(
+  function DiceRoller({ members, onResult, onRollStart }, ref) {
+    const { colors } = useTheme();
+    const [rolling, setRolling] = useState(false);
+    const [current, setCurrent] = useState<DiceMember | null>(null);
+    const rotation = useSharedValue(0);
+    const scale = useSharedValue(1);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [rolling, setRolling] = useState(false);
-  const [displayIdx, setDisplayIdx] = useState<number | null>(null);
-  const rotation = useSharedValue(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const n = members.length;
 
-  const n = members.length;
+    useEffect(() => {
+      return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      };
+    }, []);
 
-  // Cleanup interval on unmount
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+    const roll = useCallback(() => {
+      if (rolling || n === 0) return;
+      setRolling(true);
+      setCurrent(null);
+      onRollStart();
 
-  const roll = useCallback(() => {
-    if (rolling || n === 0) return;
-    setRolling(true);
+      const totalTicks = 12 + Math.floor(Math.random() * 6);
+      const pickIdx = Math.floor(Math.random() * n);
+      let ticks = 0;
 
-    const totalTicks = MIN_TICKS + Math.floor(Math.random() * (MAX_TICKS - MIN_TICKS + 1));
-    const winnerIdx = Math.floor(Math.random() * n);
-    let tickCount = 0;
-
-    // Animate rotation tumble
-    rotation.value = 0;
-    const tumbleSeq = Array.from({ length: 4 }, (_, i) =>
-      withTiming((i + 1) * 360, { duration: TICK_MS }),
-    );
-    rotation.value = withSequence(...tumbleSeq);
-
-    intervalRef.current = setInterval(() => {
-      tickCount += 1;
-      const cycleIdx = tickCount % n;
-      setDisplayIdx(cycleIdx);
-
-      // Re-trigger tumble animation per tick
-      rotation.value = withSequence(
-        withTiming(180, { duration: TICK_MS / 2 }),
-        withTiming(360, { duration: TICK_MS / 2 }),
+      // diceTumble: 0.12s linear infinite
+      // rotate 0 → 90 → 180 → 270 → 360, scale 1 → 0.95 → 1.02 → 0.95 → 1
+      rotation.value = withRepeat(
+        withSequence(
+          withTiming(90, { duration: 30, easing: Easing.linear }),
+          withTiming(180, { duration: 30, easing: Easing.linear }),
+          withTiming(270, { duration: 30, easing: Easing.linear }),
+          withTiming(360, { duration: 30, easing: Easing.linear }),
+        ),
+        -1,
+      );
+      scale.value = withRepeat(
+        withSequence(
+          withTiming(0.95, { duration: 30, easing: Easing.linear }),
+          withTiming(1.02, { duration: 30, easing: Easing.linear }),
+          withTiming(0.95, { duration: 30, easing: Easing.linear }),
+          withTiming(1, { duration: 30, easing: Easing.linear }),
+        ),
+        -1,
       );
 
-      if (tickCount >= totalTicks) {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        intervalRef.current = null;
-        setDisplayIdx(winnerIdx);
-        setRolling(false);
-        rotation.value = 0;
-        onResult(members[winnerIdx]);
-      }
-    }, TICK_MS);
-  }, [rolling, n, members, onResult, rotation]);
+      intervalRef.current = setInterval(() => {
+        setCurrent(members[ticks % n]);
+        ticks += 1;
+        if (ticks >= totalTicks) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          setCurrent(members[pickIdx]);
+          setRolling(false);
+          rotation.value = withTiming(0, { duration: 200 });
+          scale.value = withTiming(1, { duration: 200 });
+          onResult(members[pickIdx]);
+        }
+      }, TICK_MS);
+    }, [rolling, n, members, onResult, onRollStart, rotation, scale]);
 
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
+    useImperativeHandle(ref, () => ({ roll }), [roll]);
 
-  const currentMember = displayIdx !== null ? members[displayIdx] : null;
-  const bgColor = currentMember ? currentMember.color : colors.card2;
-  const letter = currentMember ? currentMember.initials : '?';
+    const animStyle = useAnimatedStyle(() => ({
+      transform: [
+        { rotate: `${rotation.value}deg` },
+        { scale: scale.value },
+      ],
+    }));
 
-  return (
-    <View style={styles.container}>
-      <Animated.View
-        style={[
-          styles.dice,
-          { backgroundColor: bgColor },
-          animStyle,
-        ]}
-      >
-        <Text style={styles.diceLetter}>{letter}</Text>
-      </Animated.View>
+    const bgColor = current ? current.color : colors.card2;
+    const letter = current ? current.initials : '?';
 
-      <Pressable
-        style={[styles.button, rolling && styles.buttonDisabled]}
-        onPress={roll}
-        disabled={rolling}
-      >
-        <Text style={styles.buttonText}>
-          {rolling ? 'Rolling\u2026' : 'Roll the dice'}
-        </Text>
-      </Pressable>
-    </View>
-  );
-}
+    return (
+      <View style={styles.container}>
+        <Animated.View
+          style={[
+            styles.dice,
+            { backgroundColor: bgColor, borderColor: colors.border },
+            animStyle,
+          ]}
+        >
+          <Text style={styles.diceLetter}>{letter}</Text>
+        </Animated.View>
+      </View>
+    );
+  },
+);
 
-type ThemeColors = ReturnType<typeof useTheme>['colors'];
+export default DiceRoller;
 
-const getStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    container: {
-      alignItems: 'center',
-      gap: 16,
-    },
-    dice: {
-      width: DICE_SIZE,
-      height: DICE_SIZE,
-      borderRadius: 22,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 10,
-      elevation: 6,
-    },
-    diceLetter: {
-      fontSize: 56,
-      fontWeight: '800',
-      color: '#ffffff',
-    },
-    button: {
-      backgroundColor: colors.accent,
-      paddingVertical: 12,
-      paddingHorizontal: 24,
-      borderRadius: 14,
-      alignSelf: 'stretch',
-      alignItems: 'center',
-    },
-    buttonDisabled: {
-      opacity: 0.5,
-    },
-    buttonText: {
-      color: colors.white,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-  });
+const styles = StyleSheet.create({
+  container: {
+    width: 180,
+    height: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dice: {
+    width: DICE_SIZE,
+    height: DICE_SIZE,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 26,
+    elevation: 6,
+  },
+  diceLetter: {
+    fontSize: 56,
+    fontWeight: '700',
+    color: '#fffaf0',
+  },
+});

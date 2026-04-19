@@ -7,7 +7,6 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
 
 interface DayChipsProps {
   active: string;
@@ -105,7 +104,7 @@ const styles = StyleSheet.create({
     flexGrow: 0,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: 16,
     paddingBottom: 14,
     gap: 6,
     flexDirection: 'row',
@@ -116,7 +115,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 7,
     paddingHorizontal: 12,
-    borderRadius: radius.pill,
+    borderRadius: 999,
     borderWidth: 1,
   },
   chipLabel: {
@@ -133,7 +132,7 @@ const styles = StyleSheet.create({
   },
   chipCountText: {
     fontSize: 10,
-    fontWeight: '550',
+    fontWeight: '600',
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
   },

@@ -5,8 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import Svg, { Rect, Polygon } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
 
 interface VoiceNoteProps {
   duration: number;
@@ -20,7 +20,7 @@ export function VoiceNote({ duration, authorColor }: VoiceNoteProps) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const startRef = useRef<number>(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const bars = useMemo(() => {
     const seed = duration * 7.1;
@@ -33,9 +33,9 @@ export function VoiceNote({ duration, authorColor }: VoiceNoteProps) {
   }, [duration]);
 
   const stopPlayback = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
   }, []);
 
@@ -46,16 +46,20 @@ export function VoiceNote({ duration, authorColor }: VoiceNoteProps) {
     }
 
     startRef.current = Date.now();
-    timerRef.current = setInterval(() => {
+
+    const tick = () => {
       const elapsed = Date.now() - startRef.current;
       const p = Math.min(1, elapsed / (duration * 1000));
       setProgress(p);
-      if (p >= 1) {
+      if (p < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
         setPlaying(false);
         setTimeout(() => setProgress(0), 400);
       }
-    }, 50);
+    };
 
+    rafRef.current = requestAnimationFrame(tick);
     return stopPlayback;
   }, [playing, duration, stopPlayback]);
 
@@ -96,12 +100,14 @@ export function VoiceNote({ duration, authorColor }: VoiceNoteProps) {
         ]}
       >
         {playing ? (
-          <View style={styles.pauseIconContainer}>
-            <View style={[styles.pauseBar, { backgroundColor: '#0b0f14' }]} />
-            <View style={[styles.pauseBar, { backgroundColor: '#0b0f14' }]} />
-          </View>
+          <Svg width={10} height={10} viewBox="0 0 24 24">
+            <Rect x={6} y={5} width={4} height={14} rx={1} fill="#0b0f14" />
+            <Rect x={14} y={5} width={4} height={14} rx={1} fill="#0b0f14" />
+          </Svg>
         ) : (
-          <View style={styles.playIcon} />
+          <Svg width={10} height={10} viewBox="0 0 24 24">
+            <Polygon points="6,4 20,12 6,20" fill="#0b0f14" />
+          </Svg>
         )}
       </View>
 
@@ -144,42 +150,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: spacing.sm,
-    paddingRight: spacing.md,
+    paddingVertical: 8,
+    paddingRight: 12,
     paddingLeft: 10,
     borderWidth: 1,
-    borderRadius: radius.sm,
-    marginTop: spacing.sm,
+    borderRadius: 12,
+    marginTop: 8,
   },
   playButton: {
     width: 26,
     height: 26,
-    borderRadius: 999,
+    borderRadius: 99,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-  },
-  pauseIconContainer: {
-    flexDirection: 'row',
-    gap: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pauseBar: {
-    width: 3,
-    height: 10,
-    borderRadius: 1,
-  },
-  playIcon: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 8,
-    borderTopWidth: 5,
-    borderBottomWidth: 5,
-    borderLeftColor: '#0b0f14',
-    borderTopColor: 'transparent',
-    borderBottomColor: 'transparent',
-    marginLeft: 2,
   },
   waveformContainer: {
     flex: 1,

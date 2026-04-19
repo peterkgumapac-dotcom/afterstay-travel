@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
 import { MosaicTile } from './MosaicTile';
-import type { MomentDisplay } from './types';
+import type { MomentDisplay, PeopleMap } from './types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -12,7 +11,7 @@ import type { MomentDisplay } from './types';
 interface MosaicLayoutProps {
   items: MomentDisplay[];
   onOpen: (moment: MomentDisplay) => void;
-  people: Record<string, { name: string; color: string }>;
+  people: PeopleMap;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,18 +40,19 @@ export function MosaicLayout({ items, onOpen, people }: MosaicLayoutProps) {
     const dayIndex: Record<string, number> = {};
 
     items.forEach((m) => {
-      if (dayIndex[m.date] == null) {
-        dayIndex[m.date] = groups.length;
-        groups.push({ day: m.date, items: [] });
+      const key = m.date;
+      if (dayIndex[key] == null) {
+        dayIndex[key] = groups.length;
+        groups.push({ day: key, items: [] });
       }
-      groups[dayIndex[m.date]].items.push(m);
+      groups[dayIndex[key]].items.push(m);
     });
 
     return groups;
   }, [items]);
 
   return (
-    <View style={{ paddingHorizontal: spacing.lg, gap: 14 }}>
+    <View style={styles.root}>
       {byDay.map((grp, gIdx) => {
         const ms = grp.items;
 
@@ -77,7 +77,7 @@ export function MosaicLayout({ items, onOpen, people }: MosaicLayoutProps) {
         }
 
         return (
-          <View key={grp.day} style={{ gap: spacing.sm }}>
+          <View key={grp.day} style={styles.dayGroup}>
             {/* Day divider (skip first group) */}
             {gIdx > 0 && (
               <View style={styles.dividerRow}>
@@ -143,6 +143,13 @@ export function MosaicLayout({ items, onOpen, people }: MosaicLayoutProps) {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
+  root: {
+    paddingHorizontal: 16,
+    gap: 14,
+  },
+  dayGroup: {
+    gap: 8,
+  },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -23,50 +23,50 @@ const CX = 150;
 const CY = 150;
 const OUTER_R = 110;
 const TICK_COUNT = 32;
-const TICK_OUTER = OUTER_R - 6;
-const TICK_SHORT = 8;
-const TICK_LONG = 14;
 
-interface SparklePosition {
-  readonly x: number;
-  readonly y: number;
+interface SparkleConfig {
+  readonly cx: number;
+  readonly cy: number;
+  readonly r: number;
+  readonly duration: number;
   readonly delay: number;
 }
 
-const SPARKLES: readonly SparklePosition[] = [
-  { x: 50, y: 50, delay: 0 },
-  { x: 260, y: 60, delay: 200 },
-  { x: 40, y: 250, delay: 400 },
-  { x: 265, y: 245, delay: 600 },
+const SPARKLES: readonly SparkleConfig[] = [
+  { cx: 70, cy: 70, r: 2, duration: 2400, delay: 0 },
+  { cx: 240, cy: 90, r: 1.6, duration: 2800, delay: 300 },
+  { cx: 230, cy: 240, r: 2, duration: 2200, delay: 600 },
+  { cx: 60, cy: 230, r: 1.6, duration: 2600, delay: 900 },
 ] as const;
 
-function Sparkle({ x, y, delay, color }: SparklePosition & { readonly color: string }) {
-  const ty = useSharedValue(0);
+function Sparkle({ cx, cy, r, duration, delay, color }: SparkleConfig & { readonly color: string }) {
+  const floatY = useSharedValue(0);
 
   useEffect(() => {
-    ty.value = withDelay(
+    // float: 0%,100% translateY(0); 50% translateY(-6px)
+    floatY.value = withDelay(
       delay,
       withRepeat(
         withSequence(
-          withTiming(-4, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
-          withTiming(4, { duration: 1400, easing: Easing.inOut(Easing.ease) }),
+          withTiming(-6, { duration: duration / 2, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0, { duration: duration / 2, easing: Easing.inOut(Easing.ease) }),
         ),
         -1,
-        true,
+        false,
       ),
     );
-  }, [delay, ty]);
+  }, [delay, duration, floatY]);
 
   const props = useAnimatedProps(() => ({
-    cy: y + ty.value,
+    cy: cy + floatY.value,
   }));
 
   return (
     <AnimatedCircle
-      cx={x}
-      r={2.5}
+      cx={cx}
+      r={r}
       fill={color}
-      opacity={0.4}
+      opacity={0.8}
       animatedProps={props}
     />
   );
@@ -75,18 +75,22 @@ function Sparkle({ x, y, delay, color }: SparklePosition & { readonly color: str
 export default function CompassScene() {
   const { colors } = useTheme();
 
-  const needleRotation = useSharedValue(0);
+  // needlePoint: 1.6s cubic-bezier(.3,.6,.3,1)
+  // 0% rotate(-40deg), 40% rotate(65deg), 70% rotate(30deg), 100% rotate(45deg)
+  const needleRotation = useSharedValue(-40);
 
   useEffect(() => {
     needleRotation.value = withSequence(
-      withTiming(-40, { duration: 400, easing: Easing.out(Easing.ease) }),
-      withTiming(65, { duration: 500, easing: Easing.inOut(Easing.ease) }),
-      withTiming(30, { duration: 350, easing: Easing.inOut(Easing.ease) }),
-      withTiming(45, { duration: 350, easing: Easing.out(Easing.ease) }),
+      withTiming(65, { duration: 640, easing: Easing.bezier(0.3, 0.6, 0.3, 1) }),
+      withTiming(30, { duration: 480, easing: Easing.bezier(0.3, 0.6, 0.3, 1) }),
+      withTiming(45, { duration: 480, easing: Easing.bezier(0.3, 0.6, 0.3, 1) }),
     );
   }, [needleRotation]);
 
   const needleStyle = useAnimatedStyle(() => ({
+    position: 'absolute' as const,
+    width: 310,
+    height: 310,
     transform: [
       { translateX: -155 },
       { translateY: -155 },
@@ -99,10 +103,9 @@ export default function CompassScene() {
   const ticks = Array.from({ length: TICK_COUNT }, (_, i) => {
     const angle = (i * 360) / TICK_COUNT;
     const rad = (angle * Math.PI) / 180;
-    const isCardinal = i % 8 === 0;
-    const len = isCardinal ? TICK_LONG : TICK_SHORT;
-    const r1 = TICK_OUTER;
-    const r2 = TICK_OUTER - len;
+    const isMajor = i % 4 === 0;
+    const r1 = isMajor ? 82 : 90;
+    const r2 = 100;
     return (
       <Line
         key={`tick-${i}`}
@@ -110,17 +113,24 @@ export default function CompassScene() {
         y1={CY + Math.sin(rad) * r1}
         x2={CX + Math.cos(rad) * r2}
         y2={CY + Math.sin(rad) * r2}
-        stroke={colors.text3}
-        strokeWidth={isCardinal ? 2 : 1}
-        opacity={isCardinal ? 0.6 : 0.3}
+        stroke={colors.text2}
+        strokeWidth={1.2}
+        opacity={isMajor ? 1 : 0.4}
       />
     );
   });
 
+  const cardinals: readonly [string, number, number][] = [
+    ['N', 150, 68],
+    ['E', 232, 155],
+    ['S', 150, 242],
+    ['W', 68, 155],
+  ];
+
   return (
     <Animated.View style={{ width: 310, height: 310, position: 'relative' }}>
       <Svg viewBox="0 0 300 300" width={310} height={310}>
-        {/* Outer ring */}
+        {/* outer ring */}
         <Circle
           cx={CX}
           cy={CY}
@@ -130,94 +140,64 @@ export default function CompassScene() {
           strokeWidth={2}
         />
 
-        {/* Inner dashed ring */}
+        {/* inner dashed ring */}
         <Circle
           cx={CX}
           cy={CY}
           r={96}
           fill="none"
-          stroke={colors.border}
-          strokeWidth={1}
-          strokeDasharray="4 4"
+          stroke={colors.accent}
+          strokeOpacity={0.35}
+          strokeDasharray="2 4"
         />
 
-        {/* Tick marks */}
+        {/* tick marks */}
         {ticks}
 
-        {/* Cardinal letters */}
-        <SvgText
-          x={150}
-          y={68}
-          textAnchor="middle"
-          fontSize={14}
-          fontWeight="700"
-          fill={colors.accent}
-        >
-          N
-        </SvgText>
-        <SvgText
-          x={232}
-          y={155}
-          textAnchor="middle"
-          fontSize={12}
-          fontWeight="600"
-          fill={colors.text3}
-        >
-          E
-        </SvgText>
-        <SvgText
-          x={150}
-          y={242}
-          textAnchor="middle"
-          fontSize={12}
-          fontWeight="600"
-          fill={colors.text3}
-        >
-          S
-        </SvgText>
-        <SvgText
-          x={68}
-          y={155}
-          textAnchor="middle"
-          fontSize={12}
-          fontWeight="600"
-          fill={colors.text3}
-        >
-          W
-        </SvgText>
+        {/* cardinal letters */}
+        {cardinals.map(([letter, x, y]) => (
+          <SvgText
+            key={letter}
+            x={x}
+            y={y}
+            textAnchor="middle"
+            alignmentBaseline="central"
+            fontSize={13}
+            fontWeight="700"
+            fill={letter === 'N' ? colors.accent : colors.text2}
+          >
+            {letter}
+          </SvgText>
+        ))}
 
-        {/* Sparkles */}
+        {/* floating sparkles */}
         {SPARKLES.map((s, i) => (
           <Sparkle key={`sparkle-${i}`} {...s} color={colors.accent} />
         ))}
 
-        {/* Center hub */}
-        <Circle cx={CX} cy={CY} r={7} fill="#fffaf0" stroke={colors.accent} strokeWidth={1.5} />
+        {/* center hub */}
+        <Circle cx={CX} cy={CY} r={7} fill="#fffaf0" stroke={colors.accent} strokeWidth={2} />
         <Circle cx={CX} cy={CY} r={2.5} fill={colors.accent} />
       </Svg>
 
-      {/* Needle overlay (animated rotation) */}
-      <Animated.View
-        style={[
-          {
-            position: 'absolute',
-            width: 310,
-            height: 310,
-          },
-          needleStyle,
-        ]}
-      >
+      {/* needle overlay (animated rotation) */}
+      <Animated.View style={needleStyle}>
         <Svg viewBox="0 0 300 300" width={310} height={310}>
-          {/* Top half (north) — accent */}
+          {/* full diamond outline */}
+          <Path
+            d="M 150 82 L 158 150 L 150 218 L 142 150 Z"
+            fill={colors.accent}
+            opacity={0.95}
+          />
+          {/* north half — solid accent */}
           <Path
             d="M 150 82 L 158 150 L 142 150 Z"
             fill={colors.accent}
           />
-          {/* Bottom half (south) — dim */}
+          {/* south half — dim */}
           <Path
             d="M 150 218 L 158 150 L 142 150 Z"
-            fill={colors.text3}
-            opacity={0.4}
+            fill={colors.textDim}
           />
         </Svg>
       </Animated.View>

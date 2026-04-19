@@ -6,15 +6,17 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import Svg, { Rect, Path, Circle } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
-import type { MomentDisplay } from './types';
+import { Avatar } from './Avatar';
+import type { MomentDisplay, PeopleMap } from './types';
 
 interface MosaicTileProps {
   moment: MomentDisplay;
   onOpen: (moment: MomentDisplay) => void;
   aspect?: number;
-  people: Record<string, { name: string; color: string }>;
+  people: PeopleMap;
 }
 
 export function MosaicTile({
@@ -26,7 +28,6 @@ export function MosaicTile({
   const authorKey = moment.authorKey ?? moment.takenBy ?? '';
   const person = people[authorKey];
   const authorColor = person?.color ?? '#999';
-  const authorInitial = authorKey.charAt(0).toUpperCase();
   const { colors } = useTheme();
 
   const totalReactions = useMemo(() => {
@@ -44,7 +45,7 @@ export function MosaicTile({
         styles.container,
         {
           aspectRatio: aspect,
-          borderRadius: radius.sm + 2,
+          borderRadius: 14,
           borderColor: colors.border,
           borderWidth: 1,
         },
@@ -60,10 +61,10 @@ export function MosaicTile({
       <ImageBackground
         source={{ uri: moment.photo }}
         style={styles.image}
-        imageStyle={{ borderRadius: radius.sm + 1 }}
+        imageStyle={{ borderRadius: 13 }}
         resizeMode="cover"
       >
-        {/* Author color strip - left edge */}
+        {/* Author color strip - left edge, 2.5px */}
         <View
           style={[
             styles.authorStrip,
@@ -72,7 +73,11 @@ export function MosaicTile({
         />
 
         {/* Bottom gradient overlay */}
-        <View style={styles.bottomGradient} />
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.72)']}
+          locations={[0.5, 1]}
+          style={StyleSheet.absoluteFillObject}
+        />
 
         {/* Bottom meta: place name + avatar */}
         <View style={styles.bottomMeta}>
@@ -84,21 +89,35 @@ export function MosaicTile({
               {moment.place ?? moment.location}
             </Text>
           </View>
-          <View
-            style={[
-              styles.avatar,
-              { backgroundColor: authorColor },
-            ]}
-          >
-            <Text style={styles.avatarText}>{authorInitial}</Text>
-          </View>
+          <Avatar authorKey={authorKey} people={people} size={18} />
         </View>
 
         {/* Top-left corner badges */}
         <View style={styles.topLeftBadges}>
           {moment.voice && (
             <View style={styles.iconBadge}>
-              <Text style={styles.micIcon}>{'\u{1F3A4}'}</Text>
+              <Svg width={10} height={10} viewBox="0 0 24 24" fill="none">
+                <Rect
+                  x={9}
+                  y={2}
+                  width={6}
+                  height={12}
+                  rx={3}
+                  stroke="rgba(255,255,255,0.95)"
+                  strokeWidth={2.2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+                <Path
+                  d="M5 11a7 7 0 0014 0M12 18v3"
+                  stroke="rgba(255,255,255,0.95)"
+                  strokeWidth={2.2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </Svg>
             </View>
           )}
           {isLoved && (
@@ -143,17 +162,11 @@ const styles = StyleSheet.create({
     width: 2.5,
     opacity: 0.9,
   },
-  bottomGradient: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-    // Simulating linear-gradient via a semi-transparent overlay at the bottom
-    // React Native doesn't have CSS gradients; we use a darker bottom region
-  },
   bottomMeta: {
     position: 'absolute',
-    left: spacing.sm,
-    right: spacing.sm,
-    bottom: spacing.sm,
+    left: 8,
+    right: 8,
+    bottom: 8,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
@@ -171,21 +184,9 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  avatar: {
-    width: 18,
-    height: 18,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 8,
-    fontWeight: '600',
-    color: '#0b0f14',
-  },
   topLeftBadges: {
     position: 'absolute',
-    top: spacing.sm,
+    top: 8,
     left: 10,
     flexDirection: 'row',
     gap: 4,
@@ -194,13 +195,10 @@ const styles = StyleSheet.create({
   iconBadge: {
     width: 20,
     height: 20,
-    borderRadius: 999,
+    borderRadius: 99,
     backgroundColor: 'rgba(11, 15, 20, 0.78)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  micIcon: {
-    fontSize: 9,
   },
   reactionBadge: {
     flexDirection: 'row',
@@ -208,7 +206,7 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 999,
+    borderRadius: 99,
     backgroundColor: 'rgba(11, 15, 20, 0.78)',
   },
   heartIcon: {
@@ -223,11 +221,11 @@ const styles = StyleSheet.create({
   },
   expenseBadge: {
     position: 'absolute',
-    top: spacing.sm,
-    right: spacing.sm,
+    top: 8,
+    right: 8,
     paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 999,
+    borderRadius: 99,
     backgroundColor: 'rgba(11, 15, 20, 0.78)',
   },
   expenseText: {

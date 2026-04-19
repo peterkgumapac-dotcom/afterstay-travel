@@ -10,10 +10,17 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import Svg, {
+  Line,
+  Polyline,
+  Path,
+  Circle,
+  Rect,
+} from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
+import { Avatar } from './Avatar';
 import { VoiceNote } from './VoiceNote';
-import type { MomentDisplay } from './types';
+import type { MomentDisplay, PeopleMap } from './types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -24,7 +31,7 @@ interface MomentLightboxProps {
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
-  people: Record<string, { name: string; color: string }>;
+  people: PeopleMap;
 }
 
 export function MomentLightbox({
@@ -55,7 +62,6 @@ export function MomentLightbox({
 
   const authorKey = moment.authorKey ?? moment.takenBy ?? '';
   const person = people[authorKey] ?? { name: authorKey, color: colors.accent };
-  const authorInitial = person.name.charAt(0).toUpperCase();
 
   return (
     <Modal
@@ -68,25 +74,34 @@ export function MomentLightbox({
       <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
         {/* Top bar */}
         <View style={styles.topBar}>
+          {/* Close button */}
           <TouchableOpacity
             onPress={onClose}
             style={styles.topButton}
             accessibilityLabel="Close"
             accessibilityRole="button"
           >
-            <Text style={styles.closeIcon}>{'\u2715'}</Text>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Line x1={18} y1={6} x2={6} y2={18} stroke="#fff" strokeWidth={2} strokeLinecap="round" />
+              <Line x1={6} y1={6} x2={18} y2={18} stroke="#fff" strokeWidth={2} strokeLinecap="round" />
+            </Svg>
           </TouchableOpacity>
 
           <Text style={styles.counter}>
             {index + 1} / {total}
           </Text>
 
+          {/* Share button */}
           <TouchableOpacity
             style={styles.topButton}
             accessibilityLabel="Share"
             accessibilityRole="button"
           >
-            <Text style={styles.shareIcon}>{'\u21E7'}</Text>
+            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+              <Polyline points="16 6 12 2 8 6" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+              <Line x1={12} y1={2} x2={12} y2={15} stroke="#fff" strokeWidth={2} strokeLinecap="round" />
+              <Path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
           </TouchableOpacity>
         </View>
 
@@ -107,7 +122,9 @@ export function MomentLightbox({
             accessibilityLabel="Previous photo"
             accessibilityRole="button"
           >
-            <Text style={styles.navIcon}>{'\u2039'}</Text>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Polyline points="15 18 9 12 15 6" stroke="#fff" strokeWidth={2} strokeLinecap="round" />
+            </Svg>
           </TouchableOpacity>
 
           {/* Next button */}
@@ -117,7 +134,9 @@ export function MomentLightbox({
             accessibilityLabel="Next photo"
             accessibilityRole="button"
           >
-            <Text style={styles.navIcon}>{'\u203A'}</Text>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Polyline points="9 6 15 12 9 18" stroke="#fff" strokeWidth={2} strokeLinecap="round" />
+            </Svg>
           </TouchableOpacity>
         </View>
 
@@ -130,14 +149,7 @@ export function MomentLightbox({
           <View style={styles.metaSheet}>
             {/* Author row */}
             <View style={styles.authorRow}>
-              <View
-                style={[
-                  styles.authorAvatar,
-                  { backgroundColor: person.color },
-                ]}
-              >
-                <Text style={styles.authorAvatarText}>{authorInitial}</Text>
-              </View>
+              <Avatar authorKey={authorKey} people={people} size={28} />
               <View style={styles.authorInfo}>
                 <Text style={styles.authorName}>{person.name}</Text>
                 <Text style={styles.authorDate}>
@@ -172,22 +184,22 @@ export function MomentLightbox({
               </View>
             )}
 
-            {/* Meta chips */}
+            {/* Context chips */}
             <View style={styles.chipsRow}>
               {(moment.place ?? moment.location) ? (
                 <MetaChip
-                  icon={'\uD83D\uDCCD'}
+                  icon="pin"
                   label={moment.place ?? moment.location ?? ''}
                 />
               ) : null}
               {moment.weather ? (
-                <MetaChip icon={'\u2600'} label={moment.weather} />
+                <MetaChip icon="sun" label={moment.weather} />
               ) : null}
               {moment.expense ? (
                 <MetaChip
-                  icon={'\uD83D\uDCB3'}
+                  icon="wallet"
                   label={`${moment.expense.label} \u00B7 ${moment.expense.amt}`}
-                  accent
+                  tone="accent"
                   accentColor={colors.accentLt}
                 />
               ) : null}
@@ -199,31 +211,101 @@ export function MomentLightbox({
   );
 }
 
+// ---------------------------------------------------------------------------
+// MetaChip — SVG icons matching prototype verbatim
+// ---------------------------------------------------------------------------
+
 interface MetaChipProps {
-  icon: string;
+  icon: 'pin' | 'sun' | 'wallet';
   label: string;
-  accent?: boolean;
+  tone?: 'accent';
   accentColor?: string;
 }
 
-function MetaChip({ icon, label, accent = false, accentColor }: MetaChipProps) {
+function MetaChipIcon({ icon }: { icon: MetaChipProps['icon'] }) {
+  const stroke = 'currentColor';
+  switch (icon) {
+    case 'pin':
+      return (
+        <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+          <Path
+            d="M12 22s-8-7.5-8-13a8 8 0 1116 0c0 5.5-8 13-8 13z"
+            stroke="rgba(255,255,255,0.85)"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+          <Circle
+            cx={12}
+            cy={9}
+            r={2.5}
+            stroke="rgba(255,255,255,0.85)"
+            strokeWidth={2}
+            fill="none"
+          />
+        </Svg>
+      );
+    case 'sun':
+      return (
+        <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+          <Circle cx={12} cy={12} r={4} stroke="rgba(255,255,255,0.85)" strokeWidth={2} fill="none" />
+          <Path
+            d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+            stroke="rgba(255,255,255,0.85)"
+            strokeWidth={2}
+            strokeLinecap="round"
+            fill="none"
+          />
+        </Svg>
+      );
+    case 'wallet':
+      return (
+        <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+          <Rect
+            x={3}
+            y={6}
+            width={18}
+            height={14}
+            rx={2}
+            stroke="rgba(255,255,255,0.85)"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+          <Path
+            d="M3 10h18"
+            stroke="rgba(255,255,255,0.85)"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </Svg>
+      );
+  }
+}
+
+function MetaChip({ icon, label, tone, accentColor }: MetaChipProps) {
+  const isAccent = tone === 'accent';
   return (
     <View
       style={[
         styles.metaChip,
         {
-          backgroundColor: accent
+          backgroundColor: isAccent
             ? 'rgba(216,171,122,0.18)'
             : 'rgba(255,255,255,0.08)',
         },
       ]}
     >
-      <Text style={styles.metaChipIcon}>{icon}</Text>
+      <MetaChipIcon icon={icon} />
       <Text
         style={[
           styles.metaChipLabel,
           {
-            color: accent && accentColor
+            color: isAccent && accentColor
               ? accentColor
               : 'rgba(255,255,255,0.85)',
           },
@@ -235,6 +317,10 @@ function MetaChip({ icon, label, accent = false, accentColor }: MetaChipProps) {
     </View>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   overlay: {
@@ -257,16 +343,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeIcon: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  shareIcon: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '600',
-  },
   counter: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.65)',
@@ -282,7 +358,7 @@ const styles = StyleSheet.create({
   photo: {
     width: SCREEN_W - 28,
     aspectRatio: 3 / 4,
-    borderRadius: radius.sm + 2,
+    borderRadius: 14,
   },
   navButton: {
     position: 'absolute',
@@ -303,12 +379,6 @@ const styles = StyleSheet.create({
   navRight: {
     right: 18,
   },
-  navIcon: {
-    fontSize: 20,
-    color: '#fff',
-    fontWeight: '300',
-    marginTop: -2,
-  },
   metaScroll: {
     maxHeight: 280,
   },
@@ -320,7 +390,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: radius.md,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   authorRow: {
@@ -328,18 +398,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginBottom: 10,
-  },
-  authorAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  authorAvatarText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0b0f14',
   },
   authorInfo: {
     flex: 1,
@@ -377,7 +435,7 @@ const styles = StyleSheet.create({
   },
   caption: {
     fontSize: 14,
-    fontWeight: '550',
+    fontWeight: '600',
     color: '#fff',
     marginBottom: 10,
   },
@@ -396,9 +454,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 9,
     borderRadius: 999,
-  },
-  metaChipIcon: {
-    fontSize: 11,
   },
   metaChipLabel: {
     fontSize: 10.5,
