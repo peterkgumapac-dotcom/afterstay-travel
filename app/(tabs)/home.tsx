@@ -28,6 +28,7 @@ import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
+import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
   getActiveTrip,
@@ -107,6 +108,7 @@ export default function HomeScreen() {
   const [moments, setMoments] = useState<Moment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaderDone, setLoaderDone] = useState(false);
+  const { setVisible: setTabBarVisible } = useTabBarVisibility();
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -211,6 +213,12 @@ export default function HomeScreen() {
       alive = false;
     };
   }, [load]);
+
+  // Hide tab bar during initial load, show once loader is done
+  useEffect(() => {
+    const isInitialLoading = loading || !loaderDone;
+    setTabBarVisible(!isInitialLoading);
+  }, [loading, loaderDone, setTabBarVisible]);
 
   const onRefresh = () => {
     setRefreshing(true);

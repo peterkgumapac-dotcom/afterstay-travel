@@ -34,6 +34,7 @@ import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import GroupHeader from '@/components/budget/GroupHeader';
 import WhoPaysPicker from '@/components/budget/WhoPaysPicker';
 import {
+  deleteExpense,
   getActiveTrip,
   getExpenses,
   getExpenseSummary,
@@ -228,6 +229,30 @@ export default function BudgetScreen() {
   const status = total > 0
     ? (remaining / total > 0.5 ? 'Cruising' : remaining / total > 0.2 ? 'Watch' : 'Over')
     : 'Cruising';
+
+  /* ---------- Delete expense ---------- */
+
+  const handleDeleteExpense = useCallback(
+    (expenseId: string, description: string) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      Alert.alert('Delete Expense', `Are you sure you want to delete "${description}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+            deleteExpense(expenseId)
+              .then(() => load())
+              .catch(() => {
+                load();
+              });
+          },
+        },
+      ]);
+    },
+    [load],
+  );
 
   /* ---------- FAB menu ---------- */
 
@@ -569,6 +594,7 @@ export default function BudgetScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`${e.description}, ${formatCurrency(e.amount, e.currency)}`}
                   onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+                  onLongPress={() => handleDeleteExpense(e.id, e.description)}
                 >
                   <View style={{ flex: 1 }}>
                     <Text
@@ -662,7 +688,7 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
     },
     scrollContent: {
-      paddingBottom: 100,
+      paddingBottom: 120,
     },
 
     /* TopBar */
@@ -993,9 +1019,9 @@ const getStyles = (colors: ThemeColors) =>
     fab: {
       position: 'absolute',
       right: 18,
-      bottom: 90,
-      width: 56,
-      height: 56,
+      bottom: 100,
+      width: 48,
+      height: 48,
       borderRadius: 999,
       backgroundColor: colors.ink,
       alignItems: 'center',

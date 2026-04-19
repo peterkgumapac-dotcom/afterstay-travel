@@ -182,8 +182,8 @@ function mapFlight(row: Record<string, unknown>): Flight {
     airline: (row.airline as string) ?? '',
     from: (row.origin as string) ?? (row.from_city as string) ?? '',
     to: (row.destination as string) ?? (row.to_city as string) ?? '',
-    departTime: ensurePhtOffset(rawDepart),
-    arriveTime: ensurePhtOffset(rawArrive),
+    departTime: rawDepart,
+    arriveTime: rawArrive,
     bookingRef: (row.booking_ref as string) ?? undefined,
     baggage: (row.baggage as string) ?? undefined,
     passenger: (row.passenger as string) ?? undefined,
@@ -432,6 +432,14 @@ export async function updateMemberEmail(memberId: string, email: string): Promis
     .update({ email })
     .eq('id', memberId)
   if (error) throw new Error(`updateMemberEmail: ${error.message}`)
+}
+
+export async function updateMemberPhone(memberId: string, phone: string): Promise<void> {
+  const { error } = await supabase
+    .from(T.groupMembers)
+    .update({ phone })
+    .eq('id', memberId)
+  if (error) throw new Error(`updateMemberPhone: ${error.message}`)
 }
 
 // ---------- PACKING ----------

@@ -1,12 +1,28 @@
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs } from 'expo-router';
 import { BookOpen, Compass, Home, Plane, Wallet } from 'lucide-react-native';
-import React from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
 
 import { useTheme } from '@/constants/ThemeContext';
+
+/* ---------- Tab bar visibility context ---------- */
+
+interface TabBarVisibilityContextValue {
+  visible: boolean;
+  setVisible: (v: boolean) => void;
+}
+
+const TabBarVisibilityContext = createContext<TabBarVisibilityContextValue>({
+  visible: true,
+  setVisible: () => {},
+});
+
+export function useTabBarVisibility(): TabBarVisibilityContextValue {
+  return useContext(TabBarVisibilityContext);
+}
 
 const TAB_ICONS = {
   home: Home,
@@ -26,7 +42,10 @@ const TAB_LABELS: Record<string, string> = {
 
 function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   const { colors } = useTheme();
+  const { visible } = useTabBarVisibility();
   const bottomOffset = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 16;
+
+  if (!visible) return null;
 
   const visibleRoutes = state.routes.filter(
     (route) => (descriptors[route.key]?.options as Record<string, unknown>)?.href !== null
@@ -131,27 +150,35 @@ function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarP
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const [tabBarVisible, setTabBarVisible] = useState(true);
+
+  const visibilityValue = useMemo(
+    () => ({ visible: tabBarVisible, setVisible: setTabBarVisible }),
+    [tabBarVisible],
+  );
 
   return (
-    <Tabs
-      tabBar={(props) => <TabBarOverlay {...props} />}
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.bg },
-        headerTitleStyle: { color: colors.text, fontWeight: '600' },
-        headerShown: false,
-        headerShadowVisible: false,
-        headerTintColor: colors.text,
-      }}
-    >
-      <Tabs.Screen name="home" options={{ title: 'Home' }} />
-      <Tabs.Screen name="guide" options={{ title: 'Guide' }} />
-      <Tabs.Screen name="discover" options={{ title: 'Discover' }} />
-      <Tabs.Screen name="budget" options={{ title: 'Budget' }} />
-      <Tabs.Screen name="trip" options={{ title: 'Our Trip' }} />
+    <TabBarVisibilityContext.Provider value={visibilityValue}>
+      <Tabs
+        tabBar={(props) => <TabBarOverlay {...props} />}
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.bg },
+          headerTitleStyle: { color: colors.text, fontWeight: '600' },
+          headerShown: false,
+          headerShadowVisible: false,
+          headerTintColor: colors.text,
+        }}
+      >
+        <Tabs.Screen name="home" options={{ title: 'Home' }} />
+        <Tabs.Screen name="guide" options={{ title: 'Guide' }} />
+        <Tabs.Screen name="discover" options={{ title: 'Discover' }} />
+        <Tabs.Screen name="budget" options={{ title: 'Budget' }} />
+        <Tabs.Screen name="trip" options={{ title: 'Our Trip' }} />
 
-      {/* Hidden tabs — accessible via FAB and gear icon */}
-      <Tabs.Screen name="moments" options={{ href: null }} />
-      <Tabs.Screen name="settings" options={{ href: null }} />
-    </Tabs>
+        {/* Hidden tabs — accessible via FAB and gear icon */}
+        <Tabs.Screen name="moments" options={{ href: null }} />
+        <Tabs.Screen name="settings" options={{ href: null }} />
+      </Tabs>
+    </TabBarVisibilityContext.Provider>
   );
 }

@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -49,6 +50,8 @@ import {
   getHighlights,
   getPastTrips,
   togglePacked,
+  updateMemberEmail,
+  updateMemberPhone,
 } from '@/lib/supabase';
 import { formatDatePHT, formatTimePHT, formatCurrency } from '@/lib/utils';
 import type {
@@ -770,6 +773,67 @@ export default function TripScreen() {
     Alert.alert('Copied', 'Invite link copied to clipboard!');
   };
 
+  const handleMemberEdit = (member: GroupMember) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const showEmailPrompt = () => {
+      if (Platform.OS === 'ios') {
+        Alert.prompt(
+          'Edit Email',
+          `Current: ${member.email || 'Not set'}`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Save',
+              onPress: (value?: string) => {
+                if (!value?.trim()) return;
+                updateMemberEmail(member.id, value.trim())
+                  .then(() => load())
+                  .catch(() => {});
+              },
+            },
+          ],
+          'plain-text',
+          member.email ?? '',
+          'email-address',
+        );
+      } else {
+        Alert.alert('Edit Email', 'Use the member settings to update email on Android.');
+      }
+    };
+
+    const showPhonePrompt = () => {
+      if (Platform.OS === 'ios') {
+        Alert.prompt(
+          'Edit Phone',
+          `Current: ${member.phone || 'Not set'}`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Save',
+              onPress: (value?: string) => {
+                if (!value?.trim()) return;
+                updateMemberPhone(member.id, value.trim())
+                  .then(() => load())
+                  .catch(() => {});
+              },
+            },
+          ],
+          'plain-text',
+          member.phone ?? '',
+          'phone-pad',
+        );
+      } else {
+        Alert.alert('Edit Phone', 'Use the member settings to update phone on Android.');
+      }
+    };
+
+    Alert.alert(member.name, 'Edit contact details', [
+      { text: 'Edit Email', onPress: showEmailPrompt },
+      { text: 'Edit Phone', onPress: showPhonePrompt },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const handleMemberChat = (member: GroupMember) => {
     if (member.phone) {
       Linking.openURL(`sms:${member.phone}`);
@@ -945,7 +1009,14 @@ export default function TripScreen() {
             />
             <View style={styles.listContainer}>
               {membersData.map((m, idx) => (
-                <View key={m.id} style={styles.memberRow}>
+                <TouchableOpacity
+                  key={m.id}
+                  style={styles.memberRow}
+                  activeOpacity={0.7}
+                  onPress={() => handleMemberEdit(m)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${m.name} contact details`}
+                >
                   <View
                     style={[
                       styles.memberAvatar,
@@ -985,7 +1056,7 @@ export default function TripScreen() {
                       />
                     </Svg>
                   </TouchableOpacity>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
 

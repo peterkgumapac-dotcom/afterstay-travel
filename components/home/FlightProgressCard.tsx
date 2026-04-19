@@ -51,7 +51,7 @@ function bezierAngle(t: number) {
 /* ── Animated SVG wrappers ── */
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const AnimatedG = Animated.createAnimatedComponent(G);
+// AnimatedG removed — Android crashes with string transforms via animatedProps
 
 /* ── Arc length constant ── */
 const ARC_LENGTH = 320;
@@ -151,14 +151,9 @@ export function FlightProgressCard({
     strokeDashoffset: ARC_LENGTH * (1 - progressSV.value),
   }));
 
-  const planeGroupProps = useAnimatedProps(() => {
-    const t = progressSV.value;
-    const { x, y } = bezierPoint(t);
-    const angle = bezierAngle(t);
-    return {
-      transform: `translate(${x}, ${y}) rotate(${angle})`,
-    };
-  });
+  // Plane position computed from state (not animatedProps — Android crashes with string transforms)
+  const planePos = bezierPoint(progress);
+  const planeAngle = bezierAngle(progress);
 
   const pulseRingProps = useAnimatedProps(() => ({
     r: ringRadius.value,
@@ -169,9 +164,7 @@ export function FlightProgressCard({
   const remainingMin = Math.max(0, Math.round(totalMinutes * (1 - progress)));
   const progressPct = Math.round(progress * 100);
 
-  /* ── Static plane position for initial render ── */
-  const staticPos = bezierPoint(progress);
-  const staticAngle = bezierAngle(progress);
+  /* ── Derived ── */
 
   return (
     <View style={styles.wrapper}>
@@ -237,9 +230,8 @@ export function FlightProgressCard({
           />
 
           {/* Plane group */}
-          <AnimatedG
-            animatedProps={planeGroupProps}
-            transform={`translate(${staticPos.x}, ${staticPos.y}) rotate(${staticAngle})`}
+          <G
+            transform={`translate(${planePos.x}, ${planePos.y}) rotate(${planeAngle})`}
           >
             {/* White halo */}
             <Circle r={12} fill={CREAM} opacity={0.9} />
@@ -256,7 +248,7 @@ export function FlightProgressCard({
               {/* Cockpit window */}
               <Ellipse cx={4} cy={0} rx={1.2} ry={0.6} fill="#ffd9a8" />
             </G>
-          </AnimatedG>
+          </G>
         </Svg>
 
         {/* Origin / Dest labels */}
