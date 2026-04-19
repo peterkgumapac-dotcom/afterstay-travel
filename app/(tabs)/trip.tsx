@@ -266,6 +266,17 @@ const groupHeaderStyles = StyleSheet.create({
 
 // ---------- MINI FLIGHT CARD ----------
 
+function getTerminalInfo(airline: string, iata: string): string | null {
+  const a = airline.toLowerCase();
+  if (iata === 'MNL') {
+    if (a.includes('cebu pacific')) return 'Terminal 3 (NAIA)';
+    if (a.includes('airasia')) return 'Terminal 3 (NAIA)';
+    if (a.includes('philippine airlines') || a.includes('pal')) return 'Terminal 2 (NAIA)';
+  }
+  if (iata === 'MPH') return 'Godofredo P. Ramos Airport';
+  return null;
+}
+
 function MiniFlightCard({
   f,
   colors,
@@ -274,6 +285,14 @@ function MiniFlightCard({
   colors: ThemeColors;
 }) {
   const styles = miniFlightStyles(colors);
+  const depTerminal = getTerminalInfo(f.airline, f.from);
+  const arrTerminal = getTerminalInfo(f.airline, f.to);
+
+  const copyRef = () => {
+    Clipboard.setStringAsync(f.ref);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Copied', `Booking ref ${f.ref} copied to clipboard`);
+  };
 
   return (
     <View style={styles.card}>
@@ -286,11 +305,13 @@ function MiniFlightCard({
           <View>
             <Text style={styles.dirLabel}>{f.dir}</Text>
             <Text style={styles.flightInfo}>
-              {f.code} {f.num} {'\u00B7'} {f.date}
+              {f.airline} {'\u00B7'} {f.code} {f.num}
             </Text>
           </View>
         </View>
-        <Text style={styles.refText}>Ref {f.ref}</Text>
+        <TouchableOpacity onPress={copyRef} activeOpacity={0.7}>
+          <Text style={styles.refText}>Ref {f.ref} {'\u2398'}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Route */}
@@ -298,11 +319,16 @@ function MiniFlightCard({
         <View>
           <Text style={styles.iataCode}>{f.from}</Text>
           <Text style={styles.timeText}>{f.dep}</Text>
+          {depTerminal && <Text style={styles.terminalText}>{depTerminal}</Text>}
         </View>
-        <Text style={styles.durText}>{f.dur}</Text>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.durText}>{f.dur}</Text>
+          <Text style={[styles.terminalText, { marginTop: 2 }]}>{f.date}</Text>
+        </View>
         <View style={styles.routeRight}>
           <Text style={styles.iataCode}>{f.to}</Text>
           <Text style={styles.timeText}>{f.arr}</Text>
+          {arrTerminal && <Text style={styles.terminalText}>{arrTerminal}</Text>}
         </View>
       </View>
     </View>
@@ -381,6 +407,12 @@ const miniFlightStyles = (colors: ThemeColors) =>
     },
     routeRight: {
       alignItems: 'flex-end',
+    },
+    terminalText: {
+      fontSize: 9,
+      color: colors.accent,
+      marginTop: 2,
+      fontWeight: '500',
     },
   });
 
@@ -1037,14 +1069,22 @@ export default function TripScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${m.name} contact details`}
                 >
-                  <View
-                    style={[
-                      styles.memberAvatar,
-                      { backgroundColor: MEMBER_COLORS[idx % MEMBER_COLORS.length] },
-                    ]}
-                  >
-                    <Text style={styles.memberInit}>{m.name.charAt(0).toUpperCase()}</Text>
-                  </View>
+                  {m.profilePhoto ? (
+                    <Image
+                      source={{ uri: m.profilePhoto }}
+                      style={styles.memberAvatar}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.memberAvatar,
+                        { backgroundColor: MEMBER_COLORS[idx % MEMBER_COLORS.length] },
+                      ]}
+                    >
+                      <Text style={styles.memberInit}>{m.name.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
                   <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>
                       {m.name}
@@ -1144,11 +1184,7 @@ export default function TripScreen() {
                     </View>
                   )}
                 </View>
-                <View style={styles.accomFooter}>
-                  <TouchableOpacity style={styles.syncBtn} onPress={handleSync}>
-                    <Text style={styles.syncBtnText}>Sync details</Text>
-                  </TouchableOpacity>
-                </View>
+                {/* Sync button removed — price is shown inline above */}
               </View>
             </View>
 
@@ -1275,8 +1311,8 @@ export default function TripScreen() {
           </View>
         )}
 
-        {/* ===================== PACKING ===================== */}
-        {activeTab === 'packing' && (
+        {/* ===================== PACKING + FILES ===================== */}
+        {(activeTab === 'packing' || activeTab === 'files') && (
           <>
             <View style={styles.packingHeader}>
               <Text style={styles.packingCount}>
@@ -1366,12 +1402,9 @@ export default function TripScreen() {
                 </View>
               </View>
             ))}
-          </>
-        )}
 
-        {/* ===================== FILES ===================== */}
-        {activeTab === 'files' && (
-          <>
+
+            {/* ── Files section within Essentials ── */}
             <View style={styles.filesHeader}>
               <Text style={styles.filesCount}>
                 {filesData.length} file{filesData.length !== 1 ? 's' : ''}
@@ -1471,7 +1504,7 @@ export default function TripScreen() {
           </>
         )}
 
-        {/* Bottom spacer */}
+        {/* Bottom spacer -- keep outside tabs */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
 

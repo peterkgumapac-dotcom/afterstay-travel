@@ -2,7 +2,6 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { elevation } from '@/constants/theme';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 import type { Flight } from '@/lib/types';
 
@@ -117,7 +116,6 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       borderRadius: 22,
       padding: 16,
       marginHorizontal: 16,
-      ...elevation.sm,
     },
     header: {
       flexDirection: 'row',

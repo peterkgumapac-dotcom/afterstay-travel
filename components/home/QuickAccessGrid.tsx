@@ -233,6 +233,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       color: colors.text,
       fontSize: 17,
       fontWeight: '600',
+      letterSpacing: 0.02 * 17,
       marginTop: 6,
     },
     tileHint: {

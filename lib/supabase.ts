@@ -422,10 +422,40 @@ export async function addGroupMember(
   if (error) throw new Error(`addGroupMember: ${error.message}`)
 }
 
-export async function updateMemberPhoto(memberId: string, photoUrl: string): Promise<void> {
+export async function updateMemberPhoto(memberId: string, localUri: string): Promise<void> {
+  const timestamp = Date.now()
+  const filename = localUri.split('/').pop() ?? 'avatar.jpg'
+  const storagePath = `avatars/${memberId}-${timestamp}-${filename}`
+
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: 'base64' as const,
+  })
+
+  const contentType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg'
+
+  // Try avatars bucket first, fall back to moments bucket
+  let publicUrl = ''
+  const buckets = ['avatars', 'moments'] as const
+  for (const bucket of buckets) {
+    const path = bucket === 'avatars' ? storagePath : `avatars/${storagePath}`
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(path, decode(base64), { contentType, upsert: true })
+
+    if (!uploadError) {
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path)
+      publicUrl = urlData.publicUrl
+      break
+    }
+    // If last bucket also fails, throw
+    if (bucket === buckets[buckets.length - 1]) {
+      throw new Error(`updateMemberPhoto upload: ${uploadError.message}`)
+    }
+  }
+
   const { error } = await supabase
     .from(T.groupMembers)
-    .update({ avatar_url: photoUrl })
+    .update({ avatar_url: publicUrl })
     .eq('id', memberId)
   if (error) throw new Error(`updateMemberPhoto: ${error.message}`)
 }

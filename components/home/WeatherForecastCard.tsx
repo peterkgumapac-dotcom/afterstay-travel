@@ -337,7 +337,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     eyebrow: {
       fontSize: 10,
       fontWeight: '600',
-      letterSpacing: 1.8,
+      letterSpacing: 0.16 * 10,
       textTransform: 'uppercase',
       color: colors.text3,
     },

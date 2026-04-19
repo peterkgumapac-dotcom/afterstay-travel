@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { elevation } from '@/constants/theme';
 import { safeParse } from '@/lib/utils';
 
 interface Props {
@@ -138,7 +137,6 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       paddingHorizontal: 20,
       paddingBottom: 20,
       marginHorizontal: 16,
-      ...elevation.sm,
     },
     topRow: {
       flexDirection: 'row',
@@ -149,7 +147,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     eyebrow: {
       fontSize: 10,
       fontWeight: '600',
-      letterSpacing: 1.8,
+      letterSpacing: 0.16 * 10,
       textTransform: 'uppercase',
       color: colors.text3,
     },

@@ -323,11 +323,13 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       color: colors.text,
       letterSpacing: -0.6,
       lineHeight: 28,
+      textAlign: 'center',
     },
     subtext: {
       fontSize: 13,
       color: colors.text3,
       marginTop: 8,
+      textAlign: 'center',
     },
   });
 
@@ -363,6 +365,8 @@ const staticStyles = StyleSheet.create({
   headingRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
     minHeight: 30,
   },
   ellipsisRow: {
