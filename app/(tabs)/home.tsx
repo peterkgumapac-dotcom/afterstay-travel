@@ -154,8 +154,19 @@ export default function HomeScreen() {
           await cacheSet('trip:phase:tripId', t.id);
 
           const override = await cacheGet<TripPhase>('trip:phase:override');
-          if (override) {
+          // Only use override if it makes sense for current time
+          // (e.g., don't stay "upcoming" if flight already departed)
+          const computedPhase: TripPhase =
+            nowMs < departMs ? 'upcoming' :
+            nowMs < arriveMs ? 'inflight' :
+            nowMs < arriveMs + 4 * 3600000 ? 'arrived' : 'active';
+
+          if (override && override === computedPhase) {
             setPhase(override);
+          } else if (override) {
+            // Override is stale — clear it and use computed
+            await cacheSet('trip:phase:override', null);
+            setPhase(computedPhase);
           } else if (nowMs < departMs) {
             setPhase('upcoming');
           } else if (nowMs >= departMs && nowMs < arriveMs) {
