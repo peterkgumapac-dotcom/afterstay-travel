@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { InteractionManager, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Building2, MapPin, Footprints, Car } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
@@ -25,12 +25,13 @@ function DistanceToggle({
 
   const tapAnchor = useCallback((v: 'hotel' | 'me') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onAnchorChange(v);
+    // Defer heavy parent re-render so toggle animation completes first
+    InteractionManager.runAfterInteractions(() => onAnchorChange(v));
   }, [onAnchorChange]);
 
   const tapMode = useCallback((v: 'walk' | 'car') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onTravelModeChange(v);
+    InteractionManager.runAfterInteractions(() => onTravelModeChange(v));
   }, [onTravelModeChange]);
 
   return (

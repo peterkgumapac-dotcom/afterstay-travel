@@ -38,7 +38,7 @@ import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
 import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
-import { fmtKm, travelTime } from '@/lib/utils';
+// fmtKm and travelTime now computed inside DiscoverPlaceCard
 import DistanceToggle from '@/components/discover/DistanceToggle';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, type NearbyPlace } from '@/lib/google-places';
@@ -761,18 +761,15 @@ export default function DiscoverScreen() {
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
 
-  // Pre-compute travel data for each filtered place (avoid IIFEs per card per render)
   const travelModeNorm = travelMode === 'drive' ? 'car' as const : 'walk' as const;
-  const placesWithTravel = useMemo(() =>
-    filteredPlaces.map((p) => {
-      const km = getDistanceKm(p.lat, p.lng);
-      return {
-        place: p,
-        travelTimeStr: km > 0 ? travelTime(km, travelModeNorm) : undefined,
-        distanceLabelStr: km > 0 ? fmtKm(km) : undefined,
-      };
-    }),
-    [filteredPlaces, getDistanceKm, travelModeNorm],
+
+  // Pre-compute distances once (stable numbers). Cards compute their own display strings.
+  const placesWithDistance = useMemo(() =>
+    filteredPlaces.map((p) => ({
+      place: p,
+      distanceKm: getDistanceKm(p.lat, p.lng),
+    })),
+    [filteredPlaces, getDistanceKm],
   );
 
   // Stable filter callbacks — prevent FilterChip re-renders
@@ -1253,12 +1250,11 @@ export default function DiscoverScreen() {
                   </Text>
                 </View>
               ) : (
-                placesWithTravel.map(({ place: p, travelTimeStr, distanceLabelStr }, idx) => (
+                placesWithDistance.map(({ place: p, distanceKm }, idx) => (
                   <DiscoverPlaceCard
                     key={p.placeId ?? `${p.n}-${idx}`}
                     place={p}
-                    travelTime={travelTimeStr}
-                    distanceLabel={distanceLabelStr}
+                    distanceKm={distanceKm}
                     travelMode={travelModeNorm}
                     isSaved={saved.has(p.n)}
                     isRecommended={recommended.has(p.n)}
@@ -1355,13 +1351,11 @@ export default function DiscoverScreen() {
                 </View>
                 {savedPlaces.map((p) => {
                   const dp = mapSavedPlaceToDiscoverPlace(p);
-                  const km = getDistanceKm(dp.lat, dp.lng);
                   return (
                     <DiscoverPlaceCard
                       key={p.id}
                       place={dp}
-                      travelTime={km > 0 ? travelTime(km, travelModeNorm) : undefined}
-                      distanceLabel={km > 0 ? fmtKm(km) : undefined}
+                      distanceKm={getDistanceKm(dp.lat, dp.lng)}
                       travelMode={travelModeNorm}
                       isSaved={true}
                       isRecommended={recommended.has(p.name)}

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { Footprints, Car } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
+import { fmtKm, travelTime as calcTravelTime } from '@/lib/utils';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
@@ -26,8 +27,7 @@ export interface DiscoverPlace {
 
 interface DiscoverPlaceCardProps {
   place: DiscoverPlace;
-  travelTime?: string;
-  distanceLabel?: string;
+  distanceKm?: number;
   travelMode?: 'walk' | 'car';
   isSaved: boolean;
   isRecommended: boolean;
@@ -38,8 +38,7 @@ interface DiscoverPlaceCardProps {
 
 export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   place,
-  travelTime,
-  distanceLabel,
+  distanceKm = 0,
   travelMode = 'walk',
   isSaved,
   isRecommended,
@@ -48,9 +47,17 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   onExplore,
 }: DiscoverPlaceCardProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const priceLabel = place.price === 0 ? 'Free' : '$'.repeat(place.price);
+  const travelTimeLabel = useMemo(
+    () => distanceKm > 0 ? calcTravelTime(distanceKm, travelMode) : null,
+    [distanceKm, travelMode],
+  );
+  const distanceLabel = useMemo(
+    () => distanceKm > 0 ? fmtKm(distanceKm) : null,
+    [distanceKm],
+  );
 
   return (
     <TouchableOpacity
@@ -105,7 +112,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
                 ? <Footprints size={11} color={colors.text3} strokeWidth={1.8} />
                 : <Car size={11} color={colors.text3} strokeWidth={1.8} />
               }
-              <Text style={styles.ratingMeta}>{travelTime || place.d}</Text>
+              <Text style={styles.ratingMeta}>{travelTimeLabel || place.d}</Text>
             </View>
             {distanceLabel && (
               <>
