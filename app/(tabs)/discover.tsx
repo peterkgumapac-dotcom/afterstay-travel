@@ -38,7 +38,6 @@ import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
 import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
-// fmtKm and travelTime now computed inside DiscoverPlaceCard
 import DistanceToggle from '@/components/discover/DistanceToggle';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, type NearbyPlace } from '@/lib/google-places';
@@ -761,7 +760,6 @@ export default function DiscoverScreen() {
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
 
-  const travelModeNorm = travelMode;
 
   // Pre-compute distances once (stable numbers). Cards compute their own display strings.
   const placesWithDistance = useMemo(() =>
@@ -1255,7 +1253,7 @@ export default function DiscoverScreen() {
                     key={p.placeId ?? `${p.n}-${idx}`}
                     place={p}
                     distanceKm={distanceKm}
-                    travelMode={travelModeNorm}
+                    travelMode={travelMode}
                     isSaved={saved.has(p.n)}
                     isRecommended={recommended.has(p.n)}
                     onSave={toggleSave}
@@ -1356,7 +1354,7 @@ export default function DiscoverScreen() {
                       key={p.id}
                       place={dp}
                       distanceKm={getDistanceKm(dp.lat, dp.lng)}
-                      travelMode={travelModeNorm}
+                      travelMode={travelMode}
                       isSaved={true}
                       isRecommended={recommended.has(p.name)}
                       onSave={toggleSave}

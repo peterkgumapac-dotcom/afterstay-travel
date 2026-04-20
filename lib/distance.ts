@@ -16,8 +16,16 @@ export const haversine = (
   return R * c;
 };
 
+// Cache hotel→place distances (static — hotel and places don't move)
+const hotelDistanceCache = new Map<string, number>();
+
 export const distanceFromHotel = (lat: number, lng: number): number => {
-  return haversine(CONFIG.HOTEL_COORDS.lat, CONFIG.HOTEL_COORDS.lng, lat, lng);
+  const key = `${lat},${lng}`;
+  const cached = hotelDistanceCache.get(key);
+  if (cached !== undefined) return cached;
+  const km = haversine(CONFIG.HOTEL_COORDS.lat, CONFIG.HOTEL_COORDS.lng, lat, lng);
+  hotelDistanceCache.set(key, km);
+  return km;
 };
 
 export const distanceFromPoint = (
@@ -40,10 +48,3 @@ export const estimateWalkTime = (km: number): string => {
   return `${hours}h ${minutes % 60}m walk`;
 };
 
-export const estimateDriveTime = (km: number): string => {
-  const minutes = Math.round((km / 25) * 60); // ~25 km/h avg in resort areas
-  if (minutes < 1) return '1 min drive';
-  if (minutes < 60) return `${minutes} min drive`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m drive`;
-};
