@@ -65,15 +65,15 @@ function SplitToggle<T extends string>({
   );
 }
 
-const ANCHOR_OPTIONS = [
-  { value: 'hotel' as const, label: 'Hotel', icon: Building2 },
-  { value: 'me' as const, label: 'Me', icon: MapPin },
-] as const;
+const ANCHOR_OPTIONS: [SegmentOption<'hotel'>, SegmentOption<'me'>] = [
+  { value: 'hotel', label: 'Hotel', icon: Building2 },
+  { value: 'me', label: 'Me', icon: MapPin },
+];
 
-const MODE_OPTIONS = [
-  { value: 'walk' as const, label: 'Walk', icon: Footprints },
-  { value: 'car' as const, label: 'Car', icon: Car },
-] as const;
+const MODE_OPTIONS: [SegmentOption<'walk'>, SegmentOption<'car'>] = [
+  { value: 'walk', label: 'Walk', icon: Footprints },
+  { value: 'car', label: 'Car', icon: Car },
+];
 
 export default function DistanceToggle({
   anchor,
@@ -147,15 +147,17 @@ const getSplitStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       flexDirection: 'row',
       backgroundColor: colors.canvas,
       borderRadius: radius.pill,
-      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     segment: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
-      paddingVertical: 6,
-      paddingHorizontal: 10,
+      paddingVertical: 7,
+      paddingHorizontal: 12,
       borderRadius: radius.pill,
+      minHeight: 34,
     },
     segmentLabel: {
       fontSize: 11,

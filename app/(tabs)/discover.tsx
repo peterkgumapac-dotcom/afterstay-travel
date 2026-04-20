@@ -1710,8 +1710,8 @@ const getStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
     },
     chipActive: {
-      backgroundColor: colors.black,
-      borderColor: colors.black,
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
     },
     chipText: {
       fontSize: 12,
@@ -1719,7 +1719,7 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text2,
     },
     chipTextActive: {
-      color: colors.onBlack,
+      color: colors.ink,
     },
 
     // Filter bar
