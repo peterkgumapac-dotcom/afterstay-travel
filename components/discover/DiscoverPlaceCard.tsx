@@ -1,3 +1,4 @@
+import React from 'react';
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { Footprints, Car } from 'lucide-react-native';
@@ -35,7 +36,7 @@ interface DiscoverPlaceCardProps {
   onExplore?: () => void;
 }
 
-export function DiscoverPlaceCard({
+export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   place,
   travelTime,
   distanceLabel,
@@ -215,7 +216,7 @@ export function DiscoverPlaceCard({
       </TouchableOpacity>
     </TouchableOpacity>
   );
-}
+});
 
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({

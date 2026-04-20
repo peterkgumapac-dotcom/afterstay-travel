@@ -461,7 +461,7 @@ function SegBtn({
 
 export default function DiscoverScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const [tab, setTab] = useState<TabId>('places');
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
@@ -787,8 +787,22 @@ export default function DiscoverScreen() {
     }
   }, [style, prompt, itineraryScope]);
 
-  const activeFilterCount = countActiveFilters(filters);
-  const filteredPlaces = applyPlaceFilters(places, filters);
+  const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
+  const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
+
+  // Pre-compute travel data for each filtered place (avoid IIFEs per card per render)
+  const travelModeNorm = travelMode === 'drive' ? 'car' as const : 'walk' as const;
+  const placesWithTravel = useMemo(() =>
+    filteredPlaces.map((p) => {
+      const km = getDistanceKm(p.lat, p.lng);
+      return {
+        place: p,
+        travelTimeStr: km > 0 ? travelTime(km, travelModeNorm) : undefined,
+        distanceLabelStr: km > 0 ? fmtKm(km) : undefined,
+      };
+    }),
+    [filteredPlaces, getDistanceKm, travelModeNorm],
+  );
 
   const selectedCategory = cat
     ? CATEGORIES.find((c) => c.id === cat)
@@ -1265,13 +1279,13 @@ export default function DiscoverScreen() {
                   </Text>
                 </View>
               ) : (
-                filteredPlaces.map((p) => (
+                placesWithTravel.map(({ place: p, travelTimeStr, distanceLabelStr }) => (
                   <DiscoverPlaceCard
                     key={p.n}
                     place={p}
-                    travelTime={(() => { const km = getDistanceKm(p.lat, p.lng); return km > 0 ? travelTime(km, travelMode === 'drive' ? 'car' : 'walk') : undefined; })()}
-                    distanceLabel={(() => { const km = getDistanceKm(p.lat, p.lng); return km > 0 ? fmtKm(km) : undefined; })()}
-                    travelMode={travelMode === 'drive' ? 'car' : 'walk'}
+                    travelTime={travelTimeStr}
+                    distanceLabel={distanceLabelStr}
+                    travelMode={travelModeNorm}
                     isSaved={saved.has(p.n)}
                     isRecommended={recommended.has(p.n)}
                     onSave={() => toggleSave(p.n)}
