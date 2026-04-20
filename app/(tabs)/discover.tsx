@@ -54,7 +54,7 @@ import { CONFIG } from '@/lib/config';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'places' | 'planner' | 'saved';
-type TravelMode = 'walk' | 'drive';
+type TravelMode = 'walk' | 'car';
 type DistanceOrigin = 'hotel' | 'me';
 type FilterState = {
   minRating: number;
@@ -511,7 +511,7 @@ export default function DiscoverScreen() {
   }, [switchToMyLocation]);
 
   const handleTravelModeChange = useCallback((m: 'walk' | 'car') => {
-    setTravelMode(m as TravelMode);
+    setTravelMode(m);
     cacheSet('discover:travelMode', m);
   }, []);
 
@@ -761,7 +761,7 @@ export default function DiscoverScreen() {
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
 
-  const travelModeNorm = travelMode === 'drive' ? 'car' as const : 'walk' as const;
+  const travelModeNorm = travelMode;
 
   // Pre-compute distances once (stable numbers). Cards compute their own display strings.
   const placesWithDistance = useMemo(() =>
@@ -1062,7 +1062,7 @@ export default function DiscoverScreen() {
             {/* Distance anchor + travel mode */}
             <DistanceToggle
               anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
-              travelMode={travelMode === 'drive' ? 'car' : 'walk'}
+              travelMode={travelMode}
               onAnchorChange={handleAnchorChange}
               onTravelModeChange={handleTravelModeChange}
             />
