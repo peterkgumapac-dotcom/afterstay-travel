@@ -4,7 +4,7 @@
     "slug": "afterstay-travel",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/icon/afterstay-icon.png",
     "scheme": "afterstay",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -14,12 +14,18 @@
       "backgroundColor": "#080b12"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": {
+        "light": "./assets/icon/afterstay-icon.png",
+        "dark": "./assets/icon/afterstay-icon-dark.png",
+        "tinted": "./assets/icon/afterstay-icon-mono-black.png"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#080b12"
+        "foregroundImage": "./assets/icon/afterstay-adaptive-foreground.png",
+        "backgroundImage": "./assets/icon/afterstay-adaptive-background.png",
+        "monochromeImage": "./assets/icon/afterstay-monochrome.png"
       },
       "package": "com.afterstay.travel"
     },
