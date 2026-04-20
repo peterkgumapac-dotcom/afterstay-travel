@@ -4,7 +4,7 @@ export const CONFIG = {
   SUPABASE_KEY: process.env.EXPO_PUBLIC_SUPABASE_KEY || '',
   WEATHER_KEY: process.env.EXPO_PUBLIC_WEATHER_API_KEY || '',
   ANTHROPIC_KEY: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '',
-  TRIP_PAGE_ID: process.env.EXPO_PUBLIC_TRIP_PAGE_ID || '344e56a9-1cd3-8123-aa32-da48cfbfb7c1',
+  TRIP_PAGE_ID: process.env.EXPO_PUBLIC_TRIP_PAGE_ID || '',
   HOTEL: { lat: 11.9710, lng: 121.9215 },
   HOTEL_COORDS: { lat: 11.9710, lng: 121.9215 },
   TRIP_BUDGET_KEY: 'tripBudget_v1',

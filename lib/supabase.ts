@@ -31,8 +31,7 @@ import type {
 
 // ---------- client ----------
 
-const SUPABASE_URL =
-  process.env.EXPO_PUBLIC_SUPABASE_URL ?? 'https://mzslhacnrwwmwgozpknm.supabase.co'
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? ''
 const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY ?? ''
 
 if (!SUPABASE_KEY) {

@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
@@ -221,12 +221,12 @@ export default function BudgetScreen() {
     load();
   }, [load]);
 
-  const total = trip?.budgetLimit ?? 0;
+  const total = useMemo(() => trip?.budgetLimit ?? 0, [trip?.budgetLimit]);
   const spent = expenseSummary.total;
   const remaining = total - spent;
-  const days = trip ? Math.max(1, Math.ceil(
+  const days = useMemo(() => trip ? Math.max(1, Math.ceil(
     (safeParse(trip.endDate).getTime() - safeParse(trip.startDate).getTime()) / 86400000
-  ) + 1) : 1;
+  ) + 1) : 1, [trip?.startDate, trip?.endDate]);
   const perDay = total > 0 ? Math.round(total / days) : 0;
   const destLabel = trip?.destination ?? '';
 
