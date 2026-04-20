@@ -31,9 +31,9 @@ interface DiscoverPlaceCardProps {
   travelMode?: 'walk' | 'car';
   isSaved: boolean;
   isRecommended: boolean;
-  onSave: () => void;
-  onRecommend: () => void;
-  onExplore?: () => void;
+  onSave: (name: string) => void;
+  onRecommend: (name: string) => void;
+  onExplore?: (placeId: string | undefined, name: string) => void;
 }
 
 export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
@@ -57,7 +57,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
       style={styles.card}
       activeOpacity={0.85}
       onPress={() => {
-        if (onExplore) onExplore();
+        if (onExplore) onExplore(place.placeId, place.n);
       }}
       accessibilityRole="button"
       accessibilityLabel={`View details for ${place.n}`}
@@ -128,7 +128,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
           accessibilityLabel={`Explore ${place.n}`}
           onPress={() => {
             if (onExplore) {
-              onExplore();
+              onExplore(place.placeId, place.n);
             } else if (place.lat != null && place.lng != null) {
               Linking.openURL(
                 `https://maps.google.com/?q=${place.lat},${place.lng}`,
@@ -161,7 +161,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
             styles.saveBtn,
             isSaved && styles.saveBtnActive,
           ]}
-          onPress={onSave}
+          onPress={() => onSave(place.n)}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={isSaved ? 'Saved' : 'Save'}
@@ -193,7 +193,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
           styles.recommendBtn,
           isRecommended && styles.recommendBtnActive,
         ]}
-        onPress={onRecommend}
+        onPress={() => onRecommend(place.n)}
         activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={isRecommended ? 'Recommended to group' : 'Recommend to group'}

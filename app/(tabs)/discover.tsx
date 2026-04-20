@@ -804,6 +804,12 @@ export default function DiscoverScreen() {
     [filteredPlaces, getDistanceKm, travelModeNorm],
   );
 
+  const handleExplore = useCallback((placeId: string | undefined, name: string) => {
+    setDetailPlaceId(placeId ?? null);
+    setDetailPlaceName(name);
+    setShowDetail(true);
+  }, []);
+
   const selectedCategory = cat
     ? CATEGORIES.find((c) => c.id === cat)
     : undefined;
@@ -1279,22 +1285,18 @@ export default function DiscoverScreen() {
                   </Text>
                 </View>
               ) : (
-                placesWithTravel.map(({ place: p, travelTimeStr, distanceLabelStr }) => (
+                placesWithTravel.map(({ place: p, travelTimeStr, distanceLabelStr }, idx) => (
                   <DiscoverPlaceCard
-                    key={p.n}
+                    key={p.placeId ?? `${p.n}-${idx}`}
                     place={p}
                     travelTime={travelTimeStr}
                     distanceLabel={distanceLabelStr}
                     travelMode={travelModeNorm}
                     isSaved={saved.has(p.n)}
                     isRecommended={recommended.has(p.n)}
-                    onSave={() => toggleSave(p.n)}
-                    onRecommend={() => toggleRecommend(p.n)}
-                    onExplore={() => {
-                      setDetailPlaceId(p.placeId ?? null);
-                      setDetailPlaceName(p.n);
-                      setShowDetail(true);
-                    }}
+                    onSave={toggleSave}
+                    onRecommend={toggleRecommend}
+                    onExplore={handleExplore}
                   />
                 ))
               )}
@@ -1385,17 +1387,18 @@ export default function DiscoverScreen() {
                 </View>
                 {savedPlaces.map((p) => {
                   const dp = mapSavedPlaceToDiscoverPlace(p);
+                  const km = getDistanceKm(dp.lat, dp.lng);
                   return (
                     <DiscoverPlaceCard
                       key={p.id}
                       place={dp}
-                      travelTime={(() => { const km = getDistanceKm(dp.lat, dp.lng); return km > 0 ? travelTime(km, travelMode === 'drive' ? 'car' : 'walk') : undefined; })()}
-                      distanceLabel={(() => { const km = getDistanceKm(dp.lat, dp.lng); return km > 0 ? fmtKm(km) : undefined; })()}
-                      travelMode={travelMode === 'drive' ? 'car' : 'walk'}
+                      travelTime={km > 0 ? travelTime(km, travelModeNorm) : undefined}
+                      distanceLabel={km > 0 ? fmtKm(km) : undefined}
+                      travelMode={travelModeNorm}
                       isSaved={true}
                       isRecommended={recommended.has(p.name)}
-                      onSave={() => toggleSave(p.name)}
-                      onRecommend={() => toggleRecommend(p.name)}
+                      onSave={toggleSave}
+                      onRecommend={toggleRecommend}
                     />
                   );
                 })}
