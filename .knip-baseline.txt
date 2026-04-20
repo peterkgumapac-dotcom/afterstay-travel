@@ -1,4 +1,4 @@
-Unused files (13)
+Unused files (14)
 components/CachedImage.tsx: components/CachedImage.tsx
 design-reference/components/icons.jsx: design-reference/components/icons.jsx
 design-reference/components/shell.jsx: design-reference/components/shell.jsx
@@ -12,19 +12,19 @@ design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
 lib/cache/cacheFirst.ts: lib/cache/cacheFirst.ts
 lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
+lib/cache/storage.ts: lib/cache/storage.ts
 Unused dependencies (1)
-package.json: @clerk/expo, @expo/vector-icons, @tanstack/react-query-persist-client, base64-arraybuffer, exifr, expo-av, expo-calendar, expo-secure-store, expo-sharing
+package.json: @clerk/expo, @expo/vector-icons, @tanstack/query-sync-storage-persister, @tanstack/react-query-persist-client, base64-arraybuffer, exifr, expo-av, expo-calendar, expo-secure-store, expo-sharing, react-native-mmkv
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (6)
+Unused exports (5)
 components/budget/WhoPaysPicker.tsx: WhoPaysSegment
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
 lib/google-places.ts: searchPlace, HOTEL_LAT, HOTEL_LNG
-lib/queryClient.ts: persister
 Unused exported types (5)
 constants/ThemeContext.tsx: ThemeMode
 lib/anthropic.ts: ScannedReceipt

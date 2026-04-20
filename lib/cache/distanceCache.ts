@@ -1,12 +1,8 @@
-import { storage } from './storage';
 import { haversine } from '@/lib/distance';
 
-const PRECISION = 5;
-const PREFIX = 'v1:distance:';
-
-function roundKey(n: number): string {
-  return n.toFixed(PRECISION);
-}
+// In-memory cache — distances are pure math (no network), so memory-only is fine.
+// Hotel and place coordinates don't change, so cache lives for the app session.
+const cache = new Map<string, number>();
 
 export function cachedHaversine(
   lat1: number,
@@ -14,12 +10,10 @@ export function cachedHaversine(
   lat2: number,
   lng2: number,
 ): number {
-  const key = `${PREFIX}${roundKey(lat1)},${roundKey(lng1)},${roundKey(lat2)},${roundKey(lng2)}`;
-
-  const cached = storage.getString(key);
-  if (cached !== undefined) return Number(cached);
-
+  const key = `${lat1.toFixed(5)},${lng1.toFixed(5)},${lat2.toFixed(5)},${lng2.toFixed(5)}`;
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
   const km = haversine(lat1, lng1, lat2, lng2);
-  storage.set(key, km.toString());
+  cache.set(key, km);
   return km;
 }
