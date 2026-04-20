@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 let MapView: any = null;
 let Marker: any = null;
@@ -36,7 +37,7 @@ import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
-import { distanceFromHotel, formatDistance, estimateWalkTime, estimateDriveTime } from '@/lib/distance';
+import { distanceFromHotel, distanceFromPoint, formatDistance, estimateWalkTime, estimateDriveTime } from '@/lib/distance';
 import { searchNearby, type NearbyPlace } from '@/lib/google-places';
 import {
   addPlace,
@@ -51,6 +52,7 @@ import { CONFIG } from '@/lib/config';
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'places' | 'planner' | 'saved';
 type TravelMode = 'walk' | 'drive';
+type DistanceOrigin = 'hotel' | 'me';
 type FilterState = {
   minRating: number;
   openNow: boolean;
@@ -460,6 +462,8 @@ export default function DiscoverScreen() {
 
   const [tab, setTab] = useState<TabId>('places');
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
+  const [distanceOrigin, setDistanceOrigin] = useState<DistanceOrigin>('hotel');
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [prompt, setPrompt] = useState('');
   const [style, setStyle] = useState('relaxed');
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
@@ -491,6 +495,31 @@ export default function DiscoverScreen() {
   const placesCache = useRef<Record<string, readonly DiscoverPlace[]>>({});
 
   const [tripDest, setTripDest] = useState('');
+
+  // Compute distance from the selected origin (hotel or current location)
+  const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
+    if (!placeLat || !placeLng) return 0;
+    if (distanceOrigin === 'me' && userLocation) {
+      return distanceFromPoint(userLocation.lat, userLocation.lng, placeLat, placeLng);
+    }
+    return distanceFromHotel(placeLat, placeLng);
+  }, [distanceOrigin, userLocation]);
+
+  // Fetch GPS when user switches to "me"
+  const switchToMyLocation = useCallback(async () => {
+    if (userLocation) {
+      setDistanceOrigin('me');
+      return;
+    }
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      setDistanceOrigin('hotel');
+      return;
+    }
+    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+    setDistanceOrigin('me');
+  }, [userLocation]);
 
   // Load trip ID on mount
   useEffect(() => {
@@ -1092,11 +1121,28 @@ export default function DiscoverScreen() {
               </FilterChip>
               <View style={styles.travelToggle}>
                 <TouchableOpacity
+                  onPress={() => setDistanceOrigin('hotel')}
+                  style={[styles.travelBtn, distanceOrigin === 'hotel' && styles.travelBtnActive]}
+                >
+                  <Text style={[styles.travelBtnText, distanceOrigin === 'hotel' && styles.travelBtnTextActive]}>
+                    {'\uD83C\uDFE8'} Hotel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={switchToMyLocation}
+                  style={[styles.travelBtn, distanceOrigin === 'me' && styles.travelBtnActive]}
+                >
+                  <Text style={[styles.travelBtnText, distanceOrigin === 'me' && styles.travelBtnTextActive]}>
+                    {'\uD83D\uDCCD'} Me
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.travelDivider} />
+                <TouchableOpacity
                   onPress={() => setTravelMode('walk')}
                   style={[styles.travelBtn, travelMode === 'walk' && styles.travelBtnActive]}
                 >
                   <Text style={[styles.travelBtnText, travelMode === 'walk' && styles.travelBtnTextActive]}>
-                    {'\uD83D\uDEB6'} Walk
+                    {'\uD83D\uDEB6'}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1104,7 +1150,7 @@ export default function DiscoverScreen() {
                   style={[styles.travelBtn, travelMode === 'drive' && styles.travelBtnActive]}
                 >
                   <Text style={[styles.travelBtnText, travelMode === 'drive' && styles.travelBtnTextActive]}>
-                    {'\uD83D\uDE97'} Drive
+                    {'\uD83D\uDE97'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1227,7 +1273,7 @@ export default function DiscoverScreen() {
                   <DiscoverPlaceCard
                     key={p.n}
                     place={p}
-                    travelTime={p.dn > 0 ? (travelMode === 'walk' ? estimateWalkTime(p.dn) : estimateDriveTime(p.dn)) : undefined}
+                    travelTime={(() => { const km = getDistanceKm(p.lat, p.lng); return km > 0 ? (travelMode === 'walk' ? estimateWalkTime(km) : estimateDriveTime(km)) : undefined; })()}
                     isSaved={saved.has(p.n)}
                     isRecommended={recommended.has(p.n)}
                     onSave={() => toggleSave(p.n)}
@@ -1331,7 +1377,7 @@ export default function DiscoverScreen() {
                     <DiscoverPlaceCard
                       key={p.id}
                       place={dp}
-                      travelTime={dp.dn > 0 ? (travelMode === 'walk' ? estimateWalkTime(dp.dn) : estimateDriveTime(dp.dn)) : undefined}
+                      travelTime={(() => { const km = getDistanceKm(dp.lat, dp.lng); return km > 0 ? (travelMode === 'walk' ? estimateWalkTime(km) : estimateDriveTime(km)) : undefined; })()}
                       isSaved={true}
                       isRecommended={recommended.has(p.name)}
                       onSave={() => toggleSave(p.name)}
@@ -1724,6 +1770,11 @@ const getStyles = (colors: ThemeColors) =>
     },
     travelBtnTextActive: {
       color: colors.accent,
+    },
+    travelDivider: {
+      width: 1,
+      backgroundColor: colors.border,
+      marginVertical: 4,
     },
 
     // Filter panel

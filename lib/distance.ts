@@ -20,6 +20,13 @@ export const distanceFromHotel = (lat: number, lng: number): number => {
   return haversine(CONFIG.HOTEL_COORDS.lat, CONFIG.HOTEL_COORDS.lng, lat, lng);
 };
 
+export const distanceFromPoint = (
+  fromLat: number, fromLng: number,
+  toLat: number, toLng: number,
+): number => {
+  return haversine(fromLat, fromLng, toLat, toLng);
+};
+
 export const formatDistance = (km: number): string => {
   if (km < 1) return `${Math.round(km * 1000)} m`;
   if (km < 10) return `${km.toFixed(1)} km`;
