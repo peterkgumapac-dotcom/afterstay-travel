@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 let MapView: any = null;
 let Marker: any = null;
 try {
@@ -352,7 +352,7 @@ function applyPlaceFilters(
 
 // ── Sub-components ──────────────────────────────────────────────────────
 
-function FilterChip({
+const FilterChip = React.memo(function FilterChip({
   active,
   onPress,
   children,
@@ -363,34 +363,27 @@ function FilterChip({
   children: React.ReactNode;
   colors: ThemeColors;
 }) {
+  const s = chipStyles(colors);
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={{
-        paddingVertical: 7,
-        paddingHorizontal: 11,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: active ? colors.accent : colors.border,
-        backgroundColor: active ? colors.accentBg : colors.card,
-      }}
+      style={[s.chip, active && s.chipActive]}
       activeOpacity={0.7}
       accessibilityRole="button"
     >
-      <Text
-        style={{
-          fontSize: 11.5,
-          fontWeight: '600',
-          color: active ? colors.accent : colors.text,
-        }}
-      >
-        {children}
-      </Text>
+      <Text style={[s.chipText, active && s.chipTextActive]}>{children}</Text>
     </TouchableOpacity>
   );
-}
+});
 
-function FilterRow({
+const chipStyles = (colors: ThemeColors) => StyleSheet.create({
+  chip: { paddingVertical: 7, paddingHorizontal: 11, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  chipActive: { borderColor: colors.accent, backgroundColor: colors.accentBg },
+  chipText: { fontSize: 11.5, fontWeight: '600', color: colors.text },
+  chipTextActive: { color: colors.accent },
+});
+
+const FilterRow = React.memo(function FilterRow({
   label,
   children,
   colors,
@@ -401,26 +394,15 @@ function FilterRow({
 }) {
   return (
     <View>
-      <Text
-        style={{
-          fontSize: 10,
-          fontWeight: '700',
-          letterSpacing: 1.4, // 0.14em * 10
-          textTransform: 'uppercase',
-          color: colors.text3,
-          marginBottom: 6,
-        }}
-      >
+      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: colors.text3, marginBottom: 6 }}>
         {label}
       </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {children}
-      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{children}</View>
     </View>
   );
-}
+});
 
-function SegBtn({
+const SegBtn = React.memo(function SegBtn({
   active,
   onPress,
   children,
@@ -431,31 +413,20 @@ function SegBtn({
   children: React.ReactNode;
   colors: ThemeColors;
 }) {
+  const s = segStyles(colors);
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        paddingVertical: 7,
-        paddingHorizontal: 10,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: active ? colors.black : colors.border,
-        backgroundColor: active ? colors.black : colors.card,
-      }}
-      activeOpacity={0.7}
-    >
-      <Text
-        style={{
-          fontSize: 11.5,
-          fontWeight: '600',
-          color: active ? colors.onBlack : colors.text,
-        }}
-      >
-        {children}
-      </Text>
+    <TouchableOpacity onPress={onPress} style={[s.seg, active && s.segActive]} activeOpacity={0.7}>
+      <Text style={[s.segText, active && s.segTextActive]}>{children}</Text>
     </TouchableOpacity>
   );
-}
+});
+
+const segStyles = (colors: ThemeColors) => StyleSheet.create({
+  seg: { paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  segActive: { borderColor: colors.black, backgroundColor: colors.black },
+  segText: { fontSize: 11.5, fontWeight: '600', color: colors.text },
+  segTextActive: { color: colors.onBlack },
+});
 
 // ── Main screen ─────────────────────────────────────────────────────────
 
@@ -804,6 +775,12 @@ export default function DiscoverScreen() {
     [filteredPlaces, getDistanceKm, travelModeNorm],
   );
 
+  // Stable filter callbacks — prevent FilterChip re-renders
+  const toggleOpenNow = useCallback(() => setFilters((f) => ({ ...f, openNow: !f.openNow })), []);
+  const toggleNearby = useCallback(() => setFilters((f) => ({ ...f, nearby: !f.nearby })), []);
+  const toggleRating = useCallback(() => setFilters((f) => ({ ...f, minRating: f.minRating >= 4.5 ? 0 : 4.5 })), []);
+  const toggleShowFilters = useCallback(() => setShowFilters((s) => !s), []);
+
   const handleExplore = useCallback((placeId: string | undefined, name: string) => {
     setDetailPlaceId(placeId ?? null);
     setDetailPlaceName(name);
@@ -1122,7 +1099,7 @@ export default function DiscoverScreen() {
             {/* Filter bar */}
             <View style={styles.filterBar}>
               <TouchableOpacity
-                onPress={() => setShowFilters((s) => !s)}
+                onPress={toggleShowFilters}
                 style={[
                   styles.filterBtn,
                   activeFilterCount > 0 && styles.filterBtnActive,
@@ -1142,30 +1119,21 @@ export default function DiscoverScreen() {
               </TouchableOpacity>
               <FilterChip
                 active={filters.openNow}
-                onPress={() =>
-                  setFilters((f) => ({ ...f, openNow: !f.openNow }))
-                }
+                onPress={toggleOpenNow}
                 colors={colors}
               >
                 Open now
               </FilterChip>
               <FilterChip
                 active={filters.nearby}
-                onPress={() =>
-                  setFilters((f) => ({ ...f, nearby: !f.nearby }))
-                }
+                onPress={toggleNearby}
                 colors={colors}
               >
                 Nearby
               </FilterChip>
               <FilterChip
                 active={filters.minRating >= 4.5}
-                onPress={() =>
-                  setFilters((f) => ({
-                    ...f,
-                    minRating: f.minRating >= 4.5 ? 0 : 4.5,
-                  }))
-                }
+                onPress={toggleRating}
                 colors={colors}
               >
                 {'\u2605'} 4.5+
@@ -1333,9 +1301,9 @@ export default function DiscoverScreen() {
                     {/* Place pins */}
                     {filteredPlaces
                       .filter((p) => p.lat && p.lng)
-                      .map((p) => (
+                      .map((p, idx) => (
                         <Marker
-                          key={p.n}
+                          key={p.placeId ?? `${p.n}-${idx}`}
                           coordinate={{ latitude: p.lat!, longitude: p.lng! }}
                           title={p.n}
                           description={`${p.t} \u00B7 ${p.d}`}
