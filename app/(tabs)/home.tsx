@@ -240,6 +240,64 @@ export default function HomeScreen() {
     await cacheSet('trip:phase:override', 'active');
   }, []);
 
+  // Hero gallery photos — must be above early returns (hooks order)
+  const hotelPhotos = useMemo<string[]>(() => {
+    if (!trip?.hotelPhotos) return FALLBACK_PHOTOS;
+    try {
+      const parsed = JSON.parse(trip.hotelPhotos);
+      return Array.isArray(parsed) && parsed.length > 0
+        ? parsed
+        : FALLBACK_PHOTOS;
+    } catch {
+      return FALLBACK_PHOTOS;
+    }
+  }, [trip?.hotelPhotos]);
+
+  // Date range label
+  const dateRange = useMemo(
+    () => trip ? `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}` : '',
+    [trip?.startDate, trip?.endDate],
+  );
+
+  // Countdown computation
+  const MS_PER_DAY = 86400000;
+  const tripStartMs = trip ? safeParse(trip.startDate).getTime() : 0;
+  const tripEndMs = trip ? safeParse(trip.endDate).getTime() : 0;
+  const nowMs = Date.now();
+  const totalNights = Math.max(
+    1,
+    tripStartMs && tripEndMs ? Math.ceil((tripEndMs - tripStartMs) / MS_PER_DAY) : 1,
+  );
+  const totalDays = totalNights;
+
+  const countdown = useMemo(() => {
+    if (!tripStartMs) return { status: 'upcoming' as const, totalDays };
+    if (nowMs < tripStartMs) {
+      return { status: 'upcoming' as const, totalDays };
+    }
+    if (nowMs > tripEndMs + MS_PER_DAY) {
+      return { status: 'completed' as const, totalDays };
+    }
+    const dayNumber = Math.floor((nowMs - tripStartMs) / MS_PER_DAY) + 1;
+    return { status: 'active' as const, dayNumber, totalDays };
+  }, [nowMs, tripStartMs, tripEndMs, totalDays]);
+
+  // Quick access tiles
+  const quickAccessTiles = useMemo(() => [
+    { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: trip?.checkIn || '3:00 PM' },
+    { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: trip?.checkOut || '12:00 PM' },
+    { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: trip?.wifiSsid || 'Not set' },
+    { id: 'door', iconName: 'door', label: 'Door code', value: trip?.doorCode ? '\u2022\u2022\u2022\u2022' : '\u2014' },
+  ], [trip?.checkIn, trip?.checkOut, trip?.wifiSsid, trip?.doorCode]);
+
+  // Room info
+  const roomInfo = useMemo(
+    () => trip?.roomType
+      ? `${trip.roomType} \u00D7 2 \u00B7 ${totalNights} nights \u00B7 ${dateRange}`
+      : undefined,
+    [trip?.roomType, totalNights, dateRange],
+  );
+
   if (loading || !loaderDone) {
     return (
       <LivingPostcardLoader
@@ -271,63 +329,6 @@ export default function HomeScreen() {
       </SafeAreaView>
     );
   }
-
-  // Hero gallery photos
-  const hotelPhotos = useMemo<string[]>(() => {
-    if (!trip.hotelPhotos) return FALLBACK_PHOTOS;
-    try {
-      const parsed = JSON.parse(trip.hotelPhotos);
-      return Array.isArray(parsed) && parsed.length > 0
-        ? parsed
-        : FALLBACK_PHOTOS;
-    } catch {
-      return FALLBACK_PHOTOS;
-    }
-  }, [trip.hotelPhotos]);
-
-  // Date range label
-  const dateRange = useMemo(
-    () => `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}`,
-    [trip.startDate, trip.endDate],
-  );
-
-  // Countdown computation
-  const MS_PER_DAY = 86400000;
-  const tripStartMs = safeParse(trip.startDate).getTime();
-  const tripEndMs = safeParse(trip.endDate).getTime();
-  const nowMs = Date.now();
-  const totalNights = Math.max(
-    1,
-    Math.ceil((tripEndMs - tripStartMs) / MS_PER_DAY),
-  );
-  const totalDays = totalNights;
-
-  const countdown = useMemo(() => {
-    if (nowMs < tripStartMs) {
-      return { status: 'upcoming' as const, totalDays };
-    }
-    if (nowMs > tripEndMs + MS_PER_DAY) {
-      return { status: 'completed' as const, totalDays };
-    }
-    const dayNumber = Math.floor((nowMs - tripStartMs) / MS_PER_DAY) + 1;
-    return { status: 'active' as const, dayNumber, totalDays };
-  }, [nowMs, tripStartMs, tripEndMs, totalDays]);
-
-  // Quick access tiles
-  const quickAccessTiles = useMemo(() => [
-    { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: trip.checkIn || '3:00 PM' },
-    { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: trip.checkOut || '12:00 PM' },
-    { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: trip.wifiSsid || 'Not set' },
-    { id: 'door', iconName: 'door', label: 'Door code', value: trip.doorCode ? '\u2022\u2022\u2022\u2022' : '\u2014' },
-  ], [trip.checkIn, trip.checkOut, trip.wifiSsid, trip.doorCode]);
-
-  // Room info
-  const roomInfo = useMemo(
-    () => trip.roomType
-      ? `${trip.roomType} \u00D7 2 \u00B7 ${totalNights} nights \u00B7 ${dateRange}`
-      : undefined,
-    [trip.roomType, totalNights, dateRange],
-  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
