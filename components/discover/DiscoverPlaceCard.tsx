@@ -288,7 +288,8 @@ const getStyles = (colors: ThemeColors) =>
     ratingRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+      flexWrap: 'wrap',
+      gap: 4,
       marginTop: 6,
     },
     starRow: {

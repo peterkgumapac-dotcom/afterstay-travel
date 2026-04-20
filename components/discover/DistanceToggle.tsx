@@ -56,7 +56,7 @@ function SplitToggle<T extends string>({
             accessibilityLabel={opt.label}
             accessibilityState={{ selected: isActive }}
           >
-            <Icon size={16} strokeWidth={1.8} color={color} />
+            <Icon size={13} strokeWidth={1.8} color={color} />
             <Text style={[styles.segmentLabel, { color }]}>{opt.label}</Text>
           </Pressable>
         );
@@ -118,23 +118,26 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: radius.lg,
-      paddingVertical: 10,
-      paddingHorizontal: 14,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      marginHorizontal: spacing.lg,
+      marginBottom: spacing.sm,
     },
     eyebrow: {
-      fontSize: 10,
-      fontWeight: '600',
-      letterSpacing: 1.8,
+      fontSize: 9,
+      fontWeight: '700',
+      letterSpacing: 1.6,
       textTransform: 'uppercase',
       color: colors.text3,
-      marginRight: spacing.md,
+      marginRight: spacing.sm,
     },
     togglesRow: {
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.sm,
+      justifyContent: 'space-between',
+      gap: spacing.xs,
     },
   });
 
@@ -149,13 +152,13 @@ const getSplitStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     segment: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 5,
-      paddingVertical: 9,
-      paddingHorizontal: 14,
+      gap: 4,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
       borderRadius: radius.pill,
     },
     segmentLabel: {
-      fontSize: 13,
+      fontSize: 11,
       fontWeight: '600',
     },
   });
