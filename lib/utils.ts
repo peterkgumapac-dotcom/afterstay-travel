@@ -1,7 +1,6 @@
 // Date, countdown, formatting, and misc helpers.
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /**
  * Android-safe date parser. Date-only strings like "2026-04-20" get parsed as
@@ -14,7 +13,7 @@ export function safeParse(iso: string): Date {
   return new Date(iso);
 }
 
-export function daysUntil(iso: string, now: Date = new Date()): number {
+function daysUntil(iso: string, now: Date = new Date()): number {
   const target = safeParse(iso);
   const ms = target.getTime() - now.getTime();
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
@@ -48,13 +47,7 @@ function toPht(iso: string): Date {
   return new Date(d.getTime() + 8 * 60 * 60 * 1000);
 }
 
-export function formatDateRange(startIso: string, endIso: string): string {
-  const s = toPht(startIso);
-  const e = toPht(endIso);
-  return `${MONTHS_SHORT[s.getUTCMonth()]} ${s.getUTCDate()} – ${MONTHS_SHORT[e.getUTCMonth()]} ${e.getUTCDate()}, ${e.getUTCFullYear()}`;
-}
-
-export function formatTime(iso: string): string {
+function formatTime(iso: string): string {
   // Manual PHT (UTC+8) formatting — device-timezone-safe
   const pht = toPht(iso);
   let h = pht.getUTCHours();
@@ -62,11 +55,6 @@ export function formatTime(iso: string): string {
   const ampm = h >= 12 ? 'PM' : 'AM';
   h = h % 12 || 12;
   return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
-}
-
-export function formatDay(iso: string): string {
-  const d = toPht(iso);
-  return DAYS_SHORT[d.getUTCDay()];
 }
 
 export function formatCurrency(amount: number, currency: string = 'PHP'): string {
@@ -81,34 +69,6 @@ export function formatCurrency(amount: number, currency: string = 'PHP'): string
   }
 }
 
-export function flightDuration(departIso: string, arriveIso: string): string {
-  const ms = safeParse(arriveIso).getTime() - safeParse(departIso).getTime();
-  const mins = Math.max(0, Math.round(ms / 60000));
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m}m`;
-  return `${h}h ${m}m`;
-}
-
-export function calcLeaveByTime(
-  departIso: string,
-  minutesToAirport: number = 60
-): { leaveBy: string; checkoutBuffer: string } {
-  const depart = safeParse(departIso);
-  // Airport arrival buffer: 90 minutes before domestic
-  const atAirport = new Date(depart.getTime() - 90 * 60000);
-  const leaveBy = new Date(atAirport.getTime() - minutesToAirport * 60000);
-  return {
-    leaveBy: formatTimePHT(leaveBy.toISOString()),
-    checkoutBuffer: formatTimePHT(atAirport.toISOString()),
-  };
-}
-
-export function hoursUntil(iso: string, now: Date = new Date()): number {
-  const ms = safeParse(iso).getTime() - now.getTime();
-  return ms / (1000 * 60 * 60);
-}
-
 export function formatTimePHT(iso: string): string {
   return formatTime(iso);
 }
@@ -116,12 +76,6 @@ export function formatTimePHT(iso: string): string {
 export function formatDatePHT(iso: string): string {
   const d = toPht(iso);
   return `${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}`;
-}
-
-export function mask(value: string, visible: number = 2): string {
-  if (!value) return '';
-  if (value.length <= visible) return '•'.repeat(value.length);
-  return '•'.repeat(value.length - visible) + value.slice(-visible);
 }
 
 export function fmtKm(km: number): string {

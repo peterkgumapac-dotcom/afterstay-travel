@@ -99,13 +99,6 @@ export const typography = {
   display: { fontWeight: '500' as const, letterSpacing: -0.8 },
 } as const;
 
-export const density = {
-  padCard: 18,
-  padStack: 16,
-  cardGap: 14,
-  rowV: 14,
-} as const;
-
 export const elevation = {
   card: {
     shadowColor: '#000',

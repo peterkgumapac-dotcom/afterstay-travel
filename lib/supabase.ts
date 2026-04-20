@@ -5,7 +5,6 @@
 import { createClient } from '@supabase/supabase-js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as FileSystem from 'expo-file-system/legacy'
-import { decode } from 'base64-arraybuffer'
 import { compressImage } from './compressImage'
 
 import type {
@@ -301,14 +300,6 @@ export async function getActiveTrip(): Promise<Trip | null> {
   return trip
 }
 
-export async function updateTrip(
-  tripId: string,
-  properties: Record<string, unknown>
-): Promise<void> {
-  const { error } = await supabase.from(T.trips).update(properties).eq('id', tripId)
-  if (error) throw new Error(`updateTrip: ${error.message}`)
-}
-
 /**
  * Update a single text property on a trip.
  * The key uses the Notion-era display name; we map it to the Supabase column.
@@ -377,24 +368,6 @@ export async function getFlights(tripId?: string): Promise<Flight[]> {
   return (data ?? []).map(mapFlight)
 }
 
-export async function addFlight(
-  input: Omit<Flight, 'id'> & { tripId?: string }
-): Promise<void> {
-  const id = await resolveTripId(input.tripId)
-  const { error } = await supabase.from(T.flights).insert({
-    trip_id: id,
-    flight_number: input.flightNumber,
-    direction: input.direction,
-    airline: input.airline,
-    origin: input.from,
-    destination: input.to,
-    departure_time: input.departTime,
-    arrival_time: input.arriveTime,
-    ...(input.passenger ? { passenger: input.passenger } : {}),
-  })
-  if (error) throw new Error(`addFlight: ${error.message}`)
-}
-
 // ---------- GROUP MEMBERS ----------
 
 export async function getGroupMembers(tripId?: string): Promise<GroupMember[]> {
@@ -406,20 +379,6 @@ export async function getGroupMembers(tripId?: string): Promise<GroupMember[]> {
 
   if (error) throw new Error(`getGroupMembers: ${error.message}`)
   return (data ?? []).map(mapMember)
-}
-
-export async function addGroupMember(
-  input: Omit<GroupMember, 'id'> & { tripId?: string }
-): Promise<void> {
-  const id = await resolveTripId(input.tripId)
-  const { error } = await supabase.from(T.groupMembers).insert({
-    trip_id: id,
-    name: input.name,
-    role: input.role,
-    ...(input.phone ? { phone: input.phone } : {}),
-    ...(input.email ? { email: input.email } : {}),
-  })
-  if (error) throw new Error(`addGroupMember: ${error.message}`)
 }
 
 export async function updateMemberPhoto(memberId: string, localUri: string): Promise<void> {
@@ -635,12 +594,6 @@ export async function savePlace(placeId: string, saved: boolean): Promise<void> 
   if (error) throw new Error(`savePlace: ${error.message}`)
 }
 
-export async function deletePlacesForTrip(tripId?: string): Promise<void> {
-  const id = await resolveTripId(tripId)
-  const { error } = await supabase.from(T.places).delete().eq('trip_id', id)
-  if (error) throw new Error(`deletePlacesForTrip: ${error.message}`)
-}
-
 // ---------- CHECKLIST ----------
 
 export async function getChecklist(tripId?: string): Promise<ChecklistItem[]> {
@@ -653,30 +606,6 @@ export async function getChecklist(tripId?: string): Promise<ChecklistItem[]> {
 
   if (error) throw new Error(`getChecklist: ${error.message}`)
   return (data ?? []).map(mapChecklist)
-}
-
-export async function addChecklistItem(
-  input: Omit<ChecklistItem, 'id' | 'done'> & { tripId?: string }
-): Promise<void> {
-  const id = await resolveTripId(input.tripId)
-  const { error } = await supabase.from(T.checklist).insert({
-    trip_id: id,
-    title: input.task,
-    is_done: false,
-    ...(input.doneBy ? { done_by: input.doneBy } : {}),
-  })
-  if (error) throw new Error(`addChecklistItem: ${error.message}`)
-}
-
-export async function toggleChecklistItem(
-  itemId: string,
-  done: boolean,
-  doneBy?: string
-): Promise<void> {
-  const updates: Record<string, unknown> = { is_done: done }
-  if (doneBy) updates.done_by = doneBy
-  const { error } = await supabase.from(T.checklist).update(updates).eq('id', itemId)
-  if (error) throw new Error(`toggleChecklistItem: ${error.message}`)
 }
 
 // ---------- MOMENTS ----------
@@ -876,88 +805,7 @@ export async function updateProfile(
   if (error) throw new Error(`updateProfile: ${error.message}`)
 }
 
-// ---------- TRIP PHASE / FLIGHT STATUS ----------
-
-export type TripPhase = 'upcoming' | 'inflight' | 'arrived' | 'active'
-export type FlightStatus = 'scheduled' | 'boarding' | 'in-flight' | 'landed'
-
-export async function updateTripPhase(tripId: string, phase: TripPhase): Promise<void> {
-  const updates: Record<string, unknown> = { trip_phase: phase }
-  if (phase === 'inflight') updates.flight_departed_at = new Date().toISOString()
-  if (phase === 'arrived') updates.flight_arrived_at = new Date().toISOString()
-  const { error } = await supabase.from('trips').update(updates).eq('id', tripId)
-  if (error) throw new Error(`updateTripPhase: ${error.message}`)
-}
-
-export async function getTripPhase(tripId: string): Promise<{ phase: TripPhase; departedAt?: string; arrivedAt?: string }> {
-  const { data, error } = await supabase
-    .from('trips')
-    .select('trip_phase, flight_departed_at, flight_arrived_at')
-    .eq('id', tripId)
-    .single()
-  if (error || !data) return { phase: 'upcoming' }
-  return {
-    phase: (data.trip_phase as TripPhase) || 'upcoming',
-    departedAt: data.flight_departed_at ?? undefined,
-    arrivedAt: data.flight_arrived_at ?? undefined,
-  }
-}
-
-export async function updateFlightStatus(flightId: string, status: FlightStatus): Promise<void> {
-  const updates: Record<string, unknown> = { status }
-  if (status === 'in-flight') updates.departed_at = new Date().toISOString()
-  if (status === 'landed') updates.arrived_at = new Date().toISOString()
-  const { error } = await supabase.from('flights').update(updates).eq('id', flightId)
-  if (error) throw new Error(`updateFlightStatus: ${error.message}`)
-}
-
-export async function getFlightStatus(flightId: string): Promise<{ status: FlightStatus; departedAt?: string; arrivedAt?: string }> {
-  const { data, error } = await supabase
-    .from('flights')
-    .select('status, departed_at, arrived_at')
-    .eq('id', flightId)
-    .single()
-  if (error || !data) return { status: 'scheduled' }
-  return {
-    status: (data.status as FlightStatus) || 'scheduled',
-    departedAt: data.departed_at ?? undefined,
-    arrivedAt: data.arrived_at ?? undefined,
-  }
-}
-
-/**
- * Get the relevant flight based on trip phase:
- * - upcoming/in-flight → Outbound flight
- * - arrived → Return flight
- */
-export async function getRelevantFlight(tripId: string): Promise<Flight | null> {
-  const { phase } = await getTripPhase(tripId)
-  const direction = phase === 'arrived' ? 'Return' : 'Outbound'
-  const { data, error } = await supabase
-    .from('flights')
-    .select('*')
-    .eq('trip_id', tripId)
-    .eq('direction', direction)
-    .limit(1)
-    .single()
-  if (error || !data) {
-    // Fallback: get any flight
-    const { data: any } = await supabase
-      .from('flights')
-      .select('*')
-      .eq('trip_id', tripId)
-      .limit(1)
-      .single()
-    if (!any) return null
-    return mapFlight(any)
-  }
-  return mapFlight(data)
-}
-
 // ---------- LIFETIME STATS & HIGHLIGHTS ----------
-
-/** Re-export the trip mapper so lifetimeStats.ts can reuse it. */
-export const mapTripRow = mapTrip
 
 export async function getLifetimeStats(userId: string): Promise<LifetimeStats | null> {
   const { data } = await supabase
@@ -979,26 +827,6 @@ export async function getLifetimeStats(userId: string): Promise<LifetimeStats | 
   }
 }
 
-export async function upsertLifetimeStats(
-  userId: string,
-  stats: LifetimeStats,
-): Promise<void> {
-  const { error } = await supabase.from('lifetime_stats').upsert({
-    user_id: userId,
-    total_trips: stats.totalTrips,
-    total_countries: stats.totalCountries,
-    total_nights: stats.totalNights,
-    total_miles: stats.totalMiles,
-    total_spent: stats.totalSpent,
-    home_currency: stats.homeCurrency,
-    total_moments: stats.totalMoments,
-    countries_list: stats.countriesList,
-    earliest_trip_date: stats.earliestTripDate,
-    updated_at: new Date().toISOString(),
-  })
-  if (error) throw new Error(`upsertLifetimeStats: ${error.message}`)
-}
-
 export async function getHighlights(userId: string): Promise<Highlight[]> {
   const { data } = await supabase
     .from('highlights')
@@ -1015,26 +843,6 @@ export async function getHighlights(userId: string): Promise<Highlight[]> {
   }))
 }
 
-export async function saveHighlights(
-  userId: string,
-  highlights: Highlight[],
-): Promise<void> {
-  const { error: delErr } = await supabase.from('highlights').delete().eq('user_id', userId)
-  if (delErr) throw new Error(`saveHighlights delete: ${delErr.message}`)
-  if (highlights.length > 0) {
-    const { error: insErr } = await supabase.from('highlights').insert(
-      highlights.map((h, i) => ({
-        user_id: userId,
-        type: h.type,
-        display_text: h.displayText,
-        supporting_data: h.supportingData ?? {},
-        rank: i,
-      })),
-    )
-    if (insErr) throw new Error(`saveHighlights insert: ${insErr.message}`)
-  }
-}
-
 export async function getPastTrips(userId: string): Promise<Trip[]> {
   const { data } = await supabase
     .from(T.trips)
@@ -1044,30 +852,4 @@ export async function getPastTrips(userId: string): Promise<Trip[]> {
     .order('start_date', { ascending: false })
   if (!data) return []
   return data.map(mapTrip)
-}
-
-export async function addPastTrip(
-  input: Partial<Trip> & { userId: string },
-): Promise<Trip | null> {
-  const { data } = await supabase
-    .from(T.trips)
-    .insert({
-      name: input.name ?? input.destination ?? 'Past Trip',
-      destination: input.destination,
-      start_date: input.startDate,
-      end_date: input.endDate,
-      status: 'Completed',
-      is_past_import: true,
-      user_id: input.userId,
-      country: input.country,
-      country_code: input.countryCode,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      total_spent: input.totalSpent ?? 0,
-      total_nights: input.totalNights ?? 0,
-    })
-    .select()
-    .single()
-  if (!data) return null
-  return mapTrip(data)
 }

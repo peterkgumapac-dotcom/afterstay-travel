@@ -30,31 +30,3 @@ export async function cacheSet<T>(key: string, value: T): Promise<void> {
   }
 }
 
-export async function cacheClear(): Promise<void> {
-  try {
-    const keys = await AsyncStorage.getAllKeys();
-    const ours = keys.filter(k => k.startsWith(PREFIX));
-    await AsyncStorage.multiRemove(ours);
-  } catch {
-    // ignore
-  }
-}
-
-// Stale-while-revalidate wrapper: returns cached immediately (if any), kicks off
-// fetch, and calls onUpdate with fresh data when it lands.
-export async function swr<T>(
-  key: string,
-  fetcher: () => Promise<T>,
-  onUpdate: (value: T) => void
-): Promise<T | undefined> {
-  const cached = await cacheGet<T>(key);
-  fetcher()
-    .then(async value => {
-      await cacheSet(key, value);
-      onUpdate(value);
-    })
-    .catch(() => {
-      // On error, keep the cached value (if any).
-    });
-  return cached;
-}
