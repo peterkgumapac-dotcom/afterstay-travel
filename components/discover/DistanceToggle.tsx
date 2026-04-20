@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Building2, MapPin, Footprints, Car } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius, typography } from '@/constants/theme';
+import { spacing, radius } from '@/constants/theme';
 
 interface DistanceToggleProps {
   anchor: 'hotel' | 'me';
@@ -11,71 +12,9 @@ interface DistanceToggleProps {
   onTravelModeChange: (m: 'walk' | 'car') => void;
 }
 
-interface SegmentOption<T extends string> {
-  value: T;
-  label: string;
-  icon: React.ComponentType<{ size: number; strokeWidth: number; color: string }>;
-}
+type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
-interface SplitToggleProps<T extends string> {
-  options: readonly [SegmentOption<T>, SegmentOption<T>];
-  active: T;
-  onChange: (value: T) => void;
-  activeColor: string;
-  activeTextColor: string;
-  inactiveTextColor: string;
-}
-
-function SplitToggle<T extends string>({
-  options,
-  active,
-  onChange,
-  activeColor,
-  activeTextColor,
-  inactiveTextColor,
-}: SplitToggleProps<T>) {
-  const { colors } = useTheme();
-  const styles = getSplitStyles(colors);
-
-  return (
-    <View style={styles.track}>
-      {options.map((opt) => {
-        const isActive = opt.value === active;
-        const color = isActive ? activeTextColor : inactiveTextColor;
-        const Icon = opt.icon;
-
-        return (
-          <Pressable
-            key={opt.value}
-            onPress={() => onChange(opt.value)}
-            style={[
-              styles.segment,
-              isActive && { backgroundColor: activeColor },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={opt.label}
-            accessibilityState={{ selected: isActive }}
-          >
-            <Icon size={13} strokeWidth={1.8} color={color} />
-            <Text style={[styles.segmentLabel, { color }]}>{opt.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-const ANCHOR_OPTIONS: [SegmentOption<'hotel'>, SegmentOption<'me'>] = [
-  { value: 'hotel', label: 'Hotel', icon: Building2 },
-  { value: 'me', label: 'Me', icon: MapPin },
-];
-
-const MODE_OPTIONS: [SegmentOption<'walk'>, SegmentOption<'car'>] = [
-  { value: 'walk', label: 'Walk', icon: Footprints },
-  { value: 'car', label: 'Car', icon: Car },
-];
-
-export default function DistanceToggle({
+function DistanceToggle({
   anchor,
   travelMode,
   onAnchorChange,
@@ -84,33 +23,68 @@ export default function DistanceToggle({
   const { colors } = useTheme();
   const styles = getStyles(colors);
 
+  const tapAnchor = useCallback((v: 'hotel' | 'me') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onAnchorChange(v);
+  }, [onAnchorChange]);
+
+  const tapMode = useCallback((v: 'walk' | 'car') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onTravelModeChange(v);
+  }, [onTravelModeChange]);
+
   return (
     <View style={styles.card}>
       <Text style={styles.eyebrow}>FROM</Text>
 
       <View style={styles.togglesRow}>
-        <SplitToggle
-          options={ANCHOR_OPTIONS}
-          active={anchor}
-          onChange={onAnchorChange}
-          activeColor={colors.accent}
-          activeTextColor={colors.ink}
-          inactiveTextColor={colors.text2}
-        />
-        <SplitToggle
-          options={MODE_OPTIONS}
-          active={travelMode}
-          onChange={onTravelModeChange}
-          activeColor={colors.accent}
-          activeTextColor={colors.ink}
-          inactiveTextColor={colors.text2}
-        />
+        {/* Anchor: Hotel / Me */}
+        <View style={styles.track}>
+          <TouchableOpacity
+            onPress={() => tapAnchor('hotel')}
+            style={[styles.seg, anchor === 'hotel' && styles.segActive]}
+            activeOpacity={0.7}
+          >
+            <Building2 size={13} strokeWidth={1.8} color={anchor === 'hotel' ? colors.ink : colors.text2} />
+            <Text style={[styles.segLabel, anchor === 'hotel' && styles.segLabelActive]}>Hotel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => tapAnchor('me')}
+            style={[styles.seg, anchor === 'me' && styles.segActive]}
+            activeOpacity={0.7}
+          >
+            <MapPin size={13} strokeWidth={1.8} color={anchor === 'me' ? colors.ink : colors.text2} />
+            <Text style={[styles.segLabel, anchor === 'me' && styles.segLabelActive]}>Me</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Mode: Walk / Car */}
+        <View style={styles.track}>
+          <TouchableOpacity
+            onPress={() => tapMode('walk')}
+            style={[styles.seg, travelMode === 'walk' && styles.segActive]}
+            activeOpacity={0.7}
+          >
+            <Footprints size={13} strokeWidth={1.8} color={travelMode === 'walk' ? colors.ink : colors.text2} />
+            <Text style={[styles.segLabel, travelMode === 'walk' && styles.segLabelActive]}>Walk</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => tapMode('car')}
+            style={[styles.seg, travelMode === 'car' && styles.segActive]}
+            activeOpacity={0.7}
+          >
+            <Car size={13} strokeWidth={1.8} color={travelMode === 'car' ? colors.ink : colors.text2} />
+            <Text style={[styles.segLabel, travelMode === 'car' && styles.segLabelActive]}>Drive</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 }
 
-const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+export default React.memo(DistanceToggle);
+
+const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     card: {
       flexDirection: 'row',
@@ -139,10 +113,6 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       justifyContent: 'space-between',
       gap: spacing.xs,
     },
-  });
-
-const getSplitStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
-  StyleSheet.create({
     track: {
       flexDirection: 'row',
       backgroundColor: colors.canvas,
@@ -150,7 +120,7 @@ const getSplitStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       borderWidth: 1,
       borderColor: colors.border,
     },
-    segment: {
+    seg: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
@@ -159,8 +129,15 @@ const getSplitStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       borderRadius: radius.pill,
       minHeight: 34,
     },
-    segmentLabel: {
+    segActive: {
+      backgroundColor: colors.accent,
+    },
+    segLabel: {
       fontSize: 11,
       fontWeight: '600',
+      color: colors.text2,
+    },
+    segLabelActive: {
+      color: colors.ink,
     },
   });

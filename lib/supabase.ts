@@ -708,12 +708,19 @@ export async function addMoment(
     const filename = input.localUri.split('/').pop() ?? 'photo.jpg'
     storagePath = `trips/${tripId}/${timestamp}-${filename}`
 
-    const response = await fetch(compressed)
-    const blob = await response.blob()
+    // Read as base64 — more reliable than fetch→blob on RN Android
+    const base64 = await FileSystem.readAsStringAsync(compressed, {
+      encoding: FileSystem.EncodingType.Base64,
+    })
+    const binaryStr = atob(base64)
+    const bytes = new Uint8Array(binaryStr.length)
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i)
+    }
 
     const { error: uploadError } = await supabase.storage
       .from('moments')
-      .upload(storagePath, blob, {
+      .upload(storagePath, bytes, {
         contentType: guessMimeType(filename),
         upsert: false,
       })
