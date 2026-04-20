@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  Image,
   Linking,
   ScrollView,
   StyleSheet,
@@ -164,13 +165,13 @@ function AmenityIcon({ id, color }: { id: string; color: string }) {
 function PulsingMapPin({ colors, label }: { colors: ThemeColors; label: string }) {
   const scale = useSharedValue(1);
 
-  useState(() => {
+  useEffect(() => {
     scale.value = withRepeat(
       withTiming(1.15, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
       -1,
       true,
     );
-  });
+  }, []);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -247,9 +248,19 @@ export default function GuideScreen() {
   const hotelAddr = trip?.address ?? PROPERTY.desc;
   const checkInTime = trip?.checkIn ?? PROPERTY.checkIn;
   const checkOutTime = trip?.checkOut ?? PROPERTY.checkOut;
-  const destLabel = trip?.destination ?? 'Boracay';
+  const destLabel = trip?.destination ?? '';
   const checkInDate = trip ? formatDatePHT(trip.startDate) : '';
   const checkOutDate = trip ? formatDatePHT(trip.endDate) : '';
+
+  const hotelPhotoUrl = (() => {
+    if (!trip?.hotelPhotos) return HOTEL_PHOTO;
+    try {
+      const parsed = JSON.parse(trip.hotelPhotos);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : HOTEL_PHOTO;
+    } catch {
+      return HOTEL_PHOTO;
+    }
+  })();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -325,7 +336,11 @@ export default function GuideScreen() {
             <View style={styles.heroWrapper}>
               <View style={styles.heroCard}>
                 <View style={styles.heroImageBg}>
-                  {/* Gradient overlay */}
+                  <Image
+                    source={{ uri: hotelPhotoUrl }}
+                    style={StyleSheet.absoluteFillObject}
+                    resizeMode="cover"
+                  />
                   <View style={styles.heroGradient} />
                   <View style={styles.heroTextBlock}>
                     <Text style={styles.heroName}>{hotelName}</Text>
@@ -694,8 +709,7 @@ const getStyles = (colors: ThemeColors) =>
     },
     heroGradient: {
       ...StyleSheet.absoluteFillObject,
-      // Simulated gradient overlay — can't do CSS gradient in RN,
-      // but the card background serves as the base
+      backgroundColor: 'rgba(0,0,0,0.4)',
     },
     heroTextBlock: {
       position: 'absolute',

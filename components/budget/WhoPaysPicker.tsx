@@ -1,8 +1,10 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn, BounceIn } from 'react-native-reanimated';
 
 import { useTheme } from '@/constants/ThemeContext';
+import type { GroupMember } from '@/lib/types';
 import DiceRoller from './DiceRoller';
 import SpinWheel from './SpinWheel';
 import type { DiceRollerRef } from './DiceRoller';
@@ -12,21 +14,13 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 type PickerMode = 'wheel' | 'dice';
 
-const WHO_PAYS_MEMBERS: ReadonlyArray<{ name: string; init: string; color: string }> = [
-  { name: 'Peter', init: 'P', color: '#a64d1e' },
-  { name: 'Aaron', init: 'A', color: '#b8892b' },
-  { name: 'Jane', init: 'J', color: '#c66a36' },
-];
+const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
 
-function mapToWheelMembers(): WheelMember[] {
-  return WHO_PAYS_MEMBERS.map((m) => ({
-    name: m.name,
-    initials: m.init,
-    color: m.color,
-  }));
+interface WhoPaysPickerProps {
+  members?: GroupMember[];
 }
 
-export default function WhoPaysPicker() {
+export default function WhoPaysPicker({ members: groupMembers }: WhoPaysPickerProps) {
   const { colors } = useTheme();
   const styles = getStyles(colors);
 
@@ -37,7 +31,21 @@ export default function WhoPaysPicker() {
   const wheelRef = useRef<SpinWheelRef>(null);
   const diceRef = useRef<DiceRollerRef>(null);
 
-  const mapped = useMemo(() => mapToWheelMembers(), []);
+  const mapped = useMemo<WheelMember[]>(() => {
+    if (groupMembers && groupMembers.length > 0) {
+      return groupMembers.map((m, i) => ({
+        name: m.name,
+        initials: m.name.charAt(0).toUpperCase(),
+        color: MEMBER_COLORS[i % MEMBER_COLORS.length],
+        photo: m.profilePhoto,
+      }));
+    }
+    return [
+      { name: 'Peter', initials: 'P', color: '#a64d1e' },
+      { name: 'Aaron', initials: 'A', color: '#b8892b' },
+      { name: 'Jane', initials: 'J', color: '#c66a36' },
+    ];
+  }, [groupMembers]);
 
   const handleSpinStart = useCallback(() => {
     setSpinning(true);
@@ -90,14 +98,25 @@ export default function WhoPaysPicker() {
           {/* Result */}
           <View style={[styles.resultArea, { opacity: winner && !spinning ? 1 : 0.4 }]}>
             {winner && !spinning ? (
-              <>
+              <Animated.View entering={BounceIn.duration(500)} style={styles.resultContent}>
+                {winner.photo ? (
+                  <Image
+                    source={{ uri: winner.photo }}
+                    style={styles.winnerPhoto}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.winnerPhoto, { backgroundColor: winner.color }]}>
+                    <Text style={styles.winnerInit}>{winner.initials}</Text>
+                  </View>
+                )}
                 <Text style={[styles.resultEyebrow, { color: colors.accent }]}>
                   Next round's on
                 </Text>
                 <Text style={[styles.resultName, { color: colors.text }]}>
                   {winner.name} {'\uD83C\uDF79'}
                 </Text>
-              </>
+              </Animated.View>
             ) : (
               <View style={{ marginTop: 14 }}>
                 <Text style={[styles.resultHint, { color: colors.text3 }]}>
@@ -216,6 +235,22 @@ const getStyles = (colors: ThemeColors) =>
       minHeight: 48,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    resultContent: {
+      alignItems: 'center',
+    },
+    winnerPhoto: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      marginBottom: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    winnerInit: {
+      color: '#fff',
+      fontSize: 20,
+      fontWeight: '700',
     },
     resultEyebrow: {
       fontSize: 10,

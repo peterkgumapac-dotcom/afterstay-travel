@@ -213,9 +213,10 @@ const getStyles = (colors: ThemeColors) =>
       gap: 12,
     },
     image: {
-      width: 110,
-      height: 110,
-      borderRadius: 12,
+      width: 130,
+      height: 130,
+      borderRadius: 14,
+      backgroundColor: colors.card2,
     },
     info: {
       flex: 1,

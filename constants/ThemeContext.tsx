@@ -76,7 +76,7 @@ export const lightColors = {
 
 interface ThemeContextType {
   mode: ThemeMode;
-  colors: typeof darkColors;
+  colors: typeof darkColors | typeof lightColors;
   setMode: (mode: ThemeMode) => void;
   toggle: () => void;
 }

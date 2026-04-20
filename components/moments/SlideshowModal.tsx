@@ -4,7 +4,6 @@ import {
   StyleSheet, Dimensions, Animated, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { CONFIG } from '../../lib/config';
 import { useTheme } from '@/constants/ThemeContext';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -83,29 +82,9 @@ export const SlideshowModal: React.FC<Props> = ({
   };
 
   const saveCaption = async () => {
-    try {
-      await fetch(`https://api.notion.com/v1/pages/${current.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${CONFIG.NOTION_KEY}`,
-          'Notion-Version': '2022-06-28',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          properties: {
-            'Caption': {
-              rich_text: [{ text: { content: draftCaption } }],
-            },
-          },
-        }),
-      });
-      setEditingCaption(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onRefresh();
-    } catch (e) {
-      console.error('Save caption error:', e);
-      Alert.alert('Error', 'Could not save caption');
-    }
+    // TODO: migrate to Supabase — Notion caption editing disabled
+    setEditingCaption(false);
+    Alert.alert('Coming soon', 'Caption editing will be available after Supabase migration.');
   };
 
   return (

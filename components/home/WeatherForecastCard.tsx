@@ -12,6 +12,11 @@ interface HourData {
   chance_of_rain: number;
 }
 
+interface UvHour {
+  hour: number;
+  uv: number;
+}
+
 interface DayForecast {
   date: string;
   dayLabel: string;
@@ -22,6 +27,8 @@ interface DayForecast {
   rainWindows: { startHour: number; endHour: number; maxChance: number }[];
   sunrise?: string;
   sunset?: string;
+  uvIndex?: number;
+  uvHours?: UvHour[];
 }
 
 interface CurrentWeather {
@@ -154,23 +161,25 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadForecast();
+    let cancelled = false;
+    loadForecast(cancelled);
+    return () => { cancelled = true; };
   }, [destination]);
 
-  const loadForecast = async () => {
+  const loadForecast = async (cancelled = false) => {
     try {
-      const location = destination || 'Boracay,Philippines';
+      const location = destination || '11.9710,121.9215';
       const res = await fetch(
         `https://api.weatherapi.com/v1/forecast.json?key=${CONFIG.WEATHER_KEY}&q=${encodeURIComponent(location)}&days=5&aqi=no&alerts=no`,
       );
       const data = await res.json();
 
-      if (data.error) {
-        setLoading(false);
+      if (data.error || cancelled) {
+        if (!cancelled) setLoading(false);
         return;
       }
 
-      if (data.current) {
+      if (data.current && !cancelled) {
         setCurrent({
           temp: Math.round(data.current.temp_c),
           condition: data.current.condition?.text ?? '',
@@ -196,15 +205,20 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
             rainWindows,
             sunrise: fd.astro?.sunrise,
             sunset: fd.astro?.sunset,
+            uvIndex: fd.day?.uv ?? 0,
+            uvHours: [6, 8, 10, 12, 14, 16, 18].map((h) => ({
+              hour: h,
+              uv: fd.hour?.[h]?.uv ?? 0,
+            })),
           };
         },
       );
 
-      setDays(forecasts);
+      if (!cancelled) setDays(forecasts);
     } catch {
       // silently fail — card won't render
     } finally {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
   };
 
@@ -279,6 +293,50 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
         </View>
       )}
 
+      {/* UV sunlight bar */}
+      {today.uvHours && today.uvHours.length > 0 && (
+        <View style={styles.uvSection}>
+          <View style={styles.uvHeader}>
+            <Text style={styles.uvLabel}>UV Index</Text>
+            <Text style={styles.uvPeak}>Peak {today.uvIndex?.toFixed(1)} at noon</Text>
+          </View>
+          <View style={styles.uvBar}>
+            {today.uvHours.map((h) => {
+              const uvColor =
+                h.uv <= 2 ? '#4caf50' :
+                h.uv <= 5 ? '#d9a441' :
+                h.uv <= 7 ? '#e8a860' :
+                h.uv <= 10 ? '#e38868' :
+                '#c4554a';
+              return (
+                <View key={h.hour} style={styles.uvCol}>
+                  <View style={[styles.uvDot, { backgroundColor: uvColor }]} />
+                  <Text style={styles.uvHourText}>{h.hour > 12 ? h.hour - 12 : h.hour}{h.hour >= 12 ? 'p' : 'a'}</Text>
+                </View>
+              );
+            })}
+          </View>
+          <View style={styles.uvLegend}>
+            <View style={styles.uvLegendItem}>
+              <View style={[styles.uvLegendDot, { backgroundColor: '#4caf50' }]} />
+              <Text style={styles.uvLegendText}>Low</Text>
+            </View>
+            <View style={styles.uvLegendItem}>
+              <View style={[styles.uvLegendDot, { backgroundColor: '#d9a441' }]} />
+              <Text style={styles.uvLegendText}>Moderate</Text>
+            </View>
+            <View style={styles.uvLegendItem}>
+              <View style={[styles.uvLegendDot, { backgroundColor: '#e38868' }]} />
+              <Text style={styles.uvLegendText}>High</Text>
+            </View>
+            <View style={styles.uvLegendItem}>
+              <View style={[styles.uvLegendDot, { backgroundColor: '#c4554a' }]} />
+              <Text style={styles.uvLegendText}>Extreme</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* 5-day forecast */}
       <View style={styles.daysRow}>
         {days.map((d, i) => {
@@ -309,6 +367,9 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
               </Text>
               {d.chanceRain >= 50 && (
                 <Text style={styles.dayRain}>{d.chanceRain}%</Text>
+              )}
+              {d.sunrise && (
+                <Text style={styles.daySun}>{d.sunrise.replace(/^0/, '').replace(/ AM| PM/, '')}</Text>
               )}
             </View>
           );
@@ -443,5 +504,71 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       fontWeight: '600',
       color: colors.info,
       marginTop: 2,
+    },
+    daySun: {
+      fontSize: 8,
+      color: colors.gold,
+      marginTop: 2,
+    },
+    uvSection: {
+      marginBottom: 14,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    uvHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    uvLabel: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text2,
+    },
+    uvPeak: {
+      fontSize: 10,
+      color: colors.text3,
+    },
+    uvBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-end',
+      marginBottom: 6,
+    },
+    uvCol: {
+      alignItems: 'center',
+      flex: 1,
+      gap: 4,
+    },
+    uvDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+    },
+    uvHourText: {
+      fontSize: 8,
+      color: colors.text3,
+    },
+    uvLegend: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 12,
+      marginTop: 4,
+    },
+    uvLegendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+    },
+    uvLegendDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+    },
+    uvLegendText: {
+      fontSize: 8,
+      color: colors.text3,
     },
   });

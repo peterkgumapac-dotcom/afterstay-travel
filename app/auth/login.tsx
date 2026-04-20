@@ -510,16 +510,16 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           bounces={false}
         >
-          {panel === 'root' && <RootPanel />}
-          {panel === 'email' && <EmailPanelView />}
-          {panel === 'phone' && <PhonePanelView />}
-          {panel === 'sent' && <SentPanelView />}
+          {panel === 'root' && renderRootPanel()}
+          {panel === 'email' && renderEmailPanel()}
+          {panel === 'phone' && renderPhonePanel()}
+          {panel === 'sent' && renderSentPanel()}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 
-  function RootPanel() {
+  function renderRootPanel() {
     return (
       <>
         <ConstellationHero />
@@ -633,10 +633,9 @@ export default function LoginScreen() {
     );
   }
 
-  function EmailPanelView() {
+  function renderEmailPanel() {
     return (
       <>
-        <ConstellationHero />
 
         <View style={styles.body}>
           {/* Heading */}
@@ -733,14 +732,12 @@ export default function LoginScreen() {
     );
   }
 
-  function PhonePanelView() {
+  function renderPhonePanel() {
     const phoneDigits = phone.replace(/\D/g, '');
     const isPhoneValid = phoneDigits.length >= 7;
 
     return (
       <>
-        <ConstellationHero />
-
         <View style={styles.body}>
           {/* Heading */}
           <View style={styles.headingBlock}>
@@ -828,13 +825,11 @@ export default function LoginScreen() {
     );
   }
 
-  function SentPanelView() {
+  function renderSentPanel() {
     const isEmail = sentTarget.kind === 'email';
 
     return (
       <>
-        <ConstellationHero />
-
         <View style={[styles.body, { alignItems: 'center' }]}>
           <View style={styles.sentContent}>
             {/* Success icon */}

@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as FileSystem from 'expo-file-system/legacy'
 import { decode } from 'base64-arraybuffer'
+import { compressImage } from './compressImage'
 
 import type {
   ChecklistItem,
@@ -423,14 +424,13 @@ export async function addGroupMember(
 }
 
 export async function updateMemberPhoto(memberId: string, localUri: string): Promise<void> {
+  const compressed = await compressImage(localUri, 400, 0.5)
   const timestamp = Date.now()
   const filename = localUri.split('/').pop() ?? 'avatar.jpg'
   const storagePath = `avatars/${memberId}-${timestamp}-${filename}`
 
-  const base64 = await FileSystem.readAsStringAsync(localUri, {
-    encoding: 'base64' as const,
-  })
-
+  const response = await fetch(compressed)
+  const blob = await response.blob()
   const contentType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg'
 
   // Try avatars bucket first, fall back to moments bucket
@@ -440,7 +440,7 @@ export async function updateMemberPhoto(memberId: string, localUri: string): Pro
     const path = bucket === 'avatars' ? storagePath : `avatars/${storagePath}`
     const { error: uploadError } = await supabase.storage
       .from(bucket)
-      .upload(path, decode(base64), { contentType, upsert: true })
+      .upload(path, blob, { contentType, upsert: true })
 
     if (!uploadError) {
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path)
@@ -702,19 +702,19 @@ export async function addMoment(
   let storagePath: string | undefined
   let publicUrl: string | undefined
 
-  // If a local file URI is provided, upload to Supabase Storage.
+  // If a local file URI is provided, compress and upload to Supabase Storage.
   if (input.localUri) {
+    const compressed = await compressImage(input.localUri, 1200, 0.6)
     const timestamp = Date.now()
     const filename = input.localUri.split('/').pop() ?? 'photo.jpg'
     storagePath = `trips/${tripId}/${timestamp}-${filename}`
 
-    const base64 = await FileSystem.readAsStringAsync(input.localUri, {
-      encoding: 'base64' as const,
-    })
+    const response = await fetch(compressed)
+    const blob = await response.blob()
 
     const { error: uploadError } = await supabase.storage
       .from('moments')
-      .upload(storagePath, decode(base64), {
+      .upload(storagePath, blob, {
         contentType: guessMimeType(filename),
         upsert: false,
       })

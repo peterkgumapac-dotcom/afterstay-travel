@@ -66,6 +66,8 @@ interface FlightProgressCardProps {
   toCity?: string;
   totalMinutes?: number;
   etaLabel?: string;
+  departIso?: string;
+  arriveIso?: string;
 }
 
 export function FlightProgressCard({
@@ -76,13 +78,32 @@ export function FlightProgressCard({
   toCity = 'Caticlan',
   totalMinutes = 70,
   etaLabel = '8:40 PM',
+  departIso,
+  arriveIso,
 }: FlightProgressCardProps) {
   const { colors } = useTheme();
   const styles = getStyles(colors);
 
+  /* ── Real-time progress from flight times ── */
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000); // update every minute
+    return () => clearInterval(t);
+  }, []);
+
+  const realProgress = (() => {
+    if (!departIso || !arriveIso) return null;
+    const dep = new Date(departIso).getTime();
+    const arr = new Date(arriveIso).getTime();
+    const total = arr - dep;
+    if (total <= 0) return null;
+    return Math.max(0, Math.min(1, (now - dep) / total));
+  })();
+
   /* ── State ── */
   const [playing] = useState(true);
-  const [progress, setProgress] = useState(INITIAL_PROGRESS);
+  const [progress, setProgress] = useState(realProgress ?? INITIAL_PROGRESS);
 
   /* ── Shared values ── */
   const progressSV = useSharedValue(INITIAL_PROGRESS);
@@ -101,14 +122,18 @@ export function FlightProgressCard({
     });
   }, [progress, progressSV]);
 
-  /* ── Progress drift ── */
+  /* ── Progress drift — use real time if available, otherwise simulate ── */
   useEffect(() => {
     if (!playing) return;
+    if (realProgress !== null) {
+      setProgress(realProgress);
+      return;
+    }
     const id = setInterval(() => {
       setProgress((p) => Math.min(1, p + 0.008));
     }, 900);
     return () => clearInterval(id);
-  }, [playing]);
+  }, [playing, realProgress]);
 
   /* ── Pulsing dot animation (1.6s ease-in-out infinite) ── */
   useEffect(() => {
@@ -161,7 +186,17 @@ export function FlightProgressCard({
   }));
 
   /* ── Derived values ── */
-  const remainingMin = Math.max(0, Math.round(totalMinutes * (1 - progress)));
+  const remainingTotalMin = (() => {
+    if (arriveIso) {
+      return Math.max(0, Math.round((new Date(arriveIso).getTime() - now) / 60_000));
+    }
+    return Math.max(0, Math.round(totalMinutes * (1 - progress)));
+  })();
+  const remainingHrs = Math.floor(remainingTotalMin / 60);
+  const remainingMin = remainingTotalMin % 60;
+  const remainingLabel = remainingHrs > 0
+    ? `${remainingHrs}h ${remainingMin}m`
+    : `${remainingMin}m`;
   const progressPct = Math.round(progress * 100);
 
   /* ── Derived ── */
@@ -173,7 +208,7 @@ export function FlightProgressCard({
         <View style={styles.topLeft}>
           <Text style={styles.eyebrow}>Arriving in</Text>
           <View style={styles.etaRow}>
-            <Text style={styles.remainingMono}>{remainingMin}m</Text>
+            <Text style={styles.remainingMono}>{remainingLabel}</Text>
             <Text style={styles.etaText}>{'\u00B7'} ETA {etaLabel}</Text>
           </View>
         </View>

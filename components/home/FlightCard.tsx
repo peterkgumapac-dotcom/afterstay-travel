@@ -51,7 +51,7 @@ export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'o
         </View>
         <View style={styles.onTimePill}>
           <View style={styles.onTimeDot} />
-          <Text style={styles.onTimeText}>On time</Text>
+          <Text style={styles.onTimeText}>Confirmed</Text>
         </View>
       </View>
 

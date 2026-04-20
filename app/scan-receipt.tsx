@@ -18,6 +18,7 @@ import AfterStayLoader from '@/components/AfterStayLoader';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { scanReceipt } from '@/lib/anthropic';
+import { compressImage } from '@/lib/compressImage';
 
 type Phase = 'picking' | 'scanning' | 'error';
 
@@ -69,19 +70,13 @@ export default function ScanReceiptScreen() {
     setPhase('scanning');
 
     try {
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+      // Compress to ~800px width for faster OCR (receipt doesn't need 4K)
+      const compressed = await compressImage(asset.uri, 800, 0.7);
+      const base64 = await FileSystem.readAsStringAsync(compressed, {
         encoding: 'base64' as any,
       });
 
-      const ext = asset.uri.split('.').pop()?.toLowerCase() ?? 'jpeg';
-      const mimeMap: Record<string, string> = {
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        png: 'image/png',
-        gif: 'image/gif',
-        webp: 'image/webp',
-      };
-      const mimeType = mimeMap[ext] ?? 'image/jpeg';
+      const mimeType = 'image/jpeg'; // compressImage always outputs JPEG
 
       const scanned = await scanReceipt(base64, mimeType);
 

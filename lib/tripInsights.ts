@@ -53,7 +53,7 @@ const fetchCachedInsight = async (): Promise<TripInsight | null> => {
 
     // Expired? Return null to force refresh
     if (new Date(expiresAt) < new Date()) {
-      console.log('[Insights] Cache expired');
+      // console.log('[Insights] Cache expired');
       return null;
     }
 
@@ -79,7 +79,7 @@ const fetchCachedInsight = async (): Promise<TripInsight | null> => {
 
 // Claude web_search to get real dated news
 const generateFreshInsight = async (): Promise<TripInsight> => {
-  console.log('[Insights] Calling Claude with web_search...');
+  // console.log('[Insights] Calling Claude with web_search...');
 
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
@@ -134,7 +134,7 @@ Requirements:
   });
 
   const data = await res.json();
-  console.log('[Insights] Claude response:', JSON.stringify(data).slice(0, 300));
+  // console.log('[Insights] Claude response:', JSON.stringify(data).slice(0, 300));
 
   if (data.error) {
     throw new Error(`Claude error: ${data.error.message}`);

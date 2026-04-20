@@ -22,12 +22,8 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, {
-  Circle,
-  Line as SvgLine,
-  Path,
-  Polyline,
-} from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
+import { MoreHorizontal, Plus, Share2 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -38,8 +34,12 @@ import AddTripSheet from '@/components/summary/AddTripSheet';
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
 import { MomentsTab } from '@/components/moments/MomentsTab';
+import { OverviewTab } from '@/components/trip/OverviewTab';
+import { SummaryTab } from '@/components/trip/SummaryTab';
+import { EssentialsTab } from '@/components/trip/EssentialsTab';
 import PastTripRow from '@/components/summary/PastTripRow';
 import { useTheme } from '@/constants/ThemeContext';
+import { colors as themeColors } from '@/constants/theme';
 import {
   addPackingItem,
   getActiveTrip,
@@ -71,6 +71,7 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 const TAB_KEYS = [
   'overview',
+  'summary',
   'moments',
   'essentials',
 ] as const;
@@ -109,7 +110,7 @@ function mapFlightToDisplay(f: Flight): FlightDisplayData {
     code,
     num,
     ref: f.bookingRef ?? '',
-    logo: f.direction === 'Outbound' ? '#b8afa3' : '#e03838',
+    logo: f.direction === 'Outbound' ? themeColors.text2 : themeColors.danger,
     date: formatDatePHT(f.departTime),
     dep: formatTimePHT(f.departTime),
     arr: formatTimePHT(f.arriveTime),
@@ -119,7 +120,7 @@ function mapFlightToDisplay(f: Flight): FlightDisplayData {
     toCity: f.to,
     dur: '',
     bags: f.baggage ? [{ who: f.passenger ?? '', bag: f.baggage }] : [],
-    status: 'On time',
+    status: 'Confirmed',
   };
 }
 
@@ -360,7 +361,7 @@ const miniFlightStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
     },
     logoText: {
-      color: '#fff',
+      color: colors.ink,
       fontSize: 9,
       fontWeight: '600',
     },
@@ -525,7 +526,7 @@ const fullFlightStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
     },
     logoText: {
-      color: '#fff',
+      color: colors.ink,
       fontSize: 11,
       fontWeight: '600',
     },
@@ -944,63 +945,10 @@ export default function TripScreen() {
           <Text style={styles.topBarTitle}>Trips</Text>
           <View style={styles.topBarRight}>
             <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Share" onPress={handleShare}>
-              <Svg
-                width={16}
-                height={16}
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <Polyline
-                  points="16 6 12 2 8 6"
-                  stroke={colors.text}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <SvgLine
-                  x1={12}
-                  y1={2}
-                  x2={12}
-                  y2={15}
-                  stroke={colors.text}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                />
-                <Path
-                  d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                  stroke={colors.text}
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </Svg>
+              <Share2 size={16} color={colors.text} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.iconBtn} accessibilityLabel="More" onPress={handleMore}>
-              <Svg
-                width={16}
-                height={16}
-                viewBox="0 0 24 24"
-                fill="none"
-              >
-                <Circle
-                  cx={12}
-                  cy={12}
-                  r={1.5}
-                  fill={colors.text}
-                />
-                <Circle
-                  cx={19}
-                  cy={12}
-                  r={1.5}
-                  fill={colors.text}
-                />
-                <Circle
-                  cx={5}
-                  cy={12}
-                  r={1.5}
-                  fill={colors.text}
-                />
-              </Svg>
+              <MoreHorizontal size={16} color={colors.text} />
             </TouchableOpacity>
           </View>
         </View>
@@ -1044,254 +992,32 @@ export default function TripScreen() {
 
         {/* ===================== OVERVIEW ===================== */}
         {activeTab === 'overview' && (
-          <>
-            {/* Group */}
-            <GroupHeader
-              kicker={`Group \u00B7 ${membersData.length} traveler${membersData.length !== 1 ? 's' : ''}`}
-              title="Who's going"
-              action={
-                <TouchableOpacity onPress={handleInvite}>
-                  <Text style={styles.ghostAction}>Invite +</Text>
-                </TouchableOpacity>
-              }
-              colors={colors}
-            />
-            <View style={styles.listContainer}>
-              {membersData.map((m, idx) => (
-                <TouchableOpacity
-                  key={m.id}
-                  style={styles.memberRow}
-                  activeOpacity={0.7}
-                  onPress={() => handleMemberEdit(m)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit ${m.name} contact details`}
-                >
-                  {m.profilePhoto ? (
-                    <Image
-                      source={{ uri: m.profilePhoto }}
-                      style={styles.memberAvatar}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View
-                      style={[
-                        styles.memberAvatar,
-                        { backgroundColor: MEMBER_COLORS[idx % MEMBER_COLORS.length] },
-                      ]}
-                    >
-                      <Text style={styles.memberInit}>{m.name.charAt(0).toUpperCase()}</Text>
-                    </View>
-                  )}
-                  <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>
-                      {m.name}
-                      {m.role === 'Primary' && (
-                        <Text style={styles.youBadge}> YOU</Text>
-                      )}
-                    </Text>
-                    <Text style={styles.memberRole}>
-                      {m.role} {'\u00B7'} Booking linked
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.memberChatBtn}
-                    accessibilityLabel={`Message ${m.name}`}
-                    onPress={() => handleMemberChat(m)}
-                  >
-                    <Svg
-                      width={14}
-                      height={14}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <Path
-                        d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8z"
-                        stroke={colors.text}
-                        strokeWidth={1.8}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </Svg>
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Accommodation */}
-            <GroupHeader
-              kicker="Accommodation"
-              title={trip?.accommodation ?? 'Hotel'}
-              action={
-                <View style={styles.paidChip}>
-                  <Text style={styles.paidChipText}>Paid</Text>
-                </View>
-              }
-              colors={colors}
-            />
-            <View style={styles.sectionPadding}>
-              <View style={styles.accomCard}>
-                <View style={styles.accomHeader}>
-                  {hotelPhotos[0] ? (
-                    <Image
-                      source={{ uri: hotelPhotos[0] }}
-                      style={styles.accomThumb}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.accomThumb} />
-                  )}
-                  <View style={styles.accomHeaderInfo}>
-                    <Text style={styles.accomTitle}>
-                      {trip?.roomType || trip?.accommodation || 'Room'}
-                    </Text>
-                    <Text style={styles.accomAddr}>
-                      {trip?.address || ''}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.accomGrid}>
-                  <View>
-                    <Text style={styles.accomGridLabel}>CHECK-IN</Text>
-                    <Text style={styles.accomGridValue}>
-                      {trip ? formatDatePHT(trip.startDate) : ''} {'\u00B7'} {trip?.checkIn || '3:00 PM'}
-                    </Text>
-                  </View>
-                  <View>
-                    <Text style={styles.accomGridLabel}>CHECKOUT</Text>
-                    <Text style={styles.accomGridValue}>
-                      {trip ? formatDatePHT(trip.endDate) : ''} {'\u00B7'} {trip?.checkOut || '12:00 PM'}
-                    </Text>
-                  </View>
-                  {trip?.cost != null && (
-                    <View>
-                      <Text style={styles.accomGridLabel}>TOTAL</Text>
-                      <Text style={styles.accomGridValue}>
-                        {formatCurrency(trip.cost, trip.costCurrency || 'PHP')}
-                      </Text>
-                    </View>
-                  )}
-                  {trip?.cost != null && membersData.length > 0 && (
-                    <View>
-                      <Text style={styles.accomGridLabel}>
-                        SPLIT / PERSON
-                      </Text>
-                      <Text style={styles.accomGridValue}>
-                        {formatCurrency(trip.cost / membersData.length, trip.costCurrency || 'PHP')}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                {/* Sync button removed — price is shown inline above */}
-              </View>
-            </View>
-
-            {/* Mini flights */}
-            <GroupHeader
-              kicker="Transit \u00B7 Both ways"
-              title="Flights"
-              colors={colors}
-            />
-            <View style={styles.flightsList}>
-              {flightsDisplay.map((f, i) => (
-                <MiniFlightCard key={f.ref || i} f={f} colors={colors} />
-              ))}
-            </View>
-          </>
+          <OverviewTab
+            trip={trip}
+            members={membersData}
+            flights={flightsDisplay}
+            hotelPhotos={hotelPhotos}
+            colors={colors}
+            onMemberEdit={handleMemberEdit}
+            onMemberChat={handleMemberChat}
+            onInvite={handleInvite}
+            onLoad={load}
+          />
         )}
 
         {/* ===================== SUMMARY ===================== */}
-        {activeTab === 'overview' && (
-          <>
-            <ConstellationHero
-              miles={totalMiles}
-              trips={totalTrips}
-              countries={countriesCount}
-              nights={totalNights}
-              spent={totalSpent}
-            />
-
-            {/* Highlights */}
-            <GroupHeader
-              kicker="Highlights"
-              title="Your travel story"
-              colors={colors}
-            />
-            <HighlightsStrip highlights={highlightsForStrip} />
-
-            {/* Past trips */}
-            <GroupHeader
-              kicker={`Past trips \u00B7 ${pastTripsDisplay.length}`}
-              title="Where you've been"
-              action={
-                <TouchableOpacity>
-                  <Text style={styles.ghostAction}>View all</Text>
-                </TouchableOpacity>
-              }
-              colors={colors}
-            />
-            <View style={styles.listContainer}>
-              {pastTripsDisplay.map((t, i) => (
-                <PastTripRow key={i} trip={t} />
-              ))}
-
-              {/* Add past trip row */}
-              <TouchableOpacity
-                onPress={() => setAddOpen(true)}
-                style={styles.addPastTripRow}
-                activeOpacity={0.7}
-              >
-                <View style={styles.addPastTripIcon}>
-                  <Svg
-                    width={18}
-                    height={18}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <SvgLine
-                      x1={12}
-                      y1={5}
-                      x2={12}
-                      y2={19}
-                      stroke={colors.accent}
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                    />
-                    <SvgLine
-                      x1={5}
-                      y1={12}
-                      x2={19}
-                      y2={12}
-                      stroke={colors.accent}
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                    />
-                  </Svg>
-                </View>
-                <View style={styles.addPastTripInfo}>
-                  <Text style={styles.addPastTripTitle}>
-                    Add a past trip
-                  </Text>
-                  <Text style={styles.addPastTripSub}>
-                    Backfill your travel history
-                  </Text>
-                </View>
-                <Svg
-                  width={14}
-                  height={14}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <Polyline
-                    points="9 18 15 12 9 6"
-                    stroke={colors.text3}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </Svg>
-              </TouchableOpacity>
-            </View>
-          </>
+        {activeTab === 'summary' && (
+          <SummaryTab
+            totalMiles={totalMiles}
+            totalTrips={totalTrips}
+            countriesCount={countriesCount}
+            totalNights={totalNights}
+            totalSpent={totalSpent}
+            highlights={highlightsForStrip}
+            pastTrips={pastTripsDisplay}
+            colors={colors}
+            onAddTrip={() => setAddOpen(true)}
+          />
         )}
 
         {/* ===================== MOMENTS ===================== */}
@@ -1299,206 +1025,22 @@ export default function TripScreen() {
           <MomentsTab tripId={trip?.id} />
         )}
 
-        {/* ===================== FLIGHTS ===================== */}
-        {activeTab === 'overview' && flightsDisplay.length > 0 && (
-          <View style={styles.fullFlightsList}>
-            {flightsDisplay.map((f, i) => (
-              <FullFlightCard key={f.ref || i} f={f} colors={colors} />
-            ))}
-          </View>
-        )}
-
-        {/* ===================== PACKING + FILES ===================== */}
+        {/* ===================== ESSENTIALS ===================== */}
         {activeTab === 'essentials' && (
-          <>
-            <View style={styles.packingHeader}>
-              <Text style={styles.packingCount}>
-                <Text style={styles.packingCountAccent}>
-                  {packingStats.done}
-                </Text>{' '}
-                of {packingStats.total} packed
-              </Text>
-              <TouchableOpacity style={styles.addItemBtn} onPress={() => setAddingItem(true)}>
-                <Text style={styles.addItemBtnText}>+ Add item</Text>
-              </TouchableOpacity>
-            </View>
-
-            {addingItem && (
-              <View style={styles.addItemRow}>
-                <TextInput
-                  style={styles.addItemInput}
-                  value={newItemText}
-                  onChangeText={setNewItemText}
-                  placeholder="Item name"
-                  placeholderTextColor={colors.text3}
-                  autoFocus
-                  returnKeyType="done"
-                  onSubmitEditing={handleAddPackingItem}
-                  onBlur={() => {
-                    if (!newItemText.trim()) {
-                      setAddingItem(false);
-                    }
-                  }}
-                />
-              </View>
-            )}
-
-            {Object.entries(packingState).map(([group, items]) => (
-              <View key={group}>
-                <GroupHeader
-                  kicker={group}
-                  title={`${items.filter((i) => i.d).length} / ${items.length} ready`}
-                  colors={colors}
-                />
-                <View style={styles.packingList}>
-                  {items.map((it) => (
-                    <Pressable
-                      key={it.t}
-                      onPress={() => togglePackingItem(group, it.t)}
-                      style={[
-                        styles.packingRow,
-                        { opacity: it.d ? 0.7 : 1 },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.checkbox,
-                          it.d && styles.checkboxChecked,
-                        ]}
-                      >
-                        {it.d && (
-                          <Svg
-                            width={12}
-                            height={12}
-                            viewBox="0 0 24 24"
-                            fill="none"
-                          >
-                            <Polyline
-                              points="20 6 9 17 4 12"
-                              stroke={colors.onBlack}
-                              strokeWidth={3}
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </Svg>
-                        )}
-                      </View>
-                      <Text
-                        style={[
-                          styles.packingItemText,
-                          it.d && styles.packingItemDone,
-                        ]}
-                      >
-                        {it.t}
-                      </Text>
-                      <View style={styles.packingByChip}>
-                        <Text style={styles.packingByText}>{it.by}</Text>
-                      </View>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ))}
-
-
-            {/* ── Files section within Essentials ── */}
-            <View style={styles.filesHeader}>
-              <Text style={styles.filesCount}>
-                {filesData.length} file{filesData.length !== 1 ? 's' : ''}
-              </Text>
-              <TouchableOpacity style={styles.uploadBtn} onPress={handleUpload}>
-                <Text style={styles.uploadBtnText}>+ Upload</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.filesList}>
-              {filesData.map((f, idx) => {
-                const iconColor = FILE_COLORS[idx % FILE_COLORS.length];
-                return (
-                <View key={f.id} style={styles.fileRow}>
-                  <View
-                    style={[
-                      styles.fileIcon,
-                      {
-                        backgroundColor: iconColor + '20',
-                        borderColor: iconColor + '40',
-                      },
-                    ]}
-                  >
-                    <Svg
-                      width={18}
-                      height={18}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <Path
-                        d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"
-                        stroke={iconColor}
-                        strokeWidth={1.7}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <Polyline
-                        points="14 3 14 8 19 8"
-                        stroke={iconColor}
-                        strokeWidth={1.7}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </Svg>
-                  </View>
-                  <View style={styles.fileInfo}>
-                    <Text
-                      style={styles.fileName}
-                      numberOfLines={1}
-                    >
-                      {f.fileName}
-                    </Text>
-                    <Text style={styles.fileMeta}>
-                      {f.type}{f.notes ? ` \u00B7 ${f.notes}` : ''}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.downloadBtn}
-                    accessibilityLabel={`Download ${f.fileName}`}
-                    onPress={() => f.fileUrl && handleDownload(f.fileUrl)}
-                  >
-                    <Svg
-                      width={14}
-                      height={14}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <Path
-                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                        stroke={colors.text}
-                        strokeWidth={1.8}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <Polyline
-                        points="7 10 12 15 17 10"
-                        stroke={colors.text}
-                        strokeWidth={1.8}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <SvgLine
-                        x1={12}
-                        y1={15}
-                        x2={12}
-                        y2={3}
-                        stroke={colors.text}
-                        strokeWidth={1.8}
-                        strokeLinecap="round"
-                      />
-                    </Svg>
-                  </TouchableOpacity>
-                </View>
-                );
-              })}
-            </View>
-          </>
+          <EssentialsTab
+            packingState={packingState}
+            packingStats={packingStats}
+            files={filesData}
+            colors={colors}
+            addingItem={addingItem}
+            newItemText={newItemText}
+            onToggleItem={togglePackingItem}
+            onSetAddingItem={setAddingItem}
+            onSetNewItemText={setNewItemText}
+            onAddItem={handleAddPackingItem}
+            onUpload={handleUpload}
+            onDownload={handleDownload}
+          />
         )}
 
         {/* Bottom spacer -- keep outside tabs */}
@@ -1513,26 +1055,7 @@ export default function TripScreen() {
         style={styles.fab}
         activeOpacity={0.85}
       >
-        <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-          <SvgLine
-            x1={12}
-            y1={5}
-            x2={12}
-            y2={19}
-            stroke="#fffaf0"
-            strokeWidth={2.4}
-            strokeLinecap="round"
-          />
-          <SvgLine
-            x1={5}
-            y1={12}
-            x2={19}
-            y2={12}
-            stroke="#fffaf0"
-            strokeWidth={2.4}
-            strokeLinecap="round"
-          />
-        </Svg>
+        <Plus size={22} color={colors.ink} strokeWidth={2.4} />
       </TouchableOpacity>
 
       {/* Add trip bottom sheet */}
@@ -1681,7 +1204,7 @@ const getStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
     },
     memberInit: {
-      color: '#0b0f14',
+      color: colors.bg,
       fontSize: 13,
       fontWeight: '600',
     },

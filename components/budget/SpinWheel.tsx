@@ -15,6 +15,7 @@ export interface WheelMember {
   name: string;
   initials: string;
   color: string;
+  photo?: string;
 }
 
 export interface SpinWheelRef {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -242,13 +242,11 @@ export default function HomeScreen() {
 
   if (loading || !loaderDone) {
     return (
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: -100, zIndex: 999 }}>
-        <LivingPostcardLoader
-          destination={trip?.destination ?? 'your trip'}
-          name={userName || 'traveler'}
-          onDone={() => setLoaderDone(true)}
-        />
-      </View>
+      <LivingPostcardLoader
+        destination={trip?.destination ?? 'your trip'}
+        name={userName || 'traveler'}
+        onDone={() => setLoaderDone(true)}
+      />
     );
   }
 
@@ -275,7 +273,7 @@ export default function HomeScreen() {
   }
 
   // Hero gallery photos
-  const hotelPhotos: string[] = (() => {
+  const hotelPhotos = useMemo<string[]>(() => {
     if (!trip.hotelPhotos) return FALLBACK_PHOTOS;
     try {
       const parsed = JSON.parse(trip.hotelPhotos);
@@ -285,44 +283,51 @@ export default function HomeScreen() {
     } catch {
       return FALLBACK_PHOTOS;
     }
-  })();
+  }, [trip.hotelPhotos]);
 
   // Date range label
-  const dateRange = `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}`;
+  const dateRange = useMemo(
+    () => `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}`,
+    [trip.startDate, trip.endDate],
+  );
 
   // Countdown computation
+  const MS_PER_DAY = 86400000;
   const tripStartMs = safeParse(trip.startDate).getTime();
   const tripEndMs = safeParse(trip.endDate).getTime();
   const nowMs = Date.now();
   const totalNights = Math.max(
     1,
-    Math.ceil((tripEndMs - tripStartMs) / 86400000),
+    Math.ceil((tripEndMs - tripStartMs) / MS_PER_DAY),
   );
   const totalDays = totalNights;
 
-  const countdown = (() => {
+  const countdown = useMemo(() => {
     if (nowMs < tripStartMs) {
       return { status: 'upcoming' as const, totalDays };
     }
-    if (nowMs > tripEndMs + 86400000) {
+    if (nowMs > tripEndMs + MS_PER_DAY) {
       return { status: 'completed' as const, totalDays };
     }
-    const dayNumber = Math.floor((nowMs - tripStartMs) / 86400000) + 1;
+    const dayNumber = Math.floor((nowMs - tripStartMs) / MS_PER_DAY) + 1;
     return { status: 'active' as const, dayNumber, totalDays };
-  })();
+  }, [nowMs, tripStartMs, tripEndMs, totalDays]);
 
   // Quick access tiles
-  const quickAccessTiles = [
+  const quickAccessTiles = useMemo(() => [
     { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: trip.checkIn || '3:00 PM' },
     { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: trip.checkOut || '12:00 PM' },
     { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: trip.wifiSsid || 'Not set' },
     { id: 'door', iconName: 'door', label: 'Door code', value: trip.doorCode ? '\u2022\u2022\u2022\u2022' : '\u2014' },
-  ];
+  ], [trip.checkIn, trip.checkOut, trip.wifiSsid, trip.doorCode]);
 
   // Room info
-  const roomInfo = trip.roomType
-    ? `${trip.roomType} \u00D7 2 \u00B7 ${totalNights} nights \u00B7 ${dateRange}`
-    : undefined;
+  const roomInfo = useMemo(
+    () => trip.roomType
+      ? `${trip.roomType} \u00D7 2 \u00B7 ${totalNights} nights \u00B7 ${dateRange}`
+      : undefined,
+    [trip.roomType, totalNights, dateRange],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -370,6 +375,8 @@ export default function HomeScreen() {
                     toCode={outbound?.to}
                     toCity={outbound?.to === 'MPH' ? 'Caticlan' : outbound?.to}
                     etaLabel={outbound?.arriveTime ? formatTimePHT(outbound.arriveTime) : undefined}
+                    departIso={outbound?.departTime}
+                    arriveIso={outbound?.arriveTime}
                   />
                 );
               })()

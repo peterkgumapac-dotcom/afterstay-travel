@@ -16,7 +16,9 @@ export interface PlaceSearchResult {
   lng: number;
 }
 
-function getPhotoUrl(photoRef: string, maxWidth: number = 600): string {
+function getPhotoUrl(photoRef: string, maxWidth: number = 800): string {
+  // Return the Google Places photo URL directly.
+  // React Native Image handles the 302 redirect on both iOS and Android.
   return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${photoRef}&key=${API_KEY}`;
 }
 

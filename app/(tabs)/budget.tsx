@@ -45,7 +45,7 @@ import {
   updateTripBudgetLimit,
   updateTripBudgetMode,
 } from '@/lib/supabase';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, safeParse } from '@/lib/utils';
 import type { Expense, GroupMember, Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
@@ -194,6 +194,7 @@ export default function BudgetScreen() {
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
+  const [showAllExpenses, setShowAllExpenses] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -224,7 +225,7 @@ export default function BudgetScreen() {
   const spent = expenseSummary.total;
   const remaining = total - spent;
   const days = trip ? Math.max(1, Math.ceil(
-    (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / 86400000
+    (safeParse(trip.endDate).getTime() - safeParse(trip.startDate).getTime()) / 86400000
   ) + 1) : 1;
   const perDay = total > 0 ? Math.round(total / days) : 0;
   const destLabel = trip?.destination ?? '';
@@ -569,7 +570,7 @@ export default function BudgetScreen() {
 
             {/* Who pays? — roulette picker */}
             <GroupHeader kicker="Who pays?" title="Let fate decide" />
-            <WhoPaysPicker />
+            <WhoPaysPicker members={members} />
 
             {/* Recent expenses */}
             <GroupHeader
@@ -580,14 +581,50 @@ export default function BudgetScreen() {
                   activeOpacity={0.7}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowAllExpenses((s) => !s);
                   }}
                 >
-                  <Text style={[styles.allAction, { color: colors.accent }]}>All {'\u2192'}</Text>
+                  <Text style={[styles.allAction, { color: colors.accent }]}>
+                    {showAllExpenses ? 'Less \u2190' : `All ${expenses.length} \u2192`}
+                  </Text>
                 </TouchableOpacity>
               }
             />
+            {showAllExpenses && expenses.length > 0 && (
+              <View style={[styles.summaryBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.summaryBoxTitle, { color: colors.text }]}>
+                  {expenses.length} expenses {'\u00B7'} {formatCurrency(expenseSummary.total, 'PHP')} total
+                </Text>
+                <View style={styles.summaryChips}>
+                  {Object.entries(expenseSummary.byCategory)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([cat, amt]) => (
+                      <View key={cat} style={[styles.summaryChip, { backgroundColor: colors.accentBg }]}>
+                        <Text style={[styles.summaryChipText, { color: colors.accent }]}>
+                          {cat} {formatCurrency(amt, 'PHP')}
+                        </Text>
+                      </View>
+                    ))}
+                </View>
+                {(() => {
+                  const topPlaces = expenses
+                    .filter((e) => e.placeName)
+                    .reduce<Record<string, number>>((acc, e) => {
+                      acc[e.placeName!] = (acc[e.placeName!] ?? 0) + e.amount;
+                      return acc;
+                    }, {});
+                  const sorted = Object.entries(topPlaces).sort(([, a], [, b]) => b - a).slice(0, 3);
+                  if (sorted.length === 0) return null;
+                  return (
+                    <Text style={[styles.summaryPlaces, { color: colors.text3 }]}>
+                      Top spots: {sorted.map(([name, amt]) => `${name} (${formatCurrency(amt, 'PHP')})`).join(', ')}
+                    </Text>
+                  );
+                })()}
+              </View>
+            )}
             <View style={styles.expensesContainer}>
-              {expenses.slice(0, 6).map((e) => (
+              {(showAllExpenses ? expenses : expenses.slice(0, 6)).map((e) => (
                 <TouchableOpacity
                   key={e.id}
                   style={[styles.expenseRow, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -706,7 +743,7 @@ export default function BudgetScreen() {
                     setShowBudgetModal(false);
                   }}
                 >
-                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Save</Text>
+                  <Text style={{ color: colors.ink, fontWeight: '600', fontSize: 14 }}>Save</Text>
                 </TouchableOpacity>
               </View>
             </Pressable>
@@ -978,6 +1015,37 @@ const getStyles = (colors: ThemeColors) =>
     allAction: {
       fontSize: 12,
       fontWeight: '600',
+    },
+    summaryBox: {
+      marginHorizontal: 16,
+      marginBottom: 12,
+      padding: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+    },
+    summaryBoxTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      marginBottom: 8,
+    },
+    summaryChips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: 8,
+    },
+    summaryChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+    },
+    summaryChipText: {
+      fontSize: 11,
+      fontWeight: '600',
+    },
+    summaryPlaces: {
+      fontSize: 11,
+      lineHeight: 16,
     },
     expensesContainer: {
       paddingHorizontal: 16,

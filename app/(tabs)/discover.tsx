@@ -1,8 +1,18 @@
 import * as Haptics from 'expo-haptics';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+let MapView: any = null;
+let Marker: any = null;
+try {
+  const maps = require('react-native-maps');
+  MapView = maps.default;
+  Marker = maps.Marker;
+} catch {
+  // Maps not available (web or missing native module)
+}
 import {
   ActivityIndicator,
   Image,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,7 +22,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
+import { Bookmark, Filter, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -36,6 +46,7 @@ import {
   voteOnPlace,
 } from '@/lib/supabase';
 import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
+import { CONFIG } from '@/lib/config';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'planner' | 'places' | 'saved';
@@ -55,6 +66,7 @@ const CATEGORY_SEARCH_MAP: Record<string, { type?: string; keyword?: string }> =
   photo: { keyword: 'viewpoint scenic photo spot' },
   wellness: { type: 'spa', keyword: 'spa wellness massage yoga' },
   coffee: { type: 'cafe', keyword: 'coffee cafe espresso' },
+  atm: { type: 'atm', keyword: 'atm cash withdraw money changer' },
 };
 
 // Map Google Places types to display labels
@@ -297,6 +309,7 @@ const PLACE_CATEGORY_CHIPS = [
   'Coffee',
   'Activity',
   'Shopping',
+  'ATM',
   'Landmark',
 ] as const;
 
@@ -472,6 +485,10 @@ export default function DiscoverScreen() {
   const [detailPlaceName, setDetailPlaceName] = useState('');
   const [showDetail, setShowDetail] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const placesCache = useRef<Record<string, readonly DiscoverPlace[]>>({});
+
+  const [tripDest, setTripDest] = useState('');
 
   // Load trip ID on mount
   useEffect(() => {
@@ -481,6 +498,7 @@ export default function DiscoverScreen() {
         const trip = await getActiveTrip();
         if (!cancelled && trip) {
           setTripId(trip.id);
+          setTripDest(trip.destination ?? '');
         }
       } catch {
         // Trip load failure is non-fatal; features degrade gracefully
@@ -512,13 +530,23 @@ export default function DiscoverScreen() {
   }, [tab, tripId, loadSavedPlaces]);
 
   // Search places via Google Places API
-  const searchPlaces = useCallback(async (keyword?: string, type?: string) => {
+  const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false) => {
+    const cacheKey = `${type ?? ''}_${keyword ?? ''}`;
+
+    // Use cache if available and not forced refresh
+    if (!skipCache && placesCache.current[cacheKey]) {
+      setPlaces(placesCache.current[cacheKey]);
+      return;
+    }
+
     setPlacesLoading(true);
     setPlacesError(null);
     try {
       const results = await searchNearby(type, keyword);
       if (results.length > 0) {
-        setPlaces(results.map(mapNearbyToDiscoverPlace));
+        const mapped = results.map(mapNearbyToDiscoverPlace);
+        placesCache.current[cacheKey] = mapped;
+        setPlaces(mapped);
       } else {
         setPlaces(PLACES);
         setPlacesError('No results found. Showing curated places.');
@@ -528,6 +556,7 @@ export default function DiscoverScreen() {
       setPlacesError('Could not load places. Showing curated places.');
     } finally {
       setPlacesLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -717,7 +746,7 @@ export default function DiscoverScreen() {
       <View style={styles.topBar}>
         <View>
           <Text style={styles.title}>Discover</Text>
-          <Text style={styles.subtitle}>Boracay</Text>
+          <Text style={styles.subtitle}>{tripDest || 'Discover'}</Text>
         </View>
         <TouchableOpacity
           style={styles.iconBtn}
@@ -730,18 +759,7 @@ export default function DiscoverScreen() {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }}
         >
-          <Svg
-            width={16}
-            height={16}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={colors.text}
-            strokeWidth={1.8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <Path d="M3 6h18M6 12h12M10 18h4" />
-          </Svg>
+          <SlidersHorizontal size={16} color={colors.text} strokeWidth={1.8} />
         </TouchableOpacity>
       </View>
 
@@ -771,6 +789,19 @@ export default function DiscoverScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              placesCache.current = {};
+              const chipKey = placeCategoryChip.toLowerCase();
+              const search = CATEGORY_SEARCH_MAP[chipKey];
+              searchPlaces(search?.keyword, search?.type, true);
+            }}
+            tintColor={colors.accent}
+          />
+        }
       >
         {/* ═══════ PLANNER TAB ═══════ */}
         {tab === 'planner' && (
@@ -779,7 +810,7 @@ export default function DiscoverScreen() {
             {itineraryLoading ? (
               <View style={{ height: 400, marginHorizontal: -16 }}>
                 <LivingPostcardLoader
-                  destination="Boracay"
+                  destination={tripDest || 'your trip'}
                   name="traveler"
                   onDone={() => {}}
                   durationMs={30000}
@@ -795,23 +826,12 @@ export default function DiscoverScreen() {
                     {/* Header row */}
                     <View style={styles.promptHeaderRow}>
                       <View style={styles.promptIconBox}>
-                        <Svg
-                          width={15}
-                          height={15}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="#fff"
-                          strokeWidth={2}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <Path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
-                        </Svg>
+                        <Sparkles size={15} color="#fff" strokeWidth={2} />
                       </View>
                       <View>
                         <Text style={styles.promptTitle}>Trip Planner</Text>
                         <Text style={styles.promptSub}>
-                          AI-generated day-by-day for Boracay
+                          AI-generated day-by-day for {tripDest || 'your trip'}
                         </Text>
                       </View>
                     </View>
@@ -889,18 +909,7 @@ export default function DiscoverScreen() {
                       accessibilityLabel="Generate Itinerary"
                       onPress={handleGenerateItinerary}
                     >
-                      <Svg
-                        width={16}
-                        height={16}
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke={colors.onBlack}
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <Path d="M12 2l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
-                      </Svg>
+                      <Sparkles size={16} color={colors.onBlack} strokeWidth={2} />
                       <Text style={styles.generateBtnText}>Generate Itinerary</Text>
                     </TouchableOpacity>
 
@@ -960,7 +969,7 @@ export default function DiscoverScreen() {
             {/* Trending */}
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={styles.eyebrow}>Trending in Boracay</Text>
+                <Text style={styles.eyebrow}>Trending in {tripDest || 'your area'}</Text>
                 <Text style={styles.sectionTitle}>
                   What everyone{'\u2019'}s doing
                 </Text>
@@ -992,23 +1001,11 @@ export default function DiscoverScreen() {
           <>
             {/* Search */}
             <View style={styles.searchBox}>
-              <Svg
-                width={16}
-                height={16}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={colors.text3}
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <Circle cx={11} cy={11} r={8} />
-                <Line x1={21} y1={21} x2={16.6} y2={16.6} />
-              </Svg>
+              <Search size={16} color={colors.text3} strokeWidth={1.8} />
               <TextInput
                 value={q}
                 onChangeText={setQ}
-                placeholder="Search restaurants, beaches, activities\u2026"
+                placeholder="Search restaurants, beaches, activities..."
                 placeholderTextColor={colors.text3}
                 style={styles.searchInput}
               />
@@ -1050,18 +1047,7 @@ export default function DiscoverScreen() {
                 ]}
                 activeOpacity={0.7}
               >
-                <Svg
-                  width={12}
-                  height={12}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <Path d="M3 4h18l-7 9v6l-4 2v-8z" />
-                </Svg>
+                <Filter size={12} color={activeFilterCount > 0 ? colors.accent : colors.text} strokeWidth={2} />
                 <Text
                   style={{
                     fontSize: 11.5,
@@ -1208,7 +1194,7 @@ export default function DiscoverScreen() {
               )}
               {placesLoading ? (
                 <View style={styles.emptyPlaces}>
-                  <MiniLoader message="Finding places\u2026" />
+                  <MiniLoader message="Finding places..." />
                 </View>
               ) : filteredPlaces.length === 0 ? (
                 <View style={styles.emptyPlaces}>
@@ -1234,6 +1220,55 @@ export default function DiscoverScreen() {
                 ))
               )}
             </View>
+
+            {/* Map section showing filtered places */}
+            {!placesLoading && filteredPlaces.length > 0 && MapView && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <View>
+                    <Text style={styles.eyebrow}>Map</Text>
+                    <Text style={styles.sectionTitle}>Nearby places</Text>
+                  </View>
+                </View>
+                <View style={styles.mapContainer}>
+                  <MapView
+                    style={styles.map}
+                    initialRegion={{
+                      latitude: CONFIG.HOTEL_COORDS.lat,
+                      longitude: CONFIG.HOTEL_COORDS.lng,
+                      latitudeDelta: 0.025,
+                      longitudeDelta: 0.025,
+                    }}
+                    scrollEnabled={false}
+                    zoomEnabled={true}
+                    pitchEnabled={false}
+                  >
+                    {/* Hotel pin */}
+                    <Marker
+                      coordinate={{ latitude: CONFIG.HOTEL_COORDS.lat, longitude: CONFIG.HOTEL_COORDS.lng }}
+                      title="Your Hotel"
+                      pinColor={colors.accent}
+                    />
+                    {/* Place pins */}
+                    {filteredPlaces
+                      .filter((p) => p.lat && p.lng)
+                      .map((p) => (
+                        <Marker
+                          key={p.n}
+                          coordinate={{ latitude: p.lat!, longitude: p.lng! }}
+                          title={p.n}
+                          description={`${p.t} \u00B7 ${p.d}`}
+                          onCalloutPress={() => {
+                            setDetailPlaceId(p.placeId ?? null);
+                            setDetailPlaceName(p.n);
+                            setShowDetail(true);
+                          }}
+                        />
+                      ))}
+                  </MapView>
+                </View>
+              </>
+            )}
           </>
         )}
 
@@ -1242,23 +1277,11 @@ export default function DiscoverScreen() {
           <View style={styles.placeList}>
             {savedLoading ? (
               <View style={styles.emptyPlaces}>
-                <MiniLoader message="Loading saved places\u2026" />
+                <MiniLoader message="Loading saved places..." />
               </View>
             ) : savedPlaces.length === 0 && saved.size === 0 ? (
               <View style={styles.emptyCard}>
-                <Svg
-                  width={28}
-                  height={28}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={colors.text3}
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  opacity={0.6}
-                >
-                  <Path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
-                </Svg>
+                <Bookmark size={28} color={colors.text3} strokeWidth={1.6} opacity={0.6} />
                 <Text style={styles.emptyCardTitle}>No saved places yet</Text>
                 <Text style={styles.emptyCardBody}>
                   Tap the bookmark on a place to save it here.
@@ -1697,6 +1720,19 @@ const getStyles = (colors: ThemeColors) =>
     placeList: {
       paddingHorizontal: 16,
       gap: 12,
+    },
+    mapContainer: {
+      marginHorizontal: 16,
+      height: 220,
+      borderRadius: 18,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 16,
+    },
+    map: {
+      width: '100%',
+      height: '100%',
     },
     emptyPlaces: {
       paddingVertical: 28,

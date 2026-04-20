@@ -32,6 +32,12 @@
       "expo-router",
       "expo-web-browser"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/a804380e-5c0d-425e-ac2b-7c07b8b81fd4"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "experiments": {
       "typedRoutes": true
     },

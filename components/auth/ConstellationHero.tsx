@@ -26,7 +26,7 @@ const AnimatedLine = Animated.createAnimatedComponent(Line);
 const AnimatedG = Animated.createAnimatedComponent(G);
 
 const HERO_HEIGHT = 300;
-const STAR_COUNT = 44;
+const STAR_COUNT = 16;
 
 const CONSTELLATION_VERTICES = [
   [22, 30],
