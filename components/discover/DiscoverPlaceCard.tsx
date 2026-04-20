@@ -26,7 +26,8 @@ export interface DiscoverPlace {
 interface DiscoverPlaceCardProps {
   place: DiscoverPlace;
   travelTime?: string;
-  travelMode?: 'walk' | 'drive';
+  distanceLabel?: string;
+  travelMode?: 'walk' | 'car';
   isSaved: boolean;
   isRecommended: boolean;
   onSave: () => void;
@@ -37,6 +38,7 @@ interface DiscoverPlaceCardProps {
 export function DiscoverPlaceCard({
   place,
   travelTime,
+  distanceLabel,
   travelMode = 'walk',
   isSaved,
   isRecommended,
@@ -99,12 +101,18 @@ export function DiscoverPlaceCard({
             <Text style={styles.ratingDot}>{'\u00B7'}</Text>
             <View style={styles.travelInline}>
               {travelMode === 'walk'
-                ? <Footprints size={10} color={colors.text3} strokeWidth={1.8} />
-                : <Car size={10} color={colors.text3} strokeWidth={1.8} />
+                ? <Footprints size={11} color={colors.text3} strokeWidth={1.8} />
+                : <Car size={11} color={colors.text3} strokeWidth={1.8} />
               }
               <Text style={styles.ratingMeta}>{travelTime || place.d}</Text>
             </View>
-            <Text style={styles.ratingDot}>{'\u00B7'}</Text>
+            {distanceLabel && (
+              <>
+                <Text style={styles.ratingMeta}>{distanceLabel}</Text>
+                <Text style={styles.ratingDot}>{'\u00B7'}</Text>
+              </>
+            )}
+            {!distanceLabel && <Text style={styles.ratingDot}>{'\u00B7'}</Text>}
             <Text style={styles.priceText}>{priceLabel}</Text>
           </View>
         </View>

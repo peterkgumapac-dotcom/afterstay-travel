@@ -123,3 +123,22 @@ export function mask(value: string, visible: number = 2): string {
   if (value.length <= visible) return '•'.repeat(value.length);
   return '•'.repeat(value.length - visible) + value.slice(-visible);
 }
+
+export function fmtKm(km: number): string {
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  return `${km.toFixed(1)} km`;
+}
+
+export function travelTime(km: number, mode: 'walk' | 'car'): string {
+  if (mode === 'walk') {
+    const min = Math.round(km * 12); // 5 km/h = 12 min/km
+    if (min < 60) return `${min} min walk`;
+    const h = Math.floor(min / 60);
+    return `${h}h ${min % 60}m walk`;
+  }
+  // Car: tricycle hailing + slow resort roads
+  const min = Math.max(3, Math.round(3 + km * 2.4));
+  if (min < 60) return `${min} min drive`;
+  const h = Math.floor(min / 60);
+  return `${h}h ${min % 60}m drive`;
+}

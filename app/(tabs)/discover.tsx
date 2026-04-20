@@ -23,7 +23,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, Building2, Car, Filter, Footprints, LocateFixed, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import { Bookmark, Filter, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -37,7 +37,10 @@ import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
-import { distanceFromHotel, distanceFromPoint, formatDistance, estimateWalkTime, estimateDriveTime } from '@/lib/distance';
+import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
+import { fmtKm, travelTime } from '@/lib/utils';
+import DistanceToggle from '@/components/discover/DistanceToggle';
+import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, type NearbyPlace } from '@/lib/google-places';
 import {
   addPlace,
@@ -496,6 +499,12 @@ export default function DiscoverScreen() {
 
   const [tripDest, setTripDest] = useState('');
 
+  // Restore cached anchor/travel mode
+  useEffect(() => {
+    cacheGet<'hotel' | 'me'>('discover:anchor').then((v) => { if (v) setDistanceOrigin(v); });
+    cacheGet<'walk' | 'car'>('discover:travelMode').then((v) => { if (v) setTravelMode(v as TravelMode); });
+  }, []);
+
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
     if (!placeLat || !placeLng) return 0;
@@ -520,6 +529,20 @@ export default function DiscoverScreen() {
     setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
     setDistanceOrigin('me');
   }, [userLocation]);
+
+  const handleAnchorChange = useCallback((a: 'hotel' | 'me') => {
+    if (a === 'me') {
+      switchToMyLocation();
+    } else {
+      setDistanceOrigin('hotel');
+    }
+    cacheSet('discover:anchor', a);
+  }, [switchToMyLocation]);
+
+  const handleTravelModeChange = useCallback((m: 'walk' | 'car') => {
+    setTravelMode(m as TravelMode);
+    cacheSet('discover:travelMode', m);
+  }, []);
 
   // Load trip ID on mount
   useEffect(() => {
@@ -1042,6 +1065,14 @@ export default function DiscoverScreen() {
               />
             </View>
 
+            {/* Distance anchor + travel mode */}
+            <DistanceToggle
+              anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
+              travelMode={travelMode === 'drive' ? 'car' : 'walk'}
+              onAnchorChange={handleAnchorChange}
+              onTravelModeChange={handleTravelModeChange}
+            />
+
             {/* Category chips */}
             <ScrollView
               horizontal
@@ -1119,42 +1150,6 @@ export default function DiscoverScreen() {
               >
                 {'\u2605'} 4.5+
               </FilterChip>
-              <View style={styles.travelToggle}>
-                <TouchableOpacity
-                  onPress={() => setDistanceOrigin('hotel')}
-                  style={[styles.travelBtn, distanceOrigin === 'hotel' && styles.travelBtnActive]}
-                  hitSlop={4}
-                >
-                  <Building2 size={18} color={distanceOrigin === 'hotel' ? colors.accent : colors.text3} strokeWidth={1.8} />
-                  <Text style={[styles.travelBtnLabel, distanceOrigin === 'hotel' && styles.travelBtnLabelActive]}>Hotel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={switchToMyLocation}
-                  style={[styles.travelBtn, distanceOrigin === 'me' && styles.travelBtnActive]}
-                  hitSlop={4}
-                >
-                  <LocateFixed size={18} color={distanceOrigin === 'me' ? colors.accent : colors.text3} strokeWidth={1.8} />
-                  <Text style={[styles.travelBtnLabel, distanceOrigin === 'me' && styles.travelBtnLabelActive]}>You</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.travelToggle}>
-                <TouchableOpacity
-                  onPress={() => setTravelMode('walk')}
-                  style={[styles.travelBtn, travelMode === 'walk' && styles.travelBtnActive]}
-                  hitSlop={4}
-                >
-                  <Footprints size={18} color={travelMode === 'walk' ? colors.accent : colors.text3} strokeWidth={1.8} />
-                  <Text style={[styles.travelBtnLabel, travelMode === 'walk' && styles.travelBtnLabelActive]}>Walk</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setTravelMode('drive')}
-                  style={[styles.travelBtn, travelMode === 'drive' && styles.travelBtnActive]}
-                  hitSlop={4}
-                >
-                  <Car size={18} color={travelMode === 'drive' ? colors.accent : colors.text3} strokeWidth={1.8} />
-                  <Text style={[styles.travelBtnLabel, travelMode === 'drive' && styles.travelBtnLabelActive]}>Drive</Text>
-                </TouchableOpacity>
-              </View>
             </View>
 
             {/* Expanded filters panel */}
@@ -1274,8 +1269,9 @@ export default function DiscoverScreen() {
                   <DiscoverPlaceCard
                     key={p.n}
                     place={p}
-                    travelTime={(() => { const km = getDistanceKm(p.lat, p.lng); return km > 0 ? (travelMode === 'walk' ? estimateWalkTime(km) : estimateDriveTime(km)) : undefined; })()}
-                    travelMode={travelMode}
+                    travelTime={(() => { const km = getDistanceKm(p.lat, p.lng); return km > 0 ? travelTime(km, travelMode === 'drive' ? 'car' : 'walk') : undefined; })()}
+                    distanceLabel={(() => { const km = getDistanceKm(p.lat, p.lng); return km > 0 ? fmtKm(km) : undefined; })()}
+                    travelMode={travelMode === 'drive' ? 'car' : 'walk'}
                     isSaved={saved.has(p.n)}
                     isRecommended={recommended.has(p.n)}
                     onSave={() => toggleSave(p.n)}
@@ -1379,8 +1375,9 @@ export default function DiscoverScreen() {
                     <DiscoverPlaceCard
                       key={p.id}
                       place={dp}
-                      travelTime={(() => { const km = getDistanceKm(dp.lat, dp.lng); return km > 0 ? (travelMode === 'walk' ? estimateWalkTime(km) : estimateDriveTime(km)) : undefined; })()}
-                      travelMode={travelMode}
+                      travelTime={(() => { const km = getDistanceKm(dp.lat, dp.lng); return km > 0 ? travelTime(km, travelMode === 'drive' ? 'car' : 'walk') : undefined; })()}
+                      distanceLabel={(() => { const km = getDistanceKm(dp.lat, dp.lng); return km > 0 ? fmtKm(km) : undefined; })()}
+                      travelMode={travelMode === 'drive' ? 'car' : 'walk'}
                       isSaved={true}
                       isRecommended={recommended.has(p.name)}
                       onSave={() => toggleSave(p.name)}
@@ -1750,33 +1747,6 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.accentBg,
     },
 
-    // Travel mode toggle
-    travelToggle: {
-      flexDirection: 'row',
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-      overflow: 'hidden',
-    },
-    travelBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 5,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-    },
-    travelBtnActive: {
-      backgroundColor: colors.accentBg,
-    },
-    travelBtnLabel: {
-      fontSize: 12.5,
-      fontWeight: '600',
-      color: colors.text3,
-    },
-    travelBtnLabelActive: {
-      color: colors.accent,
-    },
 
     // Filter panel
     filterPanel: {
