@@ -24,6 +24,7 @@ export interface DiscoverPlace {
 
 interface DiscoverPlaceCardProps {
   place: DiscoverPlace;
+  travelTime?: string;
   isSaved: boolean;
   isRecommended: boolean;
   onSave: () => void;
@@ -33,6 +34,7 @@ interface DiscoverPlaceCardProps {
 
 export function DiscoverPlaceCard({
   place,
+  travelTime,
   isSaved,
   isRecommended,
   onSave,
@@ -92,7 +94,7 @@ export function DiscoverPlaceCard({
             </View>
             <Text style={styles.ratingMeta}>{place.rv}</Text>
             <Text style={styles.ratingDot}>{'\u00B7'}</Text>
-            <Text style={styles.ratingMeta}>{place.d}</Text>
+            <Text style={styles.ratingMeta}>{travelTime || place.d}</Text>
             <Text style={styles.ratingDot}>{'\u00B7'}</Text>
             <Text style={styles.priceText}>{priceLabel}</Text>
           </View>

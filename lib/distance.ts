@@ -32,3 +32,11 @@ export const estimateWalkTime = (km: number): string => {
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m walk`;
 };
+
+export const estimateDriveTime = (km: number): string => {
+  const minutes = Math.round((km / 25) * 60); // ~25 km/h avg in resort areas
+  if (minutes < 1) return '1 min drive';
+  if (minutes < 60) return `${minutes} min drive`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m drive`;
+};

@@ -36,7 +36,7 @@ import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
-import { distanceFromHotel, formatDistance } from '@/lib/distance';
+import { distanceFromHotel, formatDistance, estimateWalkTime, estimateDriveTime } from '@/lib/distance';
 import { searchNearby, type NearbyPlace } from '@/lib/google-places';
 import {
   addPlace,
@@ -49,7 +49,8 @@ import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
 import { CONFIG } from '@/lib/config';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
-type TabId = 'planner' | 'places' | 'saved';
+type TabId = 'places' | 'planner' | 'saved';
+type TravelMode = 'walk' | 'drive';
 type FilterState = {
   minRating: number;
   openNow: boolean;
@@ -457,7 +458,8 @@ export default function DiscoverScreen() {
   const { colors } = useTheme();
   const styles = getStyles(colors);
 
-  const [tab, setTab] = useState<TabId>('planner');
+  const [tab, setTab] = useState<TabId>('places');
+  const [travelMode, setTravelMode] = useState<TravelMode>('walk');
   const [prompt, setPrompt] = useState('');
   const [style, setStyle] = useState('relaxed');
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
@@ -766,7 +768,7 @@ export default function DiscoverScreen() {
       {/* Segmented control */}
       <View style={styles.segWrapper}>
         <View style={styles.seg}>
-          {(['planner', 'places', 'saved'] as const).map((id) => (
+          {(['places', 'planner', 'saved'] as const).map((id) => (
             <TouchableOpacity
               key={id}
               style={[styles.segBtn, tab === id && styles.segBtnActive]}
@@ -1088,6 +1090,24 @@ export default function DiscoverScreen() {
               >
                 {'\u2605'} 4.5+
               </FilterChip>
+              <View style={styles.travelToggle}>
+                <TouchableOpacity
+                  onPress={() => setTravelMode('walk')}
+                  style={[styles.travelBtn, travelMode === 'walk' && styles.travelBtnActive]}
+                >
+                  <Text style={[styles.travelBtnText, travelMode === 'walk' && styles.travelBtnTextActive]}>
+                    {'\uD83D\uDEB6'} Walk
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setTravelMode('drive')}
+                  style={[styles.travelBtn, travelMode === 'drive' && styles.travelBtnActive]}
+                >
+                  <Text style={[styles.travelBtnText, travelMode === 'drive' && styles.travelBtnTextActive]}>
+                    {'\uD83D\uDE97'} Drive
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Expanded filters panel */}
@@ -1207,6 +1227,7 @@ export default function DiscoverScreen() {
                   <DiscoverPlaceCard
                     key={p.n}
                     place={p}
+                    travelTime={p.dn > 0 ? (travelMode === 'walk' ? estimateWalkTime(p.dn) : estimateDriveTime(p.dn)) : undefined}
                     isSaved={saved.has(p.n)}
                     isRecommended={recommended.has(p.n)}
                     onSave={() => toggleSave(p.n)}
@@ -1310,6 +1331,7 @@ export default function DiscoverScreen() {
                     <DiscoverPlaceCard
                       key={p.id}
                       place={dp}
+                      travelTime={dp.dn > 0 ? (travelMode === 'walk' ? estimateWalkTime(dp.dn) : estimateDriveTime(dp.dn)) : undefined}
                       isSaved={true}
                       isRecommended={recommended.has(p.name)}
                       onSave={() => toggleSave(p.name)}
@@ -1677,6 +1699,31 @@ const getStyles = (colors: ThemeColors) =>
     filterBtnActive: {
       borderColor: colors.accent,
       backgroundColor: colors.accentBg,
+    },
+
+    // Travel mode toggle
+    travelToggle: {
+      flexDirection: 'row',
+      marginLeft: 'auto',
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    travelBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+    },
+    travelBtnActive: {
+      backgroundColor: colors.accentBg,
+    },
+    travelBtnText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text3,
+    },
+    travelBtnTextActive: {
+      color: colors.accent,
     },
 
     // Filter panel
