@@ -1,5 +1,6 @@
 import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { Footprints, Car } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 
@@ -25,6 +26,7 @@ export interface DiscoverPlace {
 interface DiscoverPlaceCardProps {
   place: DiscoverPlace;
   travelTime?: string;
+  travelMode?: 'walk' | 'drive';
   isSaved: boolean;
   isRecommended: boolean;
   onSave: () => void;
@@ -35,6 +37,7 @@ interface DiscoverPlaceCardProps {
 export function DiscoverPlaceCard({
   place,
   travelTime,
+  travelMode = 'walk',
   isSaved,
   isRecommended,
   onSave,
@@ -94,7 +97,13 @@ export function DiscoverPlaceCard({
             </View>
             <Text style={styles.ratingMeta}>{place.rv}</Text>
             <Text style={styles.ratingDot}>{'\u00B7'}</Text>
-            <Text style={styles.ratingMeta}>{travelTime || place.d}</Text>
+            <View style={styles.travelInline}>
+              {travelMode === 'walk'
+                ? <Footprints size={10} color={colors.text3} strokeWidth={1.8} />
+                : <Car size={10} color={colors.text3} strokeWidth={1.8} />
+              }
+              <Text style={styles.ratingMeta}>{travelTime || place.d}</Text>
+            </View>
             <Text style={styles.ratingDot}>{'\u00B7'}</Text>
             <Text style={styles.priceText}>{priceLabel}</Text>
           </View>
@@ -287,6 +296,11 @@ const getStyles = (colors: ThemeColors) =>
     ratingMeta: {
       fontSize: 11,
       color: colors.text3,
+    },
+    travelInline: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
     },
     ratingDot: {
       fontSize: 11,

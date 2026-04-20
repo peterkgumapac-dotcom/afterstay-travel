@@ -23,7 +23,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, Filter, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import { Bookmark, Building2, Car, Filter, Footprints, LocateFixed, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -1124,34 +1124,26 @@ export default function DiscoverScreen() {
                   onPress={() => setDistanceOrigin('hotel')}
                   style={[styles.travelBtn, distanceOrigin === 'hotel' && styles.travelBtnActive]}
                 >
-                  <Text style={[styles.travelBtnText, distanceOrigin === 'hotel' && styles.travelBtnTextActive]}>
-                    {'\uD83C\uDFE8'} Hotel
-                  </Text>
+                  <Building2 size={12} color={distanceOrigin === 'hotel' ? colors.accent : colors.text3} strokeWidth={2} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={switchToMyLocation}
                   style={[styles.travelBtn, distanceOrigin === 'me' && styles.travelBtnActive]}
                 >
-                  <Text style={[styles.travelBtnText, distanceOrigin === 'me' && styles.travelBtnTextActive]}>
-                    {'\uD83D\uDCCD'} Me
-                  </Text>
+                  <LocateFixed size={12} color={distanceOrigin === 'me' ? colors.accent : colors.text3} strokeWidth={2} />
                 </TouchableOpacity>
                 <View style={styles.travelDivider} />
                 <TouchableOpacity
                   onPress={() => setTravelMode('walk')}
                   style={[styles.travelBtn, travelMode === 'walk' && styles.travelBtnActive]}
                 >
-                  <Text style={[styles.travelBtnText, travelMode === 'walk' && styles.travelBtnTextActive]}>
-                    {'\uD83D\uDEB6'}
-                  </Text>
+                  <Footprints size={12} color={travelMode === 'walk' ? colors.accent : colors.text3} strokeWidth={2} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setTravelMode('drive')}
                   style={[styles.travelBtn, travelMode === 'drive' && styles.travelBtnActive]}
                 >
-                  <Text style={[styles.travelBtnText, travelMode === 'drive' && styles.travelBtnTextActive]}>
-                    {'\uD83D\uDE97'}
-                  </Text>
+                  <Car size={12} color={travelMode === 'drive' ? colors.accent : colors.text3} strokeWidth={2} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1274,6 +1266,7 @@ export default function DiscoverScreen() {
                     key={p.n}
                     place={p}
                     travelTime={(() => { const km = getDistanceKm(p.lat, p.lng); return km > 0 ? (travelMode === 'walk' ? estimateWalkTime(km) : estimateDriveTime(km)) : undefined; })()}
+                    travelMode={travelMode}
                     isSaved={saved.has(p.n)}
                     isRecommended={recommended.has(p.n)}
                     onSave={() => toggleSave(p.n)}
@@ -1378,6 +1371,7 @@ export default function DiscoverScreen() {
                       key={p.id}
                       place={dp}
                       travelTime={(() => { const km = getDistanceKm(dp.lat, dp.lng); return km > 0 ? (travelMode === 'walk' ? estimateWalkTime(km) : estimateDriveTime(km)) : undefined; })()}
+                      travelMode={travelMode}
                       isSaved={true}
                       isRecommended={recommended.has(p.name)}
                       onSave={() => toggleSave(p.name)}
