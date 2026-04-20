@@ -1123,27 +1123,36 @@ export default function DiscoverScreen() {
                 <TouchableOpacity
                   onPress={() => setDistanceOrigin('hotel')}
                   style={[styles.travelBtn, distanceOrigin === 'hotel' && styles.travelBtnActive]}
+                  hitSlop={4}
                 >
-                  <Building2 size={12} color={distanceOrigin === 'hotel' ? colors.accent : colors.text3} strokeWidth={2} />
+                  <Building2 size={14} color={distanceOrigin === 'hotel' ? colors.accent : colors.text3} strokeWidth={1.8} />
+                  <Text style={[styles.travelBtnLabel, distanceOrigin === 'hotel' && styles.travelBtnLabelActive]}>Hotel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={switchToMyLocation}
                   style={[styles.travelBtn, distanceOrigin === 'me' && styles.travelBtnActive]}
+                  hitSlop={4}
                 >
-                  <LocateFixed size={12} color={distanceOrigin === 'me' ? colors.accent : colors.text3} strokeWidth={2} />
+                  <LocateFixed size={14} color={distanceOrigin === 'me' ? colors.accent : colors.text3} strokeWidth={1.8} />
+                  <Text style={[styles.travelBtnLabel, distanceOrigin === 'me' && styles.travelBtnLabelActive]}>You</Text>
                 </TouchableOpacity>
-                <View style={styles.travelDivider} />
+              </View>
+              <View style={styles.travelToggle}>
                 <TouchableOpacity
                   onPress={() => setTravelMode('walk')}
                   style={[styles.travelBtn, travelMode === 'walk' && styles.travelBtnActive]}
+                  hitSlop={4}
                 >
-                  <Footprints size={12} color={travelMode === 'walk' ? colors.accent : colors.text3} strokeWidth={2} />
+                  <Footprints size={14} color={travelMode === 'walk' ? colors.accent : colors.text3} strokeWidth={1.8} />
+                  <Text style={[styles.travelBtnLabel, travelMode === 'walk' && styles.travelBtnLabelActive]}>Walk</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setTravelMode('drive')}
                   style={[styles.travelBtn, travelMode === 'drive' && styles.travelBtnActive]}
+                  hitSlop={4}
                 >
-                  <Car size={12} color={travelMode === 'drive' ? colors.accent : colors.text3} strokeWidth={2} />
+                  <Car size={14} color={travelMode === 'drive' ? colors.accent : colors.text3} strokeWidth={1.8} />
+                  <Text style={[styles.travelBtnLabel, travelMode === 'drive' && styles.travelBtnLabelActive]}>Drive</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1744,31 +1753,29 @@ const getStyles = (colors: ThemeColors) =>
     // Travel mode toggle
     travelToggle: {
       flexDirection: 'row',
-      marginLeft: 'auto',
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
+      backgroundColor: colors.card,
       overflow: 'hidden',
     },
     travelBtn: {
-      paddingVertical: 6,
-      paddingHorizontal: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 7,
+      paddingHorizontal: 11,
     },
     travelBtnActive: {
       backgroundColor: colors.accentBg,
     },
-    travelBtnText: {
+    travelBtnLabel: {
       fontSize: 11,
       fontWeight: '600',
       color: colors.text3,
     },
-    travelBtnTextActive: {
+    travelBtnLabelActive: {
       color: colors.accent,
-    },
-    travelDivider: {
-      width: 1,
-      backgroundColor: colors.border,
-      marginVertical: 4,
     },
 
     // Filter panel
