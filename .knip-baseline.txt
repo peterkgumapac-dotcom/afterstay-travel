@@ -1,0 +1,34 @@
+Unused files (13)
+components/CachedImage.tsx: components/CachedImage.tsx
+design-reference/components/icons.jsx: design-reference/components/icons.jsx
+design-reference/components/shell.jsx: design-reference/components/shell.jsx
+design-reference/screens/budget.jsx: design-reference/screens/budget.jsx
+design-reference/screens/discover.jsx: design-reference/screens/discover.jsx
+design-reference/screens/guide.jsx: design-reference/screens/guide.jsx
+design-reference/screens/home.jsx: design-reference/screens/home.jsx
+design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
+design-reference/screens/login.jsx: design-reference/screens/login.jsx
+design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
+design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
+lib/cache/cacheFirst.ts: lib/cache/cacheFirst.ts
+lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
+Unused dependencies (1)
+package.json: @clerk/expo, @expo/vector-icons, base64-arraybuffer, exifr, expo-av, expo-calendar, expo-secure-store, expo-sharing
+Unused devDependencies (1)
+package.json: @expo/ngrok, react-test-renderer, ts-prune
+Unlisted dependencies (1)
+app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
+Unused exports (5)
+components/budget/WhoPaysPicker.tsx: WhoPaysSegment
+components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
+components/trip/tripConstants.ts: mapFlightToDisplay
+constants/ThemeContext.tsx: lightColors
+lib/google-places.ts: searchPlace, HOTEL_LAT, HOTEL_LNG
+Unused exported types (5)
+constants/ThemeContext.tsx: ThemeMode
+lib/anthropic.ts: ScannedReceipt
+lib/google-places.ts: PlaceSearchResult
+lib/supabase.ts: Profile
+lib/types.ts: WeatherDay
+Duplicate exports (1)
+components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet, default

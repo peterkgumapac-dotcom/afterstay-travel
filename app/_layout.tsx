@@ -1,4 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { useFonts } from 'expo-font';
 import { Redirect, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -9,6 +10,7 @@ import 'react-native-reanimated';
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { verifyConfig } from '@/lib/config';
+import { queryClient, persister } from '@/lib/queryClient';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -119,10 +121,12 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <RootLayoutInner />
-      </AuthProvider>
-    </ThemeProvider>
+    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister }}>
+      <ThemeProvider>
+        <AuthProvider>
+          <RootLayoutInner />
+        </AuthProvider>
+      </ThemeProvider>
+    </PersistQueryClientProvider>
   );
 }

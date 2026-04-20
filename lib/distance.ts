@@ -1,4 +1,5 @@
 import { CONFIG } from './config';
+import { cachedHaversine } from './cache/distanceCache';
 
 export const haversine = (
   lat1: number, lon1: number,
@@ -16,16 +17,8 @@ export const haversine = (
   return R * c;
 };
 
-// Cache hotel→place distances (static — hotel and places don't move)
-const hotelDistanceCache = new Map<string, number>();
-
 export const distanceFromHotel = (lat: number, lng: number): number => {
-  const key = `${lat},${lng}`;
-  const cached = hotelDistanceCache.get(key);
-  if (cached !== undefined) return cached;
-  const km = haversine(CONFIG.HOTEL_COORDS.lat, CONFIG.HOTEL_COORDS.lng, lat, lng);
-  hotelDistanceCache.set(key, km);
-  return km;
+  return cachedHaversine(CONFIG.HOTEL_COORDS.lat, CONFIG.HOTEL_COORDS.lng, lat, lng);
 };
 
 export const distanceFromPoint = (

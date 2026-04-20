@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Type-check — zero tolerance for regressions
+npx tsc --noEmit || exit 1
+
+# Dead-code baseline — fail if new unused exports appear
+CURRENT=$(npx knip --no-exit-code --reporter compact 2>/dev/null | wc -l | tr -d ' ')
+BASELINE=$(wc -l < .knip-baseline.txt 2>/dev/null | tr -d ' ')
+BASELINE=${BASELINE:-0}
+
+if [ "$CURRENT" -gt "$BASELINE" ]; then
+  echo "knip: new unused exports detected ($CURRENT > $BASELINE baseline)"
+  echo "Run 'npx knip --reporter compact' to see details."
+  exit 1
+fi
