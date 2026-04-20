@@ -11,6 +11,12 @@ const styles = StyleSheet.create({
   label: { color: '#556677', fontSize: 14 },
 });
 
+/**
+ * Render a fallback MapView for web that displays a centered "Map preview unavailable on web" message.
+ * @param {object} props - Component props.
+ * @param {object|Array} [props.style] - Optional style or style array merged with the default container style.
+ * @returns {React.Element} A React element containing a centered placeholder message for web environments.
+ */
 function MapView(props) {
   return React.createElement(
     View,
@@ -19,6 +25,11 @@ function MapView(props) {
   );
 }
 
+/**
+ * Placeholder `Marker` component for web that renders nothing.
+ *
+ * @returns {null} `null` indicating no UI is rendered.
+ */
 function Marker() {
   return null;
 }
