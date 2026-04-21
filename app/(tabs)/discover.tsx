@@ -42,8 +42,10 @@ import {
   savePlace,
   voteOnPlace,
 } from '@/lib/supabase';
+import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
+import { CONFIG } from '@/lib/config';
 
-// Dynamic require AFTER all imports — avoids Hermes strict mode crash
+// Dynamic require MUST be after ALL imports — Hermes hoists imports
 let MapView: any = null;
 let Marker: any = null;
 try {
@@ -53,8 +55,6 @@ try {
 } catch {
   // Maps not available (web or missing native module)
 }
-import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
-import { CONFIG } from '@/lib/config';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'places' | 'planner' | 'saved';
