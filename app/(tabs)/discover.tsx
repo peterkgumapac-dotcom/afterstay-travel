@@ -497,6 +497,7 @@ function DiscoverScreenInner() {
   const [visibleCount, setVisibleCount] = useState(20);
   const [showMapModal, setShowMapModal] = useState(false);
   const [mapFilter, setMapFilter] = useState<string | null>(null);
+  const [showMapDropdown, setShowMapDropdown] = useState(false);
 
   // PlaceDetailSheet state
   const [detailPlaceId, setDetailPlaceId] = useState<string | null>(null);
@@ -1460,7 +1461,7 @@ function DiscoverScreenInner() {
             {/* Close button */}
             <TouchableOpacity
               style={styles.mapCloseBtn}
-              onPress={() => { setShowMapModal(false); setMapFilter(null); }}
+              onPress={() => { setShowMapModal(false); setMapFilter(null); setShowMapDropdown(false); }}
               activeOpacity={0.7}
             >
               <X size={22} color={colors.text} strokeWidth={2} />
@@ -1469,24 +1470,40 @@ function DiscoverScreenInner() {
             <View style={styles.mapBadge}>
               <Text style={styles.mapBadgeText}>{mapPlaces.length} places</Text>
             </View>
-            {/* Category filter chips */}
-            <View style={styles.mapChipsRow}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 16 }}>
+            {/* Filter button — Google Maps style */}
+            <TouchableOpacity
+              style={styles.mapFilterBtn}
+              onPress={() => setShowMapDropdown((s) => !s)}
+              activeOpacity={0.7}
+            >
+              <Filter size={16} color={mapFilter ? colors.accent : colors.text} strokeWidth={2} />
+              <Text style={[styles.mapFilterBtnText, mapFilter && { color: colors.accent }]}>
+                {mapFilter ?? 'Filter'}
+              </Text>
+            </TouchableOpacity>
+            {/* Dropdown menu */}
+            {showMapDropdown && (
+              <View style={styles.mapDropdown}>
                 {MAP_CHIPS.map((c) => {
                   const active = (mapFilter ?? 'All') === c;
                   return (
                     <TouchableOpacity
                       key={c}
-                      onPress={() => setMapFilter(c === 'All' ? null : c)}
-                      style={[styles.mapChip, active && styles.mapChipActive]}
+                      onPress={() => {
+                        setMapFilter(c === 'All' ? null : c);
+                        setShowMapDropdown(false);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      style={[styles.mapDropdownItem, active && styles.mapDropdownItemActive]}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.mapChipText, active && styles.mapChipTextActive]}>{c}</Text>
+                      <Text style={[styles.mapDropdownText, active && styles.mapDropdownTextActive]}>{c}</Text>
+                      {active && <View style={styles.mapDropdownDot} />}
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
-            </View>
+              </View>
+            )}
           </View>
         );
       })()}
@@ -1942,32 +1959,67 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: '600',
       color: colors.text,
     },
-    mapChipsRow: {
+    mapFilterBtn: {
       position: 'absolute',
-      bottom: 32,
-      left: 0,
-      right: 0,
-      zIndex: 101,
-    },
-    mapChip: {
-      paddingVertical: 8,
+      top: 52,
+      left: 76,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 10,
       paddingHorizontal: 14,
       borderRadius: 999,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
+      zIndex: 101,
     },
-    mapChipActive: {
-      backgroundColor: colors.accent,
-      borderColor: colors.accent,
-    },
-    mapChipText: {
-      fontSize: 12,
+    mapFilterBtnText: {
+      fontSize: 13,
       fontWeight: '600',
-      color: colors.text2,
+      color: colors.text,
     },
-    mapChipTextActive: {
-      color: colors.ink,
+    mapDropdown: {
+      position: 'absolute',
+      top: 100,
+      left: 16,
+      width: 180,
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 6,
+      zIndex: 102,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    mapDropdownItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 11,
+      paddingHorizontal: 16,
+    },
+    mapDropdownItemActive: {
+      backgroundColor: colors.accentBg,
+    },
+    mapDropdownText: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.text,
+    },
+    mapDropdownTextActive: {
+      fontWeight: '700',
+      color: colors.accent,
+    },
+    mapDropdownDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.accent,
     },
     emptyPlaces: {
       paddingVertical: 28,
