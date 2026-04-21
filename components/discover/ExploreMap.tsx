@@ -168,6 +168,14 @@ function ExploreMap({
           latitudeDelta: 0.008,
           longitudeDelta: 0.008,
         }}
+        onMapReady={() => {
+          mapRef.current?.animateToRegion({
+            latitude: userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat,
+            longitude: userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng,
+            latitudeDelta: 0.008,
+            longitudeDelta: 0.008,
+          }, 300);
+        }}
         showsUserLocation={true}
         showsMyLocationButton={true}
         showsCompass={true}
