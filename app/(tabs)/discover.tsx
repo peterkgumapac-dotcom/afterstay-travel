@@ -16,7 +16,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { Bookmark, ChevronDown, Filter, Map, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react-native';
+import { Bookmark, ChevronDown, Filter, Map, Navigation, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -76,6 +76,24 @@ const CATEGORY_SEARCH_MAP: Record<string, { type?: string; keyword?: string }> =
   wellness: { type: 'spa', keyword: 'spa wellness massage yoga' },
   coffee: { type: 'cafe', keyword: 'coffee cafe espresso' },
   atm: { type: 'atm', keyword: 'atm cash withdraw money changer' },
+};
+
+// Category → map pin emoji (used for custom map markers)
+const CATEGORY_PIN: Record<string, string> = {
+  Restaurant: '\u{1F37D}',  // 🍽
+  Cafe: '\u2615',           // ☕
+  Bar: '\u{1F378}',         // 🍸
+  Beach: '\u{1F3D6}',       // 🏖
+  Spa: '\u{1F9D8}',         // 🧘
+  Shopping: '\u{1F6CD}',    // 🛍
+  Attraction: '\u2B50',     // ⭐
+  Landmark: '\u{1F4CD}',    // 📍
+  Nature: '\u{1F333}',      // 🌳
+  Wellness: '\u{1F9D8}',    // 🧘
+  Hotel: '\u{1F3E8}',       // 🏨
+  Culture: '\u{1F3DB}',     // 🏛
+  Park: '\u{1F333}',        // 🌳
+  Place: '\u{1F4CD}',       // 📍
 };
 
 // Map Google Places types to display labels
@@ -1286,6 +1304,18 @@ function DiscoverScreenInner() {
               </Animated.View>
             )}
 
+            {/* Explore on Map button — top */}
+            {!placesLoading && filteredPlaces.length > 0 && MapView && (
+              <TouchableOpacity
+                style={styles.viewMapBtn}
+                onPress={() => setShowMapModal(true)}
+                activeOpacity={0.7}
+              >
+                <Map size={18} color={colors.accent} strokeWidth={1.8} />
+                <Text style={styles.viewMapText}>Explore on Map</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Place cards */}
             <View style={styles.placeList}>
               {placesError && (
@@ -1334,17 +1364,6 @@ function DiscoverScreenInner() {
               )}
             </View>
 
-            {/* View on Map button */}
-            {!placesLoading && filteredPlaces.length > 0 && MapView && (
-              <TouchableOpacity
-                style={styles.viewMapBtn}
-                onPress={() => setShowMapModal(true)}
-                activeOpacity={0.7}
-              >
-                <Map size={18} color={colors.accent} strokeWidth={1.8} />
-                <Text style={styles.viewMapText}>Explore on Map</Text>
-              </TouchableOpacity>
-            )}
           </>
         )}
 
@@ -1411,20 +1430,34 @@ function DiscoverScreenInner() {
             initialRegion={{
               latitude: userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat,
               longitude: userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng,
-              latitudeDelta: 0.04,
-              longitudeDelta: 0.04,
+              latitudeDelta: 0.03,
+              longitudeDelta: 0.03,
             }}
-            showsUserLocation={true}
+            showsUserLocation={false}
             showsMyLocationButton={true}
             showsCompass={true}
           >
+            {/* User location — walking person icon */}
+            {userLocation && (
+              <Marker
+                coordinate={{ latitude: userLocation.lat, longitude: userLocation.lng }}
+                anchor={{ x: 0.5, y: 0.5 }}
+              >
+                <View style={styles.userPin}>
+                  <Navigation size={16} color={colors.ink} strokeWidth={2} />
+                </View>
+              </Marker>
+            )}
             {/* Hotel pin */}
             <Marker
               coordinate={{ latitude: CONFIG.HOTEL_COORDS.lat, longitude: CONFIG.HOTEL_COORDS.lng }}
               title="Your Hotel"
-              pinColor={colors.accent}
-            />
-            {/* All place pins */}
+            >
+              <View style={styles.hotelPin}>
+                <Text style={styles.pinEmoji}>{'\u{1F3E8}'}</Text>
+              </View>
+            </Marker>
+            {/* Category pins */}
             {filteredPlaces
               .filter((p) => p.lat && p.lng)
               .map((p, idx) => (
@@ -1439,7 +1472,11 @@ function DiscoverScreenInner() {
                       `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
                     );
                   }}
-                />
+                >
+                  <View style={styles.categoryPin}>
+                    <Text style={styles.pinEmoji}>{CATEGORY_PIN[p.t] ?? '\u{1F4CD}'}</Text>
+                  </View>
+                </Marker>
               ))}
           </MapView>
           {/* Close button */}
@@ -1907,6 +1944,39 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 13,
       fontWeight: '600',
       color: colors.text,
+    },
+    userPin: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 3,
+      borderColor: colors.ink,
+    },
+    hotelPin: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: colors.accent,
+    },
+    categoryPin: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: colors.border,
+    },
+    pinEmoji: {
+      fontSize: 16,
     },
     mapContainer: {
       marginHorizontal: 16,
