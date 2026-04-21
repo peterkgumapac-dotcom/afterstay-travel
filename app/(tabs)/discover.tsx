@@ -31,6 +31,7 @@ import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
 import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
+import { fmtKm, travelTime } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, type NearbyPlace } from '@/lib/google-places';
@@ -1416,11 +1417,13 @@ function DiscoverScreenInner() {
           Park: '#7e9f5b', Place: '#857d70',
         };
         const MAP_CHIPS = ['All', 'Coffee', 'Food', 'Beach', 'Bar', 'Shopping', 'Spa', 'Activity'];
+        const isFiltered = mapFilter && mapFilter !== 'All';
         const mapPlaces = filteredPlaces.filter((p) => {
           if (!p.lat || !p.lng) return false;
-          if (!mapFilter || mapFilter === 'All') return true;
-          return p.t.toLowerCase().includes(mapFilter.toLowerCase());
+          if (!isFiltered) return true;
+          return p.t.toLowerCase().includes(mapFilter!.toLowerCase());
         });
+        const mapTravelMode = travelMode === 'walk' ? 'walk' as const : 'car' as const;
         return (
           <View style={styles.mapModal}>
             <MapView
@@ -1441,23 +1444,67 @@ function DiscoverScreenInner() {
                 title="Your Hotel"
                 pinColor={colors.accent}
               />
-              {/* Place pins — simple pinColor, no custom views */}
-              {mapPlaces.map((p, idx) => (
-                <Marker
-                  key={p.placeId ?? `${p.n}-${idx}`}
-                  coordinate={{ latitude: p.lat!, longitude: p.lng! }}
-                  title={p.n}
-                  description={`${p.t} \u00B7 Tap for directions`}
-                  pinColor={CATEGORY_COLOR[p.t] ?? colors.text3}
-                  onCalloutPress={() => {
-                    const mode = travelMode === 'walk' ? 'walking' : 'driving';
-                    WebBrowser.openBrowserAsync(
-                      `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
-                    );
-                  }}
-                />
-              ))}
+              {/* Place pins */}
+              {mapPlaces.map((p, idx) => {
+                const km = getDistanceKm(p.lat, p.lng);
+                const timeStr = km > 0 ? travelTime(km, mapTravelMode) : '';
+                const distStr = km > 0 ? fmtKm(km) : '';
+
+                // When filtered: show labeled markers with name + distance
+                if (isFiltered) {
+                  return (
+                    <Marker
+                      key={p.placeId ?? `${p.n}-${idx}`}
+                      coordinate={{ latitude: p.lat!, longitude: p.lng! }}
+                      onCalloutPress={() => {
+                        const mode = mapTravelMode === 'walk' ? 'walking' : 'driving';
+                        WebBrowser.openBrowserAsync(
+                          `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
+                        );
+                      }}
+                    >
+                      <View style={styles.labeledPin}>
+                        <Text style={styles.labeledPinName} numberOfLines={1}>{p.n}</Text>
+                        <Text style={styles.labeledPinDist}>{timeStr} · {distStr}</Text>
+                      </View>
+                      <View style={styles.labeledPinArrow} />
+                    </Marker>
+                  );
+                }
+
+                // All: simple pin
+                return (
+                  <Marker
+                    key={p.placeId ?? `${p.n}-${idx}`}
+                    coordinate={{ latitude: p.lat!, longitude: p.lng! }}
+                    title={p.n}
+                    description={`${p.t} · ${timeStr} · ${distStr}`}
+                    pinColor={CATEGORY_COLOR[p.t] ?? colors.text3}
+                    onCalloutPress={() => {
+                      const mode = mapTravelMode === 'walk' ? 'walking' : 'driving';
+                      WebBrowser.openBrowserAsync(
+                        `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
+                      );
+                    }}
+                  />
+                );
+              })}
             </MapView>
+            {/* Walk/Drive toggle */}
+            <View style={styles.mapModeToggle}>
+              <TouchableOpacity
+                onPress={() => setTravelMode('walk')}
+                style={[styles.mapModeBtn, travelMode === 'walk' && styles.mapModeBtnActive]}
+              >
+                <Text style={[styles.mapModeText, travelMode === 'walk' && styles.mapModeTextActive]}>Walk</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setTravelMode('car')}
+                style={[styles.mapModeBtn, travelMode === 'car' && styles.mapModeBtnActive]}
+              >
+                <Text style={[styles.mapModeText, travelMode === 'car' && styles.mapModeTextActive]}>Drive</Text>
+              </TouchableOpacity>
+            </View>
             {/* Close button */}
             <TouchableOpacity
               style={styles.mapCloseBtn}
@@ -2020,6 +2067,65 @@ const getStyles = (colors: ThemeColors) =>
       height: 8,
       borderRadius: 4,
       backgroundColor: colors.accent,
+    },
+    labeledPin: {
+      backgroundColor: colors.card,
+      borderRadius: 10,
+      paddingVertical: 5,
+      paddingHorizontal: 8,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      maxWidth: 160,
+      alignItems: 'center',
+    },
+    labeledPinName: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    labeledPinDist: {
+      fontSize: 9,
+      fontWeight: '600',
+      color: colors.accent,
+      marginTop: 1,
+    },
+    labeledPinArrow: {
+      width: 0,
+      height: 0,
+      borderLeftWidth: 6,
+      borderRightWidth: 6,
+      borderTopWidth: 6,
+      borderLeftColor: 'transparent',
+      borderRightColor: 'transparent',
+      borderTopColor: colors.accent,
+      alignSelf: 'center',
+    },
+    mapModeToggle: {
+      position: 'absolute',
+      bottom: 32,
+      alignSelf: 'center',
+      flexDirection: 'row',
+      borderRadius: 999,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      zIndex: 101,
+    },
+    mapModeBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 999,
+    },
+    mapModeBtnActive: {
+      backgroundColor: colors.accent,
+    },
+    mapModeText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text2,
+    },
+    mapModeTextActive: {
+      color: colors.ink,
     },
     emptyPlaces: {
       paddingVertical: 28,
