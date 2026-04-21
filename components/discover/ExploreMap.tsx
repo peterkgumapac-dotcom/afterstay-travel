@@ -21,7 +21,7 @@ import { useTheme } from '@/constants/ThemeContext';
 import { spacing, radius } from '@/constants/theme';
 import { CONFIG } from '@/lib/config';
 import { placeAutocomplete, searchPlace } from '@/lib/google-places';
-import { fmtKm, travelTime } from '@/lib/utils';
+import { travelTime } from '@/lib/utils';
 import DistanceToggle from './DistanceToggle';
 import PlaceDetailSheet from './PlaceDetailSheet';
 import type { DiscoverPlace } from './DiscoverPlaceCard';
@@ -178,18 +178,17 @@ function ExploreMap({
           title="Your Hotel"
           pinColor={colors.accent}
         />
-        {/* Place pins */}
+        {/* Place pins — simple colored dots, tap to see details */}
         {visiblePlaces.map((p, idx) => {
           const km = getDistanceKm(p.lat, p.lng);
           const timeStr = km > 0 ? travelTime(km, travelMode) : '';
-          const distStr = km > 0 ? fmtKm(km) : '';
           const isRecommended = recommendedNames.has(p.n);
           return (
             <Marker
               key={p.placeId ?? `${p.n}-${idx}`}
               coordinate={{ latitude: p.lat!, longitude: p.lng! }}
               title={p.n}
-              description={`${p.t} · ${timeStr} · ${distStr}`}
+              description={timeStr}
               pinColor={isRecommended ? '#d9a441' : (CATEGORY_COLOR[p.t] ?? colors.text3)}
               onPress={() => handlePinPress(p)}
             />
