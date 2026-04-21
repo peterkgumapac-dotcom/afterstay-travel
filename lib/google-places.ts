@@ -94,27 +94,46 @@ export async function searchNearby(type?: string, keyword?: string): Promise<Nea
   if (!API_KEY) return [];
   const params = new URLSearchParams({
     location: `${HOTEL_LAT},${HOTEL_LNG}`,
-    radius: '3000',
+    radius: '5000',
     key: API_KEY,
   });
   if (type) params.append('type', type);
   if (keyword) params.append('keyword', keyword);
-  const res = await fetch(`https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.results ?? []).map((place: any) => ({
-    place_id: place.place_id,
-    name: place.name,
-    rating: place.rating ?? 0,
-    total_ratings: place.user_ratings_total ?? 0,
-    price_level: place.price_level,
-    address: place.vicinity ?? '',
-    lat: place.geometry?.location?.lat ?? 0,
-    lng: place.geometry?.location?.lng ?? 0,
-    open_now: place.opening_hours?.open_now,
-    photo_url: pickBestPhoto(place.photos),
-    types: place.types ?? [],
-  }));
+
+  const allResults: NearbyPlace[] = [];
+  let url: string | null = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}`;
+
+  // Fetch up to 3 pages (60 results max)
+  for (let page = 0; page < 3 && url; page++) {
+    const res = await fetch(url);
+    if (!res.ok) break;
+    const data = await res.json();
+
+    const mapped = (data.results ?? []).map((place: any) => ({
+      place_id: place.place_id,
+      name: place.name,
+      rating: place.rating ?? 0,
+      total_ratings: place.user_ratings_total ?? 0,
+      price_level: place.price_level,
+      address: place.vicinity ?? '',
+      lat: place.geometry?.location?.lat ?? 0,
+      lng: place.geometry?.location?.lng ?? 0,
+      open_now: place.opening_hours?.open_now,
+      photo_url: pickBestPhoto(place.photos),
+      types: place.types ?? [],
+    }));
+    allResults.push(...mapped);
+
+    // Google requires a short delay before fetching next page
+    if (data.next_page_token) {
+      await new Promise((r) => setTimeout(r, 1500));
+      url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${data.next_page_token}&key=${API_KEY}`;
+    } else {
+      url = null;
+    }
+  }
+
+  return allResults;
 }
 
 export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | null> {
