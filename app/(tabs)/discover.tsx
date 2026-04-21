@@ -768,16 +768,16 @@ export default function DiscoverScreen() {
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
 
 
-  // Pre-compute distances and apply nearby filter using real anchor distance.
+  // Pre-compute distances, filter nearby, sort by nearest first.
   const placesWithDistance = useMemo(() => {
     const withDist = filteredPlaces.map((p) => ({
       place: p,
       distanceKm: getDistanceKm(p.lat, p.lng),
     }));
-    if (filters.nearby) {
-      return withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= 2);
-    }
-    return withDist;
+    const filtered = filters.nearby
+      ? withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= 2)
+      : withDist;
+    return filtered.sort((a, b) => a.distanceKm - b.distanceKm);
   }, [filteredPlaces, getDistanceKm, filters.nearby]);
 
   // Stable filter callbacks — prevent FilterChip re-renders
