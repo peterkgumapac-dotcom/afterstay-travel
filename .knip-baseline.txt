@@ -1,4 +1,4 @@
-Unused files (14)
+Unused files (15)
 components/CachedImage.tsx: components/CachedImage.tsx
 design-reference/components/icons.jsx: design-reference/components/icons.jsx
 design-reference/components/shell.jsx: design-reference/components/shell.jsx
@@ -13,8 +13,9 @@ design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
 lib/cache/cacheFirst.ts: lib/cache/cacheFirst.ts
 lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
+plugins/withPackagingFix.js: plugins/withPackagingFix.js
 Unused dependencies (1)
-package.json: @clerk/expo, @expo/vector-icons, base64-arraybuffer, exifr, expo-av, expo-calendar, expo-secure-store, expo-sharing
+package.json: @clerk/expo, @expo/vector-icons, base64-arraybuffer, exifr, expo-av, expo-build-properties, expo-calendar, expo-secure-store, expo-sharing
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
