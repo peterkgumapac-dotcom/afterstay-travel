@@ -105,9 +105,9 @@ export async function searchNearby(type?: string, keyword?: string): Promise<Nea
 
   // Fetch up to 3 pages (60 results max)
   for (let page = 0; page < 3 && url; page++) {
-    const res = await fetch(url);
+    const res: Response = await fetch(url);
     if (!res.ok) break;
-    const data = await res.json();
+    const data: any = await res.json();
 
     const mapped = (data.results ?? []).map((place: any) => ({
       place_id: place.place_id,

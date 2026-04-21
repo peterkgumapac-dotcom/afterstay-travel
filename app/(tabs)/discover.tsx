@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -1329,12 +1330,14 @@ function DiscoverScreenInner() {
                     initialRegion={{
                       latitude: CONFIG.HOTEL_COORDS.lat,
                       longitude: CONFIG.HOTEL_COORDS.lng,
-                      latitudeDelta: 0.025,
-                      longitudeDelta: 0.025,
+                      latitudeDelta: 0.035,
+                      longitudeDelta: 0.035,
                     }}
-                    scrollEnabled={false}
+                    scrollEnabled={true}
                     zoomEnabled={true}
                     pitchEnabled={false}
+                    showsUserLocation={true}
+                    showsMyLocationButton={true}
                   >
                     {/* Hotel pin */}
                     <Marker
@@ -1342,7 +1345,7 @@ function DiscoverScreenInner() {
                       title="Your Hotel"
                       pinColor={colors.accent}
                     />
-                    {/* Place pins */}
+                    {/* Place pins — tap to navigate */}
                     {filteredPlaces
                       .filter((p) => p.lat && p.lng)
                       .map((p, idx) => (
@@ -1350,11 +1353,12 @@ function DiscoverScreenInner() {
                           key={p.placeId ?? `${p.n}-${idx}`}
                           coordinate={{ latitude: p.lat!, longitude: p.lng! }}
                           title={p.n}
-                          description={`${p.t} \u00B7 ${p.d}`}
+                          description={`${p.t} \u00B7 Tap for directions`}
                           onCalloutPress={() => {
-                            setDetailPlaceId(p.placeId ?? null);
-                            setDetailPlaceName(p.n);
-                            setShowDetail(true);
+                            const mode = travelMode === 'walk' ? 'walking' : 'driving';
+                            Linking.openURL(
+                              `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
+                            );
                           }}
                         />
                       ))}
