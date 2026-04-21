@@ -1,5 +1,4 @@
 import * as Haptics from 'expo-haptics';
-import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 let MapView: any = null;
 let Marker: any = null;
@@ -490,12 +489,13 @@ export default function DiscoverScreen() {
       setDistanceOrigin('me');
       return;
     }
+    const Location = await import('expo-location');
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
       setDistanceOrigin('hotel');
       return;
     }
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced });
     setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
     setDistanceOrigin('me');
   }, [userLocation]);
