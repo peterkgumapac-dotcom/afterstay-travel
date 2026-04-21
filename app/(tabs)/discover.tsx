@@ -497,18 +497,6 @@ function DiscoverScreenInner() {
 
   const [tripDest, setTripDest] = useState('');
 
-  // Restore cached anchor/travel mode
-  useEffect(() => {
-    cacheGet<'hotel' | 'me'>('discover:anchor').then((v) => {
-      if (v === 'me') {
-        switchToMyLocation();
-      } else if (v) {
-        setDistanceOrigin(v);
-      }
-    });
-    cacheGet<'walk' | 'car'>('discover:travelMode').then((v) => { if (v) setTravelMode(v); });
-  }, [switchToMyLocation]);
-
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
     if (!placeLat || !placeLng) return 0;
@@ -554,6 +542,18 @@ function DiscoverScreenInner() {
     setTravelMode(m);
     cacheSet('discover:travelMode', m);
   }, []);
+
+  // Restore cached anchor/travel mode (after switchToMyLocation is defined)
+  useEffect(() => {
+    cacheGet<'hotel' | 'me'>('discover:anchor').then((v) => {
+      if (v === 'me') {
+        switchToMyLocation();
+      } else if (v) {
+        setDistanceOrigin(v);
+      }
+    });
+    cacheGet<'walk' | 'car'>('discover:travelMode').then((v) => { if (v) setTravelMode(v); });
+  }, [switchToMyLocation]);
 
   // Load trip ID on mount
   useEffect(() => {
