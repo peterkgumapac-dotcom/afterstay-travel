@@ -11,6 +11,7 @@ try {
 }
 import {
   ActivityIndicator,
+  Alert,
   Image,
   RefreshControl,
   ScrollView,
@@ -489,15 +490,21 @@ export default function DiscoverScreen() {
       setDistanceOrigin('me');
       return;
     }
-    const Location = await import('expo-location');
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
+    try {
+      const Location = require('expo-location') as typeof import('expo-location');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Location denied', 'Enable location permissions in Settings to use "From Me".');
+        setDistanceOrigin('hotel');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced });
+      setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      setDistanceOrigin('me');
+    } catch {
+      Alert.alert('Location unavailable', 'Could not get your location. Using hotel distance.');
       setDistanceOrigin('hotel');
-      return;
     }
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced });
-    setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-    setDistanceOrigin('me');
   }, [userLocation]);
 
   const handleAnchorChange = useCallback((a: 'hotel' | 'me') => {
