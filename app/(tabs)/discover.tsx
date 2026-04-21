@@ -16,7 +16,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { Bookmark, ChevronDown, Filter, Map, Navigation, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react-native';
+import { Bookmark, ChevronDown, Filter, Map, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -76,24 +76,6 @@ const CATEGORY_SEARCH_MAP: Record<string, { type?: string; keyword?: string }> =
   wellness: { type: 'spa', keyword: 'spa wellness massage yoga' },
   coffee: { type: 'cafe', keyword: 'coffee cafe espresso' },
   atm: { type: 'atm', keyword: 'atm cash withdraw money changer' },
-};
-
-// Category → map pin emoji (used for custom map markers)
-const CATEGORY_PIN: Record<string, string> = {
-  Restaurant: '\u{1F37D}',  // 🍽
-  Cafe: '\u2615',           // ☕
-  Bar: '\u{1F378}',         // 🍸
-  Beach: '\u{1F3D6}',       // 🏖
-  Spa: '\u{1F9D8}',         // 🧘
-  Shopping: '\u{1F6CD}',    // 🛍
-  Attraction: '\u2B50',     // ⭐
-  Landmark: '\u{1F4CD}',    // 📍
-  Nature: '\u{1F333}',      // 🌳
-  Wellness: '\u{1F9D8}',    // 🧘
-  Hotel: '\u{1F3E8}',       // 🏨
-  Culture: '\u{1F3DB}',     // 🏛
-  Park: '\u{1F333}',        // 🌳
-  Place: '\u{1F4CD}',       // 📍
 };
 
 // Map Google Places types to display labels
@@ -514,6 +496,7 @@ function DiscoverScreenInner() {
   const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
   const [visibleCount, setVisibleCount] = useState(20);
   const [showMapModal, setShowMapModal] = useState(false);
+  const [mapFilter, setMapFilter] = useState<string | null>(null);
 
   // PlaceDetailSheet state
   const [detailPlaceId, setDetailPlaceId] = useState<string | null>(null);
@@ -1423,76 +1406,90 @@ function DiscoverScreenInner() {
       </ScrollView>
 
       {/* Full-screen map modal */}
-      {showMapModal && MapView && (
-        <View style={styles.mapModal}>
-          <MapView
-            style={StyleSheet.absoluteFill}
-            initialRegion={{
-              latitude: userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat,
-              longitude: userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng,
-              latitudeDelta: 0.03,
-              longitudeDelta: 0.03,
-            }}
-            showsUserLocation={false}
-            showsMyLocationButton={true}
-            showsCompass={true}
-          >
-            {/* User location — walking person icon */}
-            {userLocation && (
-              <Marker
-                coordinate={{ latitude: userLocation.lat, longitude: userLocation.lng }}
-                anchor={{ x: 0.5, y: 0.5 }}
-              >
-                <View style={styles.userPin}>
-                  <Navigation size={16} color={colors.ink} strokeWidth={2} />
-                </View>
-              </Marker>
-            )}
-            {/* Hotel pin */}
-            <Marker
-              coordinate={{ latitude: CONFIG.HOTEL_COORDS.lat, longitude: CONFIG.HOTEL_COORDS.lng }}
-              title="Your Hotel"
+      {showMapModal && MapView && (() => {
+        const CATEGORY_COLOR: Record<string, string> = {
+          Restaurant: '#c66a36', Cafe: '#8a5a2b', Bar: '#b66a8a',
+          Beach: '#5a8fb5', Spa: '#7ba88a', Shopping: '#a64d1e',
+          Attraction: '#d9a441', Landmark: '#857d70', Nature: '#7e9f5b',
+          Wellness: '#7ba88a', Hotel: '#c49460', Culture: '#8b6f5a',
+          Park: '#7e9f5b', Place: '#857d70',
+        };
+        const MAP_CHIPS = ['All', 'Coffee', 'Food', 'Beach', 'Bar', 'Shopping', 'Spa', 'Activity'];
+        const mapPlaces = filteredPlaces.filter((p) => {
+          if (!p.lat || !p.lng) return false;
+          if (!mapFilter || mapFilter === 'All') return true;
+          return p.t.toLowerCase().includes(mapFilter.toLowerCase());
+        });
+        return (
+          <View style={styles.mapModal}>
+            <MapView
+              style={StyleSheet.absoluteFill}
+              initialRegion={{
+                latitude: userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat,
+                longitude: userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng,
+                latitudeDelta: 0.015,
+                longitudeDelta: 0.015,
+              }}
+              showsUserLocation={true}
+              showsMyLocationButton={true}
+              showsCompass={true}
             >
-              <View style={styles.hotelPin}>
-                <Text style={styles.pinEmoji}>{'\u{1F3E8}'}</Text>
-              </View>
-            </Marker>
-            {/* Category pins */}
-            {filteredPlaces
-              .filter((p) => p.lat && p.lng)
-              .map((p, idx) => (
+              {/* Hotel pin */}
+              <Marker
+                coordinate={{ latitude: CONFIG.HOTEL_COORDS.lat, longitude: CONFIG.HOTEL_COORDS.lng }}
+                title="Your Hotel"
+                pinColor={colors.accent}
+              />
+              {/* Place pins — simple pinColor, no custom views */}
+              {mapPlaces.map((p, idx) => (
                 <Marker
                   key={p.placeId ?? `${p.n}-${idx}`}
                   coordinate={{ latitude: p.lat!, longitude: p.lng! }}
                   title={p.n}
                   description={`${p.t} \u00B7 Tap for directions`}
+                  pinColor={CATEGORY_COLOR[p.t] ?? colors.text3}
                   onCalloutPress={() => {
                     const mode = travelMode === 'walk' ? 'walking' : 'driving';
                     WebBrowser.openBrowserAsync(
                       `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
                     );
                   }}
-                >
-                  <View style={styles.categoryPin}>
-                    <Text style={styles.pinEmoji}>{CATEGORY_PIN[p.t] ?? '\u{1F4CD}'}</Text>
-                  </View>
-                </Marker>
+                />
               ))}
-          </MapView>
-          {/* Close button */}
-          <TouchableOpacity
-            style={styles.mapCloseBtn}
-            onPress={() => setShowMapModal(false)}
-            activeOpacity={0.7}
-          >
-            <X size={22} color={colors.text} strokeWidth={2} />
-          </TouchableOpacity>
-          {/* Place count badge */}
-          <View style={styles.mapBadge}>
-            <Text style={styles.mapBadgeText}>{filteredPlaces.filter((p) => p.lat && p.lng).length} places</Text>
+            </MapView>
+            {/* Close button */}
+            <TouchableOpacity
+              style={styles.mapCloseBtn}
+              onPress={() => { setShowMapModal(false); setMapFilter(null); }}
+              activeOpacity={0.7}
+            >
+              <X size={22} color={colors.text} strokeWidth={2} />
+            </TouchableOpacity>
+            {/* Place count badge */}
+            <View style={styles.mapBadge}>
+              <Text style={styles.mapBadgeText}>{mapPlaces.length} places</Text>
+            </View>
+            {/* Category filter chips */}
+            <View style={styles.mapChipsRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingHorizontal: 16 }}>
+                {MAP_CHIPS.map((c) => {
+                  const active = (mapFilter ?? 'All') === c;
+                  return (
+                    <TouchableOpacity
+                      key={c}
+                      onPress={() => setMapFilter(c === 'All' ? null : c)}
+                      style={[styles.mapChip, active && styles.mapChipActive]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.mapChipText, active && styles.mapChipTextActive]}>{c}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      )}
+        );
+      })()}
 
       <PlaceDetailSheet
         visible={showDetail}
@@ -1945,51 +1942,32 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: '600',
       color: colors.text,
     },
-    userPin: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 3,
-      borderColor: colors.ink,
+    mapChipsRow: {
+      position: 'absolute',
+      bottom: 32,
+      left: 0,
+      right: 0,
+      zIndex: 101,
     },
-    hotelPin: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+    mapChip: {
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 999,
       backgroundColor: colors.card,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 2,
-      borderColor: colors.accent,
-    },
-    categoryPin: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: colors.card,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1.5,
-      borderColor: colors.border,
-    },
-    pinEmoji: {
-      fontSize: 16,
-    },
-    mapContainer: {
-      marginHorizontal: 16,
-      height: 220,
-      borderRadius: 18,
-      overflow: 'hidden',
       borderWidth: 1,
       borderColor: colors.border,
-      marginBottom: 16,
     },
-    map: {
-      width: '100%',
-      height: '100%',
+    mapChipActive: {
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
+    },
+    mapChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.text2,
+    },
+    mapChipTextActive: {
+      color: colors.ink,
     },
     emptyPlaces: {
       paddingVertical: 28,
