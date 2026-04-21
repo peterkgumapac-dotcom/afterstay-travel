@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ScrollView,
+  Linking,
   StyleSheet,
   Text,
   TextInput,
@@ -8,14 +8,14 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import * as WebBrowser from 'expo-web-browser';
-import { Search, X } from 'lucide-react-native';
+import { Info, Navigation, Search, X } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 import { spacing, radius } from '@/constants/theme';
 import { CONFIG } from '@/lib/config';
 import { placeAutocomplete, searchPlace } from '@/lib/google-places';
+import { fmtKm, travelTime } from '@/lib/utils';
 import PlaceDetailSheet from './PlaceDetailSheet';
 import type { DiscoverPlace } from './DiscoverPlaceCard';
 
@@ -85,6 +85,7 @@ function ExploreMap({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ placeId: string; description: string }[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<{ placeId: string; name: string; distanceKm: number } | null>(null);
+  const [searchedPlace, setSearchedPlace] = useState<{ placeId: string; name: string; lat: number; lng: number; distanceKm: number } | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (!visible || !MapView) return null;
@@ -115,13 +116,8 @@ function ExploreMap({
         latitudeDelta: 0.005,
         longitudeDelta: 0.005,
       }, 500);
-      // Open detail sheet with navigate button
       const km = getDistanceKm(details.lat, details.lng);
-      setSelectedPlace({
-        placeId: result.placeId,
-        name,
-        distanceKm: km,
-      });
+      setSearchedPlace({ placeId: result.placeId, name, lat: details.lat, lng: details.lng, distanceKm: km });
     }
   };
 
@@ -209,6 +205,47 @@ function ExploreMap({
       <TouchableOpacity style={styles.closeBtn} onPress={handleClose} activeOpacity={0.7}>
         <X size={22} color={colors.text} strokeWidth={2} />
       </TouchableOpacity>
+
+      {/* ── Action card (Navigate vs Details) ── */}
+      {searchedPlace && !selectedPlace && (
+        <View style={styles.actionCard}>
+          <View style={styles.actionCardHeader}>
+            <Text style={styles.actionCardName} numberOfLines={1}>{searchedPlace.name}</Text>
+            <TouchableOpacity onPress={() => setSearchedPlace(null)} hitSlop={8}>
+              <X size={18} color={colors.text3} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.actionCardDist}>
+            {travelTime(searchedPlace.distanceKm, travelMode)} · {fmtKm(searchedPlace.distanceKm)}
+          </Text>
+          <View style={styles.actionCardBtns}>
+            <TouchableOpacity
+              style={styles.navigateBtn}
+              onPress={() => {
+                const mode = travelMode === 'walk' ? 'walking' : 'driving';
+                Linking.openURL(
+                  `https://www.google.com/maps/dir/?api=1&destination=${searchedPlace.lat},${searchedPlace.lng}&travelmode=${mode}`
+                );
+              }}
+              activeOpacity={0.7}
+            >
+              <Navigation size={16} color={colors.ink} strokeWidth={2} />
+              <Text style={styles.navigateBtnText}>Navigate</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.detailsBtn}
+              onPress={() => {
+                setSelectedPlace({ placeId: searchedPlace.placeId, name: searchedPlace.name, distanceKm: searchedPlace.distanceKm });
+                setSearchedPlace(null);
+              }}
+              activeOpacity={0.7}
+            >
+              <Info size={16} color={colors.accent} strokeWidth={2} />
+              <Text style={styles.detailsBtnText}>Details</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* ── Place detail sheet ── */}
       <PlaceDetailSheet
@@ -299,5 +336,77 @@ const getStyles = (colors: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 102,
+    },
+    // Action card
+    actionCard: {
+      position: 'absolute',
+      bottom: 32,
+      left: 16,
+      right: 16,
+      backgroundColor: colors.card,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.lg,
+      zIndex: 101,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    actionCardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    actionCardName: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.text,
+      flex: 1,
+      marginRight: 8,
+    },
+    actionCardDist: {
+      fontSize: 13,
+      color: colors.text2,
+      marginTop: 4,
+      marginBottom: spacing.md,
+    },
+    actionCardBtns: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    navigateBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: colors.accent,
+      borderRadius: radius.md,
+      paddingVertical: 12,
+    },
+    navigateBtnText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.ink,
+    },
+    detailsBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: colors.bg3,
+      borderRadius: radius.md,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    detailsBtnText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.accent,
     },
   });
