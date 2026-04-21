@@ -1290,10 +1290,21 @@ function DiscoverScreenInner() {
             )}
 
             {/* Explore on Map button — top */}
-            {!placesLoading && filteredPlaces.length > 0 && MapView && (
+            {!placesLoading && filteredPlaces.length > 0 && (
               <TouchableOpacity
                 style={styles.viewMapBtn}
-                onPress={() => setShowMapModal(true)}
+                onPress={() => {
+                  if (MapView) {
+                    setShowMapModal(true);
+                  } else {
+                    // Fallback: open Google Maps in browser (Expo Go or web)
+                    const lat = userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat;
+                    const lng = userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng;
+                    WebBrowser.openBrowserAsync(
+                      `https://www.google.com/maps/search/restaurants+cafes+attractions/@${lat},${lng},15z`
+                    );
+                  }
+                }}
                 activeOpacity={0.7}
               >
                 <Map size={18} color={colors.accent} strokeWidth={1.8} />
