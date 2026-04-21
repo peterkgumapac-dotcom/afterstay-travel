@@ -16,7 +16,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { Bookmark, ChevronDown, Filter, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import { Bookmark, ChevronDown, Filter, Map, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -495,6 +495,7 @@ function DiscoverScreenInner() {
   const [itineraryScope, setItineraryScope] = useState<'whole' | 'day' | 'surprise'>('whole');
   const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
   const [visibleCount, setVisibleCount] = useState(20);
+  const [showMapModal, setShowMapModal] = useState(false);
 
   // PlaceDetailSheet state
   const [detailPlaceId, setDetailPlaceId] = useState<string | null>(null);
@@ -1333,64 +1334,16 @@ function DiscoverScreenInner() {
               )}
             </View>
 
-            {/* Map section showing filtered places */}
+            {/* View on Map button */}
             {!placesLoading && filteredPlaces.length > 0 && MapView && (
-              <>
-                <View style={styles.sectionHeader}>
-                  <View>
-                    <Text style={styles.eyebrow}>Map</Text>
-                    <Text style={styles.sectionTitle}>Nearby places</Text>
-                  </View>
-                </View>
-                <View style={styles.mapContainer}>
-                  <MapView
-                    style={styles.map}
-                    initialRegion={{
-                      latitude: CONFIG.HOTEL_COORDS.lat,
-                      longitude: CONFIG.HOTEL_COORDS.lng,
-                      latitudeDelta: 0.035,
-                      longitudeDelta: 0.035,
-                    }}
-                    scrollEnabled={true}
-                    zoomEnabled={true}
-                    pitchEnabled={false}
-                    showsUserLocation={true}
-                    showsMyLocationButton={true}
-                  >
-                    {/* Hotel pin */}
-                    <Marker
-                      coordinate={{ latitude: CONFIG.HOTEL_COORDS.lat, longitude: CONFIG.HOTEL_COORDS.lng }}
-                      title="Your Hotel"
-                      pinColor={colors.accent}
-                    />
-                    {/* User location pin */}
-                    {userLocation && (
-                      <Marker
-                        coordinate={{ latitude: userLocation.lat, longitude: userLocation.lng }}
-                        title="You are here"
-                        pinColor="#4A90D9"
-                      />
-                    )}
-                    {/* Place pins — tap to navigate in-app */}
-                    {filteredPlaces
-                      .filter((p) => p.lat && p.lng)
-                      .map((p, idx) => (
-                        <Marker
-                          key={p.placeId ?? `${p.n}-${idx}`}
-                          coordinate={{ latitude: p.lat!, longitude: p.lng! }}
-                          title={p.n}
-                          description={`${p.t} \u00B7 Tap for directions`}
-                          onCalloutPress={() => {
-                            const mode = travelMode === 'walk' ? 'walking' : 'driving';
-                            WebBrowser.openBrowserAsync(
-                              `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
-                            );
-                          }}
-                        />
-                      ))}
-                  </MapView>
-                </View>
-              </>
+              <TouchableOpacity
+                style={styles.viewMapBtn}
+                onPress={() => setShowMapModal(true)}
+                activeOpacity={0.7}
+              >
+                <Map size={18} color={colors.accent} strokeWidth={1.8} />
+                <Text style={styles.viewMapText}>Explore on Map</Text>
+              </TouchableOpacity>
             )}
           </>
         )}
@@ -1449,6 +1402,60 @@ function DiscoverScreenInner() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* Full-screen map modal */}
+      {showMapModal && MapView && (
+        <View style={styles.mapModal}>
+          <MapView
+            style={StyleSheet.absoluteFill}
+            initialRegion={{
+              latitude: userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat,
+              longitude: userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng,
+              latitudeDelta: 0.04,
+              longitudeDelta: 0.04,
+            }}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
+            showsCompass={true}
+          >
+            {/* Hotel pin */}
+            <Marker
+              coordinate={{ latitude: CONFIG.HOTEL_COORDS.lat, longitude: CONFIG.HOTEL_COORDS.lng }}
+              title="Your Hotel"
+              pinColor={colors.accent}
+            />
+            {/* All place pins */}
+            {filteredPlaces
+              .filter((p) => p.lat && p.lng)
+              .map((p, idx) => (
+                <Marker
+                  key={p.placeId ?? `${p.n}-${idx}`}
+                  coordinate={{ latitude: p.lat!, longitude: p.lng! }}
+                  title={p.n}
+                  description={`${p.t} \u00B7 Tap for directions`}
+                  onCalloutPress={() => {
+                    const mode = travelMode === 'walk' ? 'walking' : 'driving';
+                    WebBrowser.openBrowserAsync(
+                      `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
+                    );
+                  }}
+                />
+              ))}
+          </MapView>
+          {/* Close button */}
+          <TouchableOpacity
+            style={styles.mapCloseBtn}
+            onPress={() => setShowMapModal(false)}
+            activeOpacity={0.7}
+          >
+            <X size={22} color={colors.text} strokeWidth={2} />
+          </TouchableOpacity>
+          {/* Place count badge */}
+          <View style={styles.mapBadge}>
+            <Text style={styles.mapBadgeText}>{filteredPlaces.filter((p) => p.lat && p.lng).length} places</Text>
+          </View>
+        </View>
+      )}
 
       <PlaceDetailSheet
         visible={showDetail}
@@ -1846,6 +1853,60 @@ const getStyles = (colors: ThemeColors) =>
     placeList: {
       paddingHorizontal: 16,
       gap: 12,
+    },
+    viewMapBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 14,
+      marginHorizontal: 16,
+      marginTop: 8,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      borderRadius: 999,
+      backgroundColor: colors.accentBg,
+    },
+    viewMapText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    mapModal: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 100,
+      backgroundColor: colors.bg,
+    },
+    mapCloseBtn: {
+      position: 'absolute',
+      top: 52,
+      right: 16,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 101,
+    },
+    mapBadge: {
+      position: 'absolute',
+      top: 52,
+      left: 16,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      zIndex: 101,
+    },
+    mapBadgeText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
     },
     mapContainer: {
       marginHorizontal: 16,
