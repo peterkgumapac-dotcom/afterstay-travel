@@ -1,14 +1,5 @@
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-let MapView: any = null;
-let Marker: any = null;
-try {
-  const maps = require('react-native-maps');
-  MapView = maps.default;
-  Marker = maps.Marker;
-} catch {
-  // Maps not available (web or missing native module)
-}
 import {
   ActivityIndicator,
   Alert,
@@ -48,6 +39,17 @@ import {
   savePlace,
   voteOnPlace,
 } from '@/lib/supabase';
+
+// Dynamic require AFTER all imports — avoids Hermes strict mode crash
+let MapView: any = null;
+let Marker: any = null;
+try {
+  const maps = require('react-native-maps');
+  MapView = maps.default;
+  Marker = maps.Marker;
+} catch {
+  // Maps not available (web or missing native module)
+}
 import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
 import { CONFIG } from '@/lib/config';
 
@@ -427,9 +429,40 @@ const SegBtn = React.memo(function SegBtn({
   );
 });
 
+// ── Error boundary for Discover ────────────────────────────────────────
+
+class DiscoverErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: string }
+> {
+  state = { hasError: false, error: undefined as string | undefined };
+  static getDerivedStateFromError(e: Error) {
+    return { hasError: true, error: e.message };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>Discover crashed</Text>
+          <Text style={{ fontSize: 12, color: '#888', textAlign: 'center' }}>{this.state.error}</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ── Main screen ─────────────────────────────────────────────────────────
 
-export default function DiscoverScreen() {
+export default function DiscoverScreenWrapper() {
+  return (
+    <DiscoverErrorBoundary>
+      <DiscoverScreenInner />
+    </DiscoverErrorBoundary>
+  );
+}
+
+function DiscoverScreenInner() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
