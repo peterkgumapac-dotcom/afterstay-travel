@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -9,20 +9,13 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
-import {
-  Bookmark,
-  BookmarkCheck,
-  Filter,
-  Search,
-  X,
-} from 'lucide-react-native';
+import { Search, X } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
+import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 import { spacing, radius } from '@/constants/theme';
 import { CONFIG } from '@/lib/config';
 import { placeAutocomplete, searchPlace } from '@/lib/google-places';
-import { travelTime } from '@/lib/utils';
-import DistanceToggle from './DistanceToggle';
 import PlaceDetailSheet from './PlaceDetailSheet';
 import type { DiscoverPlace } from './DiscoverPlaceCard';
 
@@ -41,15 +34,6 @@ export const MAP_AVAILABLE = MapView !== null;
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-const CATEGORY_COLOR: Record<string, string> = {
-  Restaurant: '#c66a36', Cafe: '#8a5a2b', Bar: '#b66a8a',
-  Beach: '#5a8fb5', Spa: '#7ba88a', Shopping: '#a64d1e',
-  Attraction: '#d9a441', Landmark: '#857d70', Nature: '#7e9f5b',
-  Wellness: '#7ba88a', Hotel: '#c49460', Culture: '#8b6f5a',
-  Park: '#7e9f5b', Place: '#857d70',
-};
-
-const MAP_CATEGORIES = ['All', 'Coffee', 'Food', 'Beach', 'Bar', 'Shopping', 'Spa', 'Activity'];
 
 // ── Props ────────────────────────────────────────────────────────────────
 
@@ -89,26 +73,21 @@ function ExploreMap({
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const mapRef = useRef<any>(null);
+  const { setVisible: setTabBarVisible } = useTabBarVisibility();
+
+  // Hide tab bar when map opens, restore on close
+  useEffect(() => {
+    if (visible) setTabBarVisible(false);
+    return () => setTabBarVisible(true);
+  }, [visible, setTabBarVisible]);
 
   // Local state
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<{ placeId: string; description: string }[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<{ placeId: string; name: string; distanceKm: number } | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (!visible || !MapView) return null;
-
-  // Filter places
-  const isFiltered = categoryFilter && categoryFilter !== 'All';
-  const visiblePlaces = places.filter((p) => {
-    if (!p.lat || !p.lng) return false;
-    if (showSavedOnly && !savedNames.has(p.n)) return false;
-    if (isFiltered && !p.t.toLowerCase().includes(categoryFilter!.toLowerCase())) return false;
-    return true;
-  });
 
   // Handlers
   const handleSearch = (text: string) => {
@@ -148,9 +127,6 @@ function ExploreMap({
   };
 
   const handleClose = () => {
-    setCategoryFilter(null);
-    setShowDropdown(false);
-    setShowSavedOnly(false);
     setSearchQuery('');
     setSearchResults([]);
     setSelectedPlace(null);
@@ -180,26 +156,12 @@ function ExploreMap({
         showsMyLocationButton={true}
         showsCompass={true}
       >
-        {/* Hotel pin */}
+        {/* Hotel pin only */}
         <Marker
           coordinate={{ latitude: CONFIG.HOTEL_COORDS.lat, longitude: CONFIG.HOTEL_COORDS.lng }}
           title="Your Hotel"
           pinColor={colors.accent}
         />
-        {/* Place pins — simple colored dots, tap to see details */}
-        {visiblePlaces.map((p, idx) => {
-          const km = getDistanceKm(p.lat, p.lng);
-          const timeStr = km > 0 ? travelTime(km, travelMode) : '';
-          const isRecommended = recommendedNames.has(p.n);
-          return (
-            <Marker
-              key={p.placeId ?? `${p.n}-${idx}`}
-              coordinate={{ latitude: p.lat!, longitude: p.lng! }}
-              pinColor={isRecommended ? '#d9a441' : (CATEGORY_COLOR[p.t] ?? colors.text3)}
-              onPress={() => handlePinPress(p)}
-            />
-          );
-        })}
       </MapView>
 
       {/* ── Search bar ── */}
@@ -239,70 +201,6 @@ function ExploreMap({
       <TouchableOpacity style={styles.closeBtn} onPress={handleClose} activeOpacity={0.7}>
         <X size={22} color={colors.text} strokeWidth={2} />
       </TouchableOpacity>
-
-      {/* ── Top row: badge + filter + saved ── */}
-      <View style={styles.topRow}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{visiblePlaces.length} places</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.filterBtn}
-          onPress={() => setShowDropdown((s) => !s)}
-          activeOpacity={0.7}
-        >
-          <Filter size={14} color={categoryFilter ? colors.accent : colors.text} strokeWidth={2} />
-          <Text style={[styles.filterBtnText, categoryFilter && { color: colors.accent }]}>
-            {categoryFilter ?? 'Filter'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.savedBtn, showSavedOnly && styles.savedBtnActive]}
-          onPress={() => {
-            setShowSavedOnly((s) => !s);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }}
-          activeOpacity={0.7}
-        >
-          {showSavedOnly
-            ? <BookmarkCheck size={16} color={colors.accent} strokeWidth={2} />
-            : <Bookmark size={16} color={colors.text2} strokeWidth={2} />
-          }
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Category dropdown ── */}
-      {showDropdown && (
-        <View style={styles.dropdown}>
-          {MAP_CATEGORIES.map((c) => {
-            const active = (categoryFilter ?? 'All') === c;
-            return (
-              <TouchableOpacity
-                key={c}
-                onPress={() => {
-                  setCategoryFilter(c === 'All' ? null : c);
-                  setShowDropdown(false);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }}
-                style={[styles.dropdownItem, active && styles.dropdownItemActive]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.dropdownText, active && styles.dropdownTextActive]}>{c}</Text>
-                {active && <View style={styles.dropdownDot} />}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-
-      {/* ── Distance toggle (bottom) ── */}
-      <View style={styles.bottomToggle}>
-        <DistanceToggle
-          anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
-          travelMode={travelMode}
-          onAnchorChange={onAnchorChange}
-          onTravelModeChange={onTravelModeChange}
-        />
-      </View>
 
       {/* ── Place detail sheet ── */}
       <PlaceDetailSheet
@@ -393,110 +291,5 @@ const getStyles = (colors: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
       zIndex: 102,
-    },
-    // Top row
-    topRow: {
-      position: 'absolute',
-      top: 100,
-      left: 16,
-      right: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      zIndex: 101,
-    },
-    badge: {
-      paddingVertical: 7,
-      paddingHorizontal: 12,
-      borderRadius: radius.pill,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    badgeText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    filterBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 5,
-      paddingVertical: 7,
-      paddingHorizontal: 12,
-      borderRadius: radius.pill,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    filterBtnText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    savedBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    savedBtnActive: {
-      borderColor: colors.accent,
-      backgroundColor: colors.accentBg,
-    },
-    // Dropdown
-    dropdown: {
-      position: 'absolute',
-      top: 144,
-      left: 16,
-      width: 180,
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 4,
-      zIndex: 102,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 12,
-      elevation: 8,
-    },
-    dropdownItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 11,
-      paddingHorizontal: 16,
-    },
-    dropdownItemActive: {
-      backgroundColor: colors.accentBg,
-    },
-    dropdownText: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: colors.text,
-    },
-    dropdownTextActive: {
-      fontWeight: '700',
-      color: colors.accent,
-    },
-    dropdownDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: colors.accent,
-    },
-    // Bottom toggle
-    bottomToggle: {
-      position: 'absolute',
-      bottom: 32,
-      left: 16,
-      right: 16,
-      zIndex: 101,
     },
   });
