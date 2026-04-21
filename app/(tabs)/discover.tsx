@@ -15,7 +15,8 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, Filter, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { Bookmark, ChevronDown, Filter, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -492,6 +493,7 @@ function DiscoverScreenInner() {
   const [itineraryError, setItineraryError] = useState<string | null>(null);
   const [itineraryScope, setItineraryScope] = useState<'whole' | 'day' | 'surprise'>('whole');
   const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
+  const [visibleCount, setVisibleCount] = useState(20);
 
   // PlaceDetailSheet state
   const [detailPlaceId, setDetailPlaceId] = useState<string | null>(null);
@@ -1132,6 +1134,7 @@ function DiscoverScreenInner() {
                     onPress={() => {
                       setPlaceCategoryChip(c);
                       setQ('');
+                      setVisibleCount(20);
                     }}
                   >
                     <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
@@ -1299,19 +1302,33 @@ function DiscoverScreenInner() {
                   </Text>
                 </View>
               ) : (
-                placesWithDistance.map(({ place: p, distanceKm }, idx) => (
-                  <DiscoverPlaceCard
-                    key={p.placeId ?? `${p.n}-${idx}`}
-                    place={p}
-                    distanceKm={distanceKm}
-                    travelMode={travelMode}
-                    isSaved={saved.has(p.n)}
-                    isRecommended={recommended.has(p.n)}
-                    onSave={toggleSave}
-                    onRecommend={toggleRecommend}
-                    onExplore={handleExplore}
-                  />
-                ))
+                <>
+                  {placesWithDistance.slice(0, visibleCount).map(({ place: p, distanceKm }, idx) => (
+                    <DiscoverPlaceCard
+                      key={p.placeId ?? `${p.n}-${idx}`}
+                      place={p}
+                      distanceKm={distanceKm}
+                      travelMode={travelMode}
+                      isSaved={saved.has(p.n)}
+                      isRecommended={recommended.has(p.n)}
+                      onSave={toggleSave}
+                      onRecommend={toggleRecommend}
+                      onExplore={handleExplore}
+                    />
+                  ))}
+                  {placesWithDistance.length > visibleCount && (
+                    <TouchableOpacity
+                      style={styles.showMoreBtn}
+                      onPress={() => setVisibleCount((c) => c + 20)}
+                      activeOpacity={0.7}
+                    >
+                      <ChevronDown size={16} color={colors.accent} strokeWidth={2} />
+                      <Text style={styles.showMoreText}>
+                        Show more ({placesWithDistance.length - visibleCount} remaining)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
 
@@ -1345,7 +1362,15 @@ function DiscoverScreenInner() {
                       title="Your Hotel"
                       pinColor={colors.accent}
                     />
-                    {/* Place pins — tap to navigate */}
+                    {/* User location pin */}
+                    {userLocation && (
+                      <Marker
+                        coordinate={{ latitude: userLocation.lat, longitude: userLocation.lng }}
+                        title="You are here"
+                        pinColor="#4A90D9"
+                      />
+                    )}
+                    {/* Place pins — tap to navigate in-app */}
                     {filteredPlaces
                       .filter((p) => p.lat && p.lng)
                       .map((p, idx) => (
@@ -1356,7 +1381,7 @@ function DiscoverScreenInner() {
                           description={`${p.t} \u00B7 Tap for directions`}
                           onCalloutPress={() => {
                             const mode = travelMode === 'walk' ? 'walking' : 'driving';
-                            Linking.openURL(
+                            WebBrowser.openBrowserAsync(
                               `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
                             );
                           }}
@@ -1842,6 +1867,23 @@ const getStyles = (colors: ThemeColors) =>
     emptyText: {
       fontSize: 12,
       color: colors.text3,
+    },
+    showMoreBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 14,
+      marginTop: 4,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+    },
+    showMoreText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.accent,
     },
 
     // Saved empty state
