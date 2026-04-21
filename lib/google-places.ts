@@ -17,9 +17,18 @@ export interface PlaceSearchResult {
 }
 
 function getPhotoUrl(photoRef: string, maxWidth: number = 800): string {
-  // Return the Google Places photo URL directly.
-  // React Native Image handles the 302 redirect on both iOS and Android.
   return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${photoRef}&key=${API_KEY}`;
+}
+
+// Pick the widest photo (landscape = more likely storefront/exterior, not food close-up)
+function pickBestPhoto(photos: any[] | undefined): string | null {
+  if (!photos || photos.length === 0) return null;
+  // Sort by width descending — wider photos are more likely exterior/storefront
+  const sorted = [...photos].sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
+  // Prefer landscape (width > height) if available
+  const landscape = sorted.find((p: any) => (p.width ?? 0) > (p.height ?? 0));
+  const best = landscape ?? sorted[0];
+  return best?.photo_reference ? getPhotoUrl(best.photo_reference, 1200) : null;
 }
 
 export async function searchPlace(
@@ -39,8 +48,7 @@ export async function searchPlace(
   const candidate = data?.candidates?.[0];
   if (!candidate) return null;
 
-  const photoRef = candidate.photos?.[0]?.photo_reference ?? null;
-  const photo_url = photoRef ? getPhotoUrl(photoRef) : null;
+  const photo_url = pickBestPhoto(candidate.photos);
 
   return {
     place_id: candidate.place_id ?? '',
@@ -104,9 +112,7 @@ export async function searchNearby(type?: string, keyword?: string): Promise<Nea
     lat: place.geometry?.location?.lat ?? 0,
     lng: place.geometry?.location?.lng ?? 0,
     open_now: place.opening_hours?.open_now,
-    photo_url: place.photos?.[0]?.photo_reference
-      ? getPhotoUrl(place.photos[0].photo_reference)
-      : null,
+    photo_url: pickBestPhoto(place.photos),
     types: place.types ?? [],
   }));
 }
