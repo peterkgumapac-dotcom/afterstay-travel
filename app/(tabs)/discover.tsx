@@ -351,6 +351,13 @@ function applyPlaceFilters(
 
 // ── Sub-components ──────────────────────────────────────────────────────
 
+const chipStyles = (colors: ThemeColors) => StyleSheet.create({
+  chip: { paddingVertical: 7, paddingHorizontal: 11, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  chipActive: { borderColor: colors.accent, backgroundColor: colors.accentBg },
+  chipText: { fontSize: 11.5, fontWeight: '600', color: colors.text },
+  chipTextActive: { color: colors.accent },
+});
+
 const FilterChip = React.memo(function FilterChip({
   active,
   onPress,
@@ -375,13 +382,6 @@ const FilterChip = React.memo(function FilterChip({
   );
 });
 
-const chipStyles = (colors: ThemeColors) => StyleSheet.create({
-  chip: { paddingVertical: 7, paddingHorizontal: 11, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  chipActive: { borderColor: colors.accent, backgroundColor: colors.accentBg },
-  chipText: { fontSize: 11.5, fontWeight: '600', color: colors.text },
-  chipTextActive: { color: colors.accent },
-});
-
 const FilterRow = React.memo(function FilterRow({
   label,
   children,
@@ -401,6 +401,13 @@ const FilterRow = React.memo(function FilterRow({
   );
 });
 
+const segStyles = (colors: ThemeColors) => StyleSheet.create({
+  seg: { paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  segActive: { borderColor: colors.black, backgroundColor: colors.black },
+  segText: { fontSize: 11.5, fontWeight: '600', color: colors.text },
+  segTextActive: { color: colors.onBlack },
+});
+
 const SegBtn = React.memo(function SegBtn({
   active,
   onPress,
@@ -418,13 +425,6 @@ const SegBtn = React.memo(function SegBtn({
       <Text style={[s.segText, active && s.segTextActive]}>{children}</Text>
     </TouchableOpacity>
   );
-});
-
-const segStyles = (colors: ThemeColors) => StyleSheet.create({
-  seg: { paddingVertical: 7, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  segActive: { borderColor: colors.black, backgroundColor: colors.black },
-  segText: { fontSize: 11.5, fontWeight: '600', color: colors.text },
-  segTextActive: { color: colors.onBlack },
 });
 
 // ── Main screen ─────────────────────────────────────────────────────────
