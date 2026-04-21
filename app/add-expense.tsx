@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,6 +21,7 @@ import FormField from '@/components/FormField';
 import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
+import { placeAutocomplete } from '@/lib/google-places';
 import { addExpense, getGroupMembers, updateExpense } from '@/lib/supabase';
 import type { Expense } from '@/lib/types';
 
@@ -75,6 +76,8 @@ export default function AddExpenseScreen() {
   );
   const [paidBy, setPaidBy] = useState<string>(params.paidBy ?? '');
   const [placeName, setPlaceName] = useState(params.placeName ?? '');
+  const [placeSuggestions, setPlaceSuggestions] = useState<{ placeId: string; description: string }[]>([]);
+  const placeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [splitType, setSplitType] = useState<NonNullable<Expense['splitType']>>(
     SPLIT_TYPES.includes(params.splitType as any) ? (params.splitType as NonNullable<Expense['splitType']>) : 'Equal'
   );
@@ -227,12 +230,37 @@ export default function AddExpenseScreen() {
           />
         ) : null}
 
-        <FormField
-          label="Place Name"
-          placeholder="e.g. Jollibee, SM Mall"
-          value={placeName}
-          onChangeText={setPlaceName}
-        />
+        <View>
+          <Text style={{ color: colors.text3, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.xs }}>Place Name</Text>
+          <TextInput
+            style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, color: colors.text, fontSize: 14 }}
+            value={placeName}
+            onChangeText={(text) => {
+              setPlaceName(text);
+              if (placeTimer.current) clearTimeout(placeTimer.current);
+              if (!text.trim()) { setPlaceSuggestions([]); return; }
+              placeTimer.current = setTimeout(async () => {
+                const results = await placeAutocomplete(text);
+                setPlaceSuggestions(results.slice(0, 4));
+              }, 300);
+            }}
+            placeholder="e.g. Jollibee, SM Mall"
+            placeholderTextColor={colors.text3}
+          />
+          {placeSuggestions.length > 0 && (
+            <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, marginTop: 4 }}>
+              {placeSuggestions.map((s) => (
+                <Pressable
+                  key={s.placeId}
+                  style={{ paddingVertical: 10, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                  onPress={() => { setPlaceName(s.description.split(',')[0]); setPlaceSuggestions([]); }}
+                >
+                  <Text style={{ fontSize: 13, color: colors.text }} numberOfLines={1}>{s.description}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
 
         <Select<NonNullable<Expense['splitType']>>
           label="Split Type"

@@ -94,7 +94,7 @@ export async function searchNearby(type?: string, keyword?: string): Promise<Nea
   if (!API_KEY) return [];
   const params = new URLSearchParams({
     location: `${HOTEL_LAT},${HOTEL_LNG}`,
-    radius: '5000',
+    radius: '1500',
     key: API_KEY,
   });
   if (type) params.append('type', type);
@@ -103,8 +103,8 @@ export async function searchNearby(type?: string, keyword?: string): Promise<Nea
   const allResults: NearbyPlace[] = [];
   let url: string | null = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}`;
 
-  // Fetch up to 3 pages (60 results max)
-  for (let page = 0; page < 3 && url; page++) {
+  // Fetch 1 page (20 results) to save API tokens
+  for (let page = 0; page < 1 && url; page++) {
     const res: Response = await fetch(url);
     if (!res.ok) break;
     const data: any = await res.json();

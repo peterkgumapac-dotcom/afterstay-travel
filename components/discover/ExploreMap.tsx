@@ -165,8 +165,8 @@ function ExploreMap({
         initialRegion={{
           latitude: userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat,
           longitude: userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng,
-          latitudeDelta: 0.015,
-          longitudeDelta: 0.015,
+          latitudeDelta: 0.008,
+          longitudeDelta: 0.008,
         }}
         showsUserLocation={true}
         showsMyLocationButton={true}
@@ -187,8 +187,6 @@ function ExploreMap({
             <Marker
               key={p.placeId ?? `${p.n}-${idx}`}
               coordinate={{ latitude: p.lat!, longitude: p.lng! }}
-              title={p.n}
-              description={timeStr}
               pinColor={isRecommended ? '#d9a441' : (CATEGORY_COLOR[p.t] ?? colors.text3)}
               onPress={() => handlePinPress(p)}
             />

@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -18,6 +18,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
+import { placeAutocomplete } from '@/lib/google-places';
 import { addMoment } from '@/lib/supabase';
 import type { MomentTag } from '@/lib/types';
 
@@ -46,6 +47,8 @@ export default function AddMomentScreen() {
   const [date, setDate] = useState(todayStr);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
+  const [locationSuggestions, setLocationSuggestions] = useState<{ placeId: string; description: string }[]>([]);
+  const locationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     pickImages();
@@ -250,16 +253,40 @@ export default function AddMomentScreen() {
               />
             </View>
 
-            {/* Location */}
+            {/* Location with autocomplete */}
             <View style={styles.field}>
               <Text style={styles.label}>Location</Text>
               <TextInput
                 style={styles.input}
                 value={location}
-                onChangeText={setLocation}
+                onChangeText={(text) => {
+                  setLocation(text);
+                  if (locationTimer.current) clearTimeout(locationTimer.current);
+                  if (!text.trim()) { setLocationSuggestions([]); return; }
+                  locationTimer.current = setTimeout(async () => {
+                    const results = await placeAutocomplete(text);
+                    setLocationSuggestions(results.slice(0, 4));
+                  }, 300);
+                }}
                 placeholder="Where was this?"
                 placeholderTextColor={colors.text3}
               />
+              {locationSuggestions.length > 0 && (
+                <View style={styles.suggestions}>
+                  {locationSuggestions.map((s) => (
+                    <Pressable
+                      key={s.placeId}
+                      style={styles.suggestionItem}
+                      onPress={() => {
+                        setLocation(s.description.split(',')[0]);
+                        setLocationSuggestions([]);
+                      }}
+                    >
+                      <Text style={styles.suggestionText} numberOfLines={1}>{s.description}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
 
             {/* Tags */}
@@ -451,6 +478,20 @@ const getStyles = (colors: ThemeColors) =>
     },
     tagText: { color: colors.text2, fontSize: 12, fontWeight: '600' },
     tagTextActive: { color: colors.accent },
+    suggestions: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      marginTop: 4,
+    },
+    suggestionItem: {
+      paddingVertical: 10,
+      paddingHorizontal: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    suggestionText: { fontSize: 13, color: colors.text },
 
     // Upload button
     uploadBtn: {
