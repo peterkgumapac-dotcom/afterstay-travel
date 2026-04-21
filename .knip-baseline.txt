@@ -20,11 +20,12 @@ Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (5)
+Unused exports (6)
 components/budget/WhoPaysPicker.tsx: WhoPaysSegment
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
+lib/distance.ts: haversine
 lib/google-places.ts: searchPlace, HOTEL_LAT, HOTEL_LNG
 Unused exported types (5)
 constants/ThemeContext.tsx: ThemeMode
