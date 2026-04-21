@@ -104,16 +104,24 @@ function ExploreMap({
   };
 
   const handleSearchResultTap = async (result: { placeId: string; description: string }) => {
-    setSearchQuery(result.description.split(',')[0]);
+    const name = result.description.split(',')[0];
+    setSearchQuery(name);
     setSearchResults([]);
     const details = await searchPlace(result.description);
     if (details && mapRef.current) {
       mapRef.current.animateToRegion({
         latitude: details.lat,
         longitude: details.lng,
-        latitudeDelta: 0.008,
-        longitudeDelta: 0.008,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
       }, 500);
+      // Open detail sheet with navigate button
+      const km = getDistanceKm(details.lat, details.lng);
+      setSelectedPlace({
+        placeId: result.placeId,
+        name,
+        distanceKm: km,
+      });
     }
   };
 
