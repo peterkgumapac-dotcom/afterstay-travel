@@ -124,8 +124,9 @@ function resolveCategory(types: string[]): PlaceCategory {
 }
 
 function formatReviewCount(count: number): string {
-  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
-  return String(count);
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k reviews`;
+  if (count === 0) return 'No reviews';
+  return `${count} reviews`;
 }
 
 function mapNearbyToDiscoverPlace(place: NearbyPlace): DiscoverPlace {
@@ -251,7 +252,7 @@ const PLACES: readonly DiscoverPlace[] = [
     n: 'Puka Shell Beach',
     t: 'Beach',
     r: 4.7,
-    rv: '3.2k',
+    rv: '3.2k reviews',
     d: '4.2 km',
     dn: 4.2,
     price: 0,
@@ -262,7 +263,7 @@ const PLACES: readonly DiscoverPlace[] = [
     n: "D'Mall",
     t: 'Shopping',
     r: 4.3,
-    rv: '1.8k',
+    rv: '1.8k reviews',
     d: '1.6 km',
     dn: 1.6,
     price: 2,
@@ -273,7 +274,7 @@ const PLACES: readonly DiscoverPlace[] = [
     n: "Willy's Rock",
     t: 'Landmark',
     r: 4.5,
-    rv: '2.1k',
+    rv: '2.1k reviews',
     d: '900 m',
     dn: 0.9,
     price: 0,
@@ -284,7 +285,7 @@ const PLACES: readonly DiscoverPlace[] = [
     n: "Jonah's Fruit Shake",
     t: 'Restaurant',
     r: 4.6,
-    rv: '890',
+    rv: '890 reviews',
     d: '1.2 km',
     dn: 1.2,
     price: 1,
