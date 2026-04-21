@@ -28,7 +28,8 @@ import {
 import * as Haptics from 'expo-haptics';
 
 import { fetchPlaceDetails, PlaceDetails, Review } from '../../lib/placeDetails';
-import { formatDistance, estimateWalkTime } from '../../lib/distance';
+import { formatDistance } from '../../lib/distance';
+import { travelTime as calcTravelTime } from '@/lib/utils';
 import { useTheme } from '@/constants/ThemeContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -45,6 +46,7 @@ interface Props {
   onClose: () => void;
   onSaveToggle?: () => void;
   distanceKm?: number;
+  travelMode?: 'walk' | 'car';
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -163,6 +165,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
   onClose,
   onSaveToggle,
   distanceKm,
+  travelMode = 'walk',
 }) => {
   const { colors } = useTheme();
   const s = getStyles(colors);
@@ -270,7 +273,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
                       {formatDistance(distanceKm)}
                     </Text>
                     <Text style={s.statSub}>
-                      {estimateWalkTime(distanceKm)}
+                      {calcTravelTime(distanceKm, travelMode)}
                     </Text>
                   </View>
                 )}

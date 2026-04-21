@@ -166,6 +166,38 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
   };
 }
 
+// ── Autocomplete ─────────────────────────────────────────────────────────
+
+export interface AutocompleteResult {
+  placeId: string;
+  description: string;
+}
+
+export async function placeAutocomplete(
+  input: string,
+): Promise<AutocompleteResult[]> {
+  if (!API_KEY || !input.trim()) return [];
+  const params = new URLSearchParams({
+    input: input.trim(),
+    location: `${HOTEL_LAT},${HOTEL_LNG}`,
+    radius: '5000',
+    key: API_KEY,
+  });
+  try {
+    const res: Response = await fetch(
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
+    );
+    if (!res.ok) return [];
+    const data: any = await res.json();
+    return (data.predictions ?? []).map((p: any) => ({
+      placeId: p.place_id,
+      description: p.description,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export { HOTEL_LAT, HOTEL_LNG };
 
 export async function enrichRecommendations<T extends { name: string }>(

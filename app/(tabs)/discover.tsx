@@ -16,7 +16,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { Bookmark, ChevronDown, Filter, Map, Search, SlidersHorizontal, Sparkles, X } from 'lucide-react-native';
+import { Bookmark, ChevronDown, Filter, Map, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -30,8 +30,8 @@ import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
 import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
-import { fmtKm, travelTime } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
+import ExploreMap, { MAP_AVAILABLE } from '@/components/discover/ExploreMap';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, type NearbyPlace } from '@/lib/google-places';
 import {
@@ -44,16 +44,6 @@ import {
 import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
 import { CONFIG } from '@/lib/config';
 
-// Dynamic require MUST be after ALL imports — Hermes hoists imports
-let MapView: any = null;
-let Marker: any = null;
-try {
-  const maps = require('react-native-maps');
-  MapView = maps.default;
-  Marker = maps.Marker;
-} catch {
-  // Maps not available (web or missing native module)
-}
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'places' | 'planner' | 'saved';
@@ -496,8 +486,6 @@ function DiscoverScreenInner() {
   const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
   const [visibleCount, setVisibleCount] = useState(20);
   const [showMapModal, setShowMapModal] = useState(false);
-  const [mapFilter, setMapFilter] = useState<string | null>(null);
-  const [showMapDropdown, setShowMapDropdown] = useState(false);
 
   // PlaceDetailSheet state
   const [detailPlaceId, setDetailPlaceId] = useState<string | null>(null);
@@ -1293,10 +1281,9 @@ function DiscoverScreenInner() {
               <TouchableOpacity
                 style={styles.viewMapBtn}
                 onPress={() => {
-                  if (MapView) {
+                  if (MAP_AVAILABLE) {
                     setShowMapModal(true);
                   } else {
-                    // Fallback: open Google Maps in browser (Expo Go or web)
                     const lat = userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat;
                     const lng = userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng;
                     WebBrowser.openBrowserAsync(
@@ -1417,154 +1404,21 @@ function DiscoverScreenInner() {
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      {/* Full-screen map modal */}
-      {showMapModal && MapView && (() => {
-        const CATEGORY_COLOR: Record<string, string> = {
-          Restaurant: '#c66a36', Cafe: '#8a5a2b', Bar: '#b66a8a',
-          Beach: '#5a8fb5', Spa: '#7ba88a', Shopping: '#a64d1e',
-          Attraction: '#d9a441', Landmark: '#857d70', Nature: '#7e9f5b',
-          Wellness: '#7ba88a', Hotel: '#c49460', Culture: '#8b6f5a',
-          Park: '#7e9f5b', Place: '#857d70',
-        };
-        const MAP_CHIPS = ['All', 'Coffee', 'Food', 'Beach', 'Bar', 'Shopping', 'Spa', 'Activity'];
-        const isFiltered = mapFilter && mapFilter !== 'All';
-        const mapPlaces = filteredPlaces.filter((p) => {
-          if (!p.lat || !p.lng) return false;
-          if (!isFiltered) return true;
-          return p.t.toLowerCase().includes(mapFilter!.toLowerCase());
-        });
-        const mapTravelMode = travelMode === 'walk' ? 'walk' as const : 'car' as const;
-        return (
-          <View style={styles.mapModal}>
-            <MapView
-              style={StyleSheet.absoluteFill}
-              initialRegion={{
-                latitude: userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat,
-                longitude: userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng,
-                latitudeDelta: 0.015,
-                longitudeDelta: 0.015,
-              }}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
-              showsCompass={true}
-            >
-              {/* Hotel pin */}
-              <Marker
-                coordinate={{ latitude: CONFIG.HOTEL_COORDS.lat, longitude: CONFIG.HOTEL_COORDS.lng }}
-                title="Your Hotel"
-                pinColor={colors.accent}
-              />
-              {/* Place pins */}
-              {mapPlaces.map((p, idx) => {
-                const km = getDistanceKm(p.lat, p.lng);
-                const timeStr = km > 0 ? travelTime(km, mapTravelMode) : '';
-                const distStr = km > 0 ? fmtKm(km) : '';
-
-                // When filtered: show labeled markers with name + distance
-                if (isFiltered) {
-                  return (
-                    <Marker
-                      key={p.placeId ?? `${p.n}-${idx}`}
-                      coordinate={{ latitude: p.lat!, longitude: p.lng! }}
-                      onCalloutPress={() => {
-                        const mode = mapTravelMode === 'walk' ? 'walking' : 'driving';
-                        WebBrowser.openBrowserAsync(
-                          `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
-                        );
-                      }}
-                    >
-                      <View style={styles.labeledPin}>
-                        <Text style={styles.labeledPinName} numberOfLines={1}>{p.n}</Text>
-                        <Text style={styles.labeledPinDist}>{timeStr} · {distStr}</Text>
-                      </View>
-                      <View style={styles.labeledPinArrow} />
-                    </Marker>
-                  );
-                }
-
-                // All: simple pin
-                return (
-                  <Marker
-                    key={p.placeId ?? `${p.n}-${idx}`}
-                    coordinate={{ latitude: p.lat!, longitude: p.lng! }}
-                    title={p.n}
-                    description={`${p.t} · ${timeStr} · ${distStr}`}
-                    pinColor={CATEGORY_COLOR[p.t] ?? colors.text3}
-                    onCalloutPress={() => {
-                      const mode = mapTravelMode === 'walk' ? 'walking' : 'driving';
-                      WebBrowser.openBrowserAsync(
-                        `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&destination_place_id=${p.placeId ?? ''}&travelmode=${mode}`
-                      );
-                    }}
-                  />
-                );
-              })}
-            </MapView>
-            {/* Walk/Drive toggle */}
-            <View style={styles.mapModeToggle}>
-              <TouchableOpacity
-                onPress={() => setTravelMode('walk')}
-                style={[styles.mapModeBtn, travelMode === 'walk' && styles.mapModeBtnActive]}
-              >
-                <Text style={[styles.mapModeText, travelMode === 'walk' && styles.mapModeTextActive]}>Walk</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setTravelMode('car')}
-                style={[styles.mapModeBtn, travelMode === 'car' && styles.mapModeBtnActive]}
-              >
-                <Text style={[styles.mapModeText, travelMode === 'car' && styles.mapModeTextActive]}>Drive</Text>
-              </TouchableOpacity>
-            </View>
-            {/* Close button */}
-            <TouchableOpacity
-              style={styles.mapCloseBtn}
-              onPress={() => { setShowMapModal(false); setMapFilter(null); setShowMapDropdown(false); }}
-              activeOpacity={0.7}
-            >
-              <X size={22} color={colors.text} strokeWidth={2} />
-            </TouchableOpacity>
-            {/* Top row: badge + filter */}
-            <View style={styles.mapTopRow}>
-              <View style={styles.mapBadge}>
-                <Text style={styles.mapBadgeText}>{mapPlaces.length} places</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.mapFilterBtn}
-                onPress={() => setShowMapDropdown((s) => !s)}
-                activeOpacity={0.7}
-              >
-                <Filter size={16} color={mapFilter ? colors.accent : colors.text} strokeWidth={2} />
-                <Text style={[styles.mapFilterBtnText, mapFilter && { color: colors.accent }]}>
-                  {mapFilter ?? 'Filter'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {/* Dropdown menu */}
-            {showMapDropdown && (
-              <View style={styles.mapDropdown}>
-                {MAP_CHIPS.map((c) => {
-                  const active = (mapFilter ?? 'All') === c;
-                  return (
-                    <TouchableOpacity
-                      key={c}
-                      onPress={() => {
-                        setMapFilter(c === 'All' ? null : c);
-                        setShowMapDropdown(false);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}
-                      style={[styles.mapDropdownItem, active && styles.mapDropdownItemActive]}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.mapDropdownText, active && styles.mapDropdownTextActive]}>{c}</Text>
-                      {active && <View style={styles.mapDropdownDot} />}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-        );
-      })()}
+      {/* Full-screen map */}
+      <ExploreMap
+        visible={showMapModal}
+        places={filteredPlaces}
+        savedNames={saved}
+        recommendedNames={recommended}
+        travelMode={travelMode}
+        distanceOrigin={distanceOrigin === 'me' ? 'me' : 'hotel'}
+        userLocation={userLocation}
+        onClose={() => setShowMapModal(false)}
+        onTravelModeChange={handleTravelModeChange}
+        onAnchorChange={handleAnchorChange}
+        onSaveToggle={toggleSave}
+        getDistanceKm={getDistanceKm}
+      />
 
       <PlaceDetailSheet
         visible={showDetail}
@@ -1980,165 +1834,6 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 14,
       fontWeight: '600',
       color: colors.accent,
-    },
-    mapModal: {
-      ...StyleSheet.absoluteFillObject,
-      zIndex: 100,
-      backgroundColor: colors.bg,
-    },
-    mapCloseBtn: {
-      position: 'absolute',
-      top: 52,
-      right: 16,
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 101,
-    },
-    mapTopRow: {
-      position: 'absolute',
-      top: 52,
-      left: 16,
-      right: 60,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      zIndex: 101,
-    },
-    mapBadge: {
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      borderRadius: 999,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    mapBadgeText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    mapFilterBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      borderRadius: 999,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    mapFilterBtnText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    mapDropdown: {
-      position: 'absolute',
-      top: 96,
-      left: 16,
-      width: 180,
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 6,
-      zIndex: 102,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 12,
-      elevation: 8,
-    },
-    mapDropdownItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 11,
-      paddingHorizontal: 16,
-    },
-    mapDropdownItemActive: {
-      backgroundColor: colors.accentBg,
-    },
-    mapDropdownText: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: colors.text,
-    },
-    mapDropdownTextActive: {
-      fontWeight: '700',
-      color: colors.accent,
-    },
-    mapDropdownDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: colors.accent,
-    },
-    labeledPin: {
-      backgroundColor: colors.card,
-      borderRadius: 10,
-      paddingVertical: 5,
-      paddingHorizontal: 8,
-      borderWidth: 1,
-      borderColor: colors.accent,
-      maxWidth: 160,
-      alignItems: 'center',
-    },
-    labeledPinName: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: colors.text,
-    },
-    labeledPinDist: {
-      fontSize: 9,
-      fontWeight: '600',
-      color: colors.accent,
-      marginTop: 1,
-    },
-    labeledPinArrow: {
-      width: 0,
-      height: 0,
-      borderLeftWidth: 6,
-      borderRightWidth: 6,
-      borderTopWidth: 6,
-      borderLeftColor: 'transparent',
-      borderRightColor: 'transparent',
-      borderTopColor: colors.accent,
-      alignSelf: 'center',
-    },
-    mapModeToggle: {
-      position: 'absolute',
-      bottom: 32,
-      alignSelf: 'center',
-      flexDirection: 'row',
-      borderRadius: 999,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      zIndex: 101,
-    },
-    mapModeBtn: {
-      paddingVertical: 10,
-      paddingHorizontal: 20,
-      borderRadius: 999,
-    },
-    mapModeBtnActive: {
-      backgroundColor: colors.accent,
-    },
-    mapModeText: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text2,
-    },
-    mapModeTextActive: {
-      color: colors.ink,
     },
     emptyPlaces: {
       paddingVertical: 28,
