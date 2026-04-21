@@ -342,7 +342,7 @@ function applyPlaceFilters(
   return list.filter((p) => {
     if (f.minRating && p.r < f.minRating) return false;
     if (f.openNow && !p.openNow) return false;
-    if (f.nearby && p.dn > 2) return false;
+    // "nearby" filter is applied AFTER distance computation in placesWithDistance
     if (f.maxPrice < 3 && p.price > f.maxPrice) return false;
     return true;
   });
@@ -761,14 +761,17 @@ export default function DiscoverScreen() {
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
 
 
-  // Pre-compute distances once (stable numbers). Cards compute their own display strings.
-  const placesWithDistance = useMemo(() =>
-    filteredPlaces.map((p) => ({
+  // Pre-compute distances and apply nearby filter using real anchor distance.
+  const placesWithDistance = useMemo(() => {
+    const withDist = filteredPlaces.map((p) => ({
       place: p,
       distanceKm: getDistanceKm(p.lat, p.lng),
-    })),
-    [filteredPlaces, getDistanceKm],
-  );
+    }));
+    if (filters.nearby) {
+      return withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= 2);
+    }
+    return withDist;
+  }, [filteredPlaces, getDistanceKm, filters.nearby]);
 
   // Stable filter callbacks — prevent FilterChip re-renders
   const toggleOpenNow = useCallback(() => setFilters((f) => ({ ...f, openNow: !f.openNow })), []);
