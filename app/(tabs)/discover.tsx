@@ -23,7 +23,6 @@ import {
   DiscoverPlaceCard,
   type DiscoverPlace,
 } from '@/components/discover/DiscoverPlaceCard';
-import { SuggestionList } from '@/components/discover/SuggestionList';
 import { TrendingCard, type TrendingItem } from '@/components/discover/TrendingCard';
 import MiniLoader from '@/components/loader/MiniLoader';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';

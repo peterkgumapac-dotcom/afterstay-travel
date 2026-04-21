@@ -52,7 +52,7 @@ export const fetchPlaceDetails = async (placeId: string): Promise<PlaceDetails |
       openingHours: r.opening_hours?.weekday_text,
       isOpenNow: r.opening_hours?.open_now,
       photos: (r.photos || []).slice(0, 8).map((p: any) =>
-        `https://maps.googleapis.com/maps/api/place/photo?maxwidth=600&photoreference=${p.photo_reference}&key=${API_KEY}`
+        `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photo_reference=${p.photo_reference}&key=${API_KEY}`
       ),
       reviews: (r.reviews || []).slice(0, 5).map((rv: any): Review => ({
         authorName: rv.author_name,
