@@ -11,6 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, Plane, Bell, Info, ChevronRight, ArrowLeft, Sun, Moon, Palette, LogOut } from 'lucide-react-native';
@@ -224,8 +225,8 @@ export default function SettingsScreen() {
         {/* About */}
         <SectionLabel icon={<Info size={14} color={colors.green2} />} label="About" textColor={colors.text2} />
         <View style={dynamicStyles.card}>
-          <Text style={dynamicStyles.cardTitle}>AfterStay v1.0</Text>
-          <Text style={dynamicStyles.cardSub}>Built with love for Boracay 2026</Text>
+          <Text style={dynamicStyles.cardTitle}>AfterStay v{Constants.expoConfig?.version ?? '?'}</Text>
+          <Text style={dynamicStyles.cardSub}>Build {Constants.expoConfig?.extra?.eas?.projectId?.slice(0, 8) ?? '—'} · Expo SDK {Constants.expoConfig?.sdkVersion ?? '?'}</Text>
         </View>
       </ScrollView>
 
