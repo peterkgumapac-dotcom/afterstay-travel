@@ -1513,21 +1513,22 @@ function DiscoverScreenInner() {
             >
               <X size={22} color={colors.text} strokeWidth={2} />
             </TouchableOpacity>
-            {/* Place count badge */}
-            <View style={styles.mapBadge}>
-              <Text style={styles.mapBadgeText}>{mapPlaces.length} places</Text>
+            {/* Top row: badge + filter */}
+            <View style={styles.mapTopRow}>
+              <View style={styles.mapBadge}>
+                <Text style={styles.mapBadgeText}>{mapPlaces.length} places</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.mapFilterBtn}
+                onPress={() => setShowMapDropdown((s) => !s)}
+                activeOpacity={0.7}
+              >
+                <Filter size={16} color={mapFilter ? colors.accent : colors.text} strokeWidth={2} />
+                <Text style={[styles.mapFilterBtnText, mapFilter && { color: colors.accent }]}>
+                  {mapFilter ?? 'Filter'}
+                </Text>
+              </TouchableOpacity>
             </View>
-            {/* Filter button — Google Maps style */}
-            <TouchableOpacity
-              style={styles.mapFilterBtn}
-              onPress={() => setShowMapDropdown((s) => !s)}
-              activeOpacity={0.7}
-            >
-              <Filter size={16} color={mapFilter ? colors.accent : colors.text} strokeWidth={2} />
-              <Text style={[styles.mapFilterBtnText, mapFilter && { color: colors.accent }]}>
-                {mapFilter ?? 'Filter'}
-              </Text>
-            </TouchableOpacity>
             {/* Dropdown menu */}
             {showMapDropdown && (
               <View style={styles.mapDropdown}>
@@ -1989,17 +1990,23 @@ const getStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
       zIndex: 101,
     },
-    mapBadge: {
+    mapTopRow: {
       position: 'absolute',
       top: 52,
       left: 16,
+      right: 60,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      zIndex: 101,
+    },
+    mapBadge: {
       paddingVertical: 8,
       paddingHorizontal: 14,
       borderRadius: 999,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      zIndex: 101,
     },
     mapBadgeText: {
       fontSize: 13,
@@ -2007,19 +2014,15 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text,
     },
     mapFilterBtn: {
-      position: 'absolute',
-      top: 52,
-      left: 76,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      paddingVertical: 10,
+      paddingVertical: 8,
       paddingHorizontal: 14,
       borderRadius: 999,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
-      zIndex: 101,
     },
     mapFilterBtnText: {
       fontSize: 13,
@@ -2028,7 +2031,7 @@ const getStyles = (colors: ThemeColors) =>
     },
     mapDropdown: {
       position: 'absolute',
-      top: 100,
+      top: 96,
       left: 16,
       width: 180,
       backgroundColor: colors.card,
