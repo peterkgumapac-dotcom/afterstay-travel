@@ -1,8 +1,7 @@
-Unused files (23)
+Unused files (18)
 components/CachedImage.tsx: components/CachedImage.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
 components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
-components/fate/shared/PrimaryButton.tsx: components/fate/shared/PrimaryButton.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
 design-reference/components/icons.jsx: design-reference/components/icons.jsx
 design-reference/components/shell.jsx: design-reference/components/shell.jsx
@@ -14,29 +13,28 @@ design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
 design-reference/screens/login.jsx: design-reference/screens/login.jsx
 design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
-hooks/fate/useFateHistory.ts: hooks/fate/useFateHistory.ts
-hooks/fate/useHaptics.ts: hooks/fate/useHaptics.ts
-hooks/fate/useSounds.ts: hooks/fate/useSounds.ts
 lib/cache/cacheFirst.ts: lib/cache/cacheFirst.ts
 lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
-utils/fate/randomWinner.ts: utils/fate/randomWinner.ts
 Unused dependencies (1)
-package.json: @expo/vector-icons, base64-arraybuffer, exifr, expo-auth-session, expo-av, expo-build-properties, expo-calendar, expo-secure-store, expo-sharing, react-native-maps
+package.json: @expo/vector-icons, base64-arraybuffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-secure-store, expo-sharing, react-native-maps
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (6)
+Unused exports (7)
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
-constants/fateTheme.ts: personColors, fateFonts, fateTiming
+constants/fateTheme.ts: fateTiming
 lib/distance.ts: haversine, estimateWalkTime
 lib/google-places.ts: searchPlace
-Unused exported types (5)
+utils/fate/randomWinner.ts: pickTwoWinners
+Unused exported types (7)
+components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
+hooks/fate/useFateHistory.ts: FateResult, UseFateHistoryReturn
 lib/anthropic.ts: ItineraryDayLegacy
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
 lib/supabase.ts: Profile

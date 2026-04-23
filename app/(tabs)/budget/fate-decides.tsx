@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import FateHeader from '@/components/fate/shared/FateHeader';
 import ModeTabs from '@/components/fate/shared/ModeTabs';
 import NameList from '@/components/fate/shared/NameList';
+import WheelScreen from '@/components/fate/wheel/WheelScreen';
 import { fateColors } from '@/constants/fateTheme';
 import { useFateNames } from '@/hooks/fate/useFateNames';
 
@@ -46,8 +47,11 @@ export default function FateDecidesScreen() {
           maxNames={10}
         />
 
-        {/* Phase 3+: WheelScreen / TouchScreen will render here based on mode */}
-        <View style={styles.gameArea} />
+        {mode === 'wheel' ? (
+          <WheelScreen names={names} />
+        ) : (
+          <View style={styles.gameArea} />
+        )}
       </View>
     </GestureHandlerRootView>
   );
