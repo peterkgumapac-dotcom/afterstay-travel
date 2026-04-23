@@ -27,7 +27,7 @@ Unused exports (7)
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
-constants/fateTheme.ts: fateTiming
+constants/fateTheme.ts: personColors, fateTiming
 lib/distance.ts: haversine, estimateWalkTime
 lib/google-places.ts: searchPlace
 utils/fate/randomWinner.ts: pickTwoWinners

@@ -1,12 +1,15 @@
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ArrowLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import FateHeader from '@/components/fate/shared/FateHeader';
 import ModeTabs from '@/components/fate/shared/ModeTabs';
 import NameList from '@/components/fate/shared/NameList';
+import TouchScreen from '@/components/fate/touch/TouchScreen';
 import WheelScreen from '@/components/fate/wheel/WheelScreen';
 import { fateColors } from '@/constants/fateTheme';
 import { useFateNames } from '@/hooks/fate/useFateNames';
@@ -17,6 +20,7 @@ export default function FateDecidesScreen() {
   const [mode, setMode] = useState<FateMode>('wheel');
   const { names, setNames } = useFateNames();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
@@ -28,6 +32,16 @@ export default function FateDecidesScreen() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={12}
+        >
+          <ArrowLeft size={22} color={fateColors.textPrimary} strokeWidth={2} />
+        </Pressable>
+
         <FateHeader
           kicker="Fate Decides"
           headline={mode === 'wheel' ? 'Spin the Wheel' : 'Touch of Fate'}
@@ -50,13 +64,7 @@ export default function FateDecidesScreen() {
         {mode === 'wheel' ? (
           <WheelScreen names={names} />
         ) : (
-          <View style={styles.touchPlaceholder}>
-            <Text style={styles.touchEmoji}>👆</Text>
-            <Text style={styles.touchTitle}>Coming Soon</Text>
-            <Text style={styles.touchBody}>
-              Touch of Fate — everyone places a finger, fate picks the unlucky one.
-            </Text>
-          </View>
+          <TouchScreen />
         )}
       </View>
     </GestureHandlerRootView>
@@ -66,8 +74,5 @@ export default function FateDecidesScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: fateColors.background },
   container: { flex: 1, paddingHorizontal: 20 },
-  touchPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 80 },
-  touchEmoji: { fontSize: 48, marginBottom: 16 },
-  touchTitle: { fontSize: 20, fontWeight: '600', color: fateColors.textPrimary, marginBottom: 8 },
-  touchBody: { fontSize: 14, color: fateColors.textSecondary, textAlign: 'center', paddingHorizontal: 32 },
+  backButton: { marginBottom: 8, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });
