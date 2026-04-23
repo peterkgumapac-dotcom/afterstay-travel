@@ -598,22 +598,22 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   budgetHeader: { marginBottom: 14 },
   budgetAmountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 4 },
   budgetCurrency: { fontSize: 18, color: c.text3, fontWeight: '600' },
-  budgetAmount: { fontSize: 34, fontWeight: '500', letterSpacing: -0.8, color: c.text, fontFamily: 'SpaceMono' },
+  budgetAmount: { fontSize: 34, fontWeight: '500', letterSpacing: -0.3, color: c.text },
   budgetPerDay: { fontSize: 11, color: c.text3, marginTop: 2 },
   progressTrack: { height: 8, borderRadius: 99, backgroundColor: c.card2, overflow: 'hidden', marginBottom: 10 },
   progressFill: { height: '100%', borderRadius: 99, backgroundColor: c.accent },
   progressLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   progressText: { fontSize: 12, color: c.text3 },
-  progressBold: { fontWeight: '600', color: c.text, fontFamily: 'SpaceMono' },
+  progressBold: { fontWeight: '600', color: c.text, letterSpacing: -0.3 },
   lodgingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border },
   lodgingCheck: { width: 24, height: 24, borderRadius: 6, backgroundColor: c.accentBg, borderWidth: 1, borderColor: c.accentBorder, alignItems: 'center', justifyContent: 'center' },
   lodgingTitle: { fontSize: 12, fontWeight: '600', color: c.text },
   lodgingSub: { fontSize: 10.5, color: c.text3, marginTop: 1 },
-  lodgingAmount: { fontSize: 13, fontWeight: '600', color: c.text2, fontFamily: 'SpaceMono' },
+  lodgingAmount: { fontSize: 13, fontWeight: '600', color: c.text2, letterSpacing: -0.3 },
 
   // Track mode
   trackCard: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 22, padding: 18, alignItems: 'center' },
-  trackAmount: { fontSize: 34, fontWeight: '500', letterSpacing: -0.8, color: c.text, fontFamily: 'SpaceMono', marginTop: 4 },
+  trackAmount: { fontSize: 34, fontWeight: '500', letterSpacing: -0.3, color: c.text, marginTop: 4 },
   trackSub: { fontSize: 12, color: c.text3, marginTop: 4 },
 
   // Person filter
@@ -632,7 +632,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   catIcon: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   catHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, gap: 8 },
   catName: { fontSize: 13, fontWeight: '600', color: c.text },
-  catAmount: { fontSize: 13, fontWeight: '600', color: c.text, fontFamily: 'SpaceMono' },
+  catAmount: { fontSize: 13, fontWeight: '600', color: c.text, letterSpacing: -0.3 },
   catBarTrack: { height: 4, borderRadius: 99, backgroundColor: c.card2, overflow: 'hidden' },
   catBarFill: { height: '100%', borderRadius: 99 },
 
@@ -642,7 +642,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   dayLabel: { width: 46, fontSize: 11, fontWeight: '600', color: c.text3 },
   dayBarTrack: { flex: 1, height: 8, backgroundColor: c.card2, borderRadius: 99, overflow: 'hidden' },
   dayBarFill: { height: '100%', borderRadius: 99, backgroundColor: c.accent },
-  dayAmount: { width: 72, textAlign: 'right', fontSize: 11, fontWeight: '600', color: c.text, fontFamily: 'SpaceMono' },
+  dayAmount: { width: 72, textAlign: 'right', fontSize: 11, fontWeight: '600', color: c.text, letterSpacing: -0.3 },
 
   // Expenses
   expenseRow: { paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c.border },
@@ -650,17 +650,17 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   expenseIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   expenseTopRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   expenseTitle: { fontSize: 13, fontWeight: '600', color: c.text, flex: 1 },
-  expenseAmount: { fontSize: 13, fontWeight: '600', color: c.text, fontFamily: 'SpaceMono' },
+  expenseAmount: { fontSize: 13, fontWeight: '600', color: c.text, letterSpacing: -0.3 },
   expenseMeta: { fontSize: 11, color: c.text3, marginTop: 2 },
   expenseBreakdown: { marginTop: 10, marginLeft: 44, padding: 10, backgroundColor: c.card2, borderWidth: 1, borderColor: c.border, borderRadius: 10 },
   breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   breakdownLabel: { fontSize: 11, color: c.text2 },
-  breakdownValue: { fontSize: 11, fontWeight: '600', color: c.text, fontFamily: 'SpaceMono' },
+  breakdownValue: { fontSize: 11, fontWeight: '600', color: c.text, letterSpacing: -0.3 },
 
   // Settle
   settleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 14 },
   settleText: { fontSize: 12.5, color: c.text },
-  settleAmount: { fontSize: 18, fontWeight: '600', color: c.accent, fontFamily: 'SpaceMono', marginTop: 2 },
+  settleAmount: { fontSize: 18, fontWeight: '600', color: c.accent, letterSpacing: -0.3, marginTop: 2 },
   settleBtn: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: c.black, borderRadius: radius.sm },
   settleBtnText: { fontSize: 12, fontWeight: '600', color: c.onBlack },
 
@@ -671,7 +671,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   modalCard: { width: '85%', backgroundColor: c.bg2, borderRadius: radius.lg, padding: 24, borderWidth: 1, borderColor: c.border },
   modalTitle: { fontSize: 18, fontWeight: '700', color: c.text, marginBottom: 16 },
-  modalInput: { backgroundColor: c.bg, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, color: c.text, fontSize: 18, fontFamily: 'SpaceMono', paddingHorizontal: 14, paddingVertical: 12 },
+  modalInput: { backgroundColor: c.bg, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, color: c.text, fontSize: 18, letterSpacing: -0.3, paddingHorizontal: 14, paddingVertical: 12 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16, marginTop: 16 },
   modalBtn: { fontSize: 14, fontWeight: '600' },
 });
