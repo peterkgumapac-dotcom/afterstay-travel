@@ -10,9 +10,11 @@ import type { UseHapticsReturn } from '@/hooks/fate/useHaptics';
 import type { UseSoundsReturn } from '@/hooks/fate/useSounds';
 
 // Minimum velocity (deg/s) to trigger a spin
-const MIN_VELOCITY = 200;
-// Deceleration rate — lower = spins longer. 0.997 gives nice 5-8s spins
-const DECELERATION = 0.997;
+const MIN_VELOCITY = 100;
+// Minimum spin velocity — even a light swipe gets a big spin
+const MIN_SPIN_VELOCITY = 2000;
+// Deceleration rate — 0.9994 gives ~10-15s spins at high velocity
+const DECELERATION = 0.9994;
 
 export interface UseWheelSpinReturn {
   rotation: ReturnType<typeof useSharedValue<number>>;
@@ -43,6 +45,10 @@ export function useWheelSpin(
     (velocity: number, onFinish: () => void) => {
       if (Math.abs(velocity) < MIN_VELOCITY) return;
 
+      // Enforce minimum spin speed — even a light swipe gives a satisfying spin
+      const sign = velocity > 0 ? 1 : -1;
+      const boostedVelocity = sign * Math.max(Math.abs(velocity), MIN_SPIN_VELOCITY);
+
       onFinishRef.current = onFinish;
       setIsSpinning(true);
       sounds.play('rattle');
@@ -52,7 +58,7 @@ export function useWheelSpin(
 
       rotation.value = withDecay(
         {
-          velocity,
+          velocity: boostedVelocity,
           deceleration: DECELERATION,
         },
         (finished) => {
