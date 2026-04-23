@@ -28,7 +28,7 @@ export function generateSpinPlan(
   winnerIndex: number,
   options: { forceFakeouts?: number } = {},
 ): SpinPlan {
-  const fakeouts = options.forceFakeouts ?? Math.floor(Math.random() * 4); // 0-3
+  const fakeouts = options.forceFakeouts ?? (1 + Math.floor(Math.random() * 3)); // 1-3
   const sliceAngle = 360 / nameCount;
 
   // Winner's center angle on the wheel (slice 0 starts at 12 o'clock)

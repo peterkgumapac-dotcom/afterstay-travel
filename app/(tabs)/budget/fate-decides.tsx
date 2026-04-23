@@ -1,6 +1,6 @@
 import * as ScreenOrientation from 'expo-screen-orientation';
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,7 +50,13 @@ export default function FateDecidesScreen() {
         {mode === 'wheel' ? (
           <WheelScreen names={names} />
         ) : (
-          <View style={styles.gameArea} />
+          <View style={styles.touchPlaceholder}>
+            <Text style={styles.touchEmoji}>👆</Text>
+            <Text style={styles.touchTitle}>Coming Soon</Text>
+            <Text style={styles.touchBody}>
+              Touch of Fate — everyone places a finger, fate picks the unlucky one.
+            </Text>
+          </View>
         )}
       </View>
     </GestureHandlerRootView>
@@ -60,5 +66,8 @@ export default function FateDecidesScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: fateColors.background },
   container: { flex: 1, paddingHorizontal: 20 },
-  gameArea: { flex: 1 },
+  touchPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 80 },
+  touchEmoji: { fontSize: 48, marginBottom: 16 },
+  touchTitle: { fontSize: 20, fontWeight: '600', color: fateColors.textPrimary, marginBottom: 8 },
+  touchBody: { fontSize: 14, color: fateColors.textSecondary, textAlign: 'center', paddingHorizontal: 32 },
 });
