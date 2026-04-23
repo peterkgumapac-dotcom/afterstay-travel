@@ -39,3 +39,17 @@ Append to this file at the end of every Claude Code session using `/compact Focu
   - Q19/Q20: Names and history are global (not per-trip) for v1
 - Blockers: Sound files are silent placeholders — need real audio before Phase 9
 - Next session: Phase 1 — scaffolding (fateTheme.ts, route, ModeTabs, FateHeader, buttons, NameList, useFateNames)
+
+## 2026-04-24 — Phase 1 + 2 + 3
+- Completed:
+  - **Phase 1**: fateTheme.ts, budget nested layout, fate-decides route, ModeTabs, FateHeader, PrimaryButton, SecondaryButton, NameList, useFateNames
+  - **Phase 2**: randomWinner.ts, useSounds (expo-av preload + iOS silent mode), useHaptics (throttled tap + Android fallback), useFateHistory (AsyncStorage max 5)
+  - **Phase 3**: generateSpinPlan (with fake-out logic built in), 6 unit tests (all passing), Wheel SVG, WheelPointer, useWheelSpin (Reanimated withTiming chain + skip), WinnerReveal (spring + confetti), WheelScreen, wired into fate-decides route
+- Decisions:
+  - Budget tab converted from flat file to nested Stack layout (budget/_layout.tsx)
+  - Removed inline SpinWheel/DiceRoller, replaced with navigation to fate-decides
+  - Installed @types/jest for test file TypeScript support
+  - Confetti positions use Dimensions.get('window') instead of percentage strings (RN type constraint)
+  - knip baseline updated at each phase for not-yet-consumed exports
+- Blockers: none
+- Next session: Phase 4 — wheel fake-outs (debug panel, skip gesture, polish WinnerReveal)
