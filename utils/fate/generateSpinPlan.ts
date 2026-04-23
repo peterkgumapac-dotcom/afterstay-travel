@@ -52,23 +52,26 @@ export function generateSpinPlan(
   });
   currentRotation = mainEndRotation;
 
-  // Fake-outs (Phase 4 will populate this)
+  // Fake-outs — dramatic near-stops then re-acceleration
   for (let i = 0; i < fakeouts; i++) {
-    const fakeOffset = sliceAngle * (1 + Math.random() * 2);
+    // Crawl to a near-stop: only move ~0.5-1 slice over a long duration
+    const crawlOffset = sliceAngle * (0.4 + Math.random() * 0.6);
     steps.push({
-      toRotation: currentRotation + fakeOffset,
-      duration: Math.max(600, 1200 - i * 200),
+      toRotation: currentRotation + crawlOffset,
+      duration: Math.max(800, 1500 - i * 200),
       easing: 'easeOut',
       type: 'fake-slow',
       onStart: { sound: 'scratch', haptic: 'medium' },
     });
-    currentRotation += fakeOffset;
+    currentRotation += crawlOffset;
 
-    const pushOffset = sliceAngle * (0.5 + Math.random());
+    // Re-accelerate past — fast push covering 2-4 full rotations + extra
+    const pushRotations = 2 + Math.random() * 2;
+    const pushOffset = 360 * pushRotations + sliceAngle * (1 + Math.random() * 2);
     steps.push({
       toRotation: currentRotation + pushOffset,
-      duration: 700,
-      easing: 'easeIn',
+      duration: 1800,
+      easing: 'easeOut',
       type: 'fake-push',
     });
     currentRotation += pushOffset;
