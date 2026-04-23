@@ -58,9 +58,9 @@ function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarP
         bottom: bottomOffset,
         left: 10,
         right: 10,
-        paddingVertical: 4,
+        paddingVertical: 6,
         paddingHorizontal: 4,
-        borderRadius: 22,
+        borderRadius: 28,
         backgroundColor: colors.card,
         borderWidth: 1,
         borderColor: colors.border,
@@ -119,7 +119,6 @@ function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarP
               justifyContent: 'center',
               paddingVertical: 9,
               borderRadius: 18,
-              backgroundColor: focused ? colors.accentBg : 'transparent',
             }}
           >
             <Icon size={20} color={color} strokeWidth={1.8} />
@@ -134,6 +133,17 @@ function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarP
             >
               {TAB_LABELS[route.name] ?? route.name}
             </Text>
+            {focused && (
+              <View
+                style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: colors.accent,
+                  marginTop: 3,
+                }}
+              />
+            )}
           </Pressable>
         );
       })}

@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
@@ -61,7 +62,8 @@ function RootLayoutInner() {
         }}
       >
         <Stack.Screen name="index" />
-        <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/login" />
+        <Stack.Screen name="auth/callback" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
@@ -146,12 +148,14 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <RootLayoutInner />
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AuthProvider>
+            <RootLayoutInner />
+          </AuthProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }

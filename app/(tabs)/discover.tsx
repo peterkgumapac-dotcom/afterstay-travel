@@ -16,11 +16,12 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { Bookmark, ChevronDown, Filter, Map, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import { Bookmark, ChevronDown, Filter, Map, Plus, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
   DiscoverPlaceCard,
+  friendlyCategory,
   type DiscoverPlace,
 } from '@/components/discover/DiscoverPlaceCard';
 import { TrendingCard, type TrendingItem } from '@/components/discover/TrendingCard';
@@ -38,6 +39,7 @@ import { searchNearby, type NearbyPlace } from '@/lib/google-places';
 import {
   addPlace,
   getActiveTrip,
+  getGroupMembers,
   getSavedPlaces,
   savePlace,
   voteOnPlace,
@@ -440,6 +442,89 @@ const SegBtn = React.memo(function SegBtn({
   );
 });
 
+// ── Top Picks ───────────────────────────────────────────────────────────
+
+const TOP_5_CATEGORIES = [
+  { key: 'food', label: 'Top 5 Food', match: (p: DiscoverPlace) => p.t === 'Restaurant' || p.types?.includes('restaurant') || p.types?.includes('food') },
+  { key: 'beach', label: 'Top 5 Beaches', match: (p: DiscoverPlace) => p.t === 'Beach' || p.types?.includes('beach') || p.types?.includes('natural_feature') },
+  { key: 'activity', label: 'Top 5 Activities', match: (p: DiscoverPlace) => p.t === 'Attraction' || p.t === 'Landmark' || p.types?.includes('tourist_attraction') || p.types?.includes('park') },
+  { key: 'coffee', label: 'Top 5 Coffee', match: (p: DiscoverPlace) => p.t === 'Cafe' || p.types?.includes('cafe') },
+  { key: 'nightlife', label: 'Top 5 Nightlife', match: (p: DiscoverPlace) => p.t === 'Bar' || p.t === 'Nightlife' || p.types?.includes('bar') || p.types?.includes('night_club') },
+];
+
+function getTopPicks(places: readonly DiscoverPlace[], distFn: (lat?: number, lng?: number) => number): DiscoverPlace[] {
+  const seen = new Set<string>();
+  return [...places]
+    .filter(p => p.r >= 4.0 && p.img)
+    .map(p => ({ p, dist: distFn(p.lat, p.lng) }))
+    .filter(x => x.dist > 0 && x.dist < 50)
+    .sort((a, b) => a.dist - b.dist)
+    .map(x => x.p)
+    .filter(p => {
+      if (seen.has(p.n)) return false;
+      seen.add(p.n);
+      return true;
+    })
+    .slice(0, 5);
+}
+
+function getTopPicksByCategory(places: readonly DiscoverPlace[], distFn: (lat?: number, lng?: number) => number) {
+  return TOP_5_CATEGORIES
+    .map(cat => {
+      const matches = [...places]
+        .filter(cat.match)
+        .filter(p => p.r >= 3.5 && p.img)
+        .map(p => ({ p, dist: distFn(p.lat, p.lng) }))
+        .filter(x => x.dist > 0 && x.dist < 50)
+        .sort((a, b) => a.dist - b.dist)
+        .map(x => x.p)
+        .slice(0, 5);
+      if (matches.length === 0) return null;
+      return { ...cat, places: matches };
+    })
+    .filter(Boolean) as { key: string; label: string; places: DiscoverPlace[] }[];
+}
+
+const TopPicksSection = React.memo(function TopPicksSection({
+  places,
+  onExplore,
+  distFn,
+}: {
+  places: readonly DiscoverPlace[];
+  onExplore: (placeId: string | undefined, name: string) => void;
+  distFn: (lat?: number, lng?: number) => number;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  const picks = useMemo(() => getTopPicks(places, distFn), [places, distFn]);
+  if (picks.length === 0) return null;
+
+  return (
+    <View style={styles.topPicksSection}>
+      <Text style={styles.topPicksTitle}>Top 5 Picks for You</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+        {picks.map((p) => (
+          <TouchableOpacity
+            key={p.placeId ?? p.n}
+            style={styles.topPickCard}
+            activeOpacity={0.7}
+            onPress={() => onExplore(p.placeId, p.n)}
+            accessibilityRole="button"
+            accessibilityLabel={p.n}
+          >
+            <Image source={{ uri: p.img }} style={styles.topPickImage} />
+            <Text style={styles.topPickLabel}>{friendlyCategory(p.t).toUpperCase()}</Text>
+            <Text style={styles.topPickName} numberOfLines={1}>{p.n}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 10 }}>
+              <Text style={{ fontSize: 10, color: colors.warn }}>{'★'} {p.r}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+});
+
 // ── Error boundary for Discover ────────────────────────────────────────
 
 class DiscoverErrorBoundary extends React.Component<
@@ -518,6 +603,10 @@ function DiscoverScreenInner() {
   const [tripStartDate, setTripStartDate] = useState<string | undefined>();
   const [tripEndDate, setTripEndDate] = useState<string | undefined>();
   const [tripDays, setTripDays] = useState<number | undefined>();
+  const [tripHotel, setTripHotel] = useState('');
+  const [tripGroupSize, setTripGroupSize] = useState(0);
+  const [tripBudget, setTripBudget] = useState(0);
+  const [tripBudgetCurrency, setTripBudgetCurrency] = useState('PHP');
 
   // Manual day planner state
   const [plannerActiveDay, setPlannerActiveDay] = useState(1);
@@ -623,6 +712,11 @@ function DiscoverScreenInner() {
           setTripDest(trip.destination ?? '');
           setTripStartDate(trip.startDate);
           setTripEndDate(trip.endDate);
+          setTripHotel(trip.accommodation ?? '');
+          setTripBudget(trip.budgetLimit ?? 0);
+          setTripBudgetCurrency(trip.costCurrency ?? 'PHP');
+          const members = await getGroupMembers(trip.id).catch(() => []);
+          setTripGroupSize(Math.max(1, members.length));
           if (trip.startDate && trip.endDate) {
             const ms = new Date(trip.endDate + 'T00:00:00+08:00').getTime() - new Date(trip.startDate + 'T00:00:00+08:00').getTime();
             setTripDays(Math.max(1, Math.ceil(ms / 86400000) + 1));
@@ -854,8 +948,27 @@ function DiscoverScreenInner() {
         interests: promptInterests,
         tripDays,
         startDate: tripStartDate,
+        destination: tripDest || undefined,
+        hotelName: tripHotel || undefined,
+        groupSize: tripGroupSize || undefined,
+        budget: tripBudget || undefined,
+        budgetCurrency: tripBudgetCurrency,
       });
       setItinerary(result);
+      // Populate planner items from AI result
+      const newItems: Record<number, { id: string; time: string; title: string; note: string | null }[]> = {};
+      for (const day of result) {
+        newItems[day.day] = (day.activities ?? []).map((act, i) => ({
+          id: `ai-${day.day}-${i}`,
+          time: act.timeSlot?.replace(/[^\d:]/g, '').slice(0, 5) || `${9 + i}:00`,
+          title: act.name,
+          note: act.duration ? `${act.duration} · ${act.cost ?? ''}` : null,
+        }));
+      }
+      setPlannerItems(newItems);
+      if (result.length > 0) {
+        setPlannerActiveDay(result[0].day);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to generate itinerary';
       setItineraryError(message);
@@ -863,6 +976,37 @@ function DiscoverScreenInner() {
       setItineraryLoading(false);
     }
   }, [style, prompt, itineraryScope, pace, tripDays, tripStartDate]);
+
+  const handleAddToPlanner = useCallback((place: DiscoverPlace) => {
+    if (plannerDays.length === 0) {
+      Alert.alert('No Trip', 'No trip dates set. Create a trip first.');
+      return;
+    }
+    const options = plannerDays.map((d) => ({
+      text: `Day ${d.n} · ${d.date}`,
+      onPress: () => {
+        setPlannerItems((prev) => {
+          const existing = prev[d.n] ?? [];
+          const newItem = {
+            id: `${place.placeId ?? place.n}-${Date.now()}`,
+            time: '12:00',
+            title: place.n,
+            note: `${friendlyCategory(place.t)} · ${place.d}`,
+          };
+          return {
+            ...prev,
+            [d.n]: [...existing, newItem].sort((a, b) => a.time.localeCompare(b.time)),
+          };
+        });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        Alert.alert('Added', `${place.n} added to Day ${d.n}`);
+      },
+    }));
+    Alert.alert('Add to Planner', `Add "${place.n}" to which day?`, [
+      ...options,
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [plannerDays]);
 
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
@@ -907,7 +1051,7 @@ function DiscoverScreenInner() {
       {/* Top bar */}
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.title}>Discover<Text style={{ color: 'red', fontSize: 10, fontWeight: '700' }}> v8</Text></Text>
+          <Text style={styles.title}>Discover</Text>
           <Text style={styles.subtitle}>{tripDest || 'Discover'}</Text>
         </View>
         <TouchableOpacity
@@ -973,7 +1117,7 @@ function DiscoverScreenInner() {
               <View>
                 <Text style={styles.eyebrow}>
                   {tripStartDate && tripEndDate
-                    ? `${formatDatePHT(tripStartDate)} — ${formatDatePHT(tripEndDate)} · ${tripDays ?? 0} days`
+                    ? `${formatDatePHT(tripStartDate)} — ${formatDatePHT(tripEndDate)} · ${(tripDays ?? 1) - 1} nights`
                     : 'No trip dates'}
                 </Text>
                 <Text style={styles.plannerCount}>
@@ -988,6 +1132,120 @@ function DiscoverScreenInner() {
                 <Text style={styles.browsePlacesBtnText}>Browse places {'\u2192'}</Text>
               </TouchableOpacity>
             </View>
+
+            {/* AI Generate card with trip context */}
+            {!itineraryLoading && (
+              <View style={[styles.plannerSummary, { flexDirection: 'column', gap: 10 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Sparkles size={14} color={colors.accent} strokeWidth={2} />
+                  <Text style={[styles.plannerCount, { flex: 1 }]}>
+                    {itinerary.length > 0 ? 'Regenerate itinerary' : 'AI Trip Planner'}
+                  </Text>
+                </View>
+
+                {/* Step 1: Trip context — auto-filled */}
+                <View style={{ gap: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: colors.card2, borderRadius: 10 }}>
+                  {tripDest ? <Text style={{ fontSize: 12, color: colors.text2 }}>{'📍'} {tripDest}</Text> : null}
+                  {tripHotel ? <Text style={{ fontSize: 12, color: colors.text2 }}>{'🏨'} {tripHotel}</Text> : null}
+                  {tripStartDate && tripEndDate ? (
+                    <Text style={{ fontSize: 12, color: colors.text2 }}>{'📅'} {formatDatePHT(tripStartDate)} – {formatDatePHT(tripEndDate)} · {(tripDays ?? 1) - 1} nights</Text>
+                  ) : null}
+                  {tripGroupSize > 0 ? <Text style={{ fontSize: 12, color: colors.text2 }}>{'👥'} {tripGroupSize} traveler{tripGroupSize !== 1 ? 's' : ''}</Text> : null}
+                  {tripBudget > 0 ? <Text style={{ fontSize: 12, color: colors.text2 }}>{'💰'} {tripBudgetCurrency} {tripBudget.toLocaleString()} budget</Text> : null}
+                </View>
+
+                {/* Step 2: Style picker */}
+                <Text style={[styles.eyebrow, { marginTop: 4 }]}>What kind of trip?</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  {ITINERARY_STYLES.map((s) => {
+                    const active = style === s.id;
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        onPress={() => setStyle(s.id)}
+                        activeOpacity={0.7}
+                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 6, paddingHorizontal: 12 }]}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{s.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Pace picker */}
+                <Text style={styles.eyebrow}>How packed?</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  {PACE_OPTIONS.map((p) => {
+                    const active = pace === p.id;
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={() => setPace(p.id)}
+                        activeOpacity={0.7}
+                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 6, paddingHorizontal: 12 }]}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{p.label} · {p.desc}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Optional prompt */}
+                <TextInput
+                  value={prompt}
+                  onChangeText={setPrompt}
+                  placeholder="Anything specific? e.g. snorkeling + sunset dinner"
+                  placeholderTextColor={colors.text3}
+                  style={{ fontSize: 13, color: colors.text, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
+                />
+
+                {/* Step 3: Generate button */}
+                <TouchableOpacity
+                  style={[styles.plannerEmptyBtn, { flexDirection: 'row', gap: 8, alignSelf: 'stretch', backgroundColor: colors.black, marginTop: 4 }]}
+                  activeOpacity={0.7}
+                  onPress={handleGenerateItinerary}
+                >
+                  <Sparkles size={14} color={colors.onBlack} strokeWidth={2} />
+                  <Text style={styles.plannerEmptyBtnText}>
+                    {itinerary.length > 0 ? 'Regenerate' : 'Plan my trip'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {itineraryLoading && (
+              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                <MiniLoader message="Generating your itinerary..." />
+              </View>
+            )}
+            {itineraryError && (
+              <Text style={{ color: colors.danger, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>{itineraryError}</Text>
+            )}
+
+            {/* Top 5 per category */}
+            {getTopPicksByCategory(places, getDistanceKm).map((cat) => (
+              <View key={cat.key} style={{ marginBottom: 14 }}>
+                <Text style={[styles.eyebrow, { marginBottom: 8 }]}>{cat.label}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                  {cat.places.map((p) => (
+                    <TouchableOpacity
+                      key={p.placeId ?? p.n}
+                      style={styles.topPickCard}
+                      activeOpacity={0.7}
+                      onPress={() => handleAddToPlanner(p)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add ${p.n} to planner`}
+                    >
+                      <Image source={{ uri: p.img }} style={styles.topPickImage} />
+                      <Text style={styles.topPickName} numberOfLines={1}>{p.n}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 10 }}>
+                        <Text style={{ fontSize: 10, color: colors.warn }}>{'★'} {p.r}</Text>
+                        <Text style={{ fontSize: 9, color: colors.text3 }}> · tap to add</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ))}
 
             {/* Day picker chips */}
             <ScrollView
@@ -1035,7 +1293,7 @@ function DiscoverScreenInner() {
                 <View style={styles.plannerEmptyCard}>
                   <Text style={styles.plannerEmptyTitle}>Nothing planned yet</Text>
                   <Text style={styles.plannerEmptyBody}>
-                    Save places from the Places tab, then add them to this day.
+                    Tap a place in the Places tab, then add it to your itinerary.
                   </Text>
                   <TouchableOpacity
                     style={styles.plannerEmptyBtn}
@@ -1091,14 +1349,6 @@ function DiscoverScreenInner() {
               />
             </View>
 
-            {/* Distance anchor + travel mode */}
-            <DistanceToggle
-              anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
-              travelMode={travelMode}
-              onAnchorChange={handleAnchorChange}
-              onTravelModeChange={handleTravelModeChange}
-            />
-
             {/* Category chips */}
             <ScrollView
               horizontal
@@ -1126,49 +1376,21 @@ function DiscoverScreenInner() {
               })}
             </ScrollView>
 
-            {/* Filter bar */}
-            <View style={styles.filterBar}>
-              <TouchableOpacity
-                onPress={toggleShowFilters}
-                style={[
-                  styles.filterBtn,
-                  activeFilterCount > 0 && styles.filterBtnActive,
-                ]}
-                activeOpacity={0.7}
-              >
-                <Filter size={12} color={activeFilterCount > 0 ? colors.accent : colors.text} strokeWidth={2} />
-                <Text
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: '600',
-                    color: activeFilterCount > 0 ? colors.accent : colors.text,
-                  }}
-                >
-                  Filters{activeFilterCount > 0 ? ` \u00B7 ${activeFilterCount}` : ''}
-                </Text>
-              </TouchableOpacity>
-              <FilterChip
-                active={filters.openNow}
-                onPress={toggleOpenNow}
-                colors={colors}
-              >
-                Open now
-              </FilterChip>
-              <FilterChip
-                active={filters.nearby}
-                onPress={toggleNearby}
-                colors={colors}
-              >
-                Nearby
-              </FilterChip>
-              <FilterChip
-                active={filters.minRating >= 4.5}
-                onPress={toggleRating}
-                colors={colors}
-              >
-                {'\u2605'} 4.5+
-              </FilterChip>
-            </View>
+            {/* Filter toggle */}
+            <TouchableOpacity
+              onPress={toggleShowFilters}
+              style={[
+                styles.filterBarInline,
+                activeFilterCount > 0 && { borderColor: colors.accent },
+              ]}
+              activeOpacity={0.7}
+            >
+              <Filter size={14} color={activeFilterCount > 0 ? colors.accent : colors.text3} strokeWidth={2} />
+              <Text style={{ fontSize: 13, fontWeight: '500', color: activeFilterCount > 0 ? colors.accent : colors.text2 }}>
+                Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+              </Text>
+              <ChevronDown size={14} color={colors.text3} strokeWidth={2} style={{ transform: [{ rotate: showFilters ? '180deg' : '0deg' }] }} />
+            </TouchableOpacity>
 
             {/* Expanded filters panel */}
             {showFilters && (
@@ -1246,6 +1468,16 @@ function DiscoverScreenInner() {
                   </SegBtn>
                 </FilterRow>
 
+                {/* Distance origin + travel mode (moved inside filter panel) */}
+                <View style={{ marginTop: 8 }}>
+                  <DistanceToggle
+                    anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
+                    travelMode={travelMode}
+                    onAnchorChange={handleAnchorChange}
+                    onTravelModeChange={handleTravelModeChange}
+                  />
+                </View>
+
                 {/* Footer */}
                 <View style={styles.filterFooter}>
                   <TouchableOpacity
@@ -1265,27 +1497,15 @@ function DiscoverScreenInner() {
               </Animated.View>
             )}
 
-            {/* Explore on Map button — top */}
-            {!placesLoading && filteredPlaces.length > 0 && (
-              <TouchableOpacity
-                style={styles.viewMapBtn}
-                onPress={() => {
-                  if (MAP_AVAILABLE) {
-                    setShowMapModal(true);
-                  } else {
-                    const lat = userLocation?.lat ?? CONFIG.HOTEL_COORDS.lat;
-                    const lng = userLocation?.lng ?? CONFIG.HOTEL_COORDS.lng;
-                    WebBrowser.openBrowserAsync(
-                      `https://www.google.com/maps/search/restaurants+cafes+attractions/@${lat},${lng},15z`
-                    );
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Map size={18} color={colors.accent} strokeWidth={1.8} />
-                <Text style={styles.viewMapText}>Explore on Map</Text>
-              </TouchableOpacity>
+            {/* Top Picks */}
+            {placeCategoryChip === 'All' && !q && (
+              <TopPicksSection places={places} onExplore={handleExplore} distFn={getDistanceKm} />
             )}
+
+            {/* Results count */}
+            <Text style={styles.resultsCount}>
+              {filteredPlaces.length} {filteredPlaces.length === 1 ? 'place' : 'places'}
+            </Text>
 
             {/* Place cards */}
             <View style={styles.placeList}>
@@ -1738,14 +1958,29 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.ink,
     },
 
-    // Filter bar
-    filterBar: {
+    // Filter toggle
+    filterBarInline: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
       alignItems: 'center',
+      justifyContent: 'center',
       gap: 8,
+      paddingVertical: 10,
       paddingHorizontal: 16,
-      paddingBottom: 12,
+      marginHorizontal: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+    },
+
+    // Results count
+    resultsCount: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.text3,
+      paddingHorizontal: 16,
+      marginBottom: 12,
     },
     filterBtn: {
       flexDirection: 'row',
@@ -2180,5 +2415,46 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 11,
       color: colors.text3,
       marginTop: 4,
+    },
+
+    // ── Top Picks ──
+    topPicksSection: {
+      marginBottom: 16,
+    },
+    topPicksTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 12,
+    },
+    topPickCard: {
+      width: 140,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      overflow: 'hidden',
+      paddingBottom: 10,
+    },
+    topPickImage: {
+      width: 140,
+      height: 90,
+      backgroundColor: colors.card2,
+    },
+    topPickLabel: {
+      fontSize: 9.5,
+      fontWeight: '600',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      color: colors.accent,
+      paddingHorizontal: 10,
+      paddingTop: 8,
+    },
+    topPickName: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      paddingHorizontal: 10,
+      marginTop: 2,
     },
   });

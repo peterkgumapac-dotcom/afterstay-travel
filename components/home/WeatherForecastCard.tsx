@@ -1,6 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
+import { ChevronDown } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import MiniLoader from '@/components/loader/MiniLoader';
@@ -222,6 +228,26 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
     }
   };
 
+  // Fold/unfold animation — hooks must be before early returns
+  const [expanded, setExpanded] = useState(false);
+  const expandAnim = useSharedValue(0);
+
+  const toggleExpand = useCallback(() => {
+    const next = !expanded;
+    setExpanded(next);
+    expandAnim.value = withSpring(next ? 1 : 0, { damping: 18, stiffness: 140 });
+  }, [expanded, expandAnim]);
+
+  const detailStyle = useAnimatedStyle(() => ({
+    opacity: expandAnim.value,
+    maxHeight: expandAnim.value * 600,
+    overflow: 'hidden' as const,
+  }));
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${expandAnim.value * 180}deg` }],
+  }));
+
   if (loading) {
     return (
       <View style={styles.card}>
@@ -242,139 +268,124 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
 
   return (
     <View style={styles.card}>
-      {/* Header with current temp */}
-      <View style={styles.headerRow}>
-        <View>
+      {/* Folded header — always visible, tap to expand */}
+      <Pressable onPress={toggleExpand} style={styles.headerRow}>
+        <View style={{ flex: 1 }}>
           <Text style={styles.eyebrow}>Weather · {destination || 'Forecast'}</Text>
           <View style={styles.tempRow}>
             <Text style={styles.tempBig}>{today.maxTemp}°</Text>
             <Text style={styles.tempLow}> / {today.minTemp}°</Text>
           </View>
-          <Text style={styles.conditionText}>{today.condition}</Text>
-          {today.sunrise && today.sunset && (
-            <View style={styles.sunRow}>
-              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                <Path d="M12 2v4M4.9 7.9l2.9 2.9M2 16h4M18 16h4M19.1 7.9l-2.9 2.9M12 10a6 6 0 00-6 6M18 16a6 6 0 00-6-6" stroke={colors.gold} strokeWidth={1.6} strokeLinecap="round" />
-              </Svg>
-              <Text style={styles.sunText}>{today.sunrise}</Text>
-              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                <Path d="M12 10v4M4.9 7.9l2.9 2.9M2 16h4M18 16h4M19.1 7.9l-2.9 2.9M12 22v-4M12 10a6 6 0 00-6 6M18 16a6 6 0 00-6-6" stroke={colors.coral} strokeWidth={1.6} strokeLinecap="round" />
-              </Svg>
-              <Text style={styles.sunText}>{today.sunset}</Text>
-            </View>
+          {!expanded && (
+            <Text style={styles.conditionText}>{today.condition}</Text>
           )}
         </View>
-        <View style={styles.bigIconWrap}>
-          <WeatherIcon kind={today.condition} size={28} color={bigIconColor} />
-        </View>
-      </View>
-
-      {/* Rain warning chip */}
-      {todayRain && (
-        <View style={styles.rainChip}>
-          <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-            <Path
-              d="M7 14a4 4 0 110-8 6 6 0 0111.6 2A3.5 3.5 0 0117 14z"
-              stroke={colors.warn}
-              strokeWidth={1.8}
-              strokeLinecap="round"
-            />
-            <Path
-              d="M9 18v2M13 18v2M17 18v2"
-              stroke={colors.warn}
-              strokeWidth={1.8}
-              strokeLinecap="round"
-            />
-          </Svg>
-          <Text style={styles.rainChipText}>
-            <Text style={styles.rainBold}>Rain expected</Text>
-            {' '}today {formatHourRange(todayRain.startHour, todayRain.endHour)} · {todayRain.maxChance}% chance
-          </Text>
-        </View>
-      )}
-
-      {/* UV sunlight bar */}
-      {today.uvHours && today.uvHours.length > 0 && (
-        <View style={styles.uvSection}>
-          <View style={styles.uvHeader}>
-            <Text style={styles.uvLabel}>UV Index</Text>
-            <Text style={styles.uvPeak}>Peak {today.uvIndex?.toFixed(1)} at noon</Text>
+        <View style={{ alignItems: 'center', gap: 4 }}>
+          <View style={styles.bigIconWrap}>
+            <WeatherIcon kind={today.condition} size={28} color={bigIconColor} />
           </View>
-          <View style={styles.uvBar}>
-            {today.uvHours.map((h) => {
-              const uvColor =
-                h.uv <= 2 ? '#4caf50' :
-                h.uv <= 5 ? '#d9a441' :
-                h.uv <= 7 ? '#e8a860' :
-                h.uv <= 10 ? '#e38868' :
-                '#c4554a';
-              return (
-                <View key={h.hour} style={styles.uvCol}>
-                  <View style={[styles.uvDot, { backgroundColor: uvColor }]} />
-                  <Text style={styles.uvHourText}>{h.hour > 12 ? h.hour - 12 : h.hour}{h.hour >= 12 ? 'p' : 'a'}</Text>
-                </View>
-              );
-            })}
-          </View>
-          <View style={styles.uvLegend}>
-            <View style={styles.uvLegendItem}>
-              <View style={[styles.uvLegendDot, { backgroundColor: '#4caf50' }]} />
-              <Text style={styles.uvLegendText}>Low</Text>
-            </View>
-            <View style={styles.uvLegendItem}>
-              <View style={[styles.uvLegendDot, { backgroundColor: '#d9a441' }]} />
-              <Text style={styles.uvLegendText}>Moderate</Text>
-            </View>
-            <View style={styles.uvLegendItem}>
-              <View style={[styles.uvLegendDot, { backgroundColor: '#e38868' }]} />
-              <Text style={styles.uvLegendText}>High</Text>
-            </View>
-            <View style={styles.uvLegendItem}>
-              <View style={[styles.uvLegendDot, { backgroundColor: '#c4554a' }]} />
-              <Text style={styles.uvLegendText}>Extreme</Text>
-            </View>
-          </View>
+          <Animated.View style={chevronStyle}>
+            <ChevronDown size={14} color={colors.text3} strokeWidth={2} />
+          </Animated.View>
         </View>
-      )}
+      </Pressable>
 
-      {/* 5-day forecast */}
-      <View style={styles.daysRow}>
-        {days.map((d, i) => {
-          const isToday = i === 0;
-          const iconColor = getIconColor(d.condition);
-          return (
-            <View
-              key={d.date}
-              style={[
-                styles.dayCol,
-                isToday && styles.dayColToday,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.dayLabel,
-                  isToday && styles.dayLabelToday,
-                ]}
-              >
-                {d.dayLabel}
-              </Text>
-              <View style={styles.dayIconWrap}>
-                <WeatherIcon kind={d.condition} size={18} color={iconColor} />
+      {/* Unfolded detail — animated */}
+      <Animated.View style={detailStyle}>
+        <Text style={[styles.conditionText, { marginBottom: 6 }]}>{today.condition}</Text>
+
+        {/* Sunrise / Sunset */}
+        {today.sunrise && today.sunset && (
+          <View style={styles.sunRow}>
+            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+              <Path d="M12 2v4M4.9 7.9l2.9 2.9M2 16h4M18 16h4M19.1 7.9l-2.9 2.9M12 10a6 6 0 00-6 6M18 16a6 6 0 00-6-6" stroke={colors.gold} strokeWidth={1.6} strokeLinecap="round" />
+            </Svg>
+            <Text style={styles.sunText}>{today.sunrise}</Text>
+            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+              <Path d="M12 10v4M4.9 7.9l2.9 2.9M2 16h4M18 16h4M19.1 7.9l-2.9 2.9M12 22v-4M12 10a6 6 0 00-6 6M18 16a6 6 0 00-6-6" stroke={colors.coral} strokeWidth={1.6} strokeLinecap="round" />
+            </Svg>
+            <Text style={styles.sunText}>{today.sunset}</Text>
+          </View>
+        )}
+
+        {/* Rain warning chip */}
+        {todayRain && (
+          <View style={[styles.rainChip, { marginTop: 10 }]}>
+            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <Path d="M7 14a4 4 0 110-8 6 6 0 0111.6 2A3.5 3.5 0 0117 14z" stroke={colors.warn} strokeWidth={1.8} strokeLinecap="round" />
+              <Path d="M9 18v2M13 18v2M17 18v2" stroke={colors.warn} strokeWidth={1.8} strokeLinecap="round" />
+            </Svg>
+            <Text style={styles.rainChipText}>
+              <Text style={styles.rainBold}>Rain expected</Text>
+              {' '}today {formatHourRange(todayRain.startHour, todayRain.endHour)} · {todayRain.maxChance}% chance
+            </Text>
+          </View>
+        )}
+
+        {/* UV sunlight bar */}
+        {today.uvHours && today.uvHours.length > 0 && (
+          <View style={[styles.uvSection, { marginTop: 10 }]}>
+            <View style={styles.uvHeader}>
+              <Text style={styles.uvLabel}>UV Index</Text>
+              <Text style={styles.uvPeak}>Peak {today.uvIndex?.toFixed(1)} at noon</Text>
+            </View>
+            <View style={styles.uvBar}>
+              {today.uvHours.map((h) => {
+                const uvColor =
+                  h.uv <= 2 ? '#4caf50' :
+                  h.uv <= 5 ? '#d9a441' :
+                  h.uv <= 7 ? '#e8a860' :
+                  h.uv <= 10 ? '#e38868' :
+                  '#c4554a';
+                return (
+                  <View key={h.hour} style={styles.uvCol}>
+                    <View style={[styles.uvDot, { backgroundColor: uvColor }]} />
+                    <Text style={styles.uvHourText}>{h.hour > 12 ? h.hour - 12 : h.hour}{h.hour >= 12 ? 'p' : 'a'}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            <View style={styles.uvLegend}>
+              <View style={styles.uvLegendItem}>
+                <View style={[styles.uvLegendDot, { backgroundColor: '#4caf50' }]} />
+                <Text style={styles.uvLegendText}>Low</Text>
               </View>
-              <Text style={styles.dayHi}>
-                {d.maxTemp}°{' '}
-                <Text style={styles.dayLo}>{d.minTemp}°</Text>
-              </Text>
-              {d.chanceRain >= 50 && (
-                <Text style={styles.dayRain}>{d.chanceRain}%</Text>
-              )}
-              {d.sunrise && (
-                <Text style={styles.daySun}>{d.sunrise.replace(/^0/, '').replace(/ AM| PM/, '')}</Text>
-              )}
+              <View style={styles.uvLegendItem}>
+                <View style={[styles.uvLegendDot, { backgroundColor: '#d9a441' }]} />
+                <Text style={styles.uvLegendText}>Moderate</Text>
+              </View>
+              <View style={styles.uvLegendItem}>
+                <View style={[styles.uvLegendDot, { backgroundColor: '#e38868' }]} />
+                <Text style={styles.uvLegendText}>High</Text>
+              </View>
+              <View style={styles.uvLegendItem}>
+                <View style={[styles.uvLegendDot, { backgroundColor: '#c4554a' }]} />
+                <Text style={styles.uvLegendText}>Extreme</Text>
+              </View>
             </View>
-          );
-        })}
-      </View>
+          </View>
+        )}
+
+        {/* 5-day forecast */}
+        <View style={styles.daysRow}>
+          {days.map((d, i) => {
+            const isToday = i === 0;
+            const iconColor = getIconColor(d.condition);
+            return (
+              <View key={d.date} style={[styles.dayCol, isToday && styles.dayColToday]}>
+                <Text style={[styles.dayLabel, isToday && styles.dayLabelToday]}>{d.dayLabel}</Text>
+                <View style={styles.dayIconWrap}>
+                  <WeatherIcon kind={d.condition} size={18} color={iconColor} />
+                </View>
+                <Text style={styles.dayHi}>
+                  {d.maxTemp}° <Text style={styles.dayLo}>{d.minTemp}°</Text>
+                </Text>
+                {d.chanceRain >= 50 && <Text style={styles.dayRain}>{d.chanceRain}%</Text>}
+              </View>
+            );
+          })}
+        </View>
+      </Animated.View>
     </View>
   );
 };

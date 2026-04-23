@@ -146,7 +146,7 @@ function Input({
 
 // ── Path Picker (root) ───────────────────────────────────────────────
 
-function PathPicker({ onPick, name, colors }: { onPick: (p: Path) => void; name: string; colors: ThemeColors }) {
+function PathPicker({ onPick, onSkip, name, colors }: { onPick: (p: Path) => void; onSkip: () => void; name: string; colors: ThemeColors }) {
   const paths = [
     { id: 'plan' as const, kicker: 'A', label: 'Help me plan a trip', sub: "Tell us where you're dreaming of. We'll shape it into days.", icon: Plane },
     { id: 'upload' as const, kicker: 'B', label: "I've already booked", sub: 'Drop in your confirmation screenshots — we\'ll read them and set up your trip.', icon: FileText },
@@ -188,6 +188,9 @@ function PathPicker({ onPick, name, colors }: { onPick: (p: Path) => void; name:
       <Text style={[shared.hint, { color: colors.text3 }]}>
         Not sure? Start with <Text style={{ color: colors.accent, fontWeight: '600' }}>Plan a trip</Text> — you can upload bookings once you have them.
       </Text>
+      <TouchableOpacity onPress={onSkip} style={shared.skipBtn} activeOpacity={0.7}>
+        <Text style={[shared.skipText, { color: colors.text3 }]}>Skip for now</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -684,7 +687,7 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
-      {!path && <PathPicker onPick={setPath} name={firstName} colors={colors} />}
+      {!path && <PathPicker onPick={setPath} onSkip={() => { cacheSet('onboarding_complete', true); router.replace('/(tabs)/home' as never); }} name={firstName} colors={colors} />}
       {path === 'plan' && <PlanFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
       {path === 'upload' && <UploadFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
       {path === 'invited' && <InvitedFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
@@ -735,7 +738,9 @@ const shared = StyleSheet.create({
   pathLabel: { fontSize: 17, lineHeight: 20, letterSpacing: -0.34, marginBottom: 4 },
   pathSub: { fontSize: 12, lineHeight: 17 },
   pathArrow: { width: 28, height: 28, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  hint: { paddingHorizontal: 22, paddingBottom: 32, textAlign: 'center', fontSize: 11.5, lineHeight: 17 },
+  hint: { paddingHorizontal: 22, paddingBottom: 12, textAlign: 'center', fontSize: 11.5, lineHeight: 17 },
+  skipBtn: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16, marginBottom: 32 },
+  skipText: { fontSize: 13, fontWeight: '500', letterSpacing: -0.1 },
 
   // Chips
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

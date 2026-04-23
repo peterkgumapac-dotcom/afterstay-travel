@@ -28,6 +28,95 @@ interface TripActiveCardProps {
 
 const GREEN_DOT = '#4fb372';
 const GREEN_TEXT = '#2f7a46';
+
+/* ── Daily Spend Bar with pulse animation ── */
+function DailySpendBar({
+  todaySpent,
+  todayCount,
+  dailyBudget,
+}: {
+  todaySpent: number;
+  todayCount: number;
+  dailyBudget: number;
+}) {
+  const { colors } = useTheme();
+  const pct = dailyBudget > 0 ? Math.min(100, (todaySpent / dailyBudget) * 100) : 0;
+  const barColor = pct < 50 ? '#4caf50' : pct < 75 ? '#d9a441' : pct < 100 ? '#e8a860' : '#c4554a';
+  const isClose = pct >= 80 && pct < 100;
+
+  // Pulse when close to daily limit
+  const pulseScale = useSharedValue(1);
+  useEffect(() => {
+    if (isClose) {
+      pulseScale.value = withRepeat(
+        withSequence(
+          withTiming(1.15, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+        true,
+      );
+    } else {
+      pulseScale.value = withTiming(1, { duration: 200 });
+    }
+  }, [isClose, pulseScale]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseScale.value }],
+  }));
+
+  // Hours until midnight
+  const now = new Date();
+  const msToMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime();
+  const hoursLeft = Math.floor(msToMidnight / 3600000);
+
+  return (
+    <View style={dailyStyles.container}>
+      <View style={dailyStyles.headerRow}>
+        <Text style={[dailyStyles.label, { color: colors.text2 }]}>Today</Text>
+        <Text style={[dailyStyles.count, { color: colors.text3 }]}>
+          {todayCount} expense{todayCount !== 1 ? 's' : ''}
+        </Text>
+      </View>
+
+      <Animated.View style={[dailyStyles.amountRow, isClose ? pulseStyle : undefined]}>
+        <Text style={[dailyStyles.amount, { color: colors.text }]}>
+          {formatCurrency(todaySpent, 'PHP')}
+        </Text>
+        {dailyBudget > 0 && (
+          <Text style={[dailyStyles.limit, { color: colors.text3 }]}>
+            / {formatCurrency(dailyBudget, 'PHP')} daily
+          </Text>
+        )}
+      </Animated.View>
+
+      {/* Progress bar */}
+      {dailyBudget > 0 && (
+        <View style={[dailyStyles.barTrack, { backgroundColor: colors.border }]}>
+          <View style={[dailyStyles.barFill, { width: `${Math.min(100, pct)}%`, backgroundColor: barColor }]} />
+        </View>
+      )}
+
+      {/* Midnight reset notice */}
+      <Text style={[dailyStyles.resetText, { color: colors.text3 }]}>
+        Resets at midnight · {hoursLeft}h left
+      </Text>
+    </View>
+  );
+}
+
+const dailyStyles = StyleSheet.create({
+  container: { marginTop: 4 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  label: { fontSize: 10, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' },
+  count: { fontSize: 11 },
+  amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 2 },
+  amount: { fontSize: 18, fontWeight: '600', letterSpacing: -0.4 },
+  limit: { fontSize: 11 },
+  barTrack: { height: 4, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2 },
+  resetText: { fontSize: 9.5, marginTop: 4, fontStyle: 'italic' },
+});
 const GREEN_BG = 'rgba(125, 220, 150, 0.14)';
 const GREEN_BORDER = 'rgba(125, 220, 150, 0.35)';
 const FILL_DARK = '#3d2416';
@@ -224,18 +313,12 @@ export function TripActiveCard({
           </View>
           <Text style={styles.budgetHint}>{budgetHint}</Text>
 
-          {/* Today's spending */}
-          <View style={styles.todayRow}>
-            <View style={styles.todayLeft}>
-              <Text style={styles.todayLabel}>Today</Text>
-              <Text style={styles.todayAmount}>
-                {formatCurrency(todaySpent, 'PHP')}
-              </Text>
-            </View>
-            <Text style={styles.todayCount}>
-              {todayCount} expense{todayCount !== 1 ? 's' : ''}
-            </Text>
-          </View>
+          {/* Today's spending with daily progress bar */}
+          <DailySpendBar
+            todaySpent={todaySpent}
+            todayCount={todayCount}
+            dailyBudget={budget > 0 && totalDays > 0 ? Math.round(budget / totalDays) : 0}
+          />
         </View>
       )}
     </View>

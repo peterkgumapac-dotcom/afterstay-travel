@@ -1,13 +1,31 @@
 import React, { useMemo } from 'react';
 import { Image, ImageStyle, StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Footprints, Car } from 'lucide-react-native';
+import { Footprints, Car, Plus } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing, radius } from '@/constants/theme';
 import { fmtKm, travelTime as calcTravelTime } from '@/lib/utils';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  tourist_attraction: 'Attraction',
+  natural_feature: 'Nature',
+  point_of_interest: 'Spot',
+  establishment: 'Place',
+  park: 'Park',
+  lodging: 'Hotel',
+  restaurant: 'Restaurant',
+  cafe: 'Café',
+  bar: 'Bar',
+  store: 'Shopping',
+  shopping_mall: 'Shopping',
+};
+
+export function friendlyCategory(t: string): string {
+  return CATEGORY_LABELS[t.toLowerCase()] ?? t;
+}
 
 export interface DiscoverPlace {
   n: string;
@@ -35,6 +53,7 @@ interface DiscoverPlaceCardProps {
   onSave: (name: string) => void;
   onRecommend: (name: string) => void;
   onExplore?: (placeId: string | undefined, name: string) => void;
+  onAddToPlanner?: (place: DiscoverPlace) => void;
 }
 
 export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
@@ -44,17 +63,20 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   isSaved,
   onSave,
   onExplore,
+  onAddToPlanner,
 }: DiscoverPlaceCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
+  // Cap absurd distances (emulator GPS in wrong location)
+  const validDistance = distanceKm > 0 && distanceKm < 50;
   const travelTimeLabel = useMemo(
-    () => distanceKm > 0 ? calcTravelTime(distanceKm, travelMode) : null,
-    [distanceKm, travelMode],
+    () => validDistance ? calcTravelTime(distanceKm, travelMode) : null,
+    [validDistance, distanceKm, travelMode],
   );
   const distanceLabel = useMemo(
-    () => distanceKm > 0 ? fmtKm(distanceKm) : null,
-    [distanceKm],
+    () => validDistance ? fmtKm(distanceKm) : null,
+    [validDistance, distanceKm],
   );
 
   return (
@@ -76,7 +98,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
       <View style={styles.info}>
         {/* Category + open/closed */}
         <View style={styles.tagRow}>
-          <Text style={styles.category}>{place.t.toUpperCase()}</Text>
+          <Text style={styles.category}>{friendlyCategory(place.t).toUpperCase()}</Text>
           {place.openNow ? (
             <View style={styles.openBadge}>
               <Text style={styles.openText}>OPEN</Text>
@@ -97,6 +119,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
             <Path d="M12 2l2.9 6.7L22 9.3l-5 4.9 1.2 7.1L12 18l-6.2 3.3L7 14.2 2 9.3l7.1-.6z" />
           </Svg>
           <Text style={styles.rating}>{place.r}</Text>
+          {place.rv ? <Text style={styles.meta}>({place.rv})</Text> : null}
           <Text style={styles.dot}>·</Text>
           {travelMode === 'walk'
             ? <Footprints size={10} color={colors.text2} strokeWidth={1.8} />
@@ -111,6 +134,20 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
           )}
         </View>
       </View>
+
+      {/* Add to planner */}
+      {onAddToPlanner && (
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation?.(); onAddToPlanner(place); }}
+          style={styles.addBtn}
+          activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel="Add to planner"
+          hitSlop={8}
+        >
+          <Plus size={16} color={colors.text3} strokeWidth={2} />
+        </TouchableOpacity>
+      )}
 
       {/* Bookmark */}
       <TouchableOpacity
@@ -143,7 +180,7 @@ const getStyles = (colors: ThemeColors): {
   category: TextStyle; openBadge: ViewStyle; openText: TextStyle;
   closedBadge: ViewStyle; closedText: TextStyle; name: TextStyle;
   metaRow: ViewStyle; rating: TextStyle; dot: TextStyle; meta: TextStyle;
-  bookmarkBtn: ViewStyle;
+  addBtn: ViewStyle; bookmarkBtn: ViewStyle;
 } =>
   StyleSheet.create({
     row: {
@@ -221,6 +258,13 @@ const getStyles = (colors: ThemeColors): {
     meta: {
       fontSize: 11,
       color: colors.text3,
+    },
+    addBtn: {
+      width: 32,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 44,
     },
     bookmarkBtn: {
       width: 36,

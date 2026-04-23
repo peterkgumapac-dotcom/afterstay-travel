@@ -15,12 +15,15 @@ import {
 } from 'react-native';
 
 import AfterStayLoader from '@/components/AfterStayLoader';
+import { ReceiptItemReview } from '@/components/budget/ReceiptItemReview';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { scanReceipt } from '@/lib/anthropic';
+import { scanReceipt, type ScannedReceipt } from '@/lib/anthropic';
 import { compressImage } from '@/lib/compressImage';
+import { getActiveTrip, getGroupMembers } from '@/lib/supabase';
+import type { GroupMember } from '@/lib/types';
 
-type Phase = 'picking' | 'scanning' | 'error';
+type Phase = 'picking' | 'scanning' | 'review' | 'error';
 
 export default function ScanReceiptScreen() {
   const { colors } = useTheme();
@@ -29,7 +32,20 @@ export default function ScanReceiptScreen() {
   const [phase, setPhase] = useState<Phase>('picking');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [scannedData, setScannedData] = useState<ScannedReceipt | null>(null);
+  const [members, setMembers] = useState<GroupMember[]>([]);
   const didLaunch = useRef(false);
+
+  // Load group members for item assignment
+  useEffect(() => {
+    (async () => {
+      const trip = await getActiveTrip().catch(() => null);
+      if (trip) {
+        const mems = await getGroupMembers(trip.id).catch(() => []);
+        setMembers(mems);
+      }
+    })();
+  }, []);
 
   const pickImage = async (source: 'camera' | 'gallery') => {
     // Request permissions before launching
@@ -82,27 +98,33 @@ export default function ScanReceiptScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      // Format line items as readable breakdown for notes
-      const itemLines = scanned.items
-        .map((item) => {
-          const qtyStr = item.qty > 1 ? `${item.qty}× ` : '';
-          return `${qtyStr}${item.name} — ₱${item.amount.toFixed(2)}`;
-        })
-        .join('\n');
+      if (scanned.items.length > 0 && members.length >= 2) {
+        // Show item review for assignment
+        setScannedData(scanned);
+        setPhase('review');
+      } else {
+        // No items or solo traveler — go straight to add-expense
+        const itemLines = scanned.items
+          .map((item) => {
+            const qtyStr = item.qty > 1 ? `${item.qty}× ` : '';
+            return `${qtyStr}${item.name} — ₱${item.amount.toFixed(2)}`;
+          })
+          .join('\n');
 
-      router.replace({
-        pathname: '/add-expense',
-        params: {
-          description: scanned.description,
-          amount: String(scanned.amount),
-          currency: scanned.currency,
-          category: scanned.category,
-          placeName: scanned.placeName,
-          date: scanned.date,
-          notes: itemLines,
-          photoUri: asset.uri,
-        },
-      });
+        router.replace({
+          pathname: '/add-expense',
+          params: {
+            description: scanned.description,
+            amount: String(scanned.amount),
+            currency: scanned.currency,
+            category: scanned.category,
+            placeName: scanned.placeName,
+            date: scanned.date,
+            notes: itemLines,
+            photoUri: asset.uri,
+          },
+        });
+      }
     } catch (e: any) {
       setErrorMsg(e?.message ?? 'Failed to scan receipt.');
       setPhase('error');
@@ -138,6 +160,44 @@ export default function ScanReceiptScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (phase === 'review' && scannedData) {
+    return (
+      <ReceiptItemReview
+        items={scannedData.items}
+        members={members}
+        placeName={scannedData.placeName}
+        category={scannedData.category}
+        currency={scannedData.currency}
+        onConfirm={(result) => {
+          const itemLines = result.items
+            .map((item) => {
+              const qtyStr = item.qty > 1 ? `${item.qty}\u00D7 ` : '';
+              const assignStr = item.assignedTo === 'shared'
+                ? `(shared \u00F7${result.sharedCount})`
+                : `(${item.assignedTo})`;
+              return `${qtyStr}${item.name} \u2014 \u20B1${(item.amount * item.qty).toFixed(0)} ${assignStr}`;
+            })
+            .join('\n');
+
+          router.replace({
+            pathname: '/add-expense',
+            params: {
+              description: scannedData.description,
+              amount: String(scannedData.amount),
+              currency: scannedData.currency,
+              category: scannedData.category,
+              placeName: scannedData.placeName,
+              date: scannedData.date,
+              notes: itemLines,
+              photoUri: imageUri ?? '',
+            },
+          });
+        }}
+        onCancel={() => router.back()}
+      />
+    );
+  }
 
   if (phase === 'scanning') {
     return (

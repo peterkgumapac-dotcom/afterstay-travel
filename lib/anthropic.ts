@@ -103,14 +103,29 @@ export interface ItineraryDayLegacy {
 export type PlannerScope = 'whole' | 'today' | 'surprise';
 export type PlannerPace = 'relaxed' | 'moderate' | 'packed';
 
-const ITINERARY_SYSTEM = `You are a local travel expert for Boracay, Philippines. The user is staying at Canyon Hotels & Resorts (Station B, near White Beach, Station 1). Group of 3-4 adults.
+function buildItinerarySystem(ctx: {
+  destination?: string;
+  hotelName?: string;
+  groupSize?: number;
+  budget?: number;
+  budgetCurrency?: string;
+}): string {
+  const dest = ctx.destination || 'the destination';
+  const hotel = ctx.hotelName ? `The user is staying at ${ctx.hotelName}.` : '';
+  const group = ctx.groupSize ? `Group of ${ctx.groupSize} travelers.` : '';
+  const budgetLine = ctx.budget
+    ? `Trip budget: ${ctx.budgetCurrency || 'PHP'} ${ctx.budget.toLocaleString()}. Keep daily costs within a reasonable share of this.`
+    : 'No budget limit — but still be practical with costs.';
+
+  return `You are a local travel expert for ${dest}. ${hotel} ${group}
+${budgetLine}
 
 Return ONLY a JSON array of day objects (no prose, no code fences):
 [
   {
     "day": 1,
     "date": "Apr 21",
-    "theme": "Arrival & White Beach",
+    "theme": "Arrival & Beach Day",
     "activities": [
       {
         "name": "Place or Activity Name",
@@ -132,7 +147,8 @@ Rules:
 - Include at least one food recommendation per day.
 - Mix popular tourist spots with hidden gems locals know.
 - Each activity must have a real place name (not generic like "the beach").
-- Cost should be specific PHP ranges, or "Free".`;
+- Cost should be specific local currency ranges, or "Free".`;
+}
 
 export async function generateItinerary(args: {
   scope: PlannerScope;
@@ -140,6 +156,11 @@ export async function generateItinerary(args: {
   interests: string[];
   tripDays?: number;
   startDate?: string;
+  destination?: string;
+  hotelName?: string;
+  groupSize?: number;
+  budget?: number;
+  budgetCurrency?: string;
 }): Promise<ItineraryDay[]> {
   const key = CONFIG.ANTHROPIC_KEY;
   if (!key) throw new Error('Anthropic API key missing. Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env.');
@@ -180,7 +201,13 @@ export async function generateItinerary(args: {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: args.scope === 'today' ? 1024 : 4096,
-      system: ITINERARY_SYSTEM,
+      system: buildItinerarySystem({
+        destination: args.destination,
+        hotelName: args.hotelName,
+        groupSize: args.groupSize,
+        budget: args.budget,
+        budgetCurrency: args.budgetCurrency,
+      }),
       messages: [{ role: 'user', content: userMsg }],
     }),
   });

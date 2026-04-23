@@ -9,8 +9,23 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithMagicLink: (email: string) => Promise<{ error: string | null }>;
+  signInAsDemo: () => void;
   signOut: () => Promise<void>;
 }
+
+const HARDCODED_USER = {
+  id: 'demo-user-001',
+  email: 'demo@afterstay.travel',
+  user_metadata: { name: 'Demo Traveler' },
+} as unknown as User;
+
+const HARDCODED_SESSION = {
+  access_token: 'demo-token',
+  refresh_token: 'demo-refresh',
+  expires_in: 3600,
+  token_type: 'bearer',
+  user: HARDCODED_USER,
+} as unknown as Session;
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -18,6 +33,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signIn: async () => ({ error: null }),
   signInWithMagicLink: async () => ({ error: null }),
+  signInAsDemo: () => {},
   signOut: async () => {},
 });
 
@@ -26,7 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Safety timeout — never block more than 3s
     const timeout = setTimeout(() => setLoading(false), 3000);
 
     supabase.auth.getSession()
@@ -45,7 +60,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, s) => {
         setSession(s);
-        // Clear stale cache when user signs in or out
         if (_event === 'SIGNED_OUT') {
           clearTripCache();
           try {
@@ -65,12 +79,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Handle deep link OAuth callbacks
-  // PKCE flow returns ?code=... in the URL, implicit flow returns #access_token=...
   useEffect(() => {
     const handleOAuthUrl = async (url: string) => {
       if (!url.includes('auth/callback')) return;
 
-      // PKCE flow: exchange code for session
       const codeMatch = url.match(/[?&]code=([^&#]+)/);
       if (codeMatch) {
         const code = codeMatch[1];
@@ -78,7 +90,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Implicit flow fallback: extract tokens from fragment
       const fragment = url.split('#')[1];
       if (fragment) {
         const params = new URLSearchParams(fragment);
@@ -93,10 +104,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // Check if app was opened via deep link
     Linking.getInitialURL().then((url) => { if (url) handleOAuthUrl(url); });
 
-    // Listen for deep links while app is running
     const sub = Linking.addEventListener('url', ({ url }) => handleOAuthUrl(url));
     return () => sub.remove();
   }, []);
@@ -115,6 +124,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: error?.message ?? null };
   };
 
+  const signInAsDemo = () => {
+    setSession(HARDCODED_SESSION);
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -129,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         signIn,
         signInWithMagicLink,
+        signInAsDemo,
         signOut,
       },
     },

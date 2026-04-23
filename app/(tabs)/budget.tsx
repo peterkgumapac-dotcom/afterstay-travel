@@ -37,6 +37,11 @@ import { useTheme } from '@/constants/ThemeContext';
 import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import GroupHeader from '@/components/budget/GroupHeader';
 import WhoPaysPicker from '@/components/budget/WhoPaysPicker';
+import { BudgetModeSelector, type BudgetMode as BudgetMode2 } from '@/components/budget/BudgetModeSelector';
+import { PersonFilter } from '@/components/budget/PersonFilter';
+import { ExpenseCard } from '@/components/budget/ExpenseCard';
+import { InsightCards } from '@/components/budget/InsightCards';
+import { SettlementView } from '@/components/budget/SettlementView';
 import {
   deleteExpense,
   getActiveTrip,
@@ -221,6 +226,37 @@ export default function BudgetScreen() {
   const [budgetInput, setBudgetInput] = useState('');
   const [showAllExpenses, setShowAllExpenses] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [personFilter, setPersonFilter] = useState<string | null>(null);
+  const [budgetMode2, setBudgetMode2] = useState<BudgetMode2>('tracking');
+  const [showInsights, setShowInsights] = useState(false);
+  const [showSettlement, setShowSettlement] = useState(false);
+
+  // Per-person spending
+  const spendingByPerson = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of expenses) {
+      const payer = e.paidBy || 'Unknown';
+      map[payer] = (map[payer] ?? 0) + e.amount;
+    }
+    return map;
+  }, [expenses]);
+
+  // Filtered expenses by person
+  const filteredExpenses = useMemo(() =>
+    personFilter ? expenses.filter(e => e.paidBy === personFilter) : expenses,
+    [expenses, personFilter],
+  );
+
+  // Auto-detect budget mode from behavior
+  useEffect(() => {
+    if (members.length >= 2) {
+      setBudgetMode2('group');
+    } else if (trip?.budgetLimit && trip.budgetLimit > 0) {
+      setBudgetMode2('budget');
+    } else {
+      setBudgetMode2('tracking');
+    }
+  }, [members.length, trip?.budgetLimit]);
 
   const load = useCallback(async (force = false) => {
     try {
@@ -266,7 +302,7 @@ export default function BudgetScreen() {
   const bState: BudgetState = remaining / total > 0.5 ? 'cruising' : remaining / total > 0.2 ? 'low' : 'over';
 
   const status = total > 0
-    ? (remaining / total > 0.5 ? 'Cruising' : remaining / total > 0.2 ? 'Watch' : 'Over')
+    ? (remaining / total > 0.5 ? 'Cruising' : remaining / total > 0.2 ? 'Watch it' : 'Over')
     : 'Cruising';
 
   /* ---------- Delete expense ---------- */
@@ -424,30 +460,31 @@ export default function BudgetScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Mode toggle — Limited / Unlimited */}
+        {/* Budget Mode Selector 2.0 */}
         <View style={styles.togglePadding}>
-          <View style={[styles.segControl, { backgroundColor: colors.card2, borderColor: colors.border }]}>
-            {(['limited', 'unlimited'] as const).map((m) => {
-              const active = mode === m;
-              return (
-                <Pressable
-                  key={m}
-                  style={[styles.segBtn, active && [styles.segBtnActive, { backgroundColor: colors.card }]]}
-                  onPress={() => {
-                    setMode(m);
-                    if (trip) {
-                      const supabaseMode = m === 'limited' ? 'Limited' : 'Unlimited';
-                      updateTripBudgetMode(trip.id, supabaseMode).catch(() => {});
-                    }
-                  }}
-                >
-                  <Text style={[styles.segText, { color: colors.text3 }, active && { color: colors.text }]}>
-                    {m === 'limited' ? 'With budget' : 'No budget'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <BudgetModeSelector
+            mode={budgetMode2}
+            onChange={(m) => {
+              setBudgetMode2(m);
+              if (trip) {
+                const supabaseMode = m === 'budget' ? 'Limited' : 'Unlimited';
+                updateTripBudgetMode(trip.id, supabaseMode).catch(() => {});
+                if (m === 'budget') setMode('limited');
+                else setMode('unlimited');
+              }
+            }}
+            groupSize={members.length}
+          />
+        </View>
+
+        {/* Person filter */}
+        <View style={styles.togglePadding}>
+          <PersonFilter
+            members={members}
+            selected={personFilter}
+            onSelect={setPersonFilter}
+            spendingByPerson={spendingByPerson}
+          />
         </View>
 
         {mode === 'limited' && (
@@ -713,34 +750,43 @@ export default function BudgetScreen() {
                 })()}
               </View>
             )}
+            {/* Expense cards — new rich format */}
             <View style={styles.expensesContainer}>
-              {(showAllExpenses ? expenses : expenses.slice(0, 6)).map((e) => (
-                <TouchableOpacity
+              {(showAllExpenses ? filteredExpenses : filteredExpenses.slice(0, 6)).map((e) => (
+                <ExpenseCard
                   key={e.id}
-                  style={[styles.expenseRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${e.description}, ${formatCurrency(e.amount, e.currency)}`}
-                  onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-                  onLongPress={() => handleDeleteExpense(e.id, e.description)}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[styles.expenseTitle, { color: colors.text }]}
-                      numberOfLines={1}
-                    >
-                      {cleanExpenseDescription(e.description)}
-                    </Text>
-                    <Text style={[styles.expenseCat, { color: colors.text3 }]}>
-                      {e.category}{e.paidBy ? ` \u00B7 by ${e.paidBy}` : ''}
-                    </Text>
-                  </View>
-                  <Text style={[styles.expenseAmount, { color: colors.text }]}>
-                    {formatCurrency(e.amount, e.currency)}
+                  expense={e}
+                  onPress={() => router.push({ pathname: '/add-expense', params: { editId: e.id, description: e.description, amount: String(e.amount), category: e.category, date: e.date, placeName: e.placeName ?? '' } } as never)}
+                  onEdit={() => router.push({ pathname: '/add-expense', params: { editId: e.id, description: e.description, amount: String(e.amount), category: e.category, date: e.date, placeName: e.placeName ?? '' } } as never)}
+                  onDelete={() => handleDeleteExpense(e.id, e.description)}
+                />
+              ))}
+              {filteredExpenses.length > 6 && !showAllExpenses && (
+                <TouchableOpacity onPress={() => setShowAllExpenses(true)} activeOpacity={0.7}>
+                  <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600', textAlign: 'center', paddingVertical: 10 }}>
+                    Show all {filteredExpenses.length} expenses
                   </Text>
                 </TouchableOpacity>
-              ))}
+              )}
             </View>
+
+            {/* Group settlement */}
+            {budgetMode2 === 'group' && members.length >= 2 && (
+              <View style={styles.togglePadding}>
+                <SettlementView expenses={expenses} members={members} currency={trip?.costCurrency ?? 'PHP'} />
+              </View>
+            )}
+
+            {/* Spending insights */}
+            {expenses.length >= 3 && (
+              <View style={styles.togglePadding}>
+                <InsightCards
+                  expenses={expenses}
+                  currency={trip?.costCurrency ?? 'PHP'}
+                  tripDays={days}
+                />
+              </View>
+            )}
           </>
         )}
 
