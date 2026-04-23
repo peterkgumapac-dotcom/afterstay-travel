@@ -33,8 +33,6 @@ import { Car, Compass, Hotel, Package, Pencil, ShoppingBag, Trash2, UtensilsCros
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing, radius } from '@/constants/theme';
 import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
-import SpinWheel from '@/components/budget/SpinWheel';
-import DiceRoller from '@/components/budget/DiceRoller';
 import {
   deleteExpense,
   getActiveTrip,
@@ -519,16 +517,15 @@ export default function BudgetScreen() {
           <View style={styles.section}>
             <Text style={styles.eyebrow}>Who pays?</Text>
             <Text style={[styles.sectionTitle, { fontSize: 22 }]}>Let fate decide</Text>
-            <Text style={styles.fateSub}>Spin the wheel or roll the dice to pick who pays next.</Text>
-            {members.length >= 2 ? (
-              <SpinWheel
-                members={members.map((m, i) => ({ name: m.name.split(' ')[0], initials: m.name.charAt(0), color: [colors.chart1, colors.chart2, colors.chart3, colors.chart4][i % 4] }))}
-                onResult={() => {}}
-                onSpinStart={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
-              />
-            ) : (
-              <Text style={styles.fateSub}>Add group members to use this feature.</Text>
-            )}
+            <Text style={styles.fateSub}>Spin the wheel or let Touch of Fate pick who pays next.</Text>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/budget/fate-decides'); }}
+              style={styles.fateButton}
+              accessibilityRole="button"
+              accessibilityLabel="Open Fate Decides"
+            >
+              <Text style={styles.fateButtonText}>Open Fate Decides</Text>
+            </Pressable>
           </View>
         )}
 
@@ -666,6 +663,8 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
 
   // Fate
   fateSub: { fontSize: 12, color: c.text3, marginTop: 4 },
+  fateButton: { marginTop: 16, backgroundColor: c.card, borderWidth: 1, borderColor: c.accentBorder, borderRadius: radius.md, paddingVertical: 16, alignItems: 'center' },
+  fateButtonText: { fontSize: 15, fontWeight: '600', color: c.accent, letterSpacing: 0.5 },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
