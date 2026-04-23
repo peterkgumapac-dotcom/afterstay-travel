@@ -1,4 +1,4 @@
-Unused files (18)
+Unused files (19)
 components/CachedImage.tsx: components/CachedImage.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
 components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
@@ -17,6 +17,7 @@ lib/cache/cacheFirst.ts: lib/cache/cacheFirst.ts
 lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
+utils/fate/randomWinner.ts: utils/fate/randomWinner.ts
 Unused dependencies (1)
 package.json: @expo/vector-icons, base64-arraybuffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-secure-store, expo-sharing, react-native-maps
 Unused devDependencies (1)
@@ -30,7 +31,7 @@ constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
 lib/distance.ts: haversine, estimateWalkTime
 lib/google-places.ts: searchPlace
-Unused exported types (7)
+Unused exported types (8)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
@@ -38,5 +39,6 @@ lib/anthropic.ts: ItineraryDayLegacy
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
 lib/supabase.ts: Profile
 lib/types.ts: WeatherDay
+utils/fate/generateSpinPlan.ts: SpinStep, SpinPlan
 Duplicate exports (1)
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet, default

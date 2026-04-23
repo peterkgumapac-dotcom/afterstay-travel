@@ -1,27 +1,24 @@
 import { useCallback, useRef, useState } from 'react';
 import {
-  Easing,
+  cancelAnimation,
   runOnJS,
   useSharedValue,
-  withTiming,
+  withDecay,
 } from 'react-native-reanimated';
 
 import type { UseHapticsReturn } from '@/hooks/fate/useHaptics';
 import type { UseSoundsReturn } from '@/hooks/fate/useSounds';
-import { generateSpinPlan, type SpinPlan, type SpinStep } from '@/utils/fate/generateSpinPlan';
 
-const EASINGS = {
-  easeOut: Easing.out(Easing.cubic),
-  easeIn: Easing.in(Easing.cubic),
-  easeInOut: Easing.inOut(Easing.cubic),
-};
+// Minimum velocity (deg/s) to trigger a spin
+const MIN_VELOCITY = 200;
+// Deceleration rate — lower = spins longer. 0.997 gives nice 5-8s spins
+const DECELERATION = 0.997;
 
 export interface UseWheelSpinReturn {
   rotation: ReturnType<typeof useSharedValue<number>>;
   isSpinning: boolean;
-  currentStepType: SpinStep['type'] | null;
-  spin: (nameCount: number, winnerIndex: number, forceFakeouts?: number) => Promise<void>;
-  skip: () => void;
+  fling: (velocity: number, onFinish: () => void) => void;
+  getWinnerIndex: (nameCount: number) => number;
 }
 
 export function useWheelSpin(
@@ -30,88 +27,54 @@ export function useWheelSpin(
 ): UseWheelSpinReturn {
   const rotation = useSharedValue(0);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [currentStepType, setCurrentStepType] = useState<SpinStep['type'] | null>(null);
-  const planRef = useRef<SpinPlan | null>(null);
-  const skippedRef = useRef(false);
-  const resolveRef = useRef<(() => void) | null>(null);
+  const onFinishRef = useRef<(() => void) | null>(null);
 
-  const fireStepEffects = useCallback(
-    (step: SpinStep) => {
-      if (step.onStart?.sound) {
-        sounds.play(step.onStart.sound);
-      }
-      if (step.onStart?.haptic) {
-        haptics[step.onStart.haptic]();
-      }
-    },
-    [sounds, haptics],
-  );
-
-  const spin = useCallback(
-    (nameCount: number, winnerIndex: number, forceFakeouts?: number): Promise<void> => {
-      return new Promise<void>((resolve) => {
-        const plan = generateSpinPlan(nameCount, winnerIndex, {
-          forceFakeouts,
-        });
-        planRef.current = plan;
-        skippedRef.current = false;
-        resolveRef.current = resolve;
-        setIsSpinning(true);
-
-        let stepIndex = 0;
-
-        const runStep = () => {
-          if (skippedRef.current || stepIndex >= plan.steps.length) {
-            // Finished
-            sounds.stop('rattle');
-            setIsSpinning(false);
-            setCurrentStepType(null);
-            resolveRef.current?.();
-            resolveRef.current = null;
-            return;
-          }
-
-          const step = plan.steps[stepIndex];
-          setCurrentStepType(step.type);
-          fireStepEffects(step);
-
-          rotation.value = withTiming(
-            step.toRotation,
-            {
-              duration: step.duration,
-              easing: EASINGS[step.easing],
-            },
-            (finished) => {
-              if (finished) {
-                stepIndex++;
-                runOnJS(runStep)();
-              }
-            },
-          );
-        };
-
-        runStep();
-      });
-    },
-    [rotation, sounds, haptics, fireStepEffects],
-  );
-
-  const skip = useCallback(() => {
-    if (!planRef.current || !isSpinning) return;
-    skippedRef.current = true;
-    sounds.stop('rattle');
-    rotation.value = planRef.current.finalRotation;
+  const handleFinished = useCallback(() => {
     setIsSpinning(false);
-    setCurrentStepType(null);
-
-    // Fire final effects
+    sounds.stop('rattle');
+    sounds.play('reveal');
     haptics.heavy();
     haptics.success();
-    sounds.play('reveal');
+    onFinishRef.current?.();
+    onFinishRef.current = null;
+  }, [sounds, haptics]);
 
-    resolveRef.current?.();
-    resolveRef.current = null;
-  }, [isSpinning, rotation, sounds, haptics]);
+  const fling = useCallback(
+    (velocity: number, onFinish: () => void) => {
+      if (Math.abs(velocity) < MIN_VELOCITY) return;
 
-  return { rotation, isSpinning, currentStepType, spin, skip };
+      onFinishRef.current = onFinish;
+      setIsSpinning(true);
+      sounds.play('rattle');
+      haptics.medium();
+
+      cancelAnimation(rotation);
+
+      rotation.value = withDecay(
+        {
+          velocity,
+          deceleration: DECELERATION,
+        },
+        (finished) => {
+          if (finished) {
+            runOnJS(handleFinished)();
+          }
+        },
+      );
+    },
+    [rotation, sounds, haptics, handleFinished],
+  );
+
+  const getWinnerIndex = useCallback(
+    (nameCount: number): number => {
+      const sliceAngle = 360 / nameCount;
+      const normalized = ((rotation.value % 360) + 360) % 360;
+      const pointerAngle = (360 - normalized + 360) % 360;
+      const index = Math.floor(pointerAngle / sliceAngle);
+      return index % nameCount;
+    },
+    [rotation],
+  );
+
+  return { rotation, isSpinning, fling, getWinnerIndex };
 }
