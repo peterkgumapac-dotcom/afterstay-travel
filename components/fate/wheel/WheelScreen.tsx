@@ -2,11 +2,12 @@ import React, { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import PrimaryButton from '@/components/fate/shared/PrimaryButton';
+import RecentChips from '@/components/fate/shared/RecentChips';
 import { fateColors } from '@/constants/fateTheme';
 import { useFateHistory } from '@/hooks/fate/useFateHistory';
 import { useHaptics } from '@/hooks/fate/useHaptics';
 import { useSounds } from '@/hooks/fate/useSounds';
-import { pickWinner } from '@/utils/fate/randomWinner';
+import { pickWinner, pickTwoWinners } from '@/utils/fate/randomWinner';
 
 import Wheel from './Wheel';
 import WheelPointer from './WheelPointer';
@@ -17,14 +18,21 @@ type GameState = 'idle' | 'spinning' | 'result';
 
 interface WheelScreenProps {
   names: string[];
+  duo?: boolean;
 }
 
 const WHEEL_SIZE = 260;
 
-export default function WheelScreen({ names }: WheelScreenProps) {
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
+
+export default function WheelScreen({ names, duo = false }: WheelScreenProps) {
   const [gameState, setGameState] = useState<GameState>('idle');
   const [winnerName, setWinnerName] = useState('');
   const [winnerIdx, setWinnerIdx] = useState(0);
+  const [duoWinnerName, setDuoWinnerName] = useState<string | undefined>();
+  const [duoWinnerIdx, setDuoWinnerIdx] = useState<number | undefined>();
 
   const sounds = useSounds();
   const haptics = useHaptics();
@@ -33,18 +41,44 @@ export default function WheelScreen({ names }: WheelScreenProps) {
 
   const handleSpin = useCallback(async () => {
     if (names.length < 2) return;
+    setDuoWinnerName(undefined);
+    setDuoWinnerIdx(undefined);
 
-    const winner = pickWinner(names);
-    const idx = names.indexOf(winner);
+    if (duo && names.length >= 3) {
+      // Duo: two sequential spins
+      const [first, second] = pickTwoWinners(names);
+      const idx1 = names.indexOf(first);
 
-    setGameState('spinning');
-    await wheelSpin.spin(names.length, idx);
-    setWinnerName(winner);
-    setWinnerIdx(idx);
-    setGameState('result');
+      setGameState('spinning');
+      await wheelSpin.spin(names.length, idx1);
 
-    history.addResult({ mode: 'wheel', winner });
-  }, [names, wheelSpin, history]);
+      // Pause between spins
+      await sleep(1000);
+
+      const idx2 = names.indexOf(second);
+      await wheelSpin.spin(names.length, idx2);
+
+      setWinnerName(first);
+      setWinnerIdx(idx1);
+      setDuoWinnerName(second);
+      setDuoWinnerIdx(idx2);
+      setGameState('result');
+
+      history.addResult({ mode: 'wheel', winner: first, duoWinner: second });
+    } else {
+      // Solo spin
+      const winner = pickWinner(names);
+      const idx = names.indexOf(winner);
+
+      setGameState('spinning');
+      await wheelSpin.spin(names.length, idx);
+      setWinnerName(winner);
+      setWinnerIdx(idx);
+      setGameState('result');
+
+      history.addResult({ mode: 'wheel', winner });
+    }
+  }, [names, duo, wheelSpin, history]);
 
   const handleSpinAgain = useCallback(() => {
     setGameState('idle');
@@ -62,7 +96,6 @@ export default function WheelScreen({ names }: WheelScreenProps) {
 
   return (
     <View style={styles.container}>
-      {/* Wheel area — tap to skip during spin */}
       <Pressable
         onPress={gameState === 'spinning' ? handleSkip : undefined}
         style={styles.wheelContainer}
@@ -77,24 +110,25 @@ export default function WheelScreen({ names }: WheelScreenProps) {
         </View>
       </Pressable>
 
-      {/* Spin button */}
       {gameState === 'idle' && (
         <View style={styles.buttonArea}>
           <PrimaryButton
-            label="Spin the wheel"
+            label={duo ? 'Spin for two' : 'Spin the wheel'}
             onPress={handleSpin}
-            disabled={names.length < 2}
+            disabled={names.length < 2 || (duo && names.length < 3)}
           />
         </View>
       )}
 
-      {/* Winner reveal overlay */}
       {gameState === 'result' && (
         <WinnerReveal
           winner={winnerName}
           winnerIndex={winnerIdx}
+          duoWinner={duoWinnerName}
+          duoWinnerIndex={duoWinnerIdx}
           onSpinAgain={handleSpinAgain}
           onDone={handleDone}
+          history={history.history}
         />
       )}
     </View>

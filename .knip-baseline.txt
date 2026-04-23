@@ -23,18 +23,17 @@ Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (7)
+Unused exports (6)
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
 lib/distance.ts: haversine, estimateWalkTime
 lib/google-places.ts: searchPlace
-utils/fate/randomWinner.ts: pickTwoWinners
 Unused exported types (7)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
-hooks/fate/useFateHistory.ts: FateResult, UseFateHistoryReturn
+hooks/fate/useFateHistory.ts: UseFateHistoryReturn
 lib/anthropic.ts: ItineraryDayLegacy
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
 lib/supabase.ts: Profile

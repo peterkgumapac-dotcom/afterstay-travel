@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ArrowLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import DuoToggle from '@/components/fate/shared/DuoToggle';
 import FateHeader from '@/components/fate/shared/FateHeader';
 import ModeTabs from '@/components/fate/shared/ModeTabs';
 import NameList from '@/components/fate/shared/NameList';
@@ -18,6 +19,7 @@ type FateMode = 'wheel' | 'touch';
 
 export default function FateDecidesScreen() {
   const [mode, setMode] = useState<FateMode>('wheel');
+  const [duo, setDuo] = useState(false);
   const { names, setNames } = useFateNames();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -52,7 +54,10 @@ export default function FateDecidesScreen() {
           }
         />
 
-        <ModeTabs activeMode={mode} onModeChange={setMode} />
+        <View style={styles.controlsRow}>
+          <ModeTabs activeMode={mode} onModeChange={setMode} />
+          <DuoToggle duo={duo} onToggle={setDuo} />
+        </View>
 
         <NameList
           names={names}
@@ -62,9 +67,9 @@ export default function FateDecidesScreen() {
         />
 
         {mode === 'wheel' ? (
-          <WheelScreen names={names} />
+          <WheelScreen names={names} duo={duo} />
         ) : (
-          <TouchScreen />
+          <TouchScreen duo={duo} />
         )}
       </View>
     </GestureHandlerRootView>
@@ -75,4 +80,5 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: fateColors.background },
   container: { flex: 1, paddingHorizontal: 20 },
   backButton: { marginBottom: 8, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  controlsRow: { gap: 8, marginBottom: 4 },
 });

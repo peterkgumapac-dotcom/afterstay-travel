@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import PrimaryButton from '@/components/fate/shared/PrimaryButton';
+import RecentChips from '@/components/fate/shared/RecentChips';
 import { colorForName, fateColors, fateFonts, fateLayout } from '@/constants/fateTheme';
 import { useFateHistory } from '@/hooks/fate/useFateHistory';
 import { useHaptics } from '@/hooks/fate/useHaptics';
@@ -39,10 +40,15 @@ function secureRandom(): number {
   return Math.random();
 }
 
-export default function TouchScreen() {
+interface TouchScreenProps {
+  duo?: boolean;
+}
+
+export default function TouchScreen({ duo = false }: TouchScreenProps) {
   const [gameState, setGameState] = useState<GameState>('empty');
   const [fingers, setFingers] = useState<Map<number, Finger>>(new Map());
   const [victimId, setVictimId] = useState<number | null>(null);
+  const [victim2Id, setVictim2Id] = useState<number | null>(null);
   const [spotlightTarget, setSpotlightTarget] = useState<number | null>(null);
   const abortRef = useRef(false);
   const readyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -237,19 +243,63 @@ export default function TouchScreen() {
     await sleep(600);
 
     if (abortRef.current) return;
-    setGameState('result');
 
-    history.addResult({
-      mode: 'touch',
-      winner: `Finger ${victim.colorIndex + 1}`,
-    });
-  }, [fingers, haptics, sounds, history, heartbeatIntensity]);
+    // Duo mode: second sweep
+    if (duo && fingerArr.length >= 3) {
+      // Brief overlay
+      setGameState('sweep'); // stay in sweep
+      await sleep(1500);
+      if (abortRef.current) return;
+
+      // Pick second victim from remaining
+      const remaining = fingerArr.filter((f) => f.id !== victim.id);
+      const victim2 = remaining[Math.floor(secureRandom() * remaining.length)];
+      setVictim2Id(victim2.id);
+
+      // Second spotlight sweep
+      sounds.play('drumroll');
+      const hops2 = 10 + Math.floor(Math.random() * 6);
+      for (let i = 0; i < hops2; i++) {
+        if (abortRef.current) return;
+        const rf = remaining[Math.floor(Math.random() * remaining.length)];
+        setSpotlightTarget(rf.id);
+        haptics.tap();
+        const progress = i / hops2;
+        await sleep(80 + Math.floor(progress * 180));
+      }
+
+      if (abortRef.current) return;
+      setSpotlightTarget(victim2.id);
+      sounds.stop('drumroll');
+      sounds.play('boom');
+      haptics.error();
+      haptics.heavy();
+      await sleep(600);
+
+      if (abortRef.current) return;
+      setGameState('result');
+
+      history.addResult({
+        mode: 'touch',
+        winner: `Finger ${victim.colorIndex + 1}`,
+        duoWinner: `Finger ${victim2.colorIndex + 1}`,
+      });
+    } else {
+      setGameState('result');
+
+      history.addResult({
+        mode: 'touch',
+        winner: `Finger ${victim.colorIndex + 1}`,
+      });
+    }
+  }, [fingers, duo, haptics, sounds, history, heartbeatIntensity]);
 
   const handlePlayAgain = useCallback(() => {
     abortRef.current = true;
     setGameState('empty');
     setFingers(new Map());
     setVictimId(null);
+    setVictim2Id(null);
     setSpotlightTarget(null);
   }, []);
 
@@ -288,7 +338,7 @@ export default function TouchScreen() {
           {/* Finger circles */}
           {fingerArr.map((f) => {
             const isSpotlit = spotlightTarget === f.id;
-            const isVictim = gameState === 'result' && victimId === f.id;
+            const isVictim = gameState === 'result' && (victimId === f.id || victim2Id === f.id);
             const isDimmed =
               (gameState === 'sweep' || gameState === 'result') &&
               !isSpotlit &&
@@ -351,8 +401,33 @@ export default function TouchScreen() {
                 <Text style={styles.resultName}>
                   Finger {(fingers.get(victimId)?.colorIndex ?? 0) + 1}
                 </Text>
+                {victim2Id !== null && fingers.get(victim2Id) && (
+                  <>
+                    <Text style={styles.resultAnd}>&amp;</Text>
+                    <View
+                      style={[
+                        styles.resultCircleSmall,
+                        {
+                          backgroundColor: colorForName(
+                            '',
+                            fingers.get(victim2Id)?.colorIndex ?? 0,
+                          ),
+                        },
+                      ]}
+                    >
+                      <Text style={styles.resultInitialSmall}>
+                        {(fingers.get(victim2Id)?.colorIndex ?? 0) + 1}
+                      </Text>
+                    </View>
+                    <Text style={styles.resultName}>
+                      Finger {(fingers.get(victim2Id)?.colorIndex ?? 0) + 1}
+                    </Text>
+                  </>
+                )}
                 <Text style={styles.resultSubtitle}>
-                  is picking up the tab tonight
+                  {victim2Id !== null
+                    ? 'are picking up the tab tonight'
+                    : 'is picking up the tab tonight'}
                 </Text>
                 <Pressable
                   onPress={handlePlayAgain}
@@ -361,6 +436,7 @@ export default function TouchScreen() {
                 >
                   <Text style={styles.playAgainText}>Play again</Text>
                 </Pressable>
+                <RecentChips history={history.history} />
               </View>
             </View>
           )}
@@ -533,6 +609,27 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: fateColors.textPrimary,
     letterSpacing: -0.5,
+  },
+  resultAnd: {
+    fontFamily: fateFonts.serif,
+    fontSize: 24,
+    fontWeight: '500',
+    color: fateColors.textSecondary,
+    marginVertical: 8,
+  },
+  resultCircleSmall: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  resultInitialSmall: {
+    fontFamily: fateFonts.serif,
+    fontSize: 24,
+    fontWeight: '500',
+    color: fateColors.background,
   },
   resultSubtitle: {
     fontSize: 13,

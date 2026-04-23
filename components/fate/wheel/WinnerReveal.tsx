@@ -8,8 +8,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import RecentChips from '@/components/fate/shared/RecentChips';
 import { colorForName, fateColors, fateFonts, fateLayout } from '@/constants/fateTheme';
 import { useHaptics } from '@/hooks/fate/useHaptics';
+import type { FateResult } from '@/hooks/fate/useFateHistory';
 
 interface WinnerRevealProps {
   winner: string;
@@ -18,6 +20,7 @@ interface WinnerRevealProps {
   duoWinnerIndex?: number;
   onSpinAgain: () => void;
   onDone: () => void;
+  history?: FateResult[];
 }
 
 export default function WinnerReveal({
@@ -27,6 +30,7 @@ export default function WinnerReveal({
   duoWinnerIndex,
   onSpinAgain,
   onDone,
+  history = [],
 }: WinnerRevealProps) {
   const scale = useSharedValue(0.8);
   const opacity = useSharedValue(0);
@@ -106,6 +110,8 @@ export default function WinnerReveal({
             <Text style={styles.doneText}>Done</Text>
           </Pressable>
         </View>
+
+        <RecentChips history={history} />
       </Animated.View>
     </View>
   );
