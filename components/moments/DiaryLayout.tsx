@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '@/constants/ThemeContext';
+import { formatDatePHT } from '@/lib/utils';
 import { Avatar } from './Avatar';
 import { MosaicTile } from './MosaicTile';
-import { VoiceNote } from './VoiceNote';
 import type { MomentDisplay, PeopleMap } from './types';
 
 // ---------------------------------------------------------------------------
@@ -72,18 +72,8 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
     <View style={styles.root}>
       {dayGroups.map((grp, idx) => {
         const ms = grp.items;
-        const weather = ms[0].weather;
-        const totalExp = ms.reduce(
-          (acc, m) =>
-            acc +
-            (m.expense
-              ? parseInt(m.expense.amt.replace(/[^\d]/g, ''), 10)
-              : 0),
-          0,
-        );
         const peopleKeys = [...new Set(ms.map((x) => x.authorKey || ''))].filter(Boolean);
         const oneLiner = dayOneLiner(ms);
-        const voiceMoment = ms.find((m) => m.voice);
 
         // First moment is hero; next 3 are supporting.
         const hero = ms[0];
@@ -94,10 +84,6 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
         const quoteAuthorKey = hero.authorKey || '';
         const quoteAuthor = people[quoteAuthorKey];
         const quoteColor = quoteAuthor?.color || colors.accent;
-
-        // Time range
-        const firstTime = ms[0].time || '';
-        const lastTime = ms[ms.length - 1].time || '';
 
         return (
           <View key={grp.day}>
@@ -111,7 +97,7 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
                     { color: colors.text3 },
                   ]}
                 >
-                  Day {idx + 1} {'\u00b7'} {grp.day}
+                  Day {idx + 1} · {formatDatePHT(grp.day)}
                 </Text>
                 <View style={styles.eyebrowRight}>
                   {/* Avatar stack */}
@@ -133,21 +119,6 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
                       ))}
                     </View>
                   )}
-                  {weather ? (
-                    <View
-                      style={[
-                        styles.weatherChip,
-                        {
-                          backgroundColor: colors.card,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.weatherText, { color: colors.text3 }]}>
-                        {weather}
-                      </Text>
-                    </View>
-                  ) : null}
                 </View>
               </View>
 
@@ -168,27 +139,6 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
                 <Text style={[styles.metaText, { color: colors.text3 }]}>
                   {ms.length} {ms.length === 1 ? 'moment' : 'moments'}
                 </Text>
-                <Text style={[styles.metaDot, { color: colors.border2 }]}>{'\u00b7'}</Text>
-                <Text style={[styles.metaText, { color: colors.text3 }]}>
-                  {firstTime} {'\u2014'} {lastTime}
-                </Text>
-                {totalExp > 0 && (
-                  <>
-                    <Text style={[styles.metaDot, { color: colors.border2 }]}>{'\u00b7'}</Text>
-                    <Text
-                      style={[
-                        styles.metaText,
-                        {
-                          color: colors.accent,
-                          fontWeight: '600',
-                          fontFamily: 'SpaceMono',
-                        },
-                      ]}
-                    >
-                      {'\u20b1'}{totalExp.toLocaleString()}
-                    </Text>
-                  </>
-                )}
               </View>
             </View>
 
@@ -223,34 +173,28 @@ export function DiaryLayout({ items, onOpen, people }: DiaryLayoutProps) {
               </View>
             )}
 
-            {/* ---- Voice note ---- */}
-            {voiceMoment && voiceMoment.voice && voiceMoment.authorKey && (
-              <VoiceNote
-                duration={voiceMoment.voice.duration}
-                authorColor={people[voiceMoment.authorKey]?.color || colors.accent}
-              />
+            {/* ---- Pull-quote caption card — only if meaningful ---- */}
+            {hero.caption && hero.caption !== 'Untitled' && (
+              <View
+                style={[
+                  styles.quoteCard,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    borderLeftColor: quoteColor,
+                  },
+                ]}
+              >
+                <Text style={{ fontSize: 12, color: colors.text2, lineHeight: 12 * 1.45 }}>
+                  <Text style={{ color: colors.text, fontWeight: '600' }}>
+                    {'\u201c'}{hero.caption}{'\u201d'}
+                  </Text>
+                  <Text style={{ color: colors.text3 }}>
+                    {' '}{'\u2014'} {quoteAuthor?.name || quoteAuthorKey}
+                  </Text>
+                </Text>
+              </View>
             )}
-
-            {/* ---- Pull-quote caption card ---- */}
-            <View
-              style={[
-                styles.quoteCard,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  borderLeftColor: quoteColor,
-                },
-              ]}
-            >
-              <Text style={{ fontSize: 12, color: colors.text2, lineHeight: 12 * 1.45 }}>
-                <Text style={{ color: colors.text, fontWeight: '600' }}>
-                  {'\u201c'}{hero.caption}{'\u201d'}
-                </Text>
-                <Text style={{ color: colors.text3 }}>
-                  {' '}{'\u2014'} {quoteAuthor?.name || quoteAuthorKey}
-                </Text>
-              </Text>
-            </View>
           </View>
         );
       })}
@@ -289,16 +233,6 @@ const styles = StyleSheet.create({
   },
   avatarStack: {
     flexDirection: 'row',
-  },
-  weatherChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  weatherText: {
-    fontSize: 10,
-    fontWeight: '600',
   },
   oneLiner: {
     fontSize: 19,

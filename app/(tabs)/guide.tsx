@@ -709,7 +709,7 @@ const getStyles = (colors: ThemeColors) =>
     },
     heroGradient: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: 'rgba(0,0,0,0.55)',
     },
     heroTextBlock: {
       position: 'absolute',
@@ -721,13 +721,19 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 20,
       fontWeight: '500',
       letterSpacing: -0.6,
-      color: colors.text,
+      color: '#fff',
       lineHeight: 22,
       marginBottom: 3,
+      textShadowColor: 'rgba(0,0,0,0.6)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 4,
     },
     heroDesc: {
       fontSize: 11,
-      color: colors.text2,
+      color: 'rgba(255,255,255,0.8)',
+      textShadowColor: 'rgba(0,0,0,0.5)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 3,
     },
 
     // Times

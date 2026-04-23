@@ -113,7 +113,7 @@ const formatHourRange = (start: number, end: number): string => {
     const h12 = h % 12 || 12;
     return `${h12}:00 ${ampm}`;
   };
-  return `${fmt(start)} \u2013 ${fmt(end)}`;
+  return `${fmt(start)} – ${fmt(end)}`;
 };
 
 const findRainWindows = (hours: HourData[]) => {
@@ -245,10 +245,10 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
       {/* Header with current temp */}
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.eyebrow}>Weather {'\u00B7'} {destination || 'Forecast'}</Text>
+          <Text style={styles.eyebrow}>Weather · {destination || 'Forecast'}</Text>
           <View style={styles.tempRow}>
-            <Text style={styles.tempBig}>{today.maxTemp}{'\u00B0'}</Text>
-            <Text style={styles.tempLow}> / {today.minTemp}{'\u00B0'}</Text>
+            <Text style={styles.tempBig}>{today.maxTemp}°</Text>
+            <Text style={styles.tempLow}> / {today.minTemp}°</Text>
           </View>
           <Text style={styles.conditionText}>{today.condition}</Text>
           {today.sunrise && today.sunset && (
@@ -288,7 +288,7 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
           </Svg>
           <Text style={styles.rainChipText}>
             <Text style={styles.rainBold}>Rain expected</Text>
-            {' '}today {formatHourRange(todayRain.startHour, todayRain.endHour)} {'\u00B7'} {todayRain.maxChance}% chance
+            {' '}today {formatHourRange(todayRain.startHour, todayRain.endHour)} · {todayRain.maxChance}% chance
           </Text>
         </View>
       )}
@@ -362,8 +362,8 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
                 <WeatherIcon kind={d.condition} size={18} color={iconColor} />
               </View>
               <Text style={styles.dayHi}>
-                {d.maxTemp}{'\u00B0'}{' '}
-                <Text style={styles.dayLo}>{d.minTemp}{'\u00B0'}</Text>
+                {d.maxTemp}°{' '}
+                <Text style={styles.dayLo}>{d.minTemp}°</Text>
               </Text>
               {d.chanceRain >= 50 && (
                 <Text style={styles.dayRain}>{d.chanceRain}%</Text>

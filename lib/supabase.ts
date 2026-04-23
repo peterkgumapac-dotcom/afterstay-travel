@@ -38,9 +38,20 @@ if (!SUPABASE_KEY) {
   console.warn('Supabase key missing. Set EXPO_PUBLIC_SUPABASE_KEY in .env.')
 }
 
+// Noop storage for Node.js (OTA export). AsyncStorage crashes in Node because `window` is undefined.
+const noopStorage = {
+  getItem: (_key: string) => Promise.resolve(null),
+  setItem: (_key: string, _value: string) => Promise.resolve(),
+  removeItem: (_key: string) => Promise.resolve(),
+}
+
+// Detect Node.js (OTA export) vs React Native (device)
+const isNode = typeof process !== 'undefined' && !!process.versions?.node
+const safeStorage = isNode ? noopStorage : AsyncStorage
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
-    storage: AsyncStorage,
+    storage: safeStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
@@ -68,9 +79,10 @@ function parseDateSafe(iso: string): Date {
   return new Date(iso)
 }
 
-// Cache the active trip ID so trip-scoped functions that omit tripId
+// Cache the active trip ID and trip object so trip-scoped functions that omit tripId
 // do not fire a separate query every time.
 let cachedTripId: string | undefined
+let cachedTrip: Trip | null | undefined // undefined = not fetched, null = no trip
 
 async function resolveTripId(tripId?: string): Promise<string> {
   if (tripId) return tripId
@@ -285,19 +297,274 @@ function mapTripFile(row: Record<string, unknown>): TripFile {
 
 // ---------- TRIPS ----------
 
-export async function getActiveTrip(): Promise<Trip | null> {
+export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> {
+  if (cachedTrip !== undefined && !forceRefresh) return cachedTrip
+
   const { data, error } = await supabase
     .from(T.trips)
     .select('*')
     .in('status', ['Planning', 'Active'])
-    .limit(5)
+    .order('start_date', { ascending: true })
+    .limit(1)
 
-  if (error) throw new Error(`getActiveTrip: ${error.message}`)
-  if (!data || data.length === 0) return null
+  if (error || !data || data.length === 0) {
+    cachedTrip = null
+    return null
+  }
 
   const trip = mapTrip(data[0])
   cachedTripId = trip.id
+  cachedTrip = trip
   return trip
+}
+
+export function clearTripCache() {
+  cachedTripId = undefined
+  cachedTrip = undefined
+}
+
+// ---------- CREATE TRIP ----------
+
+export async function createTrip(input: {
+  name: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  members?: string[];
+}): Promise<string> {
+  // Get authenticated user ID for trip ownership
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id;
+
+  // Archive only THIS user's active trips (not everyone's)
+  if (userId) {
+    await supabase
+      .from(T.trips)
+      .update({ status: 'Completed' })
+      .in('status', ['Planning', 'Active'])
+      .eq('user_id', userId)
+  }
+
+  // Auto-detect status from dates
+  const now = new Date();
+  const start = new Date(input.startDate + 'T00:00:00+08:00');
+  const end = new Date(input.endDate + 'T23:59:59+08:00');
+  const status = now > end ? 'Completed' : now >= start ? 'Active' : 'Planning';
+
+  const { data, error } = await supabase
+    .from(T.trips)
+    .insert({
+      name: input.name || `Trip to ${input.destination}`,
+      destination: input.destination,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      status,
+      ...(userId ? { user_id: userId } : {}),
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(`createTrip: ${error.message}`)
+  const tripId = data.id as string
+  cachedTripId = tripId
+  cachedTrip = undefined // Invalidate cache so next fetch gets new trip
+
+  // Add members if provided
+  if (input.members && input.members.length > 0) {
+    const memberRows = input.members.map((name, i) => ({
+      trip_id: tripId,
+      name: name.trim(),
+      role: i === 0 ? 'Primary' : 'Member',
+    }))
+    await supabase.from(T.groupMembers).insert(memberRows)
+  }
+
+  return tripId
+}
+
+// ---------- ADD GROUP MEMBER ----------
+
+// ---------- TRIP INVITES ----------
+
+export async function createInviteCode(tripId?: string): Promise<string> {
+  const id = await resolveTripId(tripId)
+  // Generate 6-char alphanumeric code
+  const code = Math.random().toString(36).slice(2, 8).toUpperCase()
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+
+  const { error } = await supabase.from('trip_invites').insert({
+    trip_id: id,
+    code,
+    expires_at: expiresAt,
+  })
+  if (error) throw new Error(`createInviteCode: ${error.message}`)
+  return code
+}
+
+export async function joinTripByCode(code: string, userName: string): Promise<{ tripId: string; trip: Trip }> {
+  // Look up the invite
+  const { data: invite, error: lookupError } = await supabase
+    .from('trip_invites')
+    .select('trip_id, expires_at, used')
+    .eq('code', code.toUpperCase())
+    .single()
+
+  if (lookupError || !invite) throw new Error('Invalid invite code')
+  if (invite.used) throw new Error('This invite has already been used')
+  if (new Date(invite.expires_at) < new Date()) throw new Error('This invite has expired')
+
+  // Get trip details
+  const tripId = invite.trip_id as string
+  const { data: tripData, error: tripError } = await supabase
+    .from(T.trips)
+    .select('*')
+    .eq('id', tripId)
+    .single()
+  if (tripError || !tripData) throw new Error('Trip not found')
+
+  // Add user as trip member
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+
+  const { error: memberError } = await supabase.from(T.groupMembers).insert({
+    trip_id: tripId,
+    name: userName,
+    role: 'Member',
+    ...(userId ? { user_id: userId } : {}),
+  })
+  if (memberError) throw new Error(`joinTrip: ${memberError.message}`)
+
+  // Mark invite as used
+  await supabase.from('trip_invites').update({ used: true }).eq('code', code.toUpperCase())
+
+  return { tripId, trip: mapTrip(tripData) }
+}
+
+// ---------- ADD FLIGHT ----------
+
+export async function addFlight(input: {
+  tripId: string;
+  direction: 'Outbound' | 'Return';
+  flightNumber: string;
+  airline?: string;
+  fromCity?: string;
+  toCity?: string;
+  departTime?: string;
+  arriveTime?: string;
+  bookingRef?: string;
+  passenger?: string;
+}): Promise<void> {
+  const { error } = await supabase.from(T.flights).insert({
+    trip_id: input.tripId,
+    direction: input.direction,
+    flight_number: input.flightNumber,
+    ...(input.airline ? { airline: input.airline } : {}),
+    ...(input.fromCity ? { from_city: input.fromCity } : {}),
+    ...(input.toCity ? { to_city: input.toCity } : {}),
+    ...(input.departTime ? { depart_time: input.departTime } : {}),
+    ...(input.arriveTime ? { arrive_time: input.arriveTime } : {}),
+    ...(input.bookingRef ? { booking_ref: input.bookingRef } : {}),
+    ...(input.passenger ? { passenger: input.passenger } : {}),
+  })
+  if (error) throw new Error(`addFlight: ${error.message}`)
+}
+
+// ---------- GROUP CHAT ----------
+
+export interface ChatMessage {
+  id: string;
+  tripId: string;
+  senderName: string;
+  senderAvatar?: string;
+  message: string;
+  createdAt: string;
+}
+
+export async function getChatMessages(tripId?: string): Promise<ChatMessage[]> {
+  const id = await resolveTripId(tripId)
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('trip_id', id)
+    .order('created_at', { ascending: true })
+    .limit(200)
+
+  if (error) throw new Error(`getChatMessages: ${error.message}`)
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    tripId: row.trip_id,
+    senderName: row.sender_name ?? '',
+    senderAvatar: row.sender_avatar ?? undefined,
+    message: row.message ?? '',
+    createdAt: row.created_at,
+  }))
+}
+
+export async function sendChatMessage(input: {
+  tripId?: string;
+  senderName: string;
+  senderAvatar?: string;
+  message: string;
+}): Promise<void> {
+  const id = await resolveTripId(input.tripId)
+  const { error } = await supabase.from('chat_messages').insert({
+    trip_id: id,
+    sender_name: input.senderName,
+    sender_avatar: input.senderAvatar ?? null,
+    message: input.message.trim(),
+  })
+  if (error) throw new Error(`sendChatMessage: ${error.message}`)
+}
+
+export function subscribeToChatMessages(
+  tripId: string,
+  onMessage: (msg: ChatMessage) => void,
+) {
+  const channel = supabase
+    .channel(`chat:${tripId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'chat_messages',
+        filter: `trip_id=eq.${tripId}`,
+      },
+      (payload: any) => {
+        const row = payload.new
+        onMessage({
+          id: row.id,
+          tripId: row.trip_id,
+          senderName: row.sender_name ?? '',
+          senderAvatar: row.sender_avatar ?? undefined,
+          message: row.message ?? '',
+          createdAt: row.created_at,
+        })
+      },
+    )
+    .subscribe()
+
+  return () => { supabase.removeChannel(channel) }
+}
+
+// ---------- ADD GROUP MEMBER ----------
+
+export async function addGroupMember(input: {
+  tripId?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role?: 'Primary' | 'Member';
+}): Promise<void> {
+  const id = await resolveTripId(input.tripId)
+  const { error } = await supabase.from(T.groupMembers).insert({
+    trip_id: id,
+    name: input.name.trim(),
+    role: input.role ?? 'Member',
+    ...(input.email ? { email: input.email.trim() } : {}),
+    ...(input.phone ? { phone: input.phone.trim() } : {}),
+  })
+  if (error) throw new Error(`addGroupMember: ${error.message}`)
 }
 
 /**
@@ -331,7 +598,8 @@ export async function updateTripProperty(
   key: string,
   value: string
 ): Promise<void> {
-  const column = TRIP_PROPERTY_MAP[key] ?? key
+  const column = TRIP_PROPERTY_MAP[key]
+  if (!column) throw new Error(`updateTripProperty: unknown key "${key}"`)
   const { error } = await supabase.from(T.trips).update({ [column]: value }).eq('id', tripId)
   if (error) throw new Error(`updateTripProperty: ${error.message}`)
 }
@@ -622,6 +890,50 @@ export async function getMoments(tripId?: string): Promise<Moment[]> {
   return (data ?? []).map(mapMoment)
 }
 
+// Build a human-readable filename for moment photos.
+// e.g. "sunset-white-beach-apr20-a3f1.jpg" instead of "1745123456789-IMG_20260420.jpg"
+const MOMENT_NAME_POOL = [
+  'golden-hour', 'island-vibes', 'travel-snap', 'on-the-go',
+  'good-times', 'wander', 'explore', 'memory', 'getaway', 'escape',
+] as const;
+
+function buildMomentFilename(
+  input: { tags: string[]; location?: string; date: string; caption?: string },
+  ext: string,
+): string {
+  const parts: string[] = [];
+
+  // Use first tag if available, otherwise pick from pool
+  if (input.tags.length > 0) {
+    parts.push(input.tags[0].toLowerCase());
+  } else if (input.caption && input.caption !== 'Untitled') {
+    // Use first word of caption
+    const word = input.caption.split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (word.length >= 2) parts.push(word);
+  }
+  if (parts.length === 0) {
+    parts.push(MOMENT_NAME_POOL[Math.floor(Math.random() * MOMENT_NAME_POOL.length)]);
+  }
+
+  // Add short location slug
+  if (input.location) {
+    const slug = input.location.split(',')[0].trim().toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20);
+    if (slug) parts.push(slug);
+  }
+
+  // Add date as "apr20" format
+  const d = new Date(input.date + 'T00:00:00+08:00');
+  const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  parts.push(`${months[d.getMonth()]}${d.getDate()}`);
+
+  // Short random suffix for uniqueness
+  const rand = Math.random().toString(36).slice(2, 6);
+  parts.push(rand);
+
+  return `${parts.join('-')}.${ext}`;
+}
+
 export async function addMoment(
   input: Omit<Moment, 'id'> & { tripId?: string; localUri?: string }
 ): Promise<void> {
@@ -633,9 +945,9 @@ export async function addMoment(
   // If a local file URI is provided, compress and upload to Supabase Storage.
   if (input.localUri) {
     const compressed = await compressImage(input.localUri, 1200, 0.6)
-    const timestamp = Date.now()
-    const filename = input.localUri.split('/').pop() ?? 'photo.jpg'
-    storagePath = `trips/${tripId}/${timestamp}-${filename}`
+    const ext = (input.localUri.split('.').pop() ?? 'jpg').toLowerCase()
+    const friendlyName = buildMomentFilename(input, ext)
+    storagePath = `trips/${tripId}/${friendlyName}`
 
     // Read as base64 — more reliable than fetch→blob on RN Android
     const base64 = await FileSystem.readAsStringAsync(compressed, {
@@ -650,7 +962,7 @@ export async function addMoment(
     const { error: uploadError } = await supabase.storage
       .from('moments')
       .upload(storagePath, bytes, {
-        contentType: guessMimeType(filename),
+        contentType: guessMimeType(friendlyName),
         upsert: false,
       })
 

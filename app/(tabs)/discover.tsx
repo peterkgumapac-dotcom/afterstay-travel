@@ -28,8 +28,9 @@ import MiniLoader from '@/components/loader/MiniLoader';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
-import { generateItinerary, type ItineraryDay } from '@/lib/anthropic';
+import { generateItinerary, type ItineraryDay, type ItineraryActivity, type PlannerScope, type PlannerPace } from '@/lib/anthropic';
 import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
+import { formatDatePHT } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
 import ExploreMap, { MAP_AVAILABLE } from '@/components/discover/ExploreMap';
 import { cacheGet, cacheSet } from '@/lib/cache';
@@ -66,6 +67,8 @@ const CATEGORY_SEARCH_MAP: Record<string, { type?: string; keyword?: string }> =
   wellness: { type: 'spa', keyword: 'spa wellness massage yoga' },
   coffee: { type: 'cafe', keyword: 'coffee cafe espresso' },
   atm: { type: 'atm', keyword: 'atm cash withdraw money changer' },
+  shopping: { type: 'store', keyword: 'shopping mall market souvenir' },
+  landmark: { type: 'tourist_attraction', keyword: 'landmark monument attraction viewpoint' },
 };
 
 // Map Google Places types to display labels
@@ -237,6 +240,17 @@ const ITINERARY_STYLES = [
   { id: 'culture', label: 'Culture', sub: 'History, markets, locals' },
 ] as const;
 
+const PACE_OPTIONS: { id: PlannerPace; label: string; desc: string }[] = [
+  { id: 'relaxed', label: 'Relaxed', desc: '2-3 activities/day' },
+  { id: 'moderate', label: 'Moderate', desc: '3-4 activities/day' },
+  { id: 'packed', label: 'Packed', desc: '5-6 activities/day' },
+];
+
+const ACTIVITY_CATEGORY_EMOJI: Record<string, string> = {
+  Food: '🍽', Beach: '🏖', Activity: '🌊', Culture: '🏛',
+  Nightlife: '🌙', Wellness: '🧘', Shopping: '🛍', Transport: '🚗',
+};
+
 const PLACES: readonly DiscoverPlace[] = [
   {
     n: 'Puka Shell Beach',
@@ -336,6 +350,10 @@ function applyPlaceFilters(
   f: FilterState,
 ): DiscoverPlace[] {
   return list.filter((p) => {
+    // Hide hotels/lodging — user already has accommodation
+    const t = (p.t ?? '').toLowerCase();
+    const types = (p.types ?? []).map(s => s.toLowerCase());
+    if (t === 'hotel' || t === 'lodging' || types.includes('lodging') || types.includes('hotel')) return false;
     if (f.minRating && p.r < f.minRating) return false;
     if (f.openNow && !p.openNow) return false;
     // "nearby" filter is applied AFTER distance computation in placesWithDistance
@@ -482,7 +500,8 @@ function DiscoverScreenInner() {
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
   const [itineraryLoading, setItineraryLoading] = useState(false);
   const [itineraryError, setItineraryError] = useState<string | null>(null);
-  const [itineraryScope, setItineraryScope] = useState<'whole' | 'day' | 'surprise'>('whole');
+  const [itineraryScope, setItineraryScope] = useState<PlannerScope>('today');
+  const [pace, setPace] = useState<PlannerPace>('relaxed');
   const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
   const [visibleCount, setVisibleCount] = useState(20);
   const [showMapModal, setShowMapModal] = useState(false);
@@ -496,6 +515,45 @@ function DiscoverScreenInner() {
   const placesCache = useRef<Record<string, readonly DiscoverPlace[]>>({});
 
   const [tripDest, setTripDest] = useState('');
+  const [tripStartDate, setTripStartDate] = useState<string | undefined>();
+  const [tripEndDate, setTripEndDate] = useState<string | undefined>();
+  const [tripDays, setTripDays] = useState<number | undefined>();
+
+  // Manual day planner state
+  const [plannerActiveDay, setPlannerActiveDay] = useState(1);
+  const [plannerItems, setPlannerItems] = useState<Record<number, { id: string; time: string; title: string; note: string | null }[]>>({});
+
+  // Compute trip day labels from real dates
+  const plannerDays = useMemo(() => {
+    if (!tripStartDate || !tripDays) return [];
+    const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    return Array.from({ length: tripDays }, (_, i) => {
+      const d = new Date(tripStartDate + 'T00:00:00+08:00');
+      d.setDate(d.getDate() + i);
+      return {
+        n: i + 1,
+        label: DAY_NAMES[d.getDay()],
+        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      };
+    });
+  }, [tripStartDate, tripDays]);
+
+  const plannerDayItems = useMemo(() =>
+    (plannerItems[plannerActiveDay] ?? []).slice().sort((a, b) => a.time.localeCompare(b.time)),
+    [plannerItems, plannerActiveDay],
+  );
+
+  const plannerTotalCount = useMemo(() =>
+    Object.values(plannerItems).reduce((n, arr) => n + arr.length, 0),
+    [plannerItems],
+  );
+
+  const removePlannerItem = useCallback((id: string) => {
+    setPlannerItems(prev => ({
+      ...prev,
+      [plannerActiveDay]: (prev[plannerActiveDay] ?? []).filter(x => x.id !== id),
+    }));
+  }, [plannerActiveDay]);
 
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
@@ -508,10 +566,7 @@ function DiscoverScreenInner() {
 
   // Fetch GPS when user switches to "me"
   const switchToMyLocation = useCallback(async () => {
-    if (userLocation) {
-      setDistanceOrigin('me');
-      return;
-    }
+    // Always re-fetch GPS so distances stay fresh as user moves
     try {
       const Location = require('expo-location') as typeof import('expo-location');
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -520,14 +575,16 @@ function DiscoverScreenInner() {
         setDistanceOrigin('hotel');
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced });
-      setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      // Use High accuracy for better distance comparison vs hotel
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.High });
+      const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+      setUserLocation(coords);
       setDistanceOrigin('me');
     } catch {
       Alert.alert('Location unavailable', 'Could not get your location. Using hotel distance.');
       setDistanceOrigin('hotel');
     }
-  }, [userLocation]);
+  }, []);
 
   const handleAnchorChange = useCallback((a: 'hotel' | 'me') => {
     if (a === 'me') {
@@ -564,11 +621,18 @@ function DiscoverScreenInner() {
         if (!cancelled && trip) {
           setTripId(trip.id);
           setTripDest(trip.destination ?? '');
+          setTripStartDate(trip.startDate);
+          setTripEndDate(trip.endDate);
+          if (trip.startDate && trip.endDate) {
+            const ms = new Date(trip.endDate + 'T00:00:00+08:00').getTime() - new Date(trip.startDate + 'T00:00:00+08:00').getTime();
+            setTripDays(Math.max(1, Math.ceil(ms / 86400000) + 1));
+          }
         }
       } catch {
         // Trip load failure is non-fatal; features degrade gracefully
       }
     };
+    placesCache.current = {};
     load();
     return () => { cancelled = true; };
   }, []);
@@ -784,10 +848,12 @@ function DiscoverScreenInner() {
       const promptInterests = prompt.trim()
         ? [...interests, prompt.trim()]
         : interests;
-      const mode = itineraryScope === 'day' ? 'Lite in 7 Days' : 'Surprise Me';
       const result = await generateItinerary({
-        mode,
+        scope: itineraryScope,
+        pace,
         interests: promptInterests,
+        tripDays,
+        startDate: tripStartDate,
       });
       setItinerary(result);
     } catch (err: unknown) {
@@ -796,7 +862,7 @@ function DiscoverScreenInner() {
     } finally {
       setItineraryLoading(false);
     }
-  }, [style, prompt, itineraryScope]);
+  }, [style, prompt, itineraryScope, pace, tripDays, tripStartDate]);
 
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
@@ -811,7 +877,13 @@ function DiscoverScreenInner() {
     const filtered = filters.nearby
       ? withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= 2)
       : withDist;
-    return filtered.sort((a, b) => a.distanceKm - b.distanceKm);
+    return filtered.sort((a, b) => {
+      // Open places first, then by distance
+      const openA = a.place.openNow ? 0 : 1;
+      const openB = b.place.openNow ? 0 : 1;
+      if (openA !== openB) return openA - openB;
+      return a.distanceKm - b.distanceKm;
+    });
   }, [filteredPlaces, getDistanceKm, filters.nearby]);
 
   // Stable filter callbacks — prevent FilterChip re-renders
@@ -835,7 +907,7 @@ function DiscoverScreenInner() {
       {/* Top bar */}
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.title}>Discover</Text>
+          <Text style={styles.title}>Discover<Text style={{ color: 'red', fontSize: 10, fontWeight: '700' }}> v8</Text></Text>
           <Text style={styles.subtitle}>{tripDest || 'Discover'}</Text>
         </View>
         <TouchableOpacity
@@ -893,196 +965,114 @@ function DiscoverScreenInner() {
           />
         }
       >
-        {/* ═══════ PLANNER TAB ═══════ */}
+        {/* ═══════ PLANNER TAB — manual day-by-day timeline ═══════ */}
         {tab === 'planner' && (
           <>
-            {/* AI loading — full animated loader */}
-            {itineraryLoading ? (
-              <View style={{ height: 400, marginHorizontal: -16 }}>
-                <LivingPostcardLoader
-                  destination={tripDest || 'your trip'}
-                  name="traveler"
-                  onDone={() => {}}
-                  durationMs={30000}
-                />
-              </View>
-            ) : (
-              <>
-                {/* AI prompt card */}
-                <View style={styles.promptCard}>
-                  {/* Glow */}
-                  <View style={styles.promptGlow} />
-                  <View style={styles.promptInner}>
-                    {/* Header row */}
-                    <View style={styles.promptHeaderRow}>
-                      <View style={styles.promptIconBox}>
-                        <Sparkles size={15} color="#fff" strokeWidth={2} />
-                      </View>
-                      <View>
-                        <Text style={styles.promptTitle}>Trip Planner</Text>
-                        <Text style={styles.promptSub}>
-                          AI-generated day-by-day for {tripDest || 'your trip'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    {/* Scope selector */}
-                    <View style={styles.scopeRow}>
-                      {([
-                        { id: 'whole', label: 'Whole trip' },
-                        { id: 'day', label: 'Just today' },
-                        { id: 'surprise', label: 'Surprise me' },
-                      ] as const).map((s) => {
-                        const active = itineraryScope === s.id;
-                        return (
-                          <TouchableOpacity
-                            key={s.id}
-                            style={[styles.scopePill, active && styles.scopePillActive]}
-                            onPress={() => setItineraryScope(s.id)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={[styles.scopePillText, active && styles.scopePillTextActive]}>
-                              {s.label}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-
-                    {/* Style selector — hidden for "surprise me" */}
-                    {itineraryScope !== 'surprise' && (
-                      <View style={styles.styleList}>
-                        {ITINERARY_STYLES.map((s) => {
-                          const active = style === s.id;
-                          return (
-                            <TouchableOpacity
-                              key={s.id}
-                              style={[styles.styleCard, active && styles.styleCardActive]}
-                              onPress={() => setStyle(s.id)}
-                              activeOpacity={0.7}
-                            >
-                              <View
-                                style={[
-                                  styles.styleRadio,
-                                  active && styles.styleRadioActive,
-                                ]}
-                              >
-                                {active && <View style={styles.styleRadioDot} />}
-                              </View>
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.styleLabel}>{s.label}</Text>
-                                <Text style={styles.styleSub}>{s.sub}</Text>
-                              </View>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    )}
-
-                    {/* Text input */}
-                    <View style={styles.promptInputBox}>
-                      <TextInput
-                        value={prompt}
-                        onChangeText={setPrompt}
-                        placeholder="What do you want to do on this trip?"
-                        placeholderTextColor={colors.text3}
-                        style={styles.promptInput}
-                        multiline
-                      />
-                    </View>
-
-                    {/* Generate button */}
-                    <TouchableOpacity
-                      style={styles.generateBtn}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel="Generate Itinerary"
-                      onPress={handleGenerateItinerary}
-                    >
-                      <Sparkles size={16} color={colors.onBlack} strokeWidth={2} />
-                      <Text style={styles.generateBtnText}>Generate Itinerary</Text>
-                    </TouchableOpacity>
-
-                    {/* Itinerary error */}
-                    {itineraryError && (
-                      <Text style={styles.errorText}>{itineraryError}</Text>
-                    )}
-                  </View>
-                </View>
-
-                {/* Generated itinerary results */}
-                {itinerary.length > 0 && (
-                  <>
-                    <View style={styles.sectionHeader}>
-                      <View>
-                        <Text style={styles.eyebrow}>Your itinerary</Text>
-                        <Text style={styles.sectionTitle}>Day-by-day plan</Text>
-                      </View>
-                    </View>
-                    <View style={styles.styleList}>
-                      {itinerary.map((day) => (
-                        <View key={day.day} style={styles.itineraryCard}>
-                          <View style={styles.itineraryDayHeader}>
-                            <Text style={styles.itineraryDayLabel}>Day {day.day}</Text>
-                            <Text style={styles.itineraryDate}>{day.date}</Text>
-                          </View>
-                          <Text style={styles.itineraryTheme}>{day.theme}</Text>
-                          <View style={styles.itinerarySlot}>
-                            <Text style={styles.itinerarySlotLabel}>Morning</Text>
-                            <Text style={styles.itinerarySlotText}>{day.morning}</Text>
-                          </View>
-                          <View style={styles.itinerarySlot}>
-                            <Text style={styles.itinerarySlotLabel}>Afternoon</Text>
-                            <Text style={styles.itinerarySlotText}>{day.afternoon}</Text>
-                          </View>
-                          <View style={styles.itinerarySlot}>
-                            <Text style={styles.itinerarySlotLabel}>Evening</Text>
-                            <Text style={styles.itinerarySlotText}>{day.evening}</Text>
-                          </View>
-                          <View style={styles.itinerarySlot}>
-                            <Text style={styles.itinerarySlotLabel}>Dining</Text>
-                            <Text style={styles.itinerarySlotText}>{day.dining}</Text>
-                          </View>
-                          {day.tips ? (
-                            <View style={styles.itineraryTipBox}>
-                              <Text style={styles.itineraryTipText}>{day.tips}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      ))}
-                    </View>
-                  </>
-                )}
-              </>
-            )}
-
-            {/* Trending */}
-            <View style={styles.sectionHeader}>
+            {/* Summary strip */}
+            <View style={styles.plannerSummary}>
               <View>
-                <Text style={styles.eyebrow}>Trending in {tripDest || 'your area'}</Text>
-                <Text style={styles.sectionTitle}>
-                  What everyone{'\u2019'}s doing
+                <Text style={styles.eyebrow}>
+                  {tripStartDate && tripEndDate
+                    ? `${formatDatePHT(tripStartDate)} — ${formatDatePHT(tripEndDate)} · ${tripDays ?? 0} days`
+                    : 'No trip dates'}
+                </Text>
+                <Text style={styles.plannerCount}>
+                  {plannerTotalCount} item{plannerTotalCount === 1 ? '' : 's'} planned
                 </Text>
               </View>
               <TouchableOpacity
+                style={styles.browsePlacesBtn}
                 activeOpacity={0.7}
-                onPress={() => {
-                  setTab('places');
-                  setPlaceCategoryChip('Activity');
-                }}
+                onPress={() => setTab('places')}
               >
-                <Text style={styles.backLink}>All {'\u2192'}</Text>
+                <Text style={styles.browsePlacesBtnText}>Browse places {'\u2192'}</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Day picker chips */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.trendingRow}
+              contentContainerStyle={styles.plannerDayRow}
             >
-              {TRENDING.map((t) => (
-                <TrendingCard key={t.n} item={t} />
-              ))}
+              {plannerDays.map((d) => {
+                const count = (plannerItems[d.n] ?? []).length;
+                const active = plannerActiveDay === d.n;
+                return (
+                  <TouchableOpacity
+                    key={d.n}
+                    onPress={() => setPlannerActiveDay(d.n)}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.plannerDayChip,
+                      {
+                        backgroundColor: active ? colors.accent : colors.card,
+                        borderColor: active ? colors.accent : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.plannerDayLabel, { color: active ? '#fff' : colors.text3 }]}>
+                      {d.label}
+                    </Text>
+                    <Text style={[styles.plannerDayNum, { color: active ? '#fff' : colors.text }]}>
+                      Day {d.n}
+                    </Text>
+                    <Text style={[styles.plannerDayCount, { color: active ? 'rgba(255,255,255,0.75)' : colors.text3 }]}>
+                      {count > 0 ? `${count} item${count === 1 ? '' : 's'}` : 'empty'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
+
+            {/* Day timeline */}
+            <View style={styles.plannerTimeline}>
+              <Text style={styles.plannerDayEyebrow}>
+                Day {plannerActiveDay} · {plannerDays[plannerActiveDay - 1]?.date ?? ''}
+              </Text>
+
+              {plannerDayItems.length === 0 ? (
+                <View style={styles.plannerEmptyCard}>
+                  <Text style={styles.plannerEmptyTitle}>Nothing planned yet</Text>
+                  <Text style={styles.plannerEmptyBody}>
+                    Save places from the Places tab, then add them to this day.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.plannerEmptyBtn}
+                    activeOpacity={0.7}
+                    onPress={() => setTab('places')}
+                  >
+                    <Text style={styles.plannerEmptyBtnText}>Browse places</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View>
+                  {/* Vertical timeline line */}
+                  <View style={[styles.plannerLine, { backgroundColor: colors.border }]} />
+                  {plannerDayItems.map((item) => (
+                    <View key={item.id} style={styles.plannerItemRow}>
+                      <Text style={styles.plannerItemTime}>{item.time}</Text>
+                      <View style={[styles.plannerDot, { backgroundColor: colors.accent, borderColor: colors.canvas }]} />
+                      <View style={[styles.plannerItemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <View style={styles.plannerItemHeader}>
+                          <Text style={styles.plannerItemTitle}>{item.title}</Text>
+                          <TouchableOpacity
+                            onPress={() => removePlannerItem(item.id)}
+                            activeOpacity={0.6}
+                            hitSlop={8}
+                          >
+                            <Text style={{ color: colors.text3, fontSize: 16 }}>{'\u00D7'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {item.note && (
+                          <Text style={styles.plannerItemNote}>{item.note}</Text>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
           </>
         )}
 
@@ -1967,5 +1957,228 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 11,
       color: colors.accent,
       fontWeight: '500',
+    },
+
+    // Activity cards
+    activityCard: {
+      padding: 12,
+      backgroundColor: colors.bg2,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 6,
+    },
+    activityHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+    },
+    activityEmoji: {
+      fontSize: 20,
+      marginTop: 2,
+    },
+    activityName: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    activityMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: 2,
+    },
+    activitySlot: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.accent,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    activityDot: {
+      fontSize: 10,
+      color: colors.text3,
+    },
+    activityDetail: {
+      fontSize: 10,
+      color: colors.text3,
+    },
+    activityDesc: {
+      fontSize: 12,
+      color: colors.text2,
+      lineHeight: 17,
+      paddingLeft: 30,
+    },
+    activityNavBtn: {
+      alignSelf: 'flex-start',
+      marginLeft: 30,
+      marginTop: 2,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    activityNavText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text,
+    },
+
+    // ── Manual Planner ──
+    plannerSummary: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 14,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      marginBottom: 12,
+    },
+    plannerCount: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      marginTop: 2,
+    },
+    browsePlacesBtn: {
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 10,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    browsePlacesBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    plannerDayRow: {
+      paddingBottom: 14,
+      gap: 8,
+    },
+    plannerDayChip: {
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      minWidth: 64,
+      borderRadius: 14,
+      borderWidth: 1,
+      alignItems: 'center',
+    },
+    plannerDayLabel: {
+      fontSize: 9.5,
+      fontWeight: '700',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+    },
+    plannerDayNum: {
+      fontSize: 15,
+      fontWeight: '600',
+      marginTop: 2,
+    },
+    plannerDayCount: {
+      fontSize: 10,
+      marginTop: 2,
+    },
+    plannerTimeline: {
+      paddingTop: 4,
+      paddingBottom: 18,
+    },
+    plannerDayEyebrow: {
+      fontSize: 11,
+      fontWeight: '600',
+      letterSpacing: 1,
+      textTransform: 'uppercase',
+      color: colors.text3,
+      marginBottom: 10,
+    },
+    plannerEmptyCard: {
+      paddingVertical: 28,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: colors.border2,
+      borderRadius: 16,
+    },
+    plannerEmptyTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 4,
+    },
+    plannerEmptyBody: {
+      fontSize: 12,
+      color: colors.text3,
+      marginBottom: 14,
+      textAlign: 'center',
+    },
+    plannerEmptyBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      borderRadius: 10,
+      backgroundColor: colors.black,
+    },
+    plannerEmptyBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.onBlack,
+    },
+    plannerLine: {
+      position: 'absolute',
+      left: 36,
+      top: 8,
+      bottom: 8,
+      width: 1,
+    },
+    plannerItemRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      marginBottom: 10,
+    },
+    plannerItemTime: {
+      width: 44,
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text2,
+      paddingTop: 14,
+      textAlign: 'right',
+      fontFamily: 'SpaceMono',
+    },
+    plannerDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 999,
+      borderWidth: 2,
+      marginTop: 16,
+    },
+    plannerItemCard: {
+      flex: 1,
+      padding: 12,
+      borderWidth: 1,
+      borderRadius: 12,
+    },
+    plannerItemHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    plannerItemTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      flex: 1,
+    },
+    plannerItemNote: {
+      fontSize: 11,
+      color: colors.text3,
+      marginTop: 4,
     },
   });

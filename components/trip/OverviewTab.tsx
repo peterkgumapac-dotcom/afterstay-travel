@@ -36,7 +36,7 @@ export function OverviewTab({
     <>
       {/* Group */}
       <GroupHeader
-        kicker={`Group \u00B7 ${members.length} traveler${members.length !== 1 ? 's' : ''}`}
+        kicker={`Group · ${members.length} traveler${members.length !== 1 ? 's' : ''}`}
         title="Who's going"
         action={
           <TouchableOpacity onPress={onInvite}>
@@ -79,7 +79,7 @@ export function OverviewTab({
                 )}
               </Text>
               <Text style={styles.memberRole}>
-                {m.role} {'\u00B7'} Booking linked
+                {m.role} · Booking linked
               </Text>
             </View>
             <TouchableOpacity
@@ -129,13 +129,13 @@ export function OverviewTab({
             <View>
               <Text style={styles.accomGridLabel}>CHECK-IN</Text>
               <Text style={styles.accomGridValue}>
-                {trip ? formatDatePHT(trip.startDate) : ''} {'\u00B7'} {trip?.checkIn || '3:00 PM'}
+                {trip ? formatDatePHT(trip.startDate) : ''} · {trip?.checkIn || '3:00 PM'}
               </Text>
             </View>
             <View>
               <Text style={styles.accomGridLabel}>CHECKOUT</Text>
               <Text style={styles.accomGridValue}>
-                {trip ? formatDatePHT(trip.endDate) : ''} {'\u00B7'} {trip?.checkOut || '12:00 PM'}
+                {trip ? formatDatePHT(trip.endDate) : ''} · {trip?.checkOut || '12:00 PM'}
               </Text>
             </View>
             {trip?.cost != null && (
@@ -162,7 +162,7 @@ export function OverviewTab({
 
       {/* Mini flights */}
       <GroupHeader
-        kicker="Transit \u00B7 Both ways"
+        kicker="Transit · Both ways"
         title="Flights"
         colors={colors}
       />

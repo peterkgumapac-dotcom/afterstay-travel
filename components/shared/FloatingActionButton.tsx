@@ -4,7 +4,7 @@ import {
   Modal, Pressable, Text,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Plus, Camera, FileText, Package, Receipt } from 'lucide-react-native';
+import { Plus, Camera, FileText, MessageCircle, Package, Receipt } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
 
@@ -27,15 +27,23 @@ export const FloatingActionButton: React.FC = () => {
     useRef(new Animated.Value(0)).current,
     useRef(new Animated.Value(0)).current,
     useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
   ];
 
   const actions: FabAction[] = [
+    {
+      id: 'chat',
+      icon: MessageCircle,
+      label: 'Group Chat',
+      color: (colors as any).fab1 ?? colors.accent,
+      onPress: () => router.push('/group-chat'),
+    },
     {
       id: 'moment',
       icon: Camera,
       label: 'Capture Moment',
       color: colors.fab2,
-      onPress: () => router.push('/(tabs)/moments'),
+      onPress: () => router.push('/add-moment'),
     },
     {
       id: 'expense',

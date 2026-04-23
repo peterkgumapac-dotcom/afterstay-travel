@@ -13,9 +13,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Svg, { Circle, Line as SvgLine } from 'react-native-svg';
+import Svg, { Circle, Line as SvgLine, Path } from 'react-native-svg';
 
+import { useRouter } from 'expo-router';
 import { useTheme } from '@/constants/ThemeContext';
+import { createTrip } from '@/lib/supabase';
 
 // ---------- TYPES ----------
 
@@ -35,6 +37,7 @@ const SUGGESTED = ['Seoul', 'Bali', 'Taipei', 'Hong Kong', 'Hanoi', 'Kyoto'];
 export default function AddTripSheet({ open, onClose }: AddTripSheetProps) {
   const { colors } = useTheme();
   const styles = getStyles(colors);
+  const router = useRouter();
 
   const [kind, setKind] = useState<TripKind>('upcoming');
   const [dest, setDest] = useState('');
@@ -87,10 +90,25 @@ export default function AddTripSheet({ open, onClose }: AddTripSheetProps) {
     }
   }, [open, slideAnim, backdropAnim]);
 
-  const submit = () => {
-    if (!dest.trim()) return;
-    setSaved(true);
-    setTimeout(() => onClose(), 900);
+  const submit = async () => {
+    if (!dest.trim() || !start.trim() || !end.trim()) return;
+    try {
+      const memberNames = members.trim()
+        ? members.split(',').map((n) => n.trim()).filter(Boolean)
+        : [];
+      await createTrip({
+        name: `Trip to ${dest.trim()}`,
+        destination: dest.trim(),
+        startDate: start.trim(),
+        endDate: end.trim(),
+        members: memberNames,
+      });
+      setSaved(true);
+      setTimeout(() => onClose(), 900);
+    } catch (e: any) {
+      // Show error inline — don't block
+      setSaved(false);
+    }
   };
 
   const screenHeight = Dimensions.get('window').height;
@@ -169,6 +187,31 @@ export default function AddTripSheet({ open, onClose }: AddTripSheetProps) {
                 </Svg>
               </TouchableOpacity>
             </View>
+
+            {/* Scan shortcut */}
+            <TouchableOpacity
+              style={styles.scanShortcut}
+              onPress={() => {
+                onClose();
+                setTimeout(() => router.push('/scan-trip' as never), 300);
+              }}
+              activeOpacity={0.7}
+            >
+              <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M14.5 4l1.5 2h3a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h3l1.5-2z"
+                  stroke={colors.accent}
+                  strokeWidth={1.8}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <Circle cx={12} cy={13} r={3} stroke={colors.accent} strokeWidth={1.8} />
+              </Svg>
+              <View>
+                <Text style={[styles.scanTitle, { color: colors.text }]}>Scan your bookings</Text>
+                <Text style={[styles.scanSub, { color: colors.text3 }]}>Upload flight or hotel screenshots to auto-fill</Text>
+              </View>
+            </TouchableOpacity>
 
             {/* Kind toggle */}
             <View style={styles.kindToggleWrapper}>
@@ -318,10 +361,10 @@ export default function AddTripSheet({ open, onClose }: AddTripSheetProps) {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={submit}
-                disabled={!dest.trim() || saved}
+                disabled={!dest.trim() || !start.trim() || !end.trim() || saved}
                 style={[
                   styles.submitBtn,
-                  (!dest.trim() || saved) && { opacity: 0.6 },
+                  (!dest.trim() || !start.trim() || !end.trim() || saved) && { opacity: 0.6 },
                 ]}
               >
                 <Text style={styles.submitText}>
@@ -402,6 +445,26 @@ const getStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    scanShortcut: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginHorizontal: 20,
+      marginTop: 12,
+      padding: 14,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      borderRadius: 14,
+    },
+    scanTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    scanSub: {
+      fontSize: 11,
+      marginTop: 1,
     },
     kindToggleWrapper: {
       paddingTop: 14,

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '@/constants/ThemeContext';
+import { formatDatePHT } from '@/lib/utils';
 import { MosaicTile } from './MosaicTile';
 import type { MomentDisplay, PeopleMap } from './types';
 
@@ -18,9 +19,6 @@ interface MosaicLayoutProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function reactionScore(m: MomentDisplay): number {
-  return Object.values(m.reactions || {}).reduce((a, b) => a + b, 0);
-}
 
 interface DayGroup {
   day: string;
@@ -56,19 +54,8 @@ export function MosaicLayout({ items, onOpen, people }: MosaicLayoutProps) {
       {byDay.map((grp, gIdx) => {
         const ms = grp.items;
 
-        // Hero = highest reaction-score item in the day (with voice tie-break).
-        let heroIdx = 0;
-        let bestScore = -1;
-        ms.forEach((m, i) => {
-          const s = reactionScore(m) + (m.voice ? 1 : 0);
-          if (s > bestScore) {
-            bestScore = s;
-            heroIdx = i;
-          }
-        });
-
-        const hero = ms[heroIdx];
-        const rest = ms.filter((_, i) => i !== heroIdx);
+        const hero = ms[0];
+        const rest = ms.slice(1);
 
         // Chunk rest into pairs of 2.
         const pairs: MomentDisplay[][] = [];
@@ -88,7 +75,7 @@ export function MosaicLayout({ items, onOpen, people }: MosaicLayoutProps) {
                     { color: colors.text3 },
                   ]}
                 >
-                  {grp.day}
+                  {formatDatePHT(grp.day)}
                 </Text>
                 <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
               </View>

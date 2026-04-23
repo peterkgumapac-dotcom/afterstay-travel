@@ -42,7 +42,7 @@ export function MiniFlightCard({ f, colors }: MiniFlightCardProps) {
           <View>
             <Text style={styles.dirLabel}>{f.dir}</Text>
             <Text style={styles.flightInfo}>
-              {f.airline} {'\u00B7'} {f.code} {f.num}
+              {f.airline} · {f.code} {f.num}
             </Text>
           </View>
         </View>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useTheme } from '@/constants/ThemeContext';
+import { formatDatePHT } from '@/lib/utils';
 
 interface DayChipsProps {
   active: string;
@@ -17,7 +18,7 @@ interface DayChipsProps {
 
 export function DayChips({ active, onChange, counts, total }: DayChipsProps) {
   const { colors } = useTheme();
-  const days = Object.keys(counts);
+  const days = useMemo(() => Object.keys(counts).sort((a, b) => b.localeCompare(a)), [counts]);
 
   return (
     <ScrollView
@@ -36,7 +37,7 @@ export function DayChips({ active, onChange, counts, total }: DayChipsProps) {
       {days.map((d) => (
         <Chip
           key={d}
-          label={d}
+          label={formatDatePHT(d)}
           count={counts[d]}
           isActive={active === d}
           onPress={() => onChange(d)}
@@ -55,7 +56,7 @@ interface ChipProps {
   colors: ReturnType<typeof useTheme>['colors'];
 }
 
-function Chip({ label, count, isActive, onPress, colors }: ChipProps) {
+const Chip = React.memo(function Chip({ label, count, isActive, onPress, colors }: ChipProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -97,7 +98,7 @@ function Chip({ label, count, isActive, onPress, colors }: ChipProps) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   scrollView: {

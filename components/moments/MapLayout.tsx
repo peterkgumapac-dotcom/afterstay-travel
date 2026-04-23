@@ -352,7 +352,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
     return [...items].sort((a, b) => {
       const d = (dayOrder[a.date] ?? 0) - (dayOrder[b.date] ?? 0);
       if (d !== 0) return d;
-      return parseHour(a.time) - parseHour(b.time);
+      return 0;
     });
   }, [items]);
 
@@ -671,8 +671,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
             </Text>
             <Text style={[styles.captionDate, { color: colors.text3 }]}>
               {current.date}
-              {current.time ? ` \u00B7 ${current.time}` : ''}
-            </Text>
+                          </Text>
           </View>
         )}
 
@@ -779,8 +778,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
                 </Text>
                 <Text style={[styles.listDate, { color: colors.text3 }]}>
                   {m.date}
-                  {m.time ? ` \u00B7 ${m.time}` : ''}
-                </Text>
+                                  </Text>
               </View>
               <Avatar authorKey={authorKey} people={people} size={20} />
             </TouchableOpacity>

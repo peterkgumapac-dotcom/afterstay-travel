@@ -38,11 +38,11 @@ interface SceneConfig {
 
 function buildScenes(name: string, destination: string): readonly SceneConfig[] {
   return [
-    { k: 'plane', line: `Packing your passport, ${name}`, sub: 'Pulling bookings from your inbox\u2026' },
-    { k: 'map', line: `Dropping pins around ${destination}`, sub: 'Hotels, beaches, that sisig spot.' },
-    { k: 'sun', line: 'Reading the skies', sub: 'Sunrise at 5:42, rain at 8pm.' },
-    { k: 'postcard', line: 'Stitching your days together', sub: 'Seven perfect ones, coming up.' },
-    { k: 'compass', line: `Ready when you are, ${name}`, sub: 'Tap to begin.' },
+    { k: 'plane', line: `Hey ${name}, hold tight`, sub: 'Grabbing your trip details...' },
+    { k: 'map', line: `Setting up ${destination || 'your trip'}`, sub: 'Flights, hotels, the good stuff.' },
+    { k: 'sun', line: 'Almost there', sub: 'Syncing your itinerary and group...' },
+    { k: 'postcard', line: 'Putting it all together', sub: 'Making sure nothing is missed.' },
+    { k: 'compass', line: `Let\u2019s go, ${name}`, sub: 'Your trip is ready.' },
   ] as const;
 }
 

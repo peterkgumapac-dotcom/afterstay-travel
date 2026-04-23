@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Image,
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Share,
   StyleSheet,
@@ -651,6 +653,7 @@ export default function TripScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [addOpen, setAddOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [newItemText, setNewItemText] = useState('');
 
@@ -670,9 +673,9 @@ export default function TripScreen() {
     totalSpent: number;
   } | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     try {
-      const t = await getActiveTrip();
+      const t = await getActiveTrip(force);
       setTrip(t);
       if (t) {
         const [ms, fs, pk, tf] = await Promise.all([
@@ -699,8 +702,14 @@ export default function TripScreen() {
       // silent — UI shows empty state
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    load(true);
+  };
 
   useEffect(() => {
     load();
@@ -939,6 +948,13 @@ export default function TripScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accentLt}
+          />
+        }
       >
         {/* Top bar */}
         <View style={styles.topBar}>
@@ -959,7 +975,7 @@ export default function TripScreen() {
             <View style={styles.activePill}>
               <PulsingDot color={colors.accent} />
               <Text style={styles.activePillText}>
-                LIVE {'\u00B7'} {destLabel.toUpperCase() || 'TRIP'} {'\u00B7'} {dateRangeLabel.toUpperCase()}
+                LIVE · {destLabel.toUpperCase() || 'TRIP'} · {dateRangeLabel.toUpperCase()}
               </Text>
             </View>
           </View>
@@ -1047,10 +1063,41 @@ export default function TripScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* FAB */}
+      {/* FAB — action menu */}
       <TouchableOpacity
-        onPress={() => setAddOpen(true)}
-        accessibilityLabel="Add trip"
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          const options = ['Add Trip', 'Add Members', 'Invite Members', 'Join Trip', 'Add Moments', 'Add Essentials', 'Cancel'];
+          const cancelIdx = 6;
+          const handler = (idx: number) => {
+            if (idx === 0) setAddOpen(true);
+            else if (idx === 1) router.push('/add-member' as never);
+            else if (idx === 2) router.push('/invite' as never);
+            else if (idx === 3) router.push('/join-trip' as never);
+            else if (idx === 4) router.push('/add-moment' as never);
+            else if (idx === 5) {
+              setActiveTab('essentials');
+              setAddingItem(true);
+            }
+          };
+          if (Platform.OS === 'ios') {
+            ActionSheetIOS.showActionSheetWithOptions(
+              { options, cancelButtonIndex: cancelIdx },
+              handler,
+            );
+          } else {
+            Alert.alert('Add to Trip', '', [
+              { text: 'Add Trip', onPress: () => handler(0) },
+              { text: 'Add Members', onPress: () => handler(1) },
+              { text: 'Invite Members', onPress: () => handler(2) },
+              { text: 'Join Trip', onPress: () => handler(3) },
+              { text: 'Add Moments', onPress: () => handler(4) },
+              { text: 'Add Essentials', onPress: () => handler(5) },
+              { text: 'Cancel', style: 'cancel' },
+            ]);
+          }
+        }}
+        accessibilityLabel="Add to trip"
         accessibilityRole="button"
         style={styles.fab}
         activeOpacity={0.85}

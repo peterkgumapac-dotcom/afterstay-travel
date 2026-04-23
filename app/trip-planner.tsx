@@ -18,7 +18,7 @@ import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { generateItinerary, generateRecommendations } from '@/lib/anthropic';
 import { enrichRecommendations } from '@/lib/google-places';
-import type { ItineraryDay, ItineraryMode } from '@/lib/anthropic';
+import type { ItineraryDay, ItineraryActivity, PlannerPace } from '@/lib/anthropic';
 import { addPlace } from '@/lib/supabase';
 import type { AIRecommendation, PlaceCategory } from '@/lib/types';
 
@@ -37,10 +37,10 @@ const INTERESTS: { key: string; label: string; emoji: string }[] = [
   { key: 'Wellness', label: 'Wellness', emoji: '\uD83D\uDC86' },
 ];
 
-const ITINERARY_MODES: { key: ItineraryMode; label: string; desc: string; emoji: string }[] = [
-  { key: 'Full Pack', label: 'Full Pack', desc: 'Morning to night, every day', emoji: '\uD83D\uDD25' },
-  { key: 'Lite in 7 Days', label: 'Lite in 7 Days', desc: 'Relaxed, 1-2 activities/day', emoji: '\uD83C\uDF3A' },
-  { key: 'Surprise Me', label: 'Surprise Me', desc: 'Mix of popular + hidden gems', emoji: '\uD83C\uDFB2' },
+const ITINERARY_PACES: { key: PlannerPace; label: string; desc: string; emoji: string }[] = [
+  { key: 'packed', label: 'Packed', desc: 'Morning to night, every day', emoji: '\uD83D\uDD25' },
+  { key: 'relaxed', label: 'Relaxed', desc: '2-3 activities/day', emoji: '\uD83C\uDF3A' },
+  { key: 'moderate', label: 'Moderate', desc: '3-4 activities/day', emoji: '\uD83C\uDFB2' },
 ];
 
 const CATEGORY_MAP: Record<string, PlaceCategory> = {
@@ -68,7 +68,7 @@ export default function TripPlannerModal() {
   const [interests, setInterests] = useState<string[]>([]);
   const [recs, setRecs] = useState<(AIRecommendation & { photoUri?: string | null; googleMapsUri?: string | null; googlePlaceId?: string | null; totalRatings?: number; lat?: number; lng?: number })[]>([]);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const [itineraryMode, setItineraryMode] = useState<ItineraryMode>('Full Pack');
+  const [itineraryPace, setItineraryPace] = useState<PlannerPace>('relaxed');
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
   const [error, setError] = useState<string>();
 
@@ -91,7 +91,7 @@ export default function TripPlannerModal() {
         const enriched = await enrichRecommendations(results);
         setRecs(enriched);
       } else {
-        const days = await generateItinerary({ mode: itineraryMode, interests });
+        const days = await generateItinerary({ scope: 'whole', pace: itineraryPace, interests });
         setItinerary(days);
       }
       setStep('results');
@@ -179,7 +179,7 @@ export default function TripPlannerModal() {
     return (
       <ScrollView style={styles.safe} contentContainerStyle={styles.content}>
         <Text style={styles.title}>Your Itinerary</Text>
-        <Text style={styles.sub}>{itineraryMode} — {itinerary.length} days</Text>
+        <Text style={styles.sub}>{itineraryPace} pace — {itinerary.length} days</Text>
 
         {itinerary.map((day) => (
           <View key={day.day} style={styles.dayCard}>
@@ -190,27 +190,40 @@ export default function TripPlannerModal() {
             </View>
             <Text style={styles.dayTheme}>{day.theme}</Text>
 
-            <View style={styles.daySection}>
-              <Text style={styles.daySectionLabel}>Morning</Text>
-              <Text style={styles.daySectionText}>{day.morning}</Text>
-            </View>
-            <View style={styles.daySection}>
-              <Text style={styles.daySectionLabel}>Afternoon</Text>
-              <Text style={styles.daySectionText}>{day.afternoon}</Text>
-            </View>
-            <View style={styles.daySection}>
-              <Text style={styles.daySectionLabel}>Evening</Text>
-              <Text style={styles.daySectionText}>{day.evening}</Text>
-            </View>
-            <View style={styles.daySection}>
-              <Text style={[styles.daySectionLabel, { color: colors.amber }]}>Dining</Text>
-              <Text style={styles.daySectionText}>{day.dining}</Text>
-            </View>
-            {day.tips ? (
-              <View style={styles.tipRow}>
-                <Text style={styles.tipText}>{day.tips}</Text>
+            {/* Structured activity cards */}
+            {(day.activities ?? []).map((act: ItineraryActivity, i: number) => (
+              <View key={`${day.day}-${i}`} style={styles.daySection}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.daySectionLabel}>{act.timeSlot}</Text>
+                  <Text style={{ fontSize: 10, color: colors.text3 }}>{act.duration} · {act.cost}</Text>
+                </View>
+                <Text style={styles.daySectionText}>{act.name}</Text>
+                <Text style={{ fontSize: 12, color: colors.text2, marginTop: 2 }}>{act.description}</Text>
+                {act.tip ? (
+                  <View style={styles.tipRow}>
+                    <Text style={styles.tipText}>{act.tip}</Text>
+                  </View>
+                ) : null}
               </View>
-            ) : null}
+            ))}
+
+            {/* Legacy fallback */}
+            {!(day.activities?.length) && (day as any).morning && (
+              <>
+                <View style={styles.daySection}>
+                  <Text style={styles.daySectionLabel}>Morning</Text>
+                  <Text style={styles.daySectionText}>{(day as any).morning}</Text>
+                </View>
+                <View style={styles.daySection}>
+                  <Text style={styles.daySectionLabel}>Afternoon</Text>
+                  <Text style={styles.daySectionText}>{(day as any).afternoon}</Text>
+                </View>
+                <View style={styles.daySection}>
+                  <Text style={styles.daySectionLabel}>Evening</Text>
+                  <Text style={styles.daySectionText}>{(day as any).evening}</Text>
+                </View>
+              </>
+            )}
           </View>
         ))}
 
@@ -283,17 +296,17 @@ export default function TripPlannerModal() {
           </View>
         </View>
 
-        {/* Itinerary mode selector */}
+        {/* Pace selector */}
         {tab === 'itinerary' && (
           <View>
-            <Text style={styles.label}>Itinerary style</Text>
+            <Text style={styles.label}>Pace</Text>
             <View style={{ gap: spacing.sm }}>
-              {ITINERARY_MODES.map((m) => {
-                const active = itineraryMode === m.key;
+              {ITINERARY_PACES.map((m) => {
+                const active = itineraryPace === m.key;
                 return (
                   <Pressable
                     key={m.key}
-                    onPress={() => setItineraryMode(m.key)}
+                    onPress={() => setItineraryPace(m.key)}
                     style={[styles.modeCard, active && styles.modeCardActive]}
                   >
                     <Text style={styles.modeEmoji}>{m.emoji}</Text>

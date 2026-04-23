@@ -22,6 +22,8 @@ interface TripActiveCardProps {
   budgetStatus: 'cruising' | 'low' | 'over';
   spent: number;
   budget: number;
+  todaySpent?: number;
+  todayCount?: number;
 }
 
 const GREEN_DOT = '#4fb372';
@@ -59,6 +61,8 @@ export function TripActiveCard({
   budgetStatus,
   spent,
   budget,
+  todaySpent = 0,
+  todayCount = 0,
 }: TripActiveCardProps) {
   const { colors } = useTheme();
   const styles = getStyles(colors);
@@ -219,6 +223,19 @@ export function TripActiveCard({
             <View style={[styles.paceMarker, { left: `${expectedPct}%` }]} />
           </View>
           <Text style={styles.budgetHint}>{budgetHint}</Text>
+
+          {/* Today's spending */}
+          <View style={styles.todayRow}>
+            <View style={styles.todayLeft}>
+              <Text style={styles.todayLabel}>Today</Text>
+              <Text style={styles.todayAmount}>
+                {formatCurrency(todaySpent, 'PHP')}
+              </Text>
+            </View>
+            <Text style={styles.todayCount}>
+              {todayCount} expense{todayCount !== 1 ? 's' : ''}
+            </Text>
+          </View>
         </View>
       )}
     </View>
@@ -421,6 +438,38 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     },
     budgetHint: {
       marginTop: 6,
+      fontSize: 10.5,
+      color: colors.text3,
+    },
+    todayRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 10,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    todayLeft: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: 6,
+    },
+    todayLabel: {
+      color: colors.text3,
+      fontSize: 9.5,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.16 * 9.5,
+    },
+    todayAmount: {
+      fontFamily: 'SpaceMono',
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+      fontVariant: ['tabular-nums'] as any,
+    },
+    todayCount: {
       fontSize: 10.5,
       color: colors.text3,
     },

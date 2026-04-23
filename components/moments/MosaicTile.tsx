@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import Svg, { Rect, Path, Circle } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/constants/ThemeContext';
 import { Avatar } from './Avatar';
@@ -30,13 +29,6 @@ export function MosaicTile({
   const authorColor = person?.color ?? '#999';
   const { colors } = useTheme();
 
-  const totalReactions = useMemo(() => {
-    if (!moment.reactions) return 0;
-    return Object.values(moment.reactions).reduce((a, b) => a + b, 0);
-  }, [moment.reactions]);
-
-  const isLoved = totalReactions >= 5;
-
   return (
     <TouchableOpacity
       onPress={() => onOpen(moment)}
@@ -48,13 +40,6 @@ export function MosaicTile({
           borderRadius: 14,
           borderColor: colors.border,
           borderWidth: 1,
-        },
-        isLoved && {
-          shadowColor: authorColor,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.25,
-          shadowRadius: 18,
-          elevation: 6,
         },
       ]}
     >
@@ -92,55 +77,6 @@ export function MosaicTile({
           <Avatar authorKey={authorKey} people={people} size={18} />
         </View>
 
-        {/* Top-left corner badges */}
-        <View style={styles.topLeftBadges}>
-          {moment.voice && (
-            <View style={styles.iconBadge}>
-              <Svg width={10} height={10} viewBox="0 0 24 24" fill="none">
-                <Rect
-                  x={9}
-                  y={2}
-                  width={6}
-                  height={12}
-                  rx={3}
-                  stroke="rgba(255,255,255,0.95)"
-                  strokeWidth={2.2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-                <Path
-                  d="M5 11a7 7 0 0014 0M12 18v3"
-                  stroke="rgba(255,255,255,0.95)"
-                  strokeWidth={2.2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              </Svg>
-            </View>
-          )}
-          {isLoved && (
-            <View style={styles.reactionBadge}>
-              <Text style={styles.heartIcon}>{'\u2665'}</Text>
-              <Text style={styles.reactionCount}>{totalReactions}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Top-right expense badge */}
-        {moment.expense && (
-          <View style={styles.expenseBadge}>
-            <Text
-              style={[
-                styles.expenseText,
-                { color: colors.accentLt },
-              ]}
-            >
-              {moment.expense.amt}
-            </Text>
-          </View>
-        )}
       </ImageBackground>
     </TouchableOpacity>
   );

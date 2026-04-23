@@ -82,6 +82,14 @@ export default function ScanReceiptScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
+      // Format line items as readable breakdown for notes
+      const itemLines = scanned.items
+        .map((item) => {
+          const qtyStr = item.qty > 1 ? `${item.qty}× ` : '';
+          return `${qtyStr}${item.name} — ₱${item.amount.toFixed(2)}`;
+        })
+        .join('\n');
+
       router.replace({
         pathname: '/add-expense',
         params: {
@@ -91,7 +99,7 @@ export default function ScanReceiptScreen() {
           category: scanned.category,
           placeName: scanned.placeName,
           date: scanned.date,
-          notes: scanned.items.join(', '),
+          notes: itemLines,
           photoUri: asset.uri,
         },
       });

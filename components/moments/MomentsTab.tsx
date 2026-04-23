@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
 import { getMoments, getGroupMembers } from '@/lib/supabase';
+import { formatDatePHT } from '@/lib/utils';
 import type { Moment, GroupMember } from '@/lib/types';
 import type { MomentDisplay, PeopleMap } from './types';
 import { StatBlock } from './StatBlock';
@@ -202,7 +203,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         <View style={s.switcherRow}>
           <Text style={s.momentCountText}>
             {filtered.length} {filtered.length === 1 ? 'moment' : 'moments'}
-            {activeDay !== 'all' ? ` on ${activeDay}` : ''}
+            {activeDay !== 'all' ? ` · ${formatDatePHT(activeDay)}` : ''}
           </Text>
 
           <View style={s.segmented}>

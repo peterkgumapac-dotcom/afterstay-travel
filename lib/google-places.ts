@@ -1,9 +1,10 @@
 // Google Places API client — classic (legacy) endpoints.
 
-const API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY ?? '';
+import { CONFIG } from './config';
 
-const HOTEL_LAT = 11.9710;
-const HOTEL_LNG = 121.9215;
+const API_KEY = CONFIG.GOOGLE_MAPS_KEY;
+const HOTEL_LAT = CONFIG.HOTEL_COORDS.lat;
+const HOTEL_LNG = CONFIG.HOTEL_COORDS.lng;
 
 export interface PlaceSearchResult {
   place_id: string;
@@ -197,8 +198,6 @@ export async function placeAutocomplete(
     return [];
   }
 }
-
-export { HOTEL_LAT, HOTEL_LNG };
 
 export async function enrichRecommendations<T extends { name: string }>(
   recs: T[],

@@ -6,12 +6,16 @@ import {
   Alert,
   FlatList,
   Image,
+  Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, Plus, X, AlertCircle, Loader } from 'lucide-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -45,6 +49,7 @@ export default function AddMomentScreen() {
   const [tags, setTags] = useState<MomentTag[]>([]);
   const [takenBy, setTakenBy] = useState('');
   const [date, setDate] = useState(todayStr);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [locationSuggestions, setLocationSuggestions] = useState<{ placeId: string; description: string }[]>([]);
@@ -322,16 +327,52 @@ export default function AddMomentScreen() {
               />
             </View>
 
-            {/* Date */}
+            {/* Date — calendar picker */}
             <View style={styles.field}>
               <Text style={styles.label}>Date</Text>
-              <TextInput
+              <TouchableOpacity
                 style={styles.input}
-                value={date}
-                onChangeText={setDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.text3}
-              />
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: colors.text, fontSize: 14 }}>
+                  {new Date(date + 'T00:00:00+08:00').toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                  })}
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && Platform.OS === 'android' && (
+                <DateTimePicker
+                  value={new Date(date + 'T00:00:00+08:00')}
+                  mode="date"
+                  onChange={(_, selected) => {
+                    setShowDatePicker(false);
+                    if (selected) setDate(selected.toISOString().slice(0, 10));
+                  }}
+                />
+              )}
+              {showDatePicker && Platform.OS === 'ios' && (
+                <Modal transparent animationType="fade" onRequestClose={() => setShowDatePicker(false)}>
+                  <Pressable style={styles.dateModalBackdrop} onPress={() => setShowDatePicker(false)}>
+                    <View style={[styles.dateModalCard, { backgroundColor: colors.card }]}>
+                      <DateTimePicker
+                        value={new Date(date + 'T00:00:00+08:00')}
+                        mode="date"
+                        display="inline"
+                        onChange={(_, selected) => {
+                          if (selected) setDate(selected.toISOString().slice(0, 10));
+                        }}
+                      />
+                      <TouchableOpacity
+                        style={[styles.dateModalDone, { backgroundColor: colors.accent }]}
+                        onPress={() => setShowDatePicker(false)}
+                      >
+                        <Text style={{ color: colors.ink, fontWeight: '600', fontSize: 14 }}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </Pressable>
+                </Modal>
+              )}
             </View>
 
             {/* Upload button */}
@@ -492,6 +533,26 @@ const getStyles = (colors: ThemeColors) =>
       borderBottomColor: colors.border,
     },
     suggestionText: { fontSize: 13, color: colors.text },
+
+    // Date picker modal
+    dateModalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 20,
+    },
+    dateModalCard: {
+      width: '100%',
+      borderRadius: 16,
+      padding: 16,
+      gap: 12,
+    },
+    dateModalDone: {
+      paddingVertical: 12,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
 
     // Upload button
     uploadBtn: {

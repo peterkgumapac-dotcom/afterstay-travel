@@ -22,7 +22,6 @@ import { FlightProgressCard } from '@/components/home/FlightProgressCard';
 import { TripActiveCard } from '@/components/home/TripActiveCard';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
-import { NearbySection } from '@/components/home/NearbySection';
 import ProfileRow from '@/components/home/ProfileRow';
 import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
@@ -32,6 +31,7 @@ import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
   getActiveTrip,
+  getExpenses,
   getExpenseSummary,
   getFlights,
   getGroupMembers,
@@ -99,6 +99,44 @@ const sectionHeaderStyles = StyleSheet.create({
   },
 });
 
+function CollapsibleSection({
+  kicker,
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  kicker: string;
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <View>
+      <Pressable
+        onPress={() => setOpen((o) => !o)}
+        style={sectionHeaderStyles.container}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}, ${open ? 'collapse' : 'expand'}`}
+      >
+        <View>
+          <Text style={[sectionHeaderStyles.kicker, { color: colors.text3 }]}>
+            {kicker}
+          </Text>
+          <Text style={[sectionHeaderStyles.title, { color: colors.text }]}>
+            {title}
+          </Text>
+        </View>
+        <Text style={{ color: colors.text3, fontSize: 12, fontWeight: '600' }}>
+          {open ? 'Hide' : 'Show'}
+        </Text>
+      </Pressable>
+      {open && children}
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -114,16 +152,30 @@ export default function HomeScreen() {
 
   const [phase, setPhase] = useState<TripPhase>('upcoming');
   const [totalSpent, setTotalSpent] = useState(0);
+  const [todaySpent, setTodaySpent] = useState(0);
+  const [todayCount, setTodayCount] = useState(0);
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState<string>();
   const [members, setMembers] = useState<GroupMember[]>([]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     try {
       setError(undefined);
-      const t = await getActiveTrip();
-      setTrip(t);
-      await cacheSet('trip:active', t);
+      let t = await getActiveTrip(force);
+      // Retry twice if RLS returned 0 rows (auth token race)
+      if (!t && !force) {
+        await new Promise(r => setTimeout(r, 800));
+        t = await getActiveTrip(true);
+      }
+      if (!t && !force) {
+        await new Promise(r => setTimeout(r, 1500));
+        t = await getActiveTrip(true);
+      }
+      // Only update state if we got a trip — never overwrite cache with null
+      if (t) {
+        setTrip(t);
+        await cacheSet('trip:active', t);
+      }
       if (t) {
         const [fs, ms, members] = await Promise.all([
           getFlights(t.id).catch(() => [] as Flight[]),
@@ -187,6 +239,13 @@ export default function HomeScreen() {
           count: 0,
         }));
         setTotalSpent(summary.total);
+
+        // Today's expenses
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const allExpenses = await getExpenses(t.id).catch(() => []);
+        const todayExps = allExpenses.filter((e) => e.date === todayIso);
+        setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
+        setTodayCount(todayExps.length);
       } else {
         setFlights([]);
         setMoments([]);
@@ -293,7 +352,7 @@ export default function HomeScreen() {
   // Room info
   const roomInfo = useMemo(
     () => trip?.roomType
-      ? `${trip.roomType} \u00D7 2 \u00B7 ${totalNights} nights \u00B7 ${dateRange}`
+      ? `${trip.roomType} × 2 · ${totalNights} nights · ${dateRange}`
       : undefined,
     [trip?.roomType, totalNights, dateRange],
   );
@@ -308,7 +367,7 @@ export default function HomeScreen() {
     );
   }
 
-  if (error || !trip) {
+  if (!trip) {
     return (
       <SafeAreaView style={styles.fullCenter}>
         <Text style={styles.errorTitle}>Couldn't load trip</Text>
@@ -405,6 +464,8 @@ export default function HomeScreen() {
                 budgetStatus="cruising"
                 spent={totalSpent}
                 budget={trip.budgetLimit ?? 0}
+                todaySpent={todaySpent}
+                todayCount={todayCount}
               />
             ) : (
               <CountdownCard
@@ -429,15 +490,28 @@ export default function HomeScreen() {
           </Animated.View>
         </View>
 
-        {/* 4. Weather — shown in active phase as "Boracay right now" */}
-        {phase === 'active' && (
-          <>
-            <SectionHeader kicker="Weather" title={`${trip.destination ?? 'Destination'} right now`} />
-            <WeatherForecastCard destination={trip.destination} />
-          </>
-        )}
+        {/* 4. Moments preview — first after trip card */}
+        <SectionHeader
+          kicker={`Moments · Day ${countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1}`}
+          title="Trip so far"
+        />
+        <HomeMomentsPreview
+          moments={moments}
+          members={members}
+          onViewAll={() => router.push('/moments-slideshow' as never)}
+        />
 
-        {/* 5. Flight card */}
+        {/* 5. Weather — collapsible */}
+        <CollapsibleSection
+          kicker="Weather"
+          title={phase === 'active'
+            ? `${trip.destination ?? 'Destination'} right now`
+            : `${trip.destination ?? 'Destination'} this week`}
+        >
+          <WeatherForecastCard destination={trip.destination} />
+        </CollapsibleSection>
+
+        {/* 6. Flight card */}
         {(() => {
           const activeFlight = phase === 'active'
             ? flights.find((f) => f.direction === 'Return')
@@ -447,7 +521,7 @@ export default function HomeScreen() {
           return (
             <>
               <SectionHeader
-                kicker={`Transit \u00B7 ${dirLabel}`}
+                kicker={`Transit · ${dirLabel}`}
                 title={`Flight to ${destCity}`}
               />
               <FlightCard
@@ -458,40 +532,14 @@ export default function HomeScreen() {
           );
         })()}
 
-        {/* 4b. Weather — shown in non-active phase as "Boracay this week" */}
-        {phase !== 'active' && (
-          <>
-            <SectionHeader kicker="Weather" title={`${trip.destination ?? 'Destination'} this week`} />
-            <WeatherForecastCard destination={trip.destination} />
-          </>
-        )}
-
-        {/* 6. Quick access */}
-        <SectionHeader
-          kicker="Stay \u00B7 Quick access"
+        {/* 7. Quick access — collapsible */}
+        <CollapsibleSection
+          kicker="Stay · Quick access"
           title="Everything for check-in"
-        />
-        <QuickAccessGrid tiles={quickAccessTiles} />
-
-        {/* 7. Moments preview */}
-        <SectionHeader
-          kicker={`Moments · Day ${countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1}`}
-          title="Trip so far"
-          action={
-            <TouchableOpacity onPress={() => router.push('/(tabs)/trip' as never)}>
-              <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>All {'\u2192'}</Text>
-            </TouchableOpacity>
-          }
-        />
-        <HomeMomentsPreview
-          moments={moments}
-          members={members}
-          onViewAll={() => router.push('/(tabs)/trip' as never)}
-        />
-
-        {/* 8. Nearby */}
-        <SectionHeader kicker="Nearby" title="Around the hotel" />
-        <NearbySection />
+          defaultOpen={false}
+        >
+          <QuickAccessGrid tiles={quickAccessTiles} />
+        </CollapsibleSection>
 
         {/* Bottom spacer */}
         <View style={{ height: 16 }} />

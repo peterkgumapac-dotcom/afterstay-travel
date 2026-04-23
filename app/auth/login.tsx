@@ -23,26 +23,21 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Path, Circle as SvgCircle, Rect, Line, Polyline } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import { useAuth } from '@/lib/auth';
+import { CONFIG } from '@/lib/config';
+import { supabase } from '@/lib/supabase';
 import { spacing, radius } from '@/constants/theme';
 import ConstellationHero from '@/components/auth/ConstellationHero';
 
-type Panel = 'root' | 'email' | 'phone' | 'sent';
+GoogleSignin.configure({
+  webClientId: CONFIG.GOOGLE_WEB_CLIENT_ID,
+});
 
-interface CountryOption {
-  flag: string;
-  code: string;
-}
-
-const COUNTRY_OPTIONS: readonly CountryOption[] = [
-  { flag: '\u{1F1F5}\u{1F1ED}', code: '+63' },
-  { flag: '\u{1F1FA}\u{1F1F8}', code: '+1' },
-  { flag: '\u{1F1EC}\u{1F1E7}', code: '+44' },
-  { flag: '\u{1F1E6}\u{1F1FA}', code: '+61' },
-  { flag: '\u{1F1F8}\u{1F1EC}', code: '+65' },
-  { flag: '\u{1F1EF}\u{1F1F5}', code: '+81' },
-  { flag: '\u{1F1EE}\u{1F1F3}', code: '+91' },
-] as const;
+type Panel = 'root' | 'email' | 'sent';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -179,6 +174,8 @@ function SignInButton({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={[
         signInStyles.button,
         {
@@ -238,6 +235,7 @@ function PrimaryButton({
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.8}
+      accessibilityRole="button"
       style={[
         primaryStyles.button,
         {
@@ -383,10 +381,8 @@ const inputStyles = StyleSheet.create({
 /* ─── Success icon with pop animation ─── */
 
 function SuccessIcon({
-  kind,
   colors,
 }: {
-  kind: string;
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   const scale = useSharedValue(0.8);
@@ -412,9 +408,7 @@ function SuccessIcon({
           borderWidth: 1,
         },
       ]}>
-        <View style={{ color: colors.accent } as never}>
-          {kind === 'email' ? <EmailIcon /> : <SMSIcon />}
-        </View>
+        <EmailIcon />
       </View>
     </Animated.View>
   );
@@ -424,7 +418,7 @@ const successStyles = StyleSheet.create({
   circle: {
     width: 64,
     height: 64,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -432,46 +426,57 @@ const successStyles = StyleSheet.create({
 
 /* ─── Main screen ─── */
 
-function getStyles(colors: ReturnType<typeof useTheme>['colors']) {
-  return StyleSheet.create({
-    /* nothing dynamic needed beyond inline colors */
-  });
-}
-
 export default function LoginScreen() {
   const { colors } = useTheme();
   const { signIn, signInWithMagicLink, session } = useAuth();
   const router = useRouter();
 
   const [panel, setPanel] = useState<Panel>('root');
+  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [countryCode, setCountryCode] = useState('+63');
   const [sentTarget, setSentTarget] = useState({ kind: '', target: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-redirect when session appears (user clicked magic link)
+  // Auto-redirect when session appears (any method — Google, magic link, password)
+  // _layout.tsx auth gate handles the actual stack swap; this just resets to index
   useEffect(() => {
-    if (session && panel === 'sent') {
-      router.replace('/(tabs)/home' as never);
+    if (session) {
+      router.replace('/');
     }
-  }, [session, panel, router]);
+  }, [session, router]);
 
   const isEmailValid = EMAIL_REGEX.test(email.trim());
 
-  const handleSignInWithPassword = async () => {
+  const handleAuthAction = async () => {
     if (!isEmailValid || !password) return;
     setLoading(true);
     setError(null);
-    const { error: err } = await signIn(email.trim(), password);
-    if (err) {
-      setError(err);
-      setLoading(false);
+
+    if (isSignUp) {
+      const { data, error: err } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password,
+      });
+      if (err) {
+        setLoading(false);
+        setError(err.message);
+      } else if (data.session) {
+        // Automatically signed in
+        router.replace('/');
+      } else {
+        setLoading(false);
+        Alert.alert('Verify your email', 'We sent a confirmation link to your email. Please check it to complete registration.');
+      }
     } else {
-      router.replace('/(tabs)/home' as never);
+      const { error: err } = await signIn(email.trim(), password);
+      if (err) {
+        setLoading(false);
+        setError(err);
+      }
     }
+    // Success: session useEffect handles redirect
   };
 
   const handleSendMagicLink = async () => {
@@ -487,10 +492,6 @@ export default function LoginScreen() {
       setSentTarget({ kind: 'email', target: email.trim() });
       setPanel('sent');
     }
-  };
-
-  const handlePhoneSend = () => {
-    Alert.alert('Coming Soon', 'Phone sign-in will be available soon.');
   };
 
   const resetToPanel = (target: Panel) => {
@@ -512,10 +513,17 @@ export default function LoginScreen() {
         >
           {panel === 'root' && renderRootPanel()}
           {panel === 'email' && renderEmailPanel()}
-          {panel === 'phone' && renderPhonePanel()}
           {panel === 'sent' && renderSentPanel()}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Loading overlay — shown during Google/email sign-in */}
+      {loading && (
+        <View style={[styles.loadingOverlay, { backgroundColor: colors.bg + 'DD' }]}>
+          <ActivityIndicator color={colors.accent} size="large" />
+          <Text style={[styles.loadingText, { color: colors.text2 }]}>Signing you in…</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 
@@ -537,23 +545,52 @@ export default function LoginScreen() {
 
           {/* Button group */}
           <View style={styles.buttonGroup}>
-            {/* Apple */}
+            {/* Apple — not yet wired */}
             <StaggeredItem index={1}>
-              <SignInButton
-                onPress={() => Alert.alert('Coming Soon', 'Apple Sign-In will be available soon.')}
-                icon={<AppleIcon />}
-                label="Continue with Apple"
-                bg="#000"
-                fg="#fff"
-                borderColor="#000"
-                shadow
-              />
+              <View style={{ opacity: 0.45 }}>
+                <SignInButton
+                  onPress={() => {}}
+                  icon={<AppleIcon />}
+                  label="Continue with Apple — coming soon"
+                  bg="#000"
+                  fg="#fff"
+                  borderColor="#000"
+                />
+              </View>
             </StaggeredItem>
 
             {/* Google */}
             <StaggeredItem index={2}>
               <SignInButton
-                onPress={() => Alert.alert('Coming Soon', 'Google Sign-In will be available soon.')}
+                onPress={async () => {
+                  try {
+                    setLoading(true);
+                    setError(null);
+                    await GoogleSignin.hasPlayServices();
+                    const response = await GoogleSignin.signIn();
+                    const idToken = response.data?.idToken;
+                    if (!idToken) {
+                      setLoading(false);
+                      Alert.alert('Sign-In Error', 'No ID token received from Google');
+                      return;
+                    }
+                    const { error: googleErr } = await supabase.auth.signInWithIdToken({
+                      provider: 'google',
+                      token: idToken,
+                    });
+                    if (googleErr) {
+                      setLoading(false);
+                      Alert.alert('Sign-In Error', googleErr.message);
+                    }
+                    // Success: session useEffect handles redirect
+                  } catch (e: unknown) {
+                    setLoading(false);
+                    const err = e as { code?: string; message?: string };
+                    if (err.code === statusCodes.SIGN_IN_CANCELLED) return;
+                    if (err.code === statusCodes.IN_PROGRESS) return;
+                    Alert.alert('Google Sign-In failed', err.message ?? 'Unknown error');
+                  }
+                }}
                 icon={<GoogleIcon />}
                 label="Continue with Google"
                 bg="#fff"
@@ -572,7 +609,7 @@ export default function LoginScreen() {
             <StaggeredItem index={4}>
               <SignInButton
                 onPress={() => resetToPanel('email')}
-                icon={<View style={{ color: colors.text } as never}><EmailIcon /></View>}
+                icon={<EmailIcon />}
                 label="Continue with email"
                 bg={colors.card}
                 fg={colors.text}
@@ -580,16 +617,18 @@ export default function LoginScreen() {
               />
             </StaggeredItem>
 
-            {/* Phone */}
+            {/* Phone — not yet wired */}
             <StaggeredItem index={5}>
-              <SignInButton
-                onPress={() => resetToPanel('phone')}
-                icon={<View style={{ color: colors.text } as never}><SMSIcon /></View>}
-                label="Continue with phone"
-                bg={colors.card}
-                fg={colors.text}
-                borderColor={colors.border}
-              />
+              <View style={{ opacity: 0.45 }}>
+                <SignInButton
+                  onPress={() => {}}
+                  icon={<SMSIcon />}
+                  label="Continue with phone — coming soon"
+                  bg={colors.card}
+                  fg={colors.text}
+                  borderColor={colors.border}
+                />
+              </View>
             </StaggeredItem>
           </View>
 
@@ -613,8 +652,8 @@ export default function LoginScreen() {
                 ))}
               </View>
               <Text style={[styles.socialText, { color: colors.text2 }]}>
-                <Text style={{ color: colors.text, fontWeight: '600' }}>Peter, Aaron &amp; Jane</Text>
-                {' '}are already on Afterstay.
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Travelers like you</Text>
+                {' '}are planning their next trip on AfterStay.
               </Text>
             </View>
           </StaggeredItem>
@@ -636,13 +675,25 @@ export default function LoginScreen() {
   function renderEmailPanel() {
     return (
       <>
-
         <View style={styles.body}>
+          {/* Back button */}
+          <TouchableOpacity
+            onPress={() => resetToPanel('root')}
+            style={styles.topBackBtn}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Back to sign-in options"
+          >
+            <Text style={[styles.topBackText, { color: colors.text2 }]}>{'\u2190'} Back</Text>
+          </TouchableOpacity>
+
           {/* Heading */}
           <View style={styles.headingBlock}>
-            <Text style={[styles.subHeading, { color: colors.text }]}>Sign in with email</Text>
+            <Text style={[styles.subHeading, { color: colors.text }]}>
+              {isSignUp ? 'Create an account' : 'Sign in with email'}
+            </Text>
             <Text style={[styles.subText, { color: colors.text2 }]}>
-              We'll send a secure link — no password to remember.
+              {isSignUp ? 'Join Afterstay to start planning your trips.' : "We'll send a secure link — no password to remember."}
             </Text>
           </View>
 
@@ -678,9 +729,9 @@ export default function LoginScreen() {
               <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
             ) : null}
 
-            {/* Sign In (password) */}
+            {/* Sign In / Sign Up (password) */}
             <PrimaryButton
-              onPress={handleSignInWithPassword}
+              onPress={handleAuthAction}
               disabled={!isEmailValid || !password || loading}
               colors={colors}
             >
@@ -689,12 +740,25 @@ export default function LoginScreen() {
               ) : (
                 <>
                   <Text style={[primaryStyles.text, { color: !isEmailValid || !password ? colors.text3 : colors.onBlack }]}>
-                    Sign In
+                    {isSignUp ? 'Create Account' : 'Sign In'}
                   </Text>
                   <ArrowIcon />
                 </>
               )}
             </PrimaryButton>
+
+            {/* Toggle Sign In / Sign Up */}
+            <TouchableOpacity
+              onPress={() => setIsSignUp(!isSignUp)}
+              style={styles.toggleAuth}
+            >
+              <Text style={[styles.toggleAuthText, { color: colors.text2 }]}>
+                {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+                <Text style={{ color: colors.accent, fontWeight: '600' }}>
+                  {isSignUp ? 'Sign In' : 'Create one'}
+                </Text>
+              </Text>
+            </TouchableOpacity>
 
             {/* OR divider */}
             <DividerOr colors={colors} />
@@ -704,6 +768,8 @@ export default function LoginScreen() {
               onPress={handleSendMagicLink}
               disabled={!isEmailValid || loading}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Send magic link instead"
               style={[
                 styles.ghostButton,
                 {
@@ -722,99 +788,8 @@ export default function LoginScreen() {
           <TouchableOpacity
             onPress={() => resetToPanel('root')}
             style={styles.backLink}
-          >
-            <Text style={[styles.backLinkText, { color: colors.text3 }]}>
-              {'\u2190'} Back to sign-in options
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </>
-    );
-  }
-
-  function renderPhonePanel() {
-    const phoneDigits = phone.replace(/\D/g, '');
-    const isPhoneValid = phoneDigits.length >= 7;
-
-    return (
-      <>
-        <View style={styles.body}>
-          {/* Heading */}
-          <View style={styles.headingBlock}>
-            <Text style={[styles.subHeading, { color: colors.text }]}>Sign in with phone</Text>
-            <Text style={[styles.subText, { color: colors.text2 }]}>
-              Get a one-time code to verify your number.
-            </Text>
-          </View>
-
-          {/* Fields */}
-          <View style={styles.fieldGroup}>
-            <View>
-              <FieldLabel colors={colors}>Mobile number</FieldLabel>
-              <View style={styles.phoneRow}>
-                {/* Country code chips */}
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={[
-                    styles.countryPicker,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  {COUNTRY_OPTIONS.map((opt) => (
-                    <TouchableOpacity
-                      key={opt.code}
-                      onPress={() => setCountryCode(opt.code)}
-                      style={[
-                        styles.countryChip,
-                        countryCode === opt.code && {
-                          backgroundColor: colors.accentBg,
-                          borderColor: colors.accentBorder,
-                          borderWidth: 1,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.countryChipText, { color: colors.text, fontWeight: countryCode === opt.code ? '600' : '400' }]}>
-                        {opt.flag} {opt.code}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                {/* Phone input with prefix */}
-                <StyledInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="917 555 0123"
-                  keyboardType="phone-pad"
-                  autoComplete="tel"
-                  autoFocus
-                  prefix={countryCode}
-                  colors={colors}
-                />
-              </View>
-              <Text style={[styles.metaText, { color: colors.text3 }]}>
-                We'll text you a 6-digit code. Standard message rates may apply.
-              </Text>
-            </View>
-
-            {/* Send code */}
-            <PrimaryButton
-              onPress={handlePhoneSend}
-              disabled={!isPhoneValid}
-              colors={colors}
-            >
-              <Text style={[primaryStyles.text, { color: !isPhoneValid ? colors.text3 : colors.onBlack }]}>
-                Send verification code
-              </Text>
-              <ArrowIcon />
-            </PrimaryButton>
-          </View>
-
-          {/* Back link */}
-          <TouchableOpacity
-            onPress={() => resetToPanel('root')}
-            style={styles.backLink}
+            accessibilityRole="button"
+            accessibilityLabel="Back to sign-in options"
           >
             <Text style={[styles.backLinkText, { color: colors.text3 }]}>
               {'\u2190'} Back to sign-in options
@@ -826,22 +801,28 @@ export default function LoginScreen() {
   }
 
   function renderSentPanel() {
-    const isEmail = sentTarget.kind === 'email';
-
     return (
       <>
         <View style={[styles.body, { alignItems: 'center' }]}>
+          {/* Back button */}
+          <TouchableOpacity
+            onPress={() => resetToPanel('email')}
+            style={[styles.topBackBtn, { alignSelf: 'flex-start' }]}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Back to email"
+          >
+            <Text style={[styles.topBackText, { color: colors.text2 }]}>{'\u2190'} Back</Text>
+          </TouchableOpacity>
           <View style={styles.sentContent}>
             {/* Success icon */}
-            <SuccessIcon kind={sentTarget.kind} colors={colors} />
+            <SuccessIcon colors={colors} />
 
             {/* Text block */}
             <View style={styles.sentTextBlock}>
-              <Text style={[styles.sentHeading, { color: colors.text }]}>
-                {isEmail ? 'Check your inbox' : 'Check your messages'}
-              </Text>
+              <Text style={[styles.sentHeading, { color: colors.text }]}>Check your inbox</Text>
               <Text style={[styles.sentSubtext, { color: colors.text2 }]}>
-                We sent a {isEmail ? 'magic link' : '6-digit code'} to{'\n'}
+                We sent a magic link to{'\n'}
                 <Text style={{ color: colors.text, fontWeight: '600' }}>{sentTarget.target}</Text>
               </Text>
             </View>
@@ -849,11 +830,7 @@ export default function LoginScreen() {
             {/* Continue button */}
             <View style={{ width: '100%', marginTop: 4 }}>
               <PrimaryButton
-                onPress={() => {
-                  if (session) {
-                    router.replace('/(tabs)/home' as never);
-                  }
-                }}
+                onPress={() => { if (session) router.replace('/'); }}
                 disabled={!session}
                 colors={colors}
               >
@@ -865,11 +842,13 @@ export default function LoginScreen() {
 
             {/* Back link */}
             <TouchableOpacity
-              onPress={() => resetToPanel(isEmail ? 'email' : 'phone')}
+              onPress={() => resetToPanel('email')}
               style={styles.sentBackLink}
+              accessibilityRole="button"
+              accessibilityLabel="Use a different email"
             >
               <Text style={[styles.sentBackLinkText, { color: colors.text3 }]}>
-                Use a different {isEmail ? 'email' : 'number'}
+                Use a different email
               </Text>
             </TouchableOpacity>
           </View>
@@ -884,14 +863,15 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: 'flex-start',
   },
   body: {
-    paddingTop: 26,
-    paddingHorizontal: 22,
-    paddingBottom: 28,
+    paddingTop: spacing.xxl,
+    paddingHorizontal: spacing.xxl,
+    paddingBottom: spacing.xxl,
   },
   headingBlock: {
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   heading: {
     fontSize: 26,
@@ -917,10 +897,10 @@ const styles = StyleSheet.create({
     lineHeight: 13 * 1.45,
   },
   buttonGroup: {
-    gap: 10,
+    gap: spacing.sm + 2,
   },
   fieldGroup: {
-    gap: 14,
+    gap: spacing.md + 2,
   },
   ghostButton: {
     width: '100%',
@@ -935,9 +915,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  topBackBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.md,
+    paddingRight: spacing.lg,
+    marginBottom: spacing.sm,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  topBackText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   backLink: {
     alignSelf: 'center',
-    padding: 8,
+    padding: spacing.md,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   backLinkText: {
     fontSize: 12,
@@ -950,12 +944,12 @@ const styles = StyleSheet.create({
   socialProof: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 22,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    gap: spacing.sm + 2,
+    marginTop: spacing.xxl,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md + 2,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: radius.sm,
   },
   avatarRow: {
     flexDirection: 'row',
@@ -963,7 +957,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 22,
     height: 22,
-    borderRadius: 999,
+    borderRadius: radius.pill,
   },
   socialText: {
     fontSize: 11.5,
@@ -971,7 +965,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   legal: {
-    marginTop: 18,
+    marginTop: spacing.lg + 2,
     fontSize: 10.5,
     textAlign: 'center',
     lineHeight: 10.5 * 1.55,
@@ -980,29 +974,6 @@ const styles = StyleSheet.create({
   legalLink: {
     fontWeight: '600',
     textDecorationLine: 'underline',
-  },
-  phoneRow: {
-    gap: 8,
-  },
-  countryPicker: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    flexDirection: 'row',
-  },
-  countryChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  countryChipText: {
-    fontSize: 14,
-  },
-  metaText: {
-    fontSize: 11,
-    lineHeight: 11 * 1.5,
-    marginTop: 8,
   },
   sentContent: {
     alignItems: 'center',
@@ -1025,10 +996,30 @@ const styles = StyleSheet.create({
     maxWidth: 280,
   },
   sentBackLink: {
-    padding: 4,
+    padding: spacing.md,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   sentBackLinkText: {
     fontSize: 12,
+    fontWeight: '600',
+  },
+  toggleAuth: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  toggleAuthText: {
+    fontSize: 13,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  loadingText: {
+    marginTop: 14,
+    fontSize: 14,
     fontWeight: '600',
   },
 });

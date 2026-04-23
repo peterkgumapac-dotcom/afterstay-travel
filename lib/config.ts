@@ -7,6 +7,7 @@ export const CONFIG = {
   TRIP_PAGE_ID: process.env.EXPO_PUBLIC_TRIP_PAGE_ID || '',
   HOTEL: { lat: 11.9710, lng: 121.9215 },
   HOTEL_COORDS: { lat: 11.9710, lng: 121.9215 },
+  GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '',
   TRIP_BUDGET_KEY: 'tripBudget_v1',
 } as const;
 

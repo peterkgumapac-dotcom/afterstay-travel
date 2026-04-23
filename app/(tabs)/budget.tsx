@@ -8,6 +8,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -51,6 +52,30 @@ import type { Expense, GroupMember, Trip } from '@/lib/types';
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type BudgetState = 'cruising' | 'low' | 'over';
 type BudgetMode = 'limited' | 'unlimited';
+
+/* ---------- Clean raw expense descriptions from OCR/payment metadata ---------- */
+
+const NOISE_PHRASES = [
+  /^payment transaction at /i,
+  /^ride booking service with /i,
+  /^dinner for multiple people with /i,
+  /^purchase at /i,
+  /^online payment to /i,
+  / in boracay$/i,
+  / in .*philippines$/i,
+];
+
+function cleanExpenseDescription(raw: string): string {
+  let desc = raw.trim();
+  for (const rx of NOISE_PHRASES) {
+    desc = desc.replace(rx, '');
+  }
+  // Capitalize first letter
+  if (desc.length > 0) desc = desc.charAt(0).toUpperCase() + desc.slice(1);
+  // Truncate overly long descriptors
+  if (desc.length > 40) desc = desc.slice(0, 37) + '…';
+  return desc || raw.trim();
+}
 
 /* ---------- Category icon components (verbatim SVG paths from prototype) ---------- */
 
@@ -195,10 +220,11 @@ export default function BudgetScreen() {
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
   const [showAllExpenses, setShowAllExpenses] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     try {
-      const t = await getActiveTrip();
+      const t = await getActiveTrip(force);
       setTrip(t);
       if (t) {
         const [exps, summary, mems] = await Promise.all([
@@ -214,8 +240,15 @@ export default function BudgetScreen() {
       }
     } catch {
       // silent
+    } finally {
+      setRefreshing(false);
     }
   }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    load(true);
+  };
 
   useEffect(() => {
     load();
@@ -355,6 +388,13 @@ export default function BudgetScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accentLt}
+          />
+        }
       >
         {/* TopBar */}
         <View style={styles.topBar}>
@@ -402,7 +442,7 @@ export default function BudgetScreen() {
                   }}
                 >
                   <Text style={[styles.segText, { color: colors.text3 }, active && { color: colors.text }]}>
-                    {m === 'limited' ? 'Limited' : 'Unlimited'}
+                    {m === 'limited' ? 'With budget' : 'No budget'}
                   </Text>
                 </Pressable>
               );
@@ -441,7 +481,7 @@ export default function BudgetScreen() {
                       >
                         <Text style={[styles.summaryCurrency, { color: colors.text3 }]}>{'\u20B1'}</Text>
                         <Text style={[styles.summaryAmount, { color: colors.text }]}>
-                          {total.toLocaleString()}
+                          {Math.round(total).toLocaleString()}
                         </Text>
                         <View style={styles.editIcon}>
                           <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
@@ -456,7 +496,7 @@ export default function BudgetScreen() {
                         </View>
                       </TouchableOpacity>
                       <Text style={[styles.summaryPerDay, { color: colors.text3 }]}>
-                        {'\u20B1'}{perDay}/day target
+                        {formatCurrency(perDay, 'PHP')}/day target
                       </Text>
                     </View>
                     <View style={[styles.statusPill, { backgroundColor: colors.accentBg, borderColor: colors.accentBorder }]}>
@@ -488,13 +528,13 @@ export default function BudgetScreen() {
                     <Text style={[styles.spentLeftLabel, { color: colors.text3 }]}>
                       Spent{' '}
                       <Text style={[styles.spentLeftValue, { color: colors.text }]}>
-                        {'\u20B1'}{spent}
+                        {formatCurrency(spent, 'PHP')}
                       </Text>
                     </Text>
                     <Text style={[styles.spentLeftLabel, { color: colors.text3 }]}>
                       Left{' '}
                       <Text style={[styles.spentLeftValue, { color: colors.accent }]}>
-                        {'\u20B1'}{remaining.toLocaleString()}
+                        {formatCurrency(remaining, 'PHP')}
                       </Text>
                     </Text>
                   </View>
@@ -554,7 +594,7 @@ export default function BudgetScreen() {
                       <View style={styles.categoryTopRow}>
                         <Text style={[styles.categoryName, { color: colors.text }]}>{c.name}</Text>
                         <Text style={[styles.categoryAmount, { color: colors.text }]}>
-                          {'\u20B1'}{amount.toLocaleString()}
+                          {formatCurrency(amount, 'PHP')}
                         </Text>
                       </View>
                       <View style={[styles.categoryBar, { backgroundColor: colors.card2 }]}>
@@ -595,6 +635,44 @@ export default function BudgetScreen() {
                 <Text style={[styles.summaryBoxTitle, { color: colors.text }]}>
                   {expenses.length} expenses {'\u00B7'} {formatCurrency(expenseSummary.total, 'PHP')} total
                 </Text>
+
+                {/* Per-person spending (based on paidBy) & daily avg */}
+                {(() => {
+                  const byPerson = expenses.reduce<Record<string, number>>((acc, e) => {
+                    const who = e.paidBy || 'Unassigned';
+                    acc[who] = (acc[who] ?? 0) + e.amount;
+                    return acc;
+                  }, {});
+                  const people = Object.entries(byPerson).sort(([, a], [, b]) => b - a);
+                  return (
+                    <>
+                      {people.length > 1 && (
+                        <View style={styles.summaryStatsRow}>
+                          {people.map(([name, amt]) => (
+                            <View key={name} style={[styles.summaryStatBox, { backgroundColor: colors.bg2 }]}>
+                              <Text style={[styles.summaryStatValue, { color: colors.text }]}>
+                                {formatCurrency(amt, 'PHP')}
+                              </Text>
+                              <Text style={[styles.summaryStatLabel, { color: colors.text3 }]} numberOfLines={1}>
+                                {name}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      <View style={styles.summaryStatsRow}>
+                        <View style={[styles.summaryStatBox, { backgroundColor: colors.bg2 }]}>
+                          <Text style={[styles.summaryStatValue, { color: colors.text }]}>
+                            {formatCurrency(expenseSummary.total / Math.max(1, days), 'PHP')}
+                          </Text>
+                          <Text style={[styles.summaryStatLabel, { color: colors.text3 }]}>per day avg</Text>
+                        </View>
+                      </View>
+                    </>
+                  );
+                })()}
+
+                {/* Category breakdown */}
                 <View style={styles.summaryChips}>
                   {Object.entries(expenseSummary.byCategory)
                     .sort(([, a], [, b]) => b - a)
@@ -606,6 +684,18 @@ export default function BudgetScreen() {
                       </View>
                     ))}
                 </View>
+
+                {/* Biggest expense */}
+                {(() => {
+                  const biggest = expenses.reduce((max, e) => e.amount > max.amount ? e : max, expenses[0]);
+                  return (
+                    <Text style={[styles.summaryPlaces, { color: colors.text3 }]}>
+                      Biggest: {biggest.description} ({formatCurrency(biggest.amount, biggest.currency)})
+                    </Text>
+                  );
+                })()}
+
+                {/* Top spots */}
                 {(() => {
                   const topPlaces = expenses
                     .filter((e) => e.placeName)
@@ -639,7 +729,7 @@ export default function BudgetScreen() {
                       style={[styles.expenseTitle, { color: colors.text }]}
                       numberOfLines={1}
                     >
-                      {e.description}
+                      {cleanExpenseDescription(e.description)}
                     </Text>
                     <Text style={[styles.expenseCat, { color: colors.text3 }]}>
                       {e.category}{e.paidBy ? ` \u00B7 by ${e.paidBy}` : ''}
@@ -1027,6 +1117,27 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 13,
       fontWeight: '600',
       marginBottom: 8,
+    },
+    summaryStatsRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 10,
+    },
+    summaryStatBox: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 10,
+      alignItems: 'center',
+    },
+    summaryStatValue: {
+      fontSize: 13,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'] as any,
+    },
+    summaryStatLabel: {
+      fontSize: 10,
+      marginTop: 2,
     },
     summaryChips: {
       flexDirection: 'row',
