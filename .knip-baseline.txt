@@ -1,4 +1,4 @@
-Unused files (19)
+Unused files (23)
 components/CachedImage.tsx: components/CachedImage.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
 components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
@@ -14,10 +14,14 @@ design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
 design-reference/screens/login.jsx: design-reference/screens/login.jsx
 design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
+hooks/fate/useFateHistory.ts: hooks/fate/useFateHistory.ts
+hooks/fate/useHaptics.ts: hooks/fate/useHaptics.ts
+hooks/fate/useSounds.ts: hooks/fate/useSounds.ts
 lib/cache/cacheFirst.ts: lib/cache/cacheFirst.ts
 lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
+utils/fate/randomWinner.ts: utils/fate/randomWinner.ts
 Unused dependencies (1)
 package.json: @expo/vector-icons, base64-arraybuffer, exifr, expo-auth-session, expo-av, expo-build-properties, expo-calendar, expo-secure-store, expo-sharing, react-native-maps
 Unused devDependencies (1)
