@@ -229,7 +229,7 @@ export default function BudgetScreen() {
             activeOpacity={0.7}
           >
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'overview' ? 'Overview' : 'Fate'}
+              {t === 'overview' ? 'Overview' : 'Who Pays?'}
             </Text>
           </TouchableOpacity>
         ))}
