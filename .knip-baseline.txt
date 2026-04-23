@@ -15,22 +15,23 @@ lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
 Unused dependencies (1)
-package.json: @clerk/expo, @expo/vector-icons, base64-arraybuffer, exifr, expo-av, expo-build-properties, expo-calendar, expo-secure-store, expo-sharing
+package.json: @expo/vector-icons, base64-arraybuffer, exifr, expo-auth-session, expo-av, expo-build-properties, expo-calendar, expo-secure-store, expo-sharing, react-native-maps
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (6)
-components/budget/WhoPaysPicker.tsx: WhoPaysSegment
+Unused exports (5)
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
-lib/distance.ts: haversine
-lib/google-places.ts: searchPlace, HOTEL_LAT, HOTEL_LNG
-Unused exported types (5)
+lib/distance.ts: haversine, estimateWalkTime
+lib/google-places.ts: searchPlace
+Unused exported types (7)
+components/budget/DiceRoller.tsx: DiceRollerRef
+components/budget/SpinWheel.tsx: WheelMember, SpinWheelRef
 constants/ThemeContext.tsx: ThemeMode
-lib/anthropic.ts: ScannedReceipt
-lib/google-places.ts: PlaceSearchResult
+lib/anthropic.ts: ItineraryDayLegacy
+lib/google-places.ts: PlaceSearchResult, AutocompleteResult
 lib/supabase.ts: Profile
 lib/types.ts: WeatherDay
 Duplicate exports (1)
