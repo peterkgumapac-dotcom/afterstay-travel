@@ -20,8 +20,11 @@ export interface SpinPlan {
 
 /**
  * Generate a multi-step spin plan that always lands on the given winner.
- * Phase 3: no fake-outs (main + final only).
- * Phase 4 will add fake-out logic.
+ *
+ * Structure:
+ *   1. Fast spin (~5s, many rotations)
+ *   2. 1-3 fake-outs (crawl to near-stop, then re-accelerate)
+ *   3. Final slow-down (~3s, gentle ease to winner)
  */
 export function generateSpinPlan(
   nameCount: number,
@@ -37,52 +40,53 @@ export function generateSpinPlan(
   // Final position modulo 360 should place winnerAngle under the pointer.
   const targetSettleRotation = (360 - winnerAngle + 360) % 360;
 
-  const baseFullRotations = 4 + Math.random() * 2; // 4-6 full spins
   const steps: SpinStep[] = [];
   let currentRotation = 0;
 
-  // Main fast spin — ends just before the target
-  const mainEndRotation = 360 * baseFullRotations + targetSettleRotation - 30;
+  // ── Step 1: Fast spin — 5 seconds, 8-12 full rotations ──
+  const fastRotations = 8 + Math.random() * 4;
+  const mainEndRotation = 360 * fastRotations;
   steps.push({
     toRotation: mainEndRotation,
-    duration: 2500,
-    easing: 'easeOut',
+    duration: 5000,
+    easing: 'easeInOut',
     type: 'main',
     onStart: { sound: 'rattle' },
   });
   currentRotation = mainEndRotation;
 
-  // Fake-outs — dramatic near-stops then re-acceleration
+  // ── Step 2: Fake-outs — crawl then re-spin ──
   for (let i = 0; i < fakeouts; i++) {
-    // Crawl to a near-stop: only move ~0.5-1 slice over a long duration
-    const crawlOffset = sliceAngle * (0.4 + Math.random() * 0.6);
+    // Crawl: nearly stop over ~1 slice in 1.5-2s
+    const crawlOffset = sliceAngle * (0.3 + Math.random() * 0.7);
     steps.push({
       toRotation: currentRotation + crawlOffset,
-      duration: Math.max(800, 1500 - i * 200),
+      duration: 1500 + Math.random() * 500,
       easing: 'easeOut',
       type: 'fake-slow',
       onStart: { sound: 'scratch', haptic: 'medium' },
     });
     currentRotation += crawlOffset;
 
-    // Re-accelerate past — fast push covering 2-4 full rotations + extra
-    const pushRotations = 2 + Math.random() * 2;
-    const pushOffset = 360 * pushRotations + sliceAngle * (1 + Math.random() * 2);
+    // Re-accelerate: 3-5 full rotations in 2.5s
+    const pushRotations = 3 + Math.random() * 2;
+    const pushOffset = 360 * pushRotations;
     steps.push({
       toRotation: currentRotation + pushOffset,
-      duration: 1800,
-      easing: 'easeOut',
+      duration: 2500,
+      easing: 'easeInOut',
       type: 'fake-push',
     });
     currentRotation += pushOffset;
   }
 
-  // Final landing — recalculate to land exactly on winner
+  // ── Step 3: Final landing — 3 seconds, slow ease to winner ──
   const targetModulo = currentRotation % 360;
+  // Add one more full rotation + the offset needed to land on winner
   const neededAddition = ((360 - targetModulo + targetSettleRotation) % 360) + 360;
   steps.push({
     toRotation: currentRotation + neededAddition,
-    duration: 1800,
+    duration: 3000,
     easing: 'easeOut',
     type: 'final',
     onStart: { sound: 'reveal', haptic: 'heavy' },
