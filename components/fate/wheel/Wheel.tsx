@@ -4,9 +4,7 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
 
-import { colorForName, fateColors, personColors } from '@/constants/fateTheme';
-
-const AnimatedSvg = Animated.createAnimatedComponent(Svg);
+import { colorForName, fateColors } from '@/constants/fateTheme';
 
 interface WheelProps {
   names: string[];
@@ -32,11 +30,11 @@ export default function Wheel({ names, rotation, size = DEFAULT_SIZE }: WheelPro
   const visualSliceAngle = 360 / visualNames.length;
 
   return (
-    <AnimatedSvg
+    <Animated.View style={[{ width: size, height: size }, animatedStyle]}>
+    <Svg
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
-      style={animatedStyle}
     >
       {/* Slices */}
       {visualNames.map((name, i) => {
@@ -76,7 +74,8 @@ export default function Wheel({ names, rotation, size = DEFAULT_SIZE }: WheelPro
       {/* Center hub */}
       <Circle cx={center} cy={center} r={18} fill={fateColors.background} />
       <Circle cx={center} cy={center} r={6} fill={fateColors.primary} />
-    </AnimatedSvg>
+    </Svg>
+    </Animated.View>
   );
 }
 
