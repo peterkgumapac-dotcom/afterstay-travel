@@ -265,14 +265,17 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let alive = true;
+    let freshLoaded = false;
+    // Show cached trip as instant preview, but load() will overwrite with fresh data
     cacheGet<Trip | null>('trip:active').then(async (cached) => {
-      if (!alive || !cached) return;
+      if (!alive || !cached || freshLoaded) return;
       setTrip(cached);
       const cachedFlights = await cacheGet<Flight[]>(`flights:${cached.id}`);
-      if (alive && cachedFlights) setFlights(cachedFlights);
-      if (alive) setLoading(false);
+      if (alive && cachedFlights && !freshLoaded) setFlights(cachedFlights);
+      // Show content immediately from cache — no loader needed
+      if (alive && !freshLoaded) setLoading(false);
     });
-    load();
+    load().then(() => { freshLoaded = true; });
     return () => {
       alive = false;
     };
