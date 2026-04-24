@@ -110,14 +110,16 @@ export function MomentLightbox({
     if (onEdit && current) onEdit(current.id);
   }, [current, onEdit]);
 
-  if (!moment && moments.length === 0) return null;
+  const isVisible = moment !== null;
+
+  if (!isVisible) return null;
   if (!current) return null;
 
   const authorKey = current.authorKey ?? current.takenBy ?? '';
   const person = people[authorKey] ?? { name: authorKey, color: colors.accent };
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible={isVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.overlay}>
         {/* Top bar */}
         <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
