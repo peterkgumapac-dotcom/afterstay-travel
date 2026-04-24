@@ -379,7 +379,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
         }
         return c + 1;
       });
-    }, 520);
+    }, 1200);
     return () => clearTimeout(id);
   }, [playing, cursor, ordered.length]);
 
@@ -670,11 +670,48 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
             >
               {current.place ?? current.location ?? ''}
             </Text>
-            <Text style={[styles.captionDate, { color: colors.text3 }]}>
-              {formatDatePHT(current.date)}
-            </Text>
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginTop: 2 }}>
+              <Text style={[styles.captionDate, { color: colors.text3 }]}>
+                {formatDatePHT(current.date)}
+              </Text>
+              {current.takenBy ? (
+                <Text style={{ fontSize: 9, color: colors.text3 }}>
+                  by {current.takenBy}
+                </Text>
+              ) : null}
+            </View>
+            {current.caption ? (
+              <Text style={{ fontSize: 9, color: colors.text2, marginTop: 2 }} numberOfLines={1}>
+                {current.caption}
+              </Text>
+            ) : null}
           </View>
         )}
+
+        {/* Trip summary strip */}
+        <View
+          style={[
+            styles.compassChip,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderWidth: 1,
+              top: undefined,
+              bottom: 56,
+              right: 10,
+              left: undefined,
+              gap: 8,
+            },
+          ]}
+        >
+          <Text style={{ fontSize: 9, fontWeight: '700', color: colors.accent }}>
+            {new Set(ordered.map((m) => m.place ?? m.location).filter(Boolean)).size} places
+          </Text>
+          <Text style={{ fontSize: 9, color: colors.text3 }}>·</Text>
+          <Text style={{ fontSize: 9, fontWeight: '700', color: colors.text2 }}>
+            {cursor}/{ordered.length} moments
+          </Text>
+        </View>
 
         {/* Scrubber bar */}
         <View

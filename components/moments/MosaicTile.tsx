@@ -44,10 +44,11 @@ export function MosaicTile({
       ]}
     >
       <ImageBackground
-        source={{ uri: moment.photo }}
+        source={{ uri: moment.photo, cache: 'force-cache' }}
         style={styles.image}
         imageStyle={{ borderRadius: 13 }}
         resizeMode="cover"
+        fadeDuration={200}
       >
         {/* Author color strip - left edge, 2.5px */}
         <View

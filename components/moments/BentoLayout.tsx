@@ -161,11 +161,12 @@ interface BentoCellProps {
 function BentoCell({ moment, width, height, selected, selectMode, onPress, onLongPress, colors }: BentoCellProps) {
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300}>
-      <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden' }}>
+      <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: '#1a1612' }}>
         <Image
-          source={{ uri: moment.photo }}
+          source={{ uri: moment.photo, cache: 'force-cache' }}
           style={{ width: '100%', height: '100%' }}
           resizeMode="cover"
+          fadeDuration={200}
         />
         {/* Selection overlay */}
         {selectMode && (
