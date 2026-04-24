@@ -11,28 +11,26 @@ interface CachedImageProps {
 
 function CachedImageInner({ remoteUrl, style, resizeMode = 'cover' }: CachedImageProps) {
   const { colors } = useTheme();
-  const [localUri, setLocalUri] = useState<string | null>(null);
+  // Start by showing the remote URL immediately — no blank placeholder
+  const [uri, setUri] = useState(remoteUrl);
 
   useEffect(() => {
     let cancelled = false;
+    // Check disk cache in background — swap to local URI if available
     cachedImageUri(remoteUrl)
-      .then((uri) => { if (!cancelled) setLocalUri(uri); })
-      .catch(() => { if (!cancelled) setLocalUri(remoteUrl); });
+      .then((localUri) => { if (!cancelled) setUri(localUri); })
+      .catch(() => { /* keep showing remote URL */ });
     return () => { cancelled = true; };
   }, [remoteUrl]);
 
-  if (!localUri) {
-    return <View style={[styles.placeholder, { backgroundColor: colors.bg3 }, style]} />;
-  }
-
-  return <Image source={{ uri: localUri }} style={style} resizeMode={resizeMode} />;
+  return (
+    <Image
+      source={{ uri, cache: 'force-cache' }}
+      style={style}
+      resizeMode={resizeMode}
+      fadeDuration={150}
+    />
+  );
 }
-
-const styles = StyleSheet.create({
-  placeholder: {
-    width: '100%',
-    height: '100%',
-  },
-});
 
 export const CachedImage = React.memo(CachedImageInner);
