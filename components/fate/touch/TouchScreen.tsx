@@ -1,10 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   type SharedValue,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -136,31 +134,29 @@ export default function TouchScreen({ duo = false }: TouchScreenProps) {
     }
   }, [fingers.size, gameState]);
 
-  const gesture = Gesture.Manual()
-    .onTouchesDown((event) => {
-      'worklet';
-      for (const touch of event.changedTouches) {
-        runOnJS(addFinger)(touch.id, touch.x, touch.y);
-      }
-    })
-    .onTouchesMove((event) => {
-      'worklet';
-      for (const touch of event.changedTouches) {
-        runOnJS(updateFinger)(touch.id, touch.x, touch.y);
-      }
-    })
-    .onTouchesUp((event) => {
-      'worklet';
-      for (const touch of event.changedTouches) {
-        runOnJS(removeFinger)(touch.id);
-      }
-    })
-    .onTouchesCancelled((event) => {
-      'worklet';
-      for (const touch of event.changedTouches) {
-        runOnJS(removeFinger)(touch.id);
-      }
-    });
+  // Use native touch events instead of Gesture.Manual for reliable multi-touch
+  const handleTouchStart = useCallback((e: any) => {
+    const touches = e.nativeEvent.touches;
+    for (let i = 0; i < touches.length; i++) {
+      const t = touches[i];
+      addFinger(t.identifier, t.locationX, t.locationY);
+    }
+  }, [addFinger]);
+
+  const handleTouchMove = useCallback((e: any) => {
+    const touches = e.nativeEvent.touches;
+    for (let i = 0; i < touches.length; i++) {
+      const t = touches[i];
+      updateFinger(t.identifier, t.locationX, t.locationY);
+    }
+  }, [updateFinger]);
+
+  const handleTouchEnd = useCallback((e: any) => {
+    const changed = e.nativeEvent.changedTouches;
+    for (let i = 0; i < changed.length; i++) {
+      removeFinger(changed[i].identifier);
+    }
+  }, [removeFinger]);
 
   const handleStart = useCallback(async () => {
     abortRef.current = false;
@@ -307,8 +303,13 @@ export default function TouchScreen({ duo = false }: TouchScreenProps) {
 
   return (
     <View style={styles.container}>
-      <GestureDetector gesture={gesture}>
-        <View style={styles.touchArea}>
+        <View
+          style={styles.touchArea}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+        >
           {/* Instruction text */}
           {(gameState === 'empty' || gameState === 'collecting') && (
             <View style={styles.instructionContainer}>
@@ -372,9 +373,8 @@ export default function TouchScreen({ duo = false }: TouchScreenProps) {
           })}
 
         </View>
-      </GestureDetector>
 
-      {/* Start button — outside GestureDetector so it receives taps */}
+      {/* Start button */}
       {gameState === 'ready' && (
         <View style={styles.startButtonContainer}>
           <PrimaryButton label="Start" onPress={handleStart} />
