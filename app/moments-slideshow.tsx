@@ -117,23 +117,24 @@ export default function PhotoGallery() {
       const pattern = i % 6; // alternate patterns
 
       if (remaining >= 3 && pattern < 3) {
-        // 1 big + 2 small stacked
-        const big = items[i];
-        const s1 = items[i + 1];
-        const s2 = items[i + 2];
+        // 1 big + 2 small stacked — capture indices
+        const idx0 = i, idx1 = i + 1, idx2 = i + 2;
+        const big = items[idx0];
+        const s1 = items[idx1];
+        const s2 = items[idx2];
         const bigW = (SCREEN_WIDTH - GAP * 3) * 0.6;
         const smallW = (SCREEN_WIDTH - GAP * 3) * 0.4;
         const rowH = bigW * 0.75;
         rows.push(
-          <View key={`row-${i}`} style={{ flexDirection: 'row', gap: GAP, marginBottom: GAP }}>
-            <Pressable onPress={() => setSelectedIdx(i)} onLongPress={() => handleDelete(big)}>
+          <View key={`row-${idx0}`} style={{ flexDirection: 'row', gap: GAP, marginBottom: GAP }}>
+            <Pressable onPress={() => setSelectedIdx(idx0)} onLongPress={() => handleDelete(big)}>
               <Image source={{ uri: big.photo }} style={{ width: bigW, height: rowH, borderRadius: radius.sm }} resizeMode="cover" />
             </Pressable>
             <View style={{ gap: GAP }}>
-              <Pressable onPress={() => setSelectedIdx(i + 1)} onLongPress={() => handleDelete(s1)}>
+              <Pressable onPress={() => setSelectedIdx(idx1)} onLongPress={() => handleDelete(s1)}>
                 <Image source={{ uri: s1.photo }} style={{ width: smallW, height: (rowH - GAP) / 2, borderRadius: radius.sm }} resizeMode="cover" />
               </Pressable>
-              <Pressable onPress={() => setSelectedIdx(i + 2)} onLongPress={() => handleDelete(s2)}>
+              <Pressable onPress={() => setSelectedIdx(idx2)} onLongPress={() => handleDelete(s2)}>
                 <Image source={{ uri: s2.photo }} style={{ width: smallW, height: (rowH - GAP) / 2, borderRadius: radius.sm }} resizeMode="cover" />
               </Pressable>
             </View>
@@ -141,27 +142,31 @@ export default function PhotoGallery() {
         );
         i += 3;
       } else if (remaining >= 2) {
-        // 2 equal
+        // 2 equal — capture indices
+        const idx0 = i, idx1 = i + 1;
+        const m0 = items[idx0], m1 = items[idx1];
         const w = (SCREEN_WIDTH - GAP * 3) / 2;
         const h = w * 0.75;
         rows.push(
-          <View key={`row-${i}`} style={{ flexDirection: 'row', gap: GAP, marginBottom: GAP }}>
-            <Pressable onPress={() => setSelectedIdx(i)} onLongPress={() => handleDelete(items[i])}>
-              <Image source={{ uri: items[i].photo }} style={{ width: w, height: h, borderRadius: radius.sm }} resizeMode="cover" />
+          <View key={`row-${idx0}`} style={{ flexDirection: 'row', gap: GAP, marginBottom: GAP }}>
+            <Pressable onPress={() => setSelectedIdx(idx0)} onLongPress={() => handleDelete(m0)}>
+              <Image source={{ uri: m0.photo }} style={{ width: w, height: h, borderRadius: radius.sm }} resizeMode="cover" />
             </Pressable>
-            <Pressable onPress={() => setSelectedIdx(i + 1)} onLongPress={() => handleDelete(items[i + 1])}>
-              <Image source={{ uri: items[i + 1].photo }} style={{ width: w, height: h, borderRadius: radius.sm }} resizeMode="cover" />
+            <Pressable onPress={() => setSelectedIdx(idx1)} onLongPress={() => handleDelete(m1)}>
+              <Image source={{ uri: m1.photo }} style={{ width: w, height: h, borderRadius: radius.sm }} resizeMode="cover" />
             </Pressable>
           </View>,
         );
         i += 2;
       } else {
-        // 1 full width
+        // 1 full width — capture index
+        const idx0 = i;
+        const m0 = items[idx0];
         const w = SCREEN_WIDTH - GAP * 2;
         rows.push(
-          <View key={`row-${i}`} style={{ marginBottom: GAP }}>
-            <Pressable onPress={() => setSelectedIdx(i)} onLongPress={() => handleDelete(items[i])}>
-              <Image source={{ uri: items[i].photo }} style={{ width: w, height: w * 0.56, borderRadius: radius.sm }} resizeMode="cover" />
+          <View key={`row-${idx0}`} style={{ marginBottom: GAP }}>
+            <Pressable onPress={() => setSelectedIdx(idx0)} onLongPress={() => handleDelete(m0)}>
+              <Image source={{ uri: m0.photo }} style={{ width: w, height: w * 0.56, borderRadius: radius.sm }} resizeMode="cover" />
             </Pressable>
           </View>,
         );
