@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
   Linking,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -44,54 +45,21 @@ type TabId = 'property' | 'nearby' | 'notes';
 // ── Data ────────────────────────────────────────────────────────────────
 
 const PROPERTY = {
-  name: 'Canyon Hotels & Resorts Boracay',
-  desc: 'Station B, Sitio Sinagpa, Balabag, Malay, Aklan 5608',
+  name: '',
+  desc: '',
   checkIn: '3:00 PM',
-  checkOut: '12:00 PM',
-  phone: '+63 36 288 5888',
-  email: 'reservations@canyonhotels.ph',
+  checkOut: '11:00 AM',
+  phone: '',
+  email: '',
 } as const;
 
-const AMENITIES = [
-  { n: 'Infinity pool', iconId: 'pool' },
-  { n: 'Free WiFi', iconId: 'wifi' },
-  { n: 'Breakfast', iconId: 'breakfast' },
-  { n: 'Gym', iconId: 'gym' },
-  { n: 'Shuttle', iconId: 'shuttle' },
-  { n: 'Spa', iconId: 'spa' },
-] as const;
+const AMENITIES: { n: string; iconId: string }[] = [];
 
-const NEARBY = [
-  { n: 'CityMall Boracay', d: '470 m', t: 'Shopping mall', w: '6 min walk', pin: 'M' },
-  { n: "D'Mall", d: '1.6 km', t: 'Shopping street', w: '20 min walk', pin: 'D' },
-  { n: 'Island Clinic', d: '830 m', t: 'Medical', w: '10 min walk', pin: '+' },
-  { n: 'White Beach Path 2', d: '1.1 km', t: 'Beach access', w: '14 min walk', pin: '~' },
-  { n: 'Puka Beach', d: '4.2 km', t: 'Beach', w: '15 min ride', pin: '~' },
-] as const;
+const NEARBY: { n: string; d: string; t: string; w: string; pin: string }[] = [];
 
-const NOTES = [
-  {
-    title: 'Check-in tip',
-    body: 'Agoda vouchers required at the front desk \u2014 already saved to Files.',
-    time: '2h ago',
-    by: 'Peter',
-  },
-  {
-    title: 'Tricycle fare',
-    body: "Fixed rate \u20B13\u20135/person short hops. Don't pay more than \u20B1150 flag-down from Caticlan.",
-    time: 'Yesterday',
-    by: 'Aaron',
-  },
-  {
-    title: 'Sunset plan',
-    body: 'Try Station 2 first night \u2014 golden hour 5:40 PM. Bring the GoPro.',
-    time: '2 days ago',
-    by: 'Jane',
-  },
-] as const;
+const NOTES: { title: string; body: string; time: string; by: string }[] = [];
 
-const HOTEL_PHOTO =
-  'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80';
+const HOTEL_PHOTO = '';
 
 const MAP_PINS = [
   { x: '20%', y: '30%' },
@@ -244,10 +212,13 @@ export default function GuideScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
   const [tab, setTab] = useState<TabId>('property');
   const [trip, setTrip] = useState<Trip | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    getActiveTrip().then((t) => { if (t) setTrip(t); }).catch((e) => { if (__DEV__) console.warn('[GuideScreen] load active trip failed:', e); });
+  const loadTrip = useCallback((force = false) => {
+    getActiveTrip(force).then((t) => { if (t) setTrip(t); }).catch((e) => { if (__DEV__) console.warn('[GuideScreen] load active trip failed:', e); }).finally(() => setRefreshing(false));
   }, []);
+
+  useEffect(() => { loadTrip(); }, [loadTrip]);
 
   // Canyon Hotels backward compat — show hardcoded data only for Canyon trips
   const isCanyon = trip?.accommodation?.toLowerCase().includes('canyon') ?? false;
@@ -363,6 +334,7 @@ export default function GuideScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadTrip(true); }} tintColor={colors.accent} />}
       >
         {/* ═══════ PROPERTY TAB ═══════ */}
         {tab === 'property' && !hasAccommodation && !isCanyon && (

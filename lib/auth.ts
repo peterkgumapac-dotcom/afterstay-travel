@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as Linking from 'expo-linking';
 import { router as expoRouter } from 'expo-router';
+import { setCacheUserId } from './cache';
 import { supabase, clearTripCache } from './supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
@@ -48,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession()
       .then(({ data: { session: s } }) => {
         setSession(s);
+        setCacheUserId(s?.user?.id);
       })
       .catch(() => {
         // Ignore — stay on login screen
@@ -61,6 +63,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, s) => {
         setSession(s);
+        setCacheUserId(s?.user?.id);
+        // Auto-create profile on first sign-in
+        if ((_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') && s?.user?.id) {
+          const { getProfile, ensureProfile } = await import('./supabase');
+          const existing = await getProfile(s.user.id).catch(() => null);
+          if (!existing) {
+            const name = s.user.user_metadata?.name || s.user.user_metadata?.full_name || s.user.email?.split('@')[0] || 'Traveler';
+            await ensureProfile(s.user.id, name).catch(() => {});
+          }
+        }
         if (_event === 'SIGNED_OUT') {
           clearTripCache();
           try {

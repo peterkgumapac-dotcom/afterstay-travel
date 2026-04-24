@@ -46,13 +46,8 @@ import { formatDatePHT, formatTimePHT, safeParse, MS_PER_DAY } from '@/lib/utils
 
 type TripPhase = 'planning' | 'upcoming' | 'inflight' | 'arrived' | 'active';
 
-const FALLBACK_PHOTOS = [
-  'https://www.canyon.ph/wp-content/uploads/2023/01/CHRBoracay-Rooms-Executive-Suite-01.jpg',
-  'https://www.canyon.ph/wp-content/uploads/2023/06/Family-Room-cover.jpg',
-  'https://www.canyon.ph/wp-content/uploads/2023/06/CHRBoracay-Rooms-Deluxe-Double-01.jpg',
-  'https://www.canyon.ph/wp-content/uploads/2023/04/CHRBoracay-Rooms-Deluxe-King-01.jpg',
-  'https://www.canyon.ph/wp-content/uploads/2023/01/CHRBoracay-Rooms-Deluxe-w-Pool-01.jpg',
-];
+// No fallback photos — hero shows gradient when trip has no hotel photos
+const FALLBACK_PHOTOS: string[] = [];
 
 /* ── Section header matching prototype's GroupHeader ── */
 function SectionHeader({
@@ -501,7 +496,15 @@ export default function HomeScreen() {
                     ? countdown.dayNumber ?? 1
                     : 0)
                 }
-                budgetStatus="cruising"
+                budgetStatus={(() => {
+                  const b = trip.budgetLimit ?? 0;
+                  if (b <= 0) return 'cruising';
+                  const pctSpent = totalSpent / b;
+                  const pctTime = (countdown.status === 'active' ? (countdown.dayNumber ?? 1) : 1) / countdown.totalDays;
+                  if (pctSpent > 1) return 'over';
+                  if (pctSpent > pctTime * 1.15) return 'low';
+                  return 'cruising';
+                })()}
                 spent={totalSpent}
                 budget={trip.budgetLimit ?? 0}
                 todaySpent={todaySpent}
@@ -603,8 +606,8 @@ export default function HomeScreen() {
           <QuickAccessGrid tiles={quickAccessTiles} />
         </CollapsibleSection>
 
-        {/* Bottom spacer */}
-        <View style={{ height: 16 }} />
+        {/* Bottom spacer — tall enough to scroll past FAB */}
+        <View style={{ height: 100 }} />
       </ScrollView>
       <FloatingActionButton />
     </SafeAreaView>

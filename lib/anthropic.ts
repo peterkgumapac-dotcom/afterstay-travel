@@ -7,33 +7,42 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 const MODEL = 'claude-sonnet-4-20250514';
 
-const SYSTEM_PROMPT = `You are a local travel expert for Boracay, Philippines. The user is staying at Canyon Hotels & Resorts (Station B, near White Beach, Station 1) for 7 nights (April 20-27, 2026). Generate a Top 5 list for each selected interest category.
+function buildRecommendationPrompt(trip?: { destination?: string; accommodation?: string; startDate?: string; endDate?: string; nights?: number }, groupSize = 2): string {
+  const dest = trip?.destination || 'your destination';
+  const hotel = trip?.accommodation || 'your hotel';
+  const dates = trip?.startDate && trip?.endDate ? `${trip.startDate} to ${trip.endDate}` : 'your trip dates';
+  const nights = trip?.nights ?? 7;
+
+  return `You are a local travel expert for ${dest}. The user is staying at ${hotel} for ${nights} nights (${dates}). Generate a Top 5 list for each selected interest category.
 
 For each recommendation include:
 - Name
 - Category
-- Distance from Canyon Hotels (approximate)
-- Price estimate in PHP
+- Distance from ${hotel} (approximate)
+- Price estimate in local currency
 - One-line reason why
 - Rating (1-5 stars)
 
 Return as JSON array. Format:
 [
   {
-    "name": "Restaurant Name",
+    "name": "Place Name",
     "category": "Eat",
     "distance": "1.2 km",
-    "price_estimate": "₱500-800/person",
-    "reason": "Best seafood on the island with sunset views",
+    "price_estimate": "500-800/person",
+    "reason": "Best local cuisine with great atmosphere",
     "rating": 5
   }
 ]
 
-Consider: it's late April (tail end of dry season, still hot). Group of 3 adults. Mix popular tourist spots with hidden gems locals know.`;
+Group of ${groupSize} travelers. Mix popular tourist spots with hidden gems locals know.`;
+}
 
 export async function generateRecommendations(args: {
   firstTime: 'First visit' | 'Been before' | 'Local-ish';
   interests: string[];
+  trip?: { destination?: string; accommodation?: string; startDate?: string; endDate?: string; nights?: number };
+  groupSize?: number;
 }): Promise<AIRecommendation[]> {
   const key = CONFIG.ANTHROPIC_KEY;
   if (!key) throw new Error('Anthropic API key missing. Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env.');
@@ -51,7 +60,7 @@ export async function generateRecommendations(args: {
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: buildRecommendationPrompt(args.trip, args.groupSize),
       messages: [{ role: 'user', content: userMsg }],
     }),
   });

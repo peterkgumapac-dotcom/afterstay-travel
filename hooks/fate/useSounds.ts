@@ -1,4 +1,3 @@
-import { Audio, AVPlaybackSource } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -11,17 +10,31 @@ export type SoundName =
   | 'boom'
   | 'chime';
 
-const SOUND_FILES: Record<SoundName, AVPlaybackSource> = {
-  rattle: require('@/assets/sounds/fate/spin-rattle.wav'),
-  scratch: require('@/assets/sounds/fate/record-scratch.wav'),
-  drumroll: require('@/assets/sounds/fate/drumroll.wav'),
-  reveal: require('@/assets/sounds/fate/fate-reveal.wav'),
-  heartbeat: require('@/assets/sounds/fate/heartbeat.wav'),
-  boom: require('@/assets/sounds/fate/boom.wav'),
-  chime: require('@/assets/sounds/fate/soft-chime.wav'),
-};
-
 const MUTE_KEY = 'fate_muted';
+
+// Lazy-load expo-av — crashes in Expo Go where ExponentAV native module is missing
+let Audio: typeof import('expo-av').Audio | null = null;
+let soundFiles: Record<string, any> | null = null;
+
+function ensureAV() {
+  if (Audio) return true;
+  try {
+    const mod = require('expo-av');
+    Audio = mod.Audio;
+    soundFiles = {
+      rattle: require('@/assets/sounds/fate/spin-rattle.wav'),
+      scratch: require('@/assets/sounds/fate/record-scratch.wav'),
+      drumroll: require('@/assets/sounds/fate/drumroll.wav'),
+      reveal: require('@/assets/sounds/fate/fate-reveal.wav'),
+      heartbeat: require('@/assets/sounds/fate/heartbeat.wav'),
+      boom: require('@/assets/sounds/fate/boom.wav'),
+      chime: require('@/assets/sounds/fate/soft-chime.wav'),
+    };
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface UseSoundsReturn {
   play: (name: SoundName) => Promise<void>;
@@ -32,34 +45,36 @@ export interface UseSoundsReturn {
 }
 
 export function useSounds(): UseSoundsReturn {
-  const soundsRef = useRef<Map<SoundName, Audio.Sound>>(new Map());
+  const soundsRef = useRef<Map<SoundName, any>>(new Map());
   const [isLoaded, setIsLoaded] = useState(false);
   const [muted, setMutedState] = useState(false);
   const mutedRef = useRef(false);
 
   useEffect(() => {
+    if (!ensureAV() || !Audio || !soundFiles) {
+      setIsLoaded(true); // mark loaded so UI doesn't block
+      return;
+    }
+
     let cancelled = false;
 
     async function init() {
-      // Set audio mode for iOS silent switch
-      await Audio.setAudioModeAsync({
+      await Audio!.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: false,
       });
 
-      // Load mute preference
       const storedMute = await AsyncStorage.getItem(MUTE_KEY);
       if (storedMute === 'true') {
         setMutedState(true);
         mutedRef.current = true;
       }
 
-      // Preload all sounds
-      const entries = Object.entries(SOUND_FILES) as [SoundName, AVPlaybackSource][];
+      const entries = Object.entries(soundFiles!) as [SoundName, any][];
       for (const [name, source] of entries) {
         if (cancelled) return;
         try {
-          const { sound } = await Audio.Sound.createAsync(source);
+          const { sound } = await Audio!.Sound.createAsync(source);
           soundsRef.current.set(name, sound);
         } catch {
           // Sound loading failed — continue without it

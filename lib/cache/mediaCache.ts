@@ -1,12 +1,26 @@
 import { Paths, File, Directory } from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const MEDIA_DIR_NAME = 'media-v2'; // v2: new hash + validated downloads
+const MEDIA_DIR_NAME = 'media-v3'; // v3: magic-byte validation
 const MIN_VALID_BYTES = 100;
 const MAX_CONCURRENT = 6; // limit parallel downloads
 
 const CACHE_VERSION_KEY = 'media-cache-version';
-const CURRENT_VERSION = '2';
+const CURRENT_VERSION = '3';
+
+// JPEG: FF D8 FF, PNG: 89 50 4E 47, WEBP: 52 49 46 46 (RIFF)
+const IMAGE_MAGIC: [number, number[]][] = [
+  [3, [0xff, 0xd8, 0xff]],       // JPEG
+  [4, [0x89, 0x50, 0x4e, 0x47]], // PNG
+  [4, [0x52, 0x49, 0x46, 0x46]], // WEBP (RIFF container)
+];
+
+function looksLikeImage(bytes: Uint8Array): boolean {
+  for (const [len, magic] of IMAGE_MAGIC) {
+    if (bytes.length >= len && magic.every((b, i) => bytes[i] === b)) return true;
+  }
+  return false;
+}
 
 let activeDownloads = 0;
 const pendingQueue: Array<() => void> = [];
@@ -64,9 +78,11 @@ export async function migrateMediaCache(): Promise<void> {
     const stored = await AsyncStorage.getItem(CACHE_VERSION_KEY);
     if (stored === CURRENT_VERSION) return;
 
-    // Clear old v1 cache
-    const oldDir = new Directory(Paths.cache, 'media');
-    if (oldDir.exists) oldDir.delete();
+    // Clear old cache dirs
+    for (const old of ['media', 'media-v2']) {
+      const oldDir = new Directory(Paths.cache, old);
+      if (oldDir.exists) oldDir.delete();
+    }
 
     await AsyncStorage.setItem(CACHE_VERSION_KEY, CURRENT_VERSION);
   } catch { /* ignore */ }
@@ -107,6 +123,13 @@ export async function cachedImageUri(remoteUrl: string): Promise<string> {
       if (downloadedSize < MIN_VALID_BYTES) {
         tempFile.delete();
         throw new Error(`Download too small: ${downloadedSize}b`);
+      }
+
+      // Validate magic bytes — reject HTML error pages / corrupt downloads
+      const header = (await tempFile.bytes()).slice(0, 8);
+      if (!looksLikeImage(header)) {
+        tempFile.delete();
+        throw new Error('Downloaded file is not a valid image');
       }
 
       tempFile.move(localFile);

@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -28,9 +29,9 @@ import Animated, {
 import Svg, { Polyline } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Car, Compass, Package, Pencil, ShoppingBag, UtensilsCrossed } from 'lucide-react-native';
-
-import { Wallet } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Car, Compass, Package, Pencil, QrCode, ShoppingBag, UtensilsCrossed, Wallet, X } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
@@ -101,6 +102,8 @@ export default function BudgetScreen() {
   const [showAllExpenses, setShowAllExpenses] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
+  const [paymentQr, setPaymentQr] = useState<string | null>(null);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   // ── Data loading ──
   const load = useCallback(async (force = false) => {
@@ -127,6 +130,37 @@ export default function BudgetScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Payment QR ──
+  const qrKey = trip?.id ? `payment_qr_${trip.id}` : null;
+
+  useEffect(() => {
+    if (!qrKey) return;
+    AsyncStorage.getItem(qrKey).then((uri) => { if (uri) setPaymentQr(uri); });
+  }, [qrKey]);
+
+  const pickPaymentQr = useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets?.[0]?.uri || !qrKey) return;
+    const uri = result.assets[0].uri;
+    setPaymentQr(uri);
+    await AsyncStorage.setItem(qrKey, uri);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [qrKey]);
+
+  const removePaymentQr = useCallback(async () => {
+    if (!qrKey) return;
+    Alert.alert('Remove QR', 'Remove your payment QR code?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        setPaymentQr(null);
+        await AsyncStorage.removeItem(qrKey);
+      }},
+    ]);
+  }, [qrKey]);
 
   // ── Derived values ──
   const total = trip?.budgetLimit ?? 0;
@@ -520,6 +554,33 @@ export default function BudgetScreen() {
               </View>
             )}
 
+            {/* Payment QR shortcut */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Payment QR</Text>
+              {paymentQr ? (
+                <TouchableOpacity
+                  style={styles.qrRow}
+                  onPress={() => setShowQrModal(true)}
+                  onLongPress={removePaymentQr}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.qrThumb, { borderColor: colors.border }]}>
+                    <Image source={{ uri: paymentQr }} style={{ width: 44, height: 44, borderRadius: 8 }} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.qrLabel}>My QR Code</Text>
+                    <Text style={styles.qrHint}>Tap to show · long press to remove</Text>
+                  </View>
+                  <QrCode size={20} color={colors.accent} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.qrUploadBtn} onPress={pickPaymentQr} activeOpacity={0.7}>
+                  <QrCode size={18} color={colors.accent} />
+                  <Text style={styles.qrUploadText}>Add payment QR</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
             {/* Settle cards — Group mode only */}
             {mode === 'group' && members.length >= 2 && (() => {
               const primaryPayer = members.reduce((top, m) =>
@@ -587,6 +648,21 @@ export default function BudgetScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* QR view modal */}
+      <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowQrModal(false)}>
+          <View style={styles.qrModalCard}>
+            <Text style={styles.qrModalTitle}>Scan to pay me</Text>
+            {paymentQr && (
+              <Image source={{ uri: paymentQr }} style={styles.qrModalImage} resizeMode="contain" />
+            )}
+            <TouchableOpacity onPress={() => setShowQrModal(false)} style={styles.qrModalClose}>
+              <Text style={[styles.modalBtn, { color: colors.text3 }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Edit budget modal */}
       <Modal visible={showBudgetModal} transparent animationType="fade" onRequestClose={() => setShowBudgetModal(false)}>
@@ -699,7 +775,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   dayAmount: { width: 72, textAlign: 'right', fontSize: 11, fontWeight: '600', color: c.text, letterSpacing: -0.3 },
 
   // Expenses
-  expenseRow: { paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c.border },
+  expenseRow: { paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.card },
   expenseMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   expenseIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   expenseTopRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
@@ -722,6 +798,18 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   fateSub: { fontSize: 12, color: c.text3, marginTop: 4 },
   fateButton: { marginTop: 16, backgroundColor: c.card, borderWidth: 1, borderColor: c.accentBorder, borderRadius: radius.md, paddingVertical: 16, alignItems: 'center' },
   fateButtonText: { fontSize: 15, fontWeight: '600', color: c.accent, letterSpacing: 0.5 },
+
+  // Payment QR
+  qrRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 16 },
+  qrThumb: { width: 48, height: 48, borderRadius: 10, borderWidth: 1, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  qrLabel: { fontSize: 13, fontWeight: '600', color: c.text },
+  qrHint: { fontSize: 10, color: c.text3, marginTop: 2 },
+  qrUploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, backgroundColor: c.card, borderWidth: 1, borderColor: c.accentBorder, borderRadius: 16, borderStyle: 'dashed' },
+  qrUploadText: { fontSize: 13, fontWeight: '600', color: c.accent },
+  qrModalCard: { width: '85%', backgroundColor: c.bg2, borderRadius: radius.lg, padding: 24, borderWidth: 1, borderColor: c.border, alignItems: 'center' },
+  qrModalTitle: { fontSize: 16, fontWeight: '700', color: c.text, marginBottom: 16 },
+  qrModalImage: { width: 260, height: 260, borderRadius: 12 },
+  qrModalClose: { marginTop: 16 },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },

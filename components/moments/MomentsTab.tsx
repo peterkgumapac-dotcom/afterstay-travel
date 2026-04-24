@@ -3,12 +3,14 @@ import {
   Alert,
   View,
   Text,
+  RefreshControl,
   ScrollView,
   TouchableOpacity,
   Pressable,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { Play } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
@@ -26,6 +28,7 @@ import { MapLayout } from './MapLayout';
 import { MomentLightbox } from './MomentLightbox';
 import { PhotoActionSheet } from './PhotoActionSheet';
 import { PhotoEditSheet } from './PhotoEditSheet';
+import TripRecapModal from './TripRecapModal';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -107,6 +110,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [rawMoments, setRawMoments] = useState<Moment[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [activeDay, setActiveDay] = useState('all');
   const [layout, setLayout] = useState<LayoutMode>('bento');
@@ -115,6 +119,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const selectMode = selectedIds.size > 0;
   const [actionMomentId, setActionMomentId] = useState<string | null>(null);
   const [editMomentId, setEditMomentId] = useState<string | null>(null);
+  const [showRecap, setShowRecap] = useState(false);
   const actionMoment = actionMomentId ? rawMoments.find((m) => m.id === actionMomentId) ?? null : null;
   const editMoment = editMomentId ? rawMoments.find((m) => m.id === editMomentId) ?? null : null;
 
@@ -234,6 +239,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       photosToCache.forEach((uri) => RNImage.prefetch(uri).catch(() => {}));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [tripId]);
 
@@ -289,6 +295,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       <ScrollView
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accentLt} />}
       >
         {/* ---- Stats strip ---- */}
         <View style={s.statsRow}>
@@ -338,6 +345,13 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
                 </Text>
               </Pressable>
             ))}
+            <Pressable
+              onPress={() => setShowRecap(true)}
+              style={[s.segBtn, s.recapBtn]}
+            >
+              <Play size={9} color="#000" fill="#000" strokeWidth={0} />
+              <Text style={s.recapText}>Recap</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -471,6 +485,13 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         onSave={handleEditSave}
         onClose={() => setEditMomentId(null)}
       />
+
+      <TripRecapModal
+        visible={showRecap}
+        photos={filtered.filter((m) => m.photo).map((m) => ({ uri: m.photo!, placeName: m.place ?? m.location }))}
+        dayLabel={activeDay !== 'all' ? `Day · ${formatDatePHT(activeDay)}` : 'Trip Recap'}
+        onClose={() => setShowRecap(false)}
+      />
     </>
   );
 }
@@ -528,6 +549,20 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       shadowOpacity: 0.30,
       shadowRadius: 6,
       elevation: 4,
+    },
+    recapBtn: {
+      backgroundColor: colors.accent,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 12,
+      marginLeft: 4,
+    },
+    recapText: {
+      fontSize: 10.5,
+      fontWeight: '600',
+      color: '#000',
+      letterSpacing: -0.1,
     },
     segText: {
       fontSize: 10.5,

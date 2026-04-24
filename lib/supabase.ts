@@ -319,12 +319,22 @@ function mapTripFile(row: Record<string, unknown>): TripFile {
 export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> {
   if (cachedTrip !== undefined && !forceRefresh) return cachedTrip
 
-  const { data, error } = await supabase
+  // Get authenticated user — filter trips to only this user's
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+
+  let query = supabase
     .from(T.trips)
     .select('*')
     .in('status', ['Planning', 'Active'])
     .order('start_date', { ascending: true })
     .limit(1)
+
+  if (userId) {
+    query = query.eq('user_id', userId)
+  }
+
+  const { data, error } = await query
 
   if (error || !data || data.length === 0) {
     cachedTrip = null
@@ -1192,6 +1202,16 @@ export async function updateProfile(
   if (updates.phone !== undefined) row.phone = updates.phone
   const { error } = await supabase.from('profiles').update(row).eq('id', userId)
   if (error) throw new Error(`updateProfile: ${error.message}`)
+}
+
+export async function ensureProfile(userId: string, name: string): Promise<void> {
+  const { error } = await supabase.from('profiles').upsert(
+    { id: userId, full_name: name },
+    { onConflict: 'id', ignoreDuplicates: true },
+  )
+  if (error && !error.message.includes('duplicate')) {
+    throw new Error(`ensureProfile: ${error.message}`)
+  }
 }
 
 // ---------- LIFETIME STATS & HIGHLIGHTS ----------

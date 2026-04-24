@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { Pencil, Trash2 } from 'lucide-react-native';
@@ -30,24 +30,18 @@ export default function SwipeableExpenseRow({
   const renderRightActions = () => (
     <Animated.View entering={FadeIn.duration(150)} style={styles.actionsContainer}>
       <Pressable
-        style={[styles.action, { backgroundColor: colors.accent }]}
-        onPress={() => {
-          close();
-          onEdit();
-        }}
+        style={[styles.iconCircle, { backgroundColor: colors.accent }]}
+        onPress={() => { close(); onEdit(); }}
+        accessibilityLabel="Edit"
       >
-        <Pencil size={18} color={colors.bg} strokeWidth={2} />
-        <Text style={[styles.actionLabel, { color: colors.bg }]}>Edit</Text>
+        <Pencil size={16} color={colors.bg} strokeWidth={2.5} />
       </Pressable>
       <Pressable
-        style={[styles.action, { backgroundColor: colors.danger }]}
-        onPress={() => {
-          close();
-          onDelete();
-        }}
+        style={[styles.iconCircle, { backgroundColor: colors.danger }]}
+        onPress={() => { close(); onDelete(); }}
+        accessibilityLabel="Delete"
       >
-        <Trash2 size={18} color="#fff" strokeWidth={2} />
-        <Text style={[styles.actionLabel, { color: '#fff' }]}>Delete</Text>
+        <Trash2 size={16} color="#fff" strokeWidth={2.5} />
       </Pressable>
     </Animated.View>
   );
@@ -69,17 +63,15 @@ export default function SwipeableExpenseRow({
 const styles = StyleSheet.create({
   actionsContainer: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-  },
-  action: {
-    width: ACTION_WIDTH,
-    justifyContent: 'center',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: spacing.sm,
+    gap: 10,
+    paddingHorizontal: 10,
   },
-  actionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

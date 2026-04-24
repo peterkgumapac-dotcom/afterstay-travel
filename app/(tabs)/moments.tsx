@@ -28,7 +28,7 @@ export default function MomentsScreen() {
       {/* FAB to add moment */}
       <Pressable
         onPress={() => router.push('/add-moment' as never)}
-        style={[styles.fab, { backgroundColor: colors.accent, bottom: insets.bottom + 80 }]}
+        style={[styles.fab, { backgroundColor: colors.accent, bottom: insets.bottom + 16 }]}
         accessibilityRole="button"
         accessibilityLabel="Add moment"
       >
@@ -50,6 +50,7 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
+    opacity: 0.85,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
