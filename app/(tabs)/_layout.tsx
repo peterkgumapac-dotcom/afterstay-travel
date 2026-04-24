@@ -1,7 +1,7 @@
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { Tabs } from 'expo-router';
-import { BookOpen, Compass, Home, Plane, Wallet } from 'lucide-react-native';
+import { Camera, Compass, Home, Plane, Wallet } from 'lucide-react-native';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +27,7 @@ export function useTabBarVisibility(): TabBarVisibilityContextValue {
 
 const TAB_ICONS = {
   home: Home,
-  guide: BookOpen,
+  moments: Camera,
   discover: Compass,
   budget: Wallet,
   trip: Plane,
@@ -35,7 +35,7 @@ const TAB_ICONS = {
 
 const TAB_LABELS: Record<string, string> = {
   home: 'Home',
-  guide: 'Guide',
+  moments: 'Moments',
   discover: 'Discover',
   budget: 'Budget',
   trip: 'Our Trip',
@@ -195,13 +195,13 @@ export default function TabLayout() {
         }}
       >
         <Tabs.Screen name="home" options={{ title: 'Home' }} />
-        <Tabs.Screen name="guide" options={{ title: 'Guide' }} />
+        <Tabs.Screen name="moments" options={{ title: 'Moments' }} />
         <Tabs.Screen name="discover" options={{ title: 'Discover' }} />
         <Tabs.Screen name="budget" options={{ title: 'Budget' }} />
         <Tabs.Screen name="trip" options={{ title: 'Our Trip' }} />
 
-        {/* Hidden tabs — accessible via FAB and gear icon */}
-        <Tabs.Screen name="moments" options={{ href: null }} />
+        {/* Hidden tabs — accessible via gear icon */}
+        <Tabs.Screen name="guide" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
       </Tabs>
     </TabBarVisibilityContext.Provider>

@@ -35,7 +35,6 @@ import AddTripSheet from '@/components/summary/AddTripSheet';
 import { TripFloatingActionButton } from '@/components/shared/TripFloatingActionButton';
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
-import { MomentsTab } from '@/components/moments/MomentsTab';
 import { OverviewTab } from '@/components/trip/OverviewTab';
 import { SummaryTab } from '@/components/trip/SummaryTab';
 import { EssentialsTab } from '@/components/trip/EssentialsTab';
@@ -74,7 +73,7 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 const TAB_KEYS = [
   'overview',
   'summary',
-  'moments',
+  'guide',
   'essentials',
 ] as const;
 type TabKey = (typeof TAB_KEYS)[number];
@@ -1042,8 +1041,26 @@ export default function TripScreen() {
         )}
 
         {/* ===================== MOMENTS ===================== */}
-        {activeTab === 'moments' && (
-          <MomentsTab tripId={trip?.id} />
+        {activeTab === 'guide' && (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <TouchableOpacity
+              onPress={() => router.push('/(tabs)/guide' as never)}
+              activeOpacity={0.7}
+              style={{
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 14,
+                paddingVertical: 16,
+                paddingHorizontal: 24,
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Open Property Guide</Text>
+              <Text style={{ fontSize: 12, color: colors.text3 }}>Hotel info, WiFi, house rules, amenities</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* ===================== ESSENTIALS ===================== */}
