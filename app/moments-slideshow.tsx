@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Share2, X } from 'lucide-react-native';
+import { Grid3X3, LayoutList, Share2, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,6 +14,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -23,11 +31,10 @@ import { deletePage, getActiveTrip, getMoments } from '@/lib/supabase';
 import type { Moment } from '@/lib/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const NUM_COLUMNS = 3;
 const GAP = 2;
-const THUMB_SIZE = (SCREEN_WIDTH - GAP * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
 
-/** Group moments by date, sorted newest first */
+type ViewMode = 'bento' | 'grid' | 'list';
+
 function groupByDay(moments: Moment[]): { date: string; label: string; moments: Moment[] }[] {
   const map = new Map<string, Moment[]>();
   for (const m of moments) {
@@ -45,7 +52,7 @@ function groupByDay(moments: Moment[]): { date: string; label: string; moments: 
 
 export default function PhotoGallery() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -53,13 +60,11 @@ export default function PhotoGallery() {
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | 'all'>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('bento');
   const mountedRef = useRef(true);
-  const touchStartX = useRef(0);
-  const SWIPE_THRESHOLD = 50;
 
   useEffect(() => {
     mountedRef.current = true;
-
     (async () => {
       try {
         const trip = await getActiveTrip();
@@ -68,64 +73,149 @@ export default function PhotoGallery() {
         if (!mountedRef.current) return;
         setMoments(ms.filter((m) => m.photo));
       } catch {
-        // fall back to empty
+        // empty
       } finally {
         if (mountedRef.current) setLoading(false);
       }
     })();
-
-    return () => {
-      mountedRef.current = false;
-    };
+    return () => { mountedRef.current = false; };
   }, []);
 
   const days = useMemo(() => groupByDay(moments), [moments]);
-
   const filteredMoments = useMemo(
     () => selectedDay === 'all' ? moments : moments.filter((m) => m.date === selectedDay),
     [moments, selectedDay],
   );
 
-
-  const handleDelete = useCallback(
-    (moment: Moment) => {
-      Alert.alert('Delete Photo', `Delete "${moment.caption || 'Untitled'}"?`, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deletePage(moment.id);
-              setMoments((prev) => prev.filter((m) => m.id !== moment.id));
-              setSelectedIdx(null);
-            } catch {
-              Alert.alert('Error', 'Failed to delete. Try again.');
-            }
-          },
+  const handleDelete = useCallback((moment: Moment) => {
+    Alert.alert('Delete Photo', 'Delete this photo?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deletePage(moment.id);
+            setMoments((prev) => prev.filter((m) => m.id !== moment.id));
+            setSelectedIdx(null);
+          } catch {
+            Alert.alert('Error', 'Failed to delete.');
+          }
         },
-      ]);
-    },
-    [],
-  );
+      },
+    ]);
+  }, []);
 
-  const renderThumb = useCallback(
+  // ── Bento layout ──────────────────────────────────────────────
+  const renderBento = useCallback(() => {
+    const items = filteredMoments;
+    const rows: React.ReactElement[] = [];
+    let i = 0;
+
+    while (i < items.length) {
+      const remaining = items.length - i;
+      const pattern = i % 6; // alternate patterns
+
+      if (remaining >= 3 && pattern < 3) {
+        // 1 big + 2 small stacked
+        const big = items[i];
+        const s1 = items[i + 1];
+        const s2 = items[i + 2];
+        const bigW = (SCREEN_WIDTH - GAP * 3) * 0.6;
+        const smallW = (SCREEN_WIDTH - GAP * 3) * 0.4;
+        const rowH = bigW * 0.75;
+        rows.push(
+          <View key={`row-${i}`} style={{ flexDirection: 'row', gap: GAP, marginBottom: GAP }}>
+            <Pressable onPress={() => setSelectedIdx(i)} onLongPress={() => handleDelete(big)}>
+              <Image source={{ uri: big.photo }} style={{ width: bigW, height: rowH, borderRadius: radius.sm }} resizeMode="cover" />
+            </Pressable>
+            <View style={{ gap: GAP }}>
+              <Pressable onPress={() => setSelectedIdx(i + 1)} onLongPress={() => handleDelete(s1)}>
+                <Image source={{ uri: s1.photo }} style={{ width: smallW, height: (rowH - GAP) / 2, borderRadius: radius.sm }} resizeMode="cover" />
+              </Pressable>
+              <Pressable onPress={() => setSelectedIdx(i + 2)} onLongPress={() => handleDelete(s2)}>
+                <Image source={{ uri: s2.photo }} style={{ width: smallW, height: (rowH - GAP) / 2, borderRadius: radius.sm }} resizeMode="cover" />
+              </Pressable>
+            </View>
+          </View>,
+        );
+        i += 3;
+      } else if (remaining >= 2) {
+        // 2 equal
+        const w = (SCREEN_WIDTH - GAP * 3) / 2;
+        const h = w * 0.75;
+        rows.push(
+          <View key={`row-${i}`} style={{ flexDirection: 'row', gap: GAP, marginBottom: GAP }}>
+            <Pressable onPress={() => setSelectedIdx(i)} onLongPress={() => handleDelete(items[i])}>
+              <Image source={{ uri: items[i].photo }} style={{ width: w, height: h, borderRadius: radius.sm }} resizeMode="cover" />
+            </Pressable>
+            <Pressable onPress={() => setSelectedIdx(i + 1)} onLongPress={() => handleDelete(items[i + 1])}>
+              <Image source={{ uri: items[i + 1].photo }} style={{ width: w, height: h, borderRadius: radius.sm }} resizeMode="cover" />
+            </Pressable>
+          </View>,
+        );
+        i += 2;
+      } else {
+        // 1 full width
+        const w = SCREEN_WIDTH - GAP * 2;
+        rows.push(
+          <View key={`row-${i}`} style={{ marginBottom: GAP }}>
+            <Pressable onPress={() => setSelectedIdx(i)} onLongPress={() => handleDelete(items[i])}>
+              <Image source={{ uri: items[i].photo }} style={{ width: w, height: w * 0.56, borderRadius: radius.sm }} resizeMode="cover" />
+            </Pressable>
+          </View>,
+        );
+        i += 1;
+      }
+    }
+    return rows;
+  }, [filteredMoments, handleDelete]);
+
+  // ── Grid layout ───────────────────────────────────────────────
+  const GRID_COLS = 3;
+  const THUMB_SIZE = (SCREEN_WIDTH - GAP * (GRID_COLS + 1)) / GRID_COLS;
+
+  const renderGridItem = useCallback(
     ({ item, index }: { item: Moment; index: number }) => (
       <Pressable
         onPress={() => setSelectedIdx(index)}
         onLongPress={() => handleDelete(item)}
-        style={styles.thumbWrapper}
+        style={{ width: THUMB_SIZE, height: THUMB_SIZE, margin: GAP / 2 }}
       >
-        <Image source={{ uri: item.photo }} style={styles.thumb} resizeMode="cover" />
+        <Image source={{ uri: item.photo }} style={{ width: '100%', height: '100%', borderRadius: radius.sm }} resizeMode="cover" />
       </Pressable>
     ),
     [handleDelete],
   );
 
+  // ── List layout ───────────────────────────────────────────────
+  const renderListItem = useCallback(
+    ({ item, index }: { item: Moment; index: number }) => (
+      <Pressable
+        onPress={() => setSelectedIdx(index)}
+        onLongPress={() => handleDelete(item)}
+        style={styles.listRow}
+      >
+        <Image source={{ uri: item.photo }} style={styles.listThumb} resizeMode="cover" />
+        <View style={styles.listText}>
+          {item.caption && item.caption !== 'Untitled' ? (
+            <Text style={styles.listCaption} numberOfLines={1}>{item.caption}</Text>
+          ) : null}
+          <Text style={styles.listMeta}>
+            {[item.location, item.takenBy ? `by ${item.takenBy}` : null, formatDatePHT(item.date)]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+        </View>
+      </Pressable>
+    ),
+    [handleDelete, styles],
+  );
+
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.green2} size="large" />
+        <ActivityIndicator color={colors.accent} size="large" />
       </View>
     );
   }
@@ -134,275 +224,244 @@ export default function PhotoGallery() {
     return (
       <View style={styles.center}>
         <Text style={styles.emptyText}>No photos yet.</Text>
-        <Pressable onPress={() => router.back()} style={styles.closeTextBtn}>
-          <Text style={styles.closeTextBtnLabel}>Close</Text>
+        <Pressable onPress={() => router.back()} style={styles.closeBtn}>
+          <Text style={styles.closeBtnLabel}>Close</Text>
         </Pressable>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {filteredMoments.length} Photo{filteredMoments.length !== 1 ? 's' : ''}
-          {selectedDay !== 'all' ? ` · ${formatDatePHT(selectedDay)}` : ''}
-        </Text>
-      </View>
-
-      {/* Day filter chips */}
-      {days.length > 1 && (
-        <View style={styles.dayChipRow}>
-          <Pressable
-            style={[styles.dayChip, selectedDay === 'all' && styles.dayChipActive]}
-            onPress={() => setSelectedDay('all')}
-          >
-            <Text style={[styles.dayChipText, selectedDay === 'all' && styles.dayChipTextActive]}>All</Text>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={12}>
+            <X size={20} color={colors.text} strokeWidth={2} />
           </Pressable>
-          {days.map((day) => {
-            const active = selectedDay === day.date;
-            return (
+          <Text style={styles.headerTitle}>
+            {filteredMoments.length} Moment{filteredMoments.length !== 1 ? 's' : ''}
+          </Text>
+          <View style={styles.viewToggle}>
+            {([
+              { mode: 'bento' as const, Icon: Grid3X3 },
+              { mode: 'list' as const, Icon: LayoutList },
+            ]).map(({ mode, Icon }) => (
               <Pressable
-                key={day.date}
-                style={[styles.dayChip, active && styles.dayChipActive]}
-                onPress={() => setSelectedDay(day.date)}
+                key={mode}
+                onPress={() => setViewMode(mode)}
+                style={[styles.viewBtn, viewMode === mode && styles.viewBtnActive]}
               >
-                <Text style={[styles.dayChipText, active && styles.dayChipTextActive]}>
-                  {day.label} ({day.moments.length})
-                </Text>
+                <Icon size={16} color={viewMode === mode ? colors.accent : colors.text3} strokeWidth={2} />
               </Pressable>
-            );
-          })}
+            ))}
+          </View>
         </View>
-      )}
 
-      <FlatList
-        data={filteredMoments}
-        renderItem={renderThumb}
-        keyExtractor={(item) => item.id}
-        numColumns={NUM_COLUMNS}
-        contentContainerStyle={styles.grid}
-        showsVerticalScrollIndicator={false}
-      />
-
-      {/* Fullscreen overlay — swipe left/right to navigate */}
-      <Modal visible={selectedIdx !== null} transparent animationType="fade" onRequestClose={() => setSelectedIdx(null)}>
-        {selectedIdx !== null && filteredMoments[selectedIdx] && (() => {
-          const current = filteredMoments[selectedIdx];
-          return (
-            <View style={styles.overlay}>
-              {/* Top bar */}
-              <View style={[styles.overlayTopBar, { paddingTop: insets.top + spacing.sm }]}>
+        {/* Day chips */}
+        {days.length > 1 && (
+          <View style={styles.dayChipRow}>
+            <Pressable
+              style={[styles.dayChip, selectedDay === 'all' && styles.dayChipActive]}
+              onPress={() => setSelectedDay('all')}
+            >
+              <Text style={[styles.dayChipText, selectedDay === 'all' && styles.dayChipTextActive]}>All</Text>
+            </Pressable>
+            {days.map((day) => {
+              const active = selectedDay === day.date;
+              return (
                 <Pressable
-                  style={styles.overlayClose}
-                  onPress={() => setSelectedIdx(null)}
+                  key={day.date}
+                  style={[styles.dayChip, active && styles.dayChipActive]}
+                  onPress={() => setSelectedDay(day.date)}
                 >
-                  <X size={22} color={colors.white} />
+                  <Text style={[styles.dayChipText, active && styles.dayChipTextActive]}>
+                    {day.label} ({day.moments.length})
+                  </Text>
                 </Pressable>
-                <Text style={styles.overlayCounter}>
-                  {selectedIdx + 1} / {filteredMoments.length}
-                </Text>
-                <Pressable
-                  style={styles.overlayClose}
-                  onPress={() => {
-                    if (!current.photo) return;
-                    Share.share({
-                      message: current.caption
-                        ? `${current.caption} — ${current.location ?? formatDatePHT(current.date)}`
-                        : `Trip moment from ${formatDatePHT(current.date)}`,
-                      url: current.photo,
-                    });
-                  }}
-                >
-                  <Share2 size={18} color={colors.white} strokeWidth={1.8} />
-                </Pressable>
-              </View>
+              );
+            })}
+          </View>
+        )}
 
-              {/* Swipeable photo — touch start/end detection */}
-              <View
-                style={styles.photoArea}
-                onTouchStart={(e) => { touchStartX.current = e.nativeEvent.pageX; }}
-                onTouchEnd={(e) => {
-                  const dx = e.nativeEvent.pageX - touchStartX.current;
-                  if (dx < -SWIPE_THRESHOLD) {
-                    // Swipe left → next
-                    setSelectedIdx((prev) =>
-                      prev !== null ? Math.min(prev + 1, filteredMoments.length - 1) : 0
-                    );
-                  } else if (dx > SWIPE_THRESHOLD) {
-                    // Swipe right → prev
-                    setSelectedIdx((prev) =>
-                      prev !== null ? Math.max(prev - 1, 0) : 0
-                    );
-                  }
-                }}
-              >
-                <Image
-                  source={{ uri: current.photo }}
-                  style={styles.fullImage}
-                  resizeMode="contain"
-                />
-              </View>
+        {/* Content */}
+        {viewMode === 'bento' ? (
+          <FlatList
+            data={[1]}
+            renderItem={() => <View style={{ paddingHorizontal: GAP }}>{renderBento()}</View>}
+            keyExtractor={() => 'bento'}
+            showsVerticalScrollIndicator={false}
+          />
+        ) : viewMode === 'grid' ? (
+          <FlatList
+            data={filteredMoments}
+            renderItem={renderGridItem}
+            keyExtractor={(item) => item.id}
+            numColumns={GRID_COLS}
+            contentContainerStyle={{ gap: GAP, paddingHorizontal: GAP }}
+            showsVerticalScrollIndicator={false}
+          />
+        ) : (
+          <FlatList
+            data={filteredMoments}
+            renderItem={renderListItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingHorizontal: spacing.md, gap: 8 }}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
 
-              {/* Meta */}
-              <View style={[styles.overlayMeta, { paddingBottom: insets.bottom + spacing.lg }]}>
-                {current.caption && current.caption !== 'Untitled' ? (
-                  <Text style={styles.overlayCaption}>{current.caption}</Text>
-                ) : null}
-                <View style={styles.overlayRow}>
-                  {current.takenBy ? (
-                    <Text style={styles.overlayDetail}>by {current.takenBy}</Text>
-                  ) : null}
-                  {current.location ? (
-                    <Text style={styles.overlayDetail}>{current.location}</Text>
-                  ) : null}
-                  <Text style={styles.overlayDetail}>{formatDatePHT(current.date)}</Text>
-                </View>
-              </View>
-            </View>
-          );
-        })()}
-      </Modal>
-    </View>
+        {/* Fullscreen viewer with smooth swipe */}
+        {selectedIdx !== null && (
+          <SmoothViewer
+            moments={filteredMoments}
+            initialIndex={selectedIdx}
+            onClose={() => setSelectedIdx(null)}
+            onDelete={handleDelete}
+            colors={colors}
+            insets={insets}
+          />
+        )}
+      </View>
+    </GestureHandlerRootView>
   );
 }
 
+// ── Smooth fullscreen viewer with gesture-based swipe ────────────────────
+
+interface SmoothViewerProps {
+  moments: Moment[];
+  initialIndex: number;
+  onClose: () => void;
+  onDelete: (m: Moment) => void;
+  colors: any;
+  insets: { top: number; bottom: number };
+}
+
+function SmoothViewer({ moments, initialIndex, onClose, onDelete, colors, insets }: SmoothViewerProps) {
+  const [index, setIndex] = useState(initialIndex);
+  const translateX = useSharedValue(0);
+  const current = moments[index];
+
+  const goNext = useCallback(() => {
+    setIndex((i) => Math.min(i + 1, moments.length - 1));
+  }, [moments.length]);
+
+  const goPrev = useCallback(() => {
+    setIndex((i) => Math.max(i - 1, 0));
+  }, []);
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      translateX.value = e.translationX;
+    })
+    .onEnd((e) => {
+      if (e.translationX < -80 && e.velocityX < 0) {
+        translateX.value = withTiming(-SCREEN_WIDTH, { duration: 200 }, () => {
+          runOnJS(goNext)();
+          translateX.value = 0;
+        });
+      } else if (e.translationX > 80 && e.velocityX > 0) {
+        translateX.value = withTiming(SCREEN_WIDTH, { duration: 200 }, () => {
+          runOnJS(goPrev)();
+          translateX.value = 0;
+        });
+      } else {
+        translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
+      }
+    })
+    .minDistance(10);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  if (!current) return null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={viewerStyles.overlay}>
+        <View style={[viewerStyles.topBar, { paddingTop: insets.top + spacing.sm }]}>
+          <Pressable style={viewerStyles.btn} onPress={onClose}>
+            <X size={22} color="#fff" />
+          </Pressable>
+          <Text style={viewerStyles.counter}>{index + 1} / {moments.length}</Text>
+          <Pressable
+            style={viewerStyles.btn}
+            onPress={() => {
+              if (!current.photo) return;
+              Share.share({
+                message: current.caption
+                  ? `${current.caption} — ${current.location ?? formatDatePHT(current.date)}`
+                  : `Trip moment from ${formatDatePHT(current.date)}`,
+                url: current.photo,
+              });
+            }}
+          >
+            <Share2 size={18} color="#fff" strokeWidth={1.8} />
+          </Pressable>
+        </View>
+
+        <GestureDetector gesture={panGesture}>
+          <Animated.View style={[viewerStyles.photoArea, animStyle]}>
+            <Image
+              source={{ uri: current.photo }}
+              style={viewerStyles.fullImage}
+              resizeMode="contain"
+            />
+          </Animated.View>
+        </GestureDetector>
+
+        <View style={[viewerStyles.meta, { paddingBottom: insets.bottom + spacing.lg }]}>
+          {current.caption && current.caption !== 'Untitled' ? (
+            <Text style={viewerStyles.caption}>{current.caption}</Text>
+          ) : null}
+          <Text style={viewerStyles.detail}>
+            {[current.location, current.takenBy ? `by ${current.takenBy}` : null, formatDatePHT(current.date)]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const viewerStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  btn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  counter: { fontSize: 12, color: 'rgba(255,255,255,0.6)', fontWeight: '600' },
+  photoArea: { flex: 1, justifyContent: 'center' },
+  fullImage: { width: '100%', height: '100%' },
+  meta: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.xs },
+  caption: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  detail: { color: 'rgba(255,255,255,0.6)', fontSize: 13 },
+});
+
 const getStyles = (colors: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  center: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  emptyText: {
-    color: colors.text2,
-    fontSize: 15,
-  },
-  closeTextBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-  },
-  closeTextBtnLabel: {
-    color: colors.text,
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: colors.bg },
+  center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', gap: spacing.lg },
+  emptyText: { color: colors.text2, fontSize: 15 },
+  closeBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, backgroundColor: colors.card, borderRadius: radius.md },
+  closeBtnLabel: { color: colors.text, fontWeight: '600' },
 
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  headerTitle: {
-    color: colors.text2,
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  headerTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  viewToggle: { flexDirection: 'row', gap: 4, backgroundColor: colors.card, borderRadius: 8, padding: 2 },
+  viewBtn: { padding: 6, borderRadius: 6 },
+  viewBtnActive: { backgroundColor: colors.bg },
 
-  /* Day filter chips */
-  dayChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  dayChip: {
-    height: 30,
-    paddingHorizontal: 12,
-    borderRadius: 15,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayChipActive: {
-    backgroundColor: colors.accent + '1A',
-    borderColor: colors.accent,
-  },
-  dayChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text3,
-  },
-  dayChipTextActive: {
-    color: colors.accent,
-  },
+  dayChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
+  dayChip: { height: 30, paddingHorizontal: 12, borderRadius: 15, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  dayChipActive: { backgroundColor: colors.accent + '1A', borderColor: colors.accent },
+  dayChipText: { fontSize: 12, fontWeight: '600', color: colors.text3 },
+  dayChipTextActive: { color: colors.accent },
 
-  grid: {
-    gap: GAP,
-    paddingHorizontal: GAP,
-  },
-  thumbWrapper: {
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    margin: GAP / 2,
-  },
-  thumb: {
-    width: '100%',
-    height: '100%',
-    borderRadius: radius.sm,
-  },
-
-  // fullscreen overlay
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
-  },
-  overlayTopBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  overlayClose: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  overlayCounter: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
-    fontWeight: '600',
-  },
-  photoArea: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  fullImage: {
-    width: '100%',
-    height: '100%',
-  },
-  overlayMeta: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    gap: spacing.xs,
-  },
-  overlayCaption: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  overlayRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  overlayDetail: {
-    color: colors.text2,
-    fontSize: 13,
-  },
+  // List view
+  listRow: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.md, padding: 10, borderWidth: 1, borderColor: colors.border },
+  listThumb: { width: 64, height: 64, borderRadius: radius.sm },
+  listText: { flex: 1, gap: 2 },
+  listCaption: { fontSize: 14, fontWeight: '600', color: colors.text },
+  listMeta: { fontSize: 12, color: colors.text3 },
 });

@@ -1,4 +1,4 @@
-Unused files (19)
+Unused files (18)
 components/CachedImage.tsx: components/CachedImage.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
 components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
@@ -13,7 +13,6 @@ design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
 design-reference/screens/login.jsx: design-reference/screens/login.jsx
 design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
-lib/cache/cacheFirst.ts: lib/cache/cacheFirst.ts
 lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
@@ -29,7 +28,7 @@ components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
-lib/distance.ts: haversine, estimateWalkTime
+lib/distance.ts: haversine
 lib/google-places.ts: searchPlace
 Unused exported types (8)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn

@@ -21,7 +21,7 @@ import FormField from '@/components/FormField';
 import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { placeAutocomplete, getPlaceLocation } from '@/lib/google-places';
+import { getPlaceLocation, placeAutocomplete } from '@/lib/google-places';
 import { addExpense, getGroupMembers, updateExpense } from '@/lib/supabase';
 import type { Expense } from '@/lib/types';
 
