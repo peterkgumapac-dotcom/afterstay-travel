@@ -1,13 +1,14 @@
 import React from 'react';
 import {
+  Image,
   View,
   Text,
-  ImageBackground,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/constants/ThemeContext';
+import { CachedImage } from '@/components/CachedImage';
 import { Avatar } from './Avatar';
 import type { MomentDisplay, PeopleMap } from './types';
 
@@ -43,13 +44,13 @@ export function MosaicTile({
         },
       ]}
     >
-      <ImageBackground
-        source={{ uri: moment.photo, cache: 'force-cache' }}
-        style={styles.image}
-        imageStyle={{ borderRadius: 13 }}
-        resizeMode="cover"
-        fadeDuration={200}
-      >
+      <View style={styles.image}>
+        {moment.photo ? (
+          <CachedImage remoteUrl={moment.photo} style={StyleSheet.absoluteFillObject} />
+        ) : (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.card2 }]} />
+        )}
+
         {/* Author color strip - left edge, 2.5px */}
         <View
           style={[
@@ -78,7 +79,7 @@ export function MosaicTile({
           <Avatar authorKey={authorKey} people={people} size={18} />
         </View>
 
-      </ImageBackground>
+      </View>
     </TouchableOpacity>
   );
 }

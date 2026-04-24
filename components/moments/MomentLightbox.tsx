@@ -4,7 +4,6 @@ import React, { useCallback, useRef, useState } from 'react';
 import {
   Dimensions,
   FlatList,
-  Image,
   Modal,
   Pressable,
   Share,
@@ -12,6 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { CachedImage } from '@/components/CachedImage';
 import Animated, {
   type SharedValue,
   FadeIn,
@@ -77,11 +77,11 @@ export function MomentLightbox({
 
   const renderPhoto = useCallback(({ item }: { item: MomentDisplay }) => (
     <View style={{ width: SCREEN_W, flex: 1, justifyContent: 'center' }}>
-      <Image
-        source={{ uri: item.photo, cache: 'force-cache' }}
-        style={styles.photo}
-        resizeMode="contain"
-      />
+      {item.photo ? (
+        <CachedImage remoteUrl={item.photo} style={styles.photo} resizeMode="contain" />
+      ) : (
+        <View style={styles.photo} />
+      )}
     </View>
   ), []);
 
