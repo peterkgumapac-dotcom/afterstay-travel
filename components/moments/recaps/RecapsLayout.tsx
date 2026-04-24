@@ -37,12 +37,9 @@ export function RecapsLayout({ items, destination, tripStartDate }: RecapsLayout
     if (!ref) return;
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const { captureRef } = await import('react-native-view-shot');
-      const Sharing = await import('expo-sharing');
-      const uri = await captureRef(ref, { format: 'png', quality: 1 });
-      await Sharing.shareAsync(uri, { mimeType: 'image/png' });
+      Alert.alert('Share', 'Share feature coming soon — being polished for next update.');
     } catch {
-      // sharing cancelled or failed
+      // ignore
     }
   }, []);
 
