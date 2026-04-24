@@ -371,15 +371,18 @@ export default function TouchScreen({ duo = false }: TouchScreenProps) {
             );
           })}
 
-          {/* Start button */}
-          {gameState === 'ready' && (
-            <View style={styles.startButtonContainer}>
-              <PrimaryButton label="Start" onPress={handleStart} />
-            </View>
-          )}
+        </View>
+      </GestureDetector>
 
-          {/* Result overlay */}
-          {gameState === 'result' && victimId !== null && (
+      {/* Start button — outside GestureDetector so it receives taps */}
+      {gameState === 'ready' && (
+        <View style={styles.startButtonContainer}>
+          <PrimaryButton label="Start" onPress={handleStart} />
+        </View>
+      )}
+
+      {/* Result overlay */}
+      {gameState === 'result' && victimId !== null && (
             <View style={styles.resultOverlay}>
               <View style={styles.resultCard}>
                 <Text style={styles.resultBadge}>CHOSEN</Text>
@@ -440,8 +443,6 @@ export default function TouchScreen({ duo = false }: TouchScreenProps) {
               </View>
             </View>
           )}
-        </View>
-      </GestureDetector>
     </View>
   );
 }

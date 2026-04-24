@@ -12,13 +12,13 @@ export type SoundName =
   | 'chime';
 
 const SOUND_FILES: Record<SoundName, AVPlaybackSource> = {
-  rattle: require('@/assets/sounds/fate/spin-rattle.mp3'),
-  scratch: require('@/assets/sounds/fate/record-scratch.mp3'),
-  drumroll: require('@/assets/sounds/fate/drumroll.mp3'),
-  reveal: require('@/assets/sounds/fate/fate-reveal.mp3'),
-  heartbeat: require('@/assets/sounds/fate/heartbeat.mp3'),
-  boom: require('@/assets/sounds/fate/boom.mp3'),
-  chime: require('@/assets/sounds/fate/soft-chime.mp3'),
+  rattle: require('@/assets/sounds/fate/spin-rattle.wav'),
+  scratch: require('@/assets/sounds/fate/record-scratch.wav'),
+  drumroll: require('@/assets/sounds/fate/drumroll.wav'),
+  reveal: require('@/assets/sounds/fate/fate-reveal.wav'),
+  heartbeat: require('@/assets/sounds/fate/heartbeat.wav'),
+  boom: require('@/assets/sounds/fate/boom.wav'),
+  chime: require('@/assets/sounds/fate/soft-chime.wav'),
 };
 
 const MUTE_KEY = 'fate_muted';
