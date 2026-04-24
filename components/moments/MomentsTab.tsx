@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   ScrollView,
@@ -18,6 +19,7 @@ import type { Moment, GroupMember } from '@/lib/types';
 import type { MomentDisplay, PeopleMap } from './types';
 import { StatBlock } from './StatBlock';
 import { DayChips } from './DayChips';
+import { BentoLayout } from './BentoLayout';
 import { MosaicLayout } from './MosaicLayout';
 import { DiaryLayout } from './DiaryLayout';
 import { MapLayout } from './MapLayout';
@@ -30,10 +32,11 @@ import { MomentLightbox } from './MomentLightbox';
 const LAYOUT_STORAGE_KEY = 'afterstay_moments_layout';
 const PEOPLE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#7f3712', '#9a7d52'];
 
-type LayoutMode = 'mosaic' | 'diary' | 'map';
+type LayoutMode = 'bento' | 'mosaic' | 'diary' | 'map';
 
 const LAYOUT_OPTIONS: { value: LayoutMode; label: string }[] = [
-  { value: 'mosaic', label: 'Mosaic' },
+  { value: 'bento', label: 'Bento' },
+  { value: 'mosaic', label: 'Grid' },
   { value: 'diary', label: 'Diary' },
   { value: 'map', label: 'Map' },
 ];
@@ -97,24 +100,63 @@ function computeDayCounts(moments: MomentDisplay[]): Record<string, number> {
 export function MomentsTab({ tripId }: MomentsTabProps) {
   const { colors } = useTheme();
   const router = useRouter();
-  const s = getStyles(colors);
+  const s = useMemo(() => getStyles(colors), [colors]);
 
   const [rawMoments, setRawMoments] = useState<Moment[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [activeDay, setActiveDay] = useState('all');
-  const [layout, setLayout] = useState<LayoutMode>('mosaic');
+  const [layout, setLayout] = useState<LayoutMode>('bento');
   const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectMode = selectedIds.size > 0;
 
   // Load persisted layout preference
   useEffect(() => {
     AsyncStorage.getItem(LAYOUT_STORAGE_KEY).then((stored) => {
-      if (stored === 'mosaic' || stored === 'diary' || stored === 'map') {
+      if (stored === 'bento' || stored === 'mosaic' || stored === 'diary' || stored === 'map') {
         setLayout(stored);
       }
     });
   }, []);
+
+  // Multi-select handlers
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleLongPress = useCallback((id: string) => {
+    setSelectedIds(new Set([id]));
+  }, []);
+
+  const handleDeleteSelected = useCallback(async () => {
+    const count = selectedIds.size;
+    Alert.alert(
+      `Delete ${count} photo${count > 1 ? 's' : ''}?`,
+      'This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const { deletePage } = await import('@/lib/supabase');
+            for (const id of selectedIds) {
+              try { await deletePage(id); } catch { /* skip */ }
+            }
+            setRawMoments((prev) => prev.filter((m) => !selectedIds.has(m.id)));
+            setSelectedIds(new Set());
+          },
+        },
+      ],
+    );
+  }, [selectedIds]);
 
   // Fetch moments + group members
   const load = useCallback(async () => {
@@ -229,7 +271,31 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           </View>
         </View>
 
+        {/* ---- Select mode toolbar ---- */}
+        {selectMode && (
+          <View style={s.selectBar}>
+            <Pressable onPress={() => setSelectedIds(new Set())}>
+              <Text style={s.selectBarCancel}>Cancel</Text>
+            </Pressable>
+            <Text style={s.selectBarCount}>{selectedIds.size} selected</Text>
+            <Pressable onPress={handleDeleteSelected}>
+              <Text style={s.selectBarDelete}>Delete</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* ---- Layout content ---- */}
+        {layout === 'bento' && (
+          <BentoLayout
+            items={filtered}
+            onOpen={handleOpen}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            selectMode={selectMode}
+            onLongPress={handleLongPress}
+          />
+        )}
+
         {layout === 'mosaic' && (
           <MosaicLayout
             items={filtered}
@@ -388,5 +454,33 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       fontSize: 13,
       fontWeight: '600',
       color: colors.text2,
+    },
+    selectBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.card,
+      borderRadius: 12,
+      marginHorizontal: 16,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    selectBarCancel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text2,
+    },
+    selectBarCount: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    selectBarDelete: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.danger,
     },
   });

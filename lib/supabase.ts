@@ -945,7 +945,7 @@ export async function addMoment(
 
   // If a local file URI is provided, compress and upload to Supabase Storage.
   if (input.localUri) {
-    const compressed = await compressImage(input.localUri, 1200, 0.6)
+    const compressed = await compressImage(input.localUri, 800, 0.5)
     const ext = (input.localUri.split('.').pop() ?? 'jpg').toLowerCase()
     const friendlyName = buildMomentFilename(input, ext)
     storagePath = `trips/${tripId}/${friendlyName}`

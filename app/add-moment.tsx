@@ -102,44 +102,51 @@ export default function AddMomentScreen() {
   const handleUploadAll = useCallback(async () => {
     if (photos.length === 0) return;
     setUploading(true);
-    setUploadProgress({ done: 0, total: photos.length });
+    const pending = photos.filter((p) => p.status !== 'done');
+    setUploadProgress({ done: 0, total: pending.length });
 
-    let successCount = 0;
-    const updatedPhotos = [...photos];
+    // Mark all as uploading
+    setPhotos((prev) =>
+      prev.map((p) => p.status === 'done' ? p : { ...p, status: 'uploading' }),
+    );
 
-    for (let i = 0; i < updatedPhotos.length; i++) {
-      const photo = updatedPhotos[i];
-      if (photo.status === 'done') {
-        successCount++;
-        continue;
-      }
+    let successCount = photos.filter((p) => p.status === 'done').length;
+    const BATCH_SIZE = 3;
 
-      // Mark as uploading
-      setPhotos((prev) =>
-        prev.map((p) => p.uri === photo.uri ? { ...p, status: 'uploading' } : p),
+    // Upload in parallel batches of 3
+    for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+      const batch = pending.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async (photo) => {
+          await addMoment({
+            caption: caption || '',
+            localUri: photo.uri,
+            location: location || undefined,
+            takenBy: takenBy || undefined,
+            date,
+            tags,
+          });
+          return photo.uri;
+        }),
       );
 
-      try {
-        await addMoment({
-          caption: caption || 'Untitled',
-          localUri: photo.uri,
-          location: location || undefined,
-          takenBy: takenBy || undefined,
-          date,
-          tags,
-        });
-
-        setPhotos((prev) =>
-          prev.map((p) => p.uri === photo.uri ? { ...p, status: 'done' } : p),
-        );
-        successCount++;
-      } catch {
-        setPhotos((prev) =>
-          prev.map((p) => p.uri === photo.uri ? { ...p, status: 'error' } : p),
-        );
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          setPhotos((prev) =>
+            prev.map((p) => p.uri === result.value ? { ...p, status: 'done' } : p),
+          );
+          successCount++;
+        } else {
+          // Find which photo failed
+          const failedUri = batch[results.indexOf(result)]?.uri;
+          if (failedUri) {
+            setPhotos((prev) =>
+              prev.map((p) => p.uri === failedUri ? { ...p, status: 'error' } : p),
+            );
+          }
+        }
       }
-
-      setUploadProgress({ done: successCount, total: photos.length });
+      setUploadProgress({ done: successCount - (photos.length - pending.length), total: pending.length });
     }
 
     setUploading(false);
