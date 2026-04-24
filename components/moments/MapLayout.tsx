@@ -72,7 +72,34 @@ const FALLBACK_POSITIONS: Record<string, { x: number; y: number }> = {
   mandala: { x: 58, y: 62 },
   'station 1': { x: 45, y: 82 },
   'white beach': { x: 46, y: 60 },
+  // More common Boracay spots
+  epic: { x: 48, y: 56 },
+  hakuna: { x: 52, y: 58 },
+  matata: { x: 52, y: 58 },
+  astoria: { x: 50, y: 50 },
+  henann: { x: 48, y: 62 },
+  discovery: { x: 44, y: 42 },
+  shangri: { x: 44, y: 38 },
+  crimson: { x: 56, y: 44 },
+  savoy: { x: 54, y: 50 },
+  boracay: { x: 50, y: 55 },
+  talipapa: { x: 56, y: 56 },
+  coco: { x: 48, y: 70 },
+  spider: { x: 52, y: 64 },
+  friday: { x: 46, y: 72 },
+  bulabog: { x: 58, y: 58 },
 };
+
+// Simple hash for consistent but spread-out positions for unknown locations
+function hashPosition(str: string): { x: number; y: number } {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  }
+  const x = 35 + Math.abs(h % 30);         // 35-65 range
+  const y = 20 + Math.abs((h >> 8) % 60);   // 20-80 range
+  return { x, y };
+}
 
 function positionOf(m: MomentDisplay): { x: number; y: number } {
   const moment = m as MomentDisplay & { latitude?: number; longitude?: number };
@@ -80,10 +107,12 @@ function positionOf(m: MomentDisplay): { x: number; y: number } {
     return gpsToMapPos(moment.latitude, moment.longitude);
   }
   const loc = (m.place ?? m.location ?? '').toLowerCase();
+  if (!loc) return hashPosition(m.id);
   for (const [key, pos] of Object.entries(FALLBACK_POSITIONS)) {
     if (loc.includes(key)) return pos;
   }
-  return { x: 50, y: 50 };
+  // Unknown location — hash for consistent spread instead of all at center
+  return hashPosition(loc);
 }
 
 // ---------------------------------------------------------------------------
@@ -680,7 +709,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
                 </Text>
               ) : null}
             </View>
-            {current.caption ? (
+            {current.caption && current.caption !== 'Untitled' ? (
               <Text style={{ fontSize: 9, color: colors.text2, marginTop: 2 }} numberOfLines={1}>
                 {current.caption}
               </Text>
