@@ -385,6 +385,7 @@ function SmoothViewer({ moments, initialIndex, onClose, onDelete, colors, insets
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={viewerStyles.overlay}>
         <View style={[viewerStyles.topBar, { paddingTop: insets.top + spacing.sm }]}>
           <Pressable style={viewerStyles.btn} onPress={onClose}>
@@ -428,6 +429,7 @@ function SmoothViewer({ moments, initialIndex, onClose, onDelete, colors, insets
           </Text>
         </View>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
