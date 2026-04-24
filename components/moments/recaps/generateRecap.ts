@@ -45,9 +45,12 @@ export function generateTripRecap(
   // Sort days chronologically
   const sortedDays = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
 
-  const tripStart = new Date(tripStartDate + 'T00:00:00+08:00');
+  // Use trip start date, or fall back to earliest moment date
+  const fallbackStart = sortedDays.length > 0 ? sortedDays[0][0] : new Date().toISOString().slice(0, 10);
+  const startStr = tripStartDate || fallbackStart;
+  const tripStart = new Date(startStr + 'T00:00:00+08:00');
 
-  const days: DayRecap[] = sortedDays.map(([day, dayMoments]) => {
+  const days: DayRecap[] = sortedDays.map(([day, dayMoments], idx) => {
     const photosWithUrl = dayMoments.filter((m) => m.photo);
     const photos = photosWithUrl.map((m) => m.photo!);
 
@@ -75,8 +78,9 @@ export function generateTripRecap(
 
     // Day number relative to trip start
     const dayDate = new Date(day + 'T00:00:00+08:00');
-    const dayNumber = Math.max(1, Math.floor((dayDate.getTime() - tripStart.getTime()) / 86400000) + 1);
-    const dayOfWeek = DAY_NAMES[dayDate.getDay()];
+    const rawDayNum = Math.floor((dayDate.getTime() - tripStart.getTime()) / 86400000) + 1;
+    const dayNumber = Number.isFinite(rawDayNum) ? Math.max(1, rawDayNum) : idx + 1;
+    const dayOfWeek = DAY_NAMES[dayDate.getDay()] ?? '';
 
     return {
       day,
@@ -94,9 +98,10 @@ export function generateTripRecap(
   });
 
   const allPlaces = new Set(moments.map((m) => m.location).filter(Boolean));
+  const displayDest = destination || [...allPlaces][0] || 'My Trip';
 
   return {
-    destination,
+    destination: displayDest,
     totalDays: days.length,
     totalMoments: moments.length,
     totalPlaces: allPlaces.size,

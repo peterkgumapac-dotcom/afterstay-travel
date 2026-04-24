@@ -1,13 +1,14 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { DayRecap } from './generateRecap';
 
 interface PolaroidTemplateProps {
   recap: DayRecap;
+  onPhotoPress?: (uri: string) => void;
 }
 
-export function PolaroidTemplate({ recap }: PolaroidTemplateProps) {
+export function PolaroidTemplate({ recap, onPhotoPress }: PolaroidTemplateProps) {
   // Show up to 3 polaroids, slightly rotated
   const rotations = [-3, 2, -1.5];
   const photos = recap.photos.slice(0, 3);
@@ -33,11 +34,13 @@ export function PolaroidTemplate({ recap }: PolaroidTemplateProps) {
               },
             ]}
           >
-            <Image
-              source={{ uri, cache: 'force-cache' }}
-              style={styles.polaroidImage}
-              resizeMode="cover"
-            />
+            <Pressable onPress={() => onPhotoPress?.(uri)}>
+              <Image
+                source={{ uri, cache: 'force-cache' }}
+                style={styles.polaroidImage}
+                resizeMode="cover"
+              />
+            </Pressable>
             <View style={styles.polaroidBottom}>
               {i === 0 && recap.caption ? (
                 <Text style={styles.handwriting} numberOfLines={1}>{recap.caption}</Text>

@@ -1,17 +1,18 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { DayRecap } from './generateRecap';
 
 interface MinimalTemplateProps {
   recap: DayRecap;
+  onPhotoPress?: (uri: string) => void;
 }
 
-export function MinimalTemplate({ recap }: MinimalTemplateProps) {
+export function MinimalTemplate({ recap, onPhotoPress }: MinimalTemplateProps) {
   return (
     <View style={styles.card}>
       {/* Hero photo */}
-      <View style={styles.heroContainer}>
+      <Pressable style={styles.heroContainer} onPress={() => onPhotoPress?.(recap.heroPhoto)}>
         <Image
           source={{ uri: recap.heroPhoto, cache: 'force-cache' }}
           style={styles.hero}
@@ -21,7 +22,7 @@ export function MinimalTemplate({ recap }: MinimalTemplateProps) {
         <View style={styles.dayBadge}>
           <Text style={styles.dayBadgeText}>DAY {recap.dayNumber}</Text>
         </View>
-      </View>
+      </Pressable>
 
       {/* Info section */}
       <View style={styles.info}>
@@ -54,12 +55,13 @@ export function MinimalTemplate({ recap }: MinimalTemplateProps) {
         {recap.photos.length > 1 && (
           <View style={styles.strip}>
             {recap.photos.slice(1, 5).map((uri, i) => (
-              <Image
-                key={i}
-                source={{ uri, cache: 'force-cache' }}
-                style={styles.stripPhoto}
-                resizeMode="cover"
-              />
+              <Pressable key={i} onPress={() => onPhotoPress?.(uri)} style={{ flex: 1 }}>
+                <Image
+                  source={{ uri, cache: 'force-cache' }}
+                  style={styles.stripPhoto}
+                  resizeMode="cover"
+                />
+              </Pressable>
             ))}
           </View>
         )}
