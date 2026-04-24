@@ -1046,7 +1046,13 @@ export default function TripScreen() {
                   styles.segBtn,
                   activeTab === t && styles.segBtnActive,
                 ]}
-                onPress={() => setActiveTab(t)}
+                onPress={() => {
+                  if (t === 'guide') {
+                    router.push('/(tabs)/guide' as never);
+                  } else {
+                    setActiveTab(t);
+                  }
+                }}
               >
                 <Text
                   style={[
@@ -1092,27 +1098,6 @@ export default function TripScreen() {
         )}
 
         {/* ===================== MOMENTS ===================== */}
-        {activeTab === 'guide' && (
-          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-            <TouchableOpacity
-              onPress={() => router.push('/(tabs)/guide' as never)}
-              activeOpacity={0.7}
-              style={{
-                backgroundColor: colors.card,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 14,
-                paddingVertical: 16,
-                paddingHorizontal: 24,
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>Open Property Guide</Text>
-              <Text style={{ fontSize: 12, color: colors.text3 }}>Hotel info, WiFi, house rules, amenities</Text>
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* ===================== ESSENTIALS ===================== */}
         {activeTab === 'essentials' && (

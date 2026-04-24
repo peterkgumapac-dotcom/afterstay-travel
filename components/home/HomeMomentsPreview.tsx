@@ -22,7 +22,7 @@ interface HomeMomentsPreviewProps {
   onViewAll?: () => void;
 }
 
-/** Cycles through photos with a slow cross-fade */
+/** Cycles through photos with a smooth continuous cross-fade */
 function SlideshowImage({
   photos,
   offset = 0,
@@ -32,40 +32,49 @@ function SlideshowImage({
   offset?: number;
   style: any;
 }) {
-  const [currentIdx, setCurrentIdx] = useState(offset % photos.length);
-  const [nextIdx, setNextIdx] = useState((offset + 1) % photos.length);
-  const fade = useSharedValue(0);
+  const safeLen = Math.max(photos.length, 1);
+  const [idxA, setIdxA] = useState(offset % safeLen);
+  const [idxB, setIdxB] = useState((offset + 1) % safeLen);
+  const [showingA, setShowingA] = useState(true);
+  const opacityA = useSharedValue(1);
+  const opacityB = useSharedValue(0);
 
   useEffect(() => {
     if (photos.length <= 1) return;
-    let timeout: ReturnType<typeof setTimeout>;
     const interval = setInterval(() => {
-      // Cross-fade: fade in the next image on top
-      fade.value = withTiming(1, {
-        duration: FADE_DURATION,
-        easing: Easing.inOut(Easing.ease),
-      });
-      // After fade completes, swap: current becomes what was next, prepare new next
-      timeout = setTimeout(() => {
-        setCurrentIdx((p) => (p + 1) % photos.length);
-        setNextIdx((p) => (p + 2) % photos.length);
-        // Reset instantly — invisible because current now shows the same image that was faded in
-        fade.value = 0;
-      }, FADE_DURATION + 50); // small buffer after animation completes
+      if (showingA) {
+        // Fade B in, A out
+        setIdxB((prev) => {
+          const next = (prev + 1) % photos.length;
+          return next === idxA ? (next + 1) % photos.length : next;
+        });
+        opacityB.value = withTiming(1, { duration: FADE_DURATION, easing: Easing.inOut(Easing.ease) });
+        opacityA.value = withTiming(0, { duration: FADE_DURATION, easing: Easing.inOut(Easing.ease) });
+      } else {
+        // Fade A in, B out
+        setIdxA((prev) => {
+          const next = (prev + 1) % photos.length;
+          return next === idxB ? (next + 1) % photos.length : next;
+        });
+        opacityA.value = withTiming(1, { duration: FADE_DURATION, easing: Easing.inOut(Easing.ease) });
+        opacityB.value = withTiming(0, { duration: FADE_DURATION, easing: Easing.inOut(Easing.ease) });
+      }
+      setShowingA((s) => !s);
     }, SLIDE_INTERVAL);
-    return () => { clearInterval(interval); clearTimeout(timeout); };
-  }, [photos.length, fade]);
+    return () => clearInterval(interval);
+  }, [photos.length, showingA, idxA, idxB, opacityA, opacityB]);
 
-  const fadeStyle = useAnimatedStyle(() => ({
-    opacity: fade.value,
-  }));
+  const styleA = useAnimatedStyle(() => ({ opacity: opacityA.value }));
+  const styleB = useAnimatedStyle(() => ({ opacity: opacityB.value }));
 
   return (
-    <View style={[style, { overflow: 'hidden' }]}>
-      <Image source={{ uri: photos[currentIdx] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+    <View style={[style, { overflow: 'hidden', backgroundColor: '#1a1612' }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, styleA]}>
+        <Image source={{ uri: photos[idxA] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      </Animated.View>
       {photos.length > 1 && (
-        <Animated.View style={[StyleSheet.absoluteFill, fadeStyle]}>
-          <Image source={{ uri: photos[nextIdx] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <Animated.View style={[StyleSheet.absoluteFill, styleB]}>
+          <Image source={{ uri: photos[idxB] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         </Animated.View>
       )}
     </View>
@@ -112,9 +121,6 @@ export function HomeMomentsPreview({
         <Animated.View entering={FadeInDown.duration(300)}>
           <TouchableOpacity style={styles.singleCard} activeOpacity={0.85} onPress={onViewAll}>
             <SlideshowImage photos={allPhotos} style={styles.singleImage} />
-            <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={styles.gradient}>
-              <Text style={styles.caption} numberOfLines={1}>{displayPhotos[0].caption || 'Trip moment'}</Text>
-            </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
         <SeeAll count={moments.length} onPress={onViewAll} colors={colors} />
@@ -129,9 +135,6 @@ export function HomeMomentsPreview({
           {displayPhotos.map((m, i) => (
             <TouchableOpacity key={m.id} style={styles.halfCard} activeOpacity={0.85} onPress={onViewAll}>
               <SlideshowImage photos={allPhotos} offset={i * Math.floor(allPhotos.length / 2)} style={styles.fillImage} />
-              <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={styles.gradient}>
-                <Text style={styles.smallCaption} numberOfLines={1}>{m.caption || ''}</Text>
-              </LinearGradient>
             </TouchableOpacity>
           ))}
         </Animated.View>
@@ -152,9 +155,6 @@ export function HomeMomentsPreview({
         {/* Left — big photo, cycles through all moments */}
         <TouchableOpacity style={styles.collageBig} activeOpacity={0.85} onPress={onViewAll}>
           <SlideshowImage photos={allPhotos} offset={0} style={styles.fillImage} />
-          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.55)']} style={styles.gradient}>
-            <Text style={styles.caption} numberOfLines={1}>{main.caption || ''}</Text>
-          </LinearGradient>
         </TouchableOpacity>
 
         {/* Right — stacked, each cycles with different offset */}

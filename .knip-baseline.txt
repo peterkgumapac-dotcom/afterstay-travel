@@ -1,9 +1,8 @@
-Unused files (19)
+Unused files (18)
 components/CachedImage.tsx: components/CachedImage.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
 components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
-components/shared/EmptyState.tsx: components/shared/EmptyState.tsx
 design-reference/components/icons.jsx: design-reference/components/icons.jsx
 design-reference/components/shell.jsx: design-reference/components/shell.jsx
 design-reference/screens/budget.jsx: design-reference/screens/budget.jsx
