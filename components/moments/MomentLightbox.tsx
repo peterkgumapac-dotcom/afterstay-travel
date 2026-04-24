@@ -341,9 +341,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginBottom: 10,
   },
-  voiceContainer: {
-    marginBottom: 10,
-  },
   chipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -20,6 +20,7 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
+import { formatDatePHT } from '@/lib/utils';
 import { Avatar } from './Avatar';
 import type { MomentDisplay, PeopleMap } from './types';
 
@@ -670,8 +671,8 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
               {current.place ?? current.location ?? ''}
             </Text>
             <Text style={[styles.captionDate, { color: colors.text3 }]}>
-              {current.date}
-                          </Text>
+              {formatDatePHT(current.date)}
+            </Text>
           </View>
         )}
 
@@ -777,8 +778,8 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
                   {m.place ?? m.location ?? ''}
                 </Text>
                 <Text style={[styles.listDate, { color: colors.text3 }]}>
-                  {m.date}
-                                  </Text>
+                  {formatDatePHT(m.date)}
+                </Text>
               </View>
               <Avatar authorKey={authorKey} people={people} size={20} />
             </TouchableOpacity>
