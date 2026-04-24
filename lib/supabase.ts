@@ -424,14 +424,10 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
   if (tripError || !tripData) throw new Error('Trip not found')
 
   // Add user as trip member
-  const { data: authData } = await supabase.auth.getUser()
-  const userId = authData?.user?.id
-
   const { error: memberError } = await supabase.from(T.groupMembers).insert({
     trip_id: tripId,
     name: userName,
     role: 'Member',
-    ...(userId ? { user_id: userId } : {}),
   })
   if (memberError) throw new Error(`joinTrip: ${memberError.message}`)
 
@@ -439,6 +435,32 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
   await supabase.from('trip_invites').update({ used: true }).eq('code', code.toUpperCase())
 
   return { tripId, trip: mapTrip(tripData) }
+}
+
+export interface TripInvite {
+  id: string
+  code: string
+  createdAt: string
+  expiresAt: string
+  used: boolean
+}
+
+export async function getInvites(tripId?: string): Promise<TripInvite[]> {
+  const id = await resolveTripId(tripId)
+  const { data, error } = await supabase
+    .from('trip_invites')
+    .select('id, code, created_at, expires_at, used')
+    .eq('trip_id', id)
+    .order('created_at', { ascending: false })
+    .limit(10)
+  if (error || !data) return []
+  return data.map((r: any) => ({
+    id: r.id,
+    code: r.code,
+    createdAt: r.created_at,
+    expiresAt: r.expires_at,
+    used: !!r.used,
+  }))
 }
 
 // ---------- ADD FLIGHT ----------

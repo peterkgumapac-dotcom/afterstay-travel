@@ -808,10 +808,8 @@ export default function TripScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const handleInvite = async () => {
-    await Clipboard.setStringAsync('https://afterstay.app/invite/boracay-2026');
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied', 'Invite link copied to clipboard!');
+  const handleInvite = () => {
+    router.push('/invite');
   };
 
   const handleMemberEdit = (member: GroupMember) => {

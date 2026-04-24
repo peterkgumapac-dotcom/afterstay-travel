@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { createInviteCode, getActiveTrip } from '@/lib/supabase';
+import { createInviteCode, getActiveTrip, getInvites, type TripInvite } from '@/lib/supabase';
 
 export default function InviteScreen() {
   const { colors } = useTheme();
@@ -26,6 +26,7 @@ export default function InviteScreen() {
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tripName, setTripName] = useState('');
+  const [history, setHistory] = useState<TripInvite[]>([]);
 
   const generateCode = useCallback(async () => {
     setLoading(true);
@@ -36,12 +37,18 @@ export default function InviteScreen() {
       const newCode = await createInviteCode(trip.id);
       setCode(newCode);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Refresh history after generating
+      const invites = await getInvites(trip.id);
+      setHistory(invites);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to create invite');
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Auto-generate code on mount
+  useEffect(() => { generateCode(); }, [generateCode]);
 
   const inviteLink = code ? `https://afterstay.travel/join/${code}` : '';
   const shareMessage = code
@@ -111,6 +118,24 @@ export default function InviteScreen() {
             <Pressable onPress={generateCode} style={styles.newCodeBtn}>
               <Text style={styles.newCodeText}>Generate new code</Text>
             </Pressable>
+
+            {/* Invite history */}
+            {history.length > 1 && (
+              <View style={styles.historySection}>
+                <Text style={styles.historyTitle}>Previous invites</Text>
+                {history.slice(1).map((inv) => {
+                  const expired = new Date(inv.expiresAt) < new Date();
+                  const status = inv.used ? 'Used' : expired ? 'Expired' : 'Active';
+                  const statusColor = inv.used ? colors.success : expired ? colors.danger : colors.accent;
+                  return (
+                    <View key={inv.id} style={styles.historyRow}>
+                      <Text style={styles.historyCode}>{inv.code}</Text>
+                      <Text style={[styles.historyStatus, { color: statusColor }]}>{status}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </>
         )}
 
@@ -212,6 +237,38 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     // New code
     newCodeBtn: { alignItems: 'center', padding: spacing.sm },
     newCodeText: { fontSize: 12, color: colors.text3, fontWeight: '600' },
+
+    // History
+    historySection: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: spacing.lg,
+      gap: spacing.sm,
+    },
+    historyTitle: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.text3,
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+      marginBottom: spacing.xs,
+    },
+    historyRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+    },
+    historyCode: {
+      fontFamily: 'SpaceMono',
+      fontSize: 14,
+      color: colors.text2,
+      letterSpacing: 2,
+    },
+    historyStatus: {
+      fontSize: 11,
+      fontWeight: '600',
+    },
 
     // Close
     closeBtn: { alignItems: 'center', padding: spacing.md },

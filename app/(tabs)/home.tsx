@@ -515,7 +515,7 @@ export default function HomeScreen() {
                     <Plane size={16} color={colors.accent} />
                     <Text style={styles.nudgeText}>Add your flights</Text>
                   </Pressable>
-                  <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/trip')}>
+                  <Pressable style={styles.nudgeRow} onPress={() => router.push('/invite')}>
                     <Users size={16} color={colors.accent} />
                     <Text style={styles.nudgeText}>Invite travel companions</Text>
                   </Pressable>

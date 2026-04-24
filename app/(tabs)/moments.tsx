@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { ArrowLeft, Plus } from 'lucide-react-native';
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MomentsTab } from '@/components/moments/MomentsTab';
@@ -14,6 +14,15 @@ export default function MomentsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg, paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12}>
+          <ArrowLeft size={22} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Moments</Text>
+        <View style={{ width: 22 }} />
+      </View>
+
       <MomentsTab />
 
       {/* FAB to add moment */}
@@ -31,6 +40,8 @@ export default function MomentsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
   fab: {
     position: 'absolute',
     right: 20,

@@ -29,7 +29,7 @@ import Svg, {
   Line,
 } from 'react-native-svg';
 
-import { Hotel, MapPin, StickyNote } from 'lucide-react-native';
+import { ArrowLeft, Hotel, MapPin, StickyNote } from 'lucide-react-native';
 
 import { useRouter } from 'expo-router';
 
@@ -277,7 +277,10 @@ export default function GuideScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.topBar}>
-          <View>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12}>
+            <ArrowLeft size={22} color={colors.text} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
             <Text style={styles.title}>Guide</Text>
           </View>
         </View>
@@ -296,7 +299,10 @@ export default function GuideScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Top bar */}
       <View style={styles.topBar}>
-        <View>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12}>
+          <ArrowLeft size={22} color={colors.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Guide</Text>
           <Text style={styles.subtitle}>{hotelName || destLabel} {hotelName && destLabel ? `\u00B7 ${destLabel}` : ''}</Text>
         </View>

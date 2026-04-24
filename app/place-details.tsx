@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Phone, Globe, MapPin, Bookmark, Star } from 'lucide-react-native';
+import { ArrowLeft, Phone, Globe, MapPin, Bookmark, Star } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
@@ -148,7 +148,17 @@ export default function PlaceDetailsScreen() {
   const priceStr = priceLevelString(details.price_level);
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <ArrowLeft size={22} color={colors.text} />
+        </Pressable>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginLeft: 10, flex: 1 }} numberOfLines={1}>
+          {details.name}
+        </Text>
+      </View>
+
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {/* Photo carousel */}
         {details.photos.length > 0 && (
