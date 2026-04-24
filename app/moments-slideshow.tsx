@@ -14,17 +14,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { formatDatePHT } from '@/lib/utils';
 import { deletePage, getActiveTrip, getMoments } from '@/lib/supabase';
@@ -345,47 +338,31 @@ interface SmoothViewerProps {
 
 function SmoothViewer({ moments, initialIndex, onClose, onDelete, colors, insets }: SmoothViewerProps) {
   const [index, setIndex] = useState(initialIndex);
-  const translateX = useSharedValue(0);
+  const flatListRef = useRef<FlatList<Moment>>(null);
   const current = moments[index];
 
-  const goNext = useCallback(() => {
-    setIndex((i) => Math.min(i + 1, moments.length - 1));
-  }, [moments.length]);
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0 && viewableItems[0].index != null) {
+      setIndex(viewableItems[0].index);
+    }
+  }).current;
 
-  const goPrev = useCallback(() => {
-    setIndex((i) => Math.max(i - 1, 0));
-  }, []);
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
-  const panGesture = Gesture.Pan()
-    .onUpdate((e) => {
-      translateX.value = e.translationX;
-    })
-    .onEnd((e) => {
-      if (e.translationX < -80 && e.velocityX < 0) {
-        translateX.value = withTiming(-SCREEN_WIDTH, { duration: 200 }, () => {
-          runOnJS(goNext)();
-          translateX.value = 0;
-        });
-      } else if (e.translationX > 80 && e.velocityX > 0) {
-        translateX.value = withTiming(SCREEN_WIDTH, { duration: 200 }, () => {
-          runOnJS(goPrev)();
-          translateX.value = 0;
-        });
-      } else {
-        translateX.value = withSpring(0, { damping: 20, stiffness: 200 });
-      }
-    })
-    .minDistance(10);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+  const renderPhoto = useCallback(({ item }: { item: Moment }) => (
+    <View style={{ width: SCREEN_WIDTH, flex: 1, justifyContent: 'center' }}>
+      <Image
+        source={{ uri: item.photo }}
+        style={viewerStyles.fullImage}
+        resizeMode="contain"
+      />
+    </View>
+  ), []);
 
   if (!current) return null;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={viewerStyles.overlay}>
         <View style={[viewerStyles.topBar, { paddingTop: insets.top + spacing.sm }]}>
           <Pressable style={viewerStyles.btn} onPress={onClose}>
@@ -408,15 +385,25 @@ function SmoothViewer({ moments, initialIndex, onClose, onDelete, colors, insets
           </Pressable>
         </View>
 
-        <GestureDetector gesture={panGesture}>
-          <Animated.View style={[viewerStyles.photoArea, animStyle]}>
-            <Image
-              source={{ uri: current.photo }}
-              style={viewerStyles.fullImage}
-              resizeMode="contain"
-            />
-          </Animated.View>
-        </GestureDetector>
+        <FlatList
+          ref={flatListRef}
+          data={moments}
+          renderItem={renderPhoto}
+          keyExtractor={(item) => item.id}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={initialIndex}
+          getItemLayout={(_, idx) => ({
+            length: SCREEN_WIDTH,
+            offset: SCREEN_WIDTH * idx,
+            index: idx,
+          })}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          decelerationRate="fast"
+          style={{ flex: 1 }}
+        />
 
         <View style={[viewerStyles.meta, { paddingBottom: insets.bottom + spacing.lg }]}>
           {current.caption && current.caption !== 'Untitled' ? (
@@ -429,7 +416,6 @@ function SmoothViewer({ moments, initialIndex, onClose, onDelete, colors, insets
           </Text>
         </View>
       </View>
-      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -446,7 +432,7 @@ const viewerStyles = StyleSheet.create({
   detail: { color: 'rgba(255,255,255,0.6)', fontSize: 13 },
 });
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', gap: spacing.lg },
   emptyText: { color: colors.text2, fontSize: 15 },
