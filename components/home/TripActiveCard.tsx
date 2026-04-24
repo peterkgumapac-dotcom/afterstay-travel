@@ -214,40 +214,28 @@ export function TripActiveCard({
 
   return (
     <View style={styles.card}>
-      {/* Top row: Day label + TRIP LIVE pill */}
+      {/* Compact top: destination + day + live pill */}
       <View style={styles.topRow}>
-        <Text style={styles.topLabel}>
-          {trip.destination ?? 'Trip'} {'\u00B7'} Day {dayOfTrip} of {totalDays}
-        </Text>
-        <View style={styles.livePill}>
-          <Animated.View style={[styles.liveDot, dotAnimStyle]} />
-          <Text style={styles.liveText}>TRIP LIVE</Text>
-        </View>
-      </View>
-
-      <View style={styles.separator} />
-
-      {/* Days-left status bar */}
-      <View>
-        <View style={styles.statusBarHeader}>
-          <View style={styles.statusBarLeft}>
-            <Text style={styles.kicker}>DAYS LEFT</Text>
-            <Text style={styles.bigNumber}>{daysLeft}</Text>
-            <Text style={styles.unit}>days</Text>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.topLabel}>
+              {trip.destination ?? 'Trip'}
+            </Text>
+            <View style={styles.livePill}>
+              <Animated.View style={[styles.liveDot, dotAnimStyle]} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
           </View>
-          <Text style={styles.hint}>
-            {dayOfTrip} spent {'\u00B7'} returning {formatDatePHT(trip.endDate)}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 4 }}>
+            <Text style={[styles.bigNumber, { fontSize: 15 }]}>Day {dayOfTrip}</Text>
+            <Text style={styles.hint}>of {totalDays} · {daysLeft} left · {formatDatePHT(trip.endDate)}</Text>
+          </View>
         </View>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${tripPct}%`, backgroundColor: FILL_DARK }]} />
-        </View>
-        <View style={styles.pctRow}>
-          <Text style={styles.pctLabel}>{Math.round(tripPct)}%</Text>
-        </View>
+        <Text style={[styles.pctLabel, { fontSize: 13 }]}>{Math.round(tripPct)}%</Text>
       </View>
-
-      <View style={styles.separator} />
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${tripPct}%`, backgroundColor: FILL_DARK }]} />
+      </View>
 
       {/* Budget — collapsed peek; tap to expand */}
       <Pressable
@@ -332,10 +320,10 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 22,
-      paddingVertical: 16,
-      paddingHorizontal: 18,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
       marginHorizontal: 16,
-      gap: 14,
+      gap: 10,
       ...elevation.sm,
     },
     topRow: {
