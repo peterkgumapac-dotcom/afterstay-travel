@@ -104,6 +104,8 @@ export interface Expense {
   paidBy?: string;
   photo?: string;
   placeName?: string;
+  placeLatitude?: number;
+  placeLongitude?: number;
   splitType?: 'Equal' | 'Custom' | 'Individual';
   notes?: string;
 }

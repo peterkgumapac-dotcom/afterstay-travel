@@ -21,14 +21,22 @@ function getPhotoUrl(photoRef: string, maxWidth: number = 800): string {
   return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${photoRef}&key=${API_KEY}`;
 }
 
-// Pick the widest photo (landscape = more likely storefront/exterior, not food close-up)
+// Pick the best exterior/place photo — avoid food close-ups and product shots.
+// Google Places photos are ordered: index 0 is typically the main/cover photo
+// chosen by Google (usually exterior or interior overview). Later indices are
+// more likely user-uploaded food or product close-ups.
 function pickBestPhoto(photos: any[] | undefined): string | null {
   if (!photos || photos.length === 0) return null;
-  // Sort by width descending — wider photos are more likely exterior/storefront
-  const sorted = [...photos].sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
-  // Prefer landscape (width > height) if available
-  const landscape = sorted.find((p: any) => (p.width ?? 0) > (p.height ?? 0));
-  const best = landscape ?? sorted[0];
+
+  // Prefer the first landscape photo — index 0–2 are most likely storefront/exterior.
+  // Landscape aspect ratio strongly correlates with establishment shots vs food close-ups.
+  const candidates = photos.slice(0, 5);
+  const landscape = candidates.find(
+    (p: any) => (p.width ?? 0) > (p.height ?? 0),
+  );
+  // Fall back to the very first photo (Google's chosen cover) rather than
+  // picking a random wide one from deeper in the array.
+  const best = landscape ?? photos[0];
   return best?.photo_reference ? getPhotoUrl(best.photo_reference, 1200) : null;
 }
 
@@ -164,6 +172,24 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
     url: r.url,
     price_level: r.price_level,
     editorial_summary: r.editorial_summary?.overview,
+  };
+}
+
+// ── Place location (lightweight — just name + coords) ───────────────────
+
+export async function getPlaceLocation(placeId: string): Promise<{ name: string; lat: number; lng: number } | null> {
+  if (!API_KEY) return null;
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,geometry&key=${API_KEY}`
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  const r = data.result;
+  if (!r?.geometry?.location) return null;
+  return {
+    name: r.name,
+    lat: r.geometry.location.lat,
+    lng: r.geometry.location.lng,
   };
 }
 

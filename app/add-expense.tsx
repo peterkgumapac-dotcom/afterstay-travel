@@ -21,7 +21,7 @@ import FormField from '@/components/FormField';
 import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { placeAutocomplete } from '@/lib/google-places';
+import { placeAutocomplete, getPlaceLocation } from '@/lib/google-places';
 import { addExpense, getGroupMembers, updateExpense } from '@/lib/supabase';
 import type { Expense } from '@/lib/types';
 
@@ -76,6 +76,8 @@ export default function AddExpenseScreen() {
   );
   const [paidBy, setPaidBy] = useState<string>(params.paidBy ?? '');
   const [placeName, setPlaceName] = useState(params.placeName ?? '');
+  const [placeLatitude, setPlaceLatitude] = useState<number | undefined>();
+  const [placeLongitude, setPlaceLongitude] = useState<number | undefined>();
   const [placeSuggestions, setPlaceSuggestions] = useState<{ placeId: string; description: string }[]>([]);
   const placeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [splitType, setSplitType] = useState<NonNullable<Expense['splitType']>>(
@@ -151,6 +153,8 @@ export default function AddExpenseScreen() {
         date: expenseDate,
         paidBy: paidBy || undefined,
         placeName: placeName.trim() || undefined,
+        placeLatitude: placeLatitude ?? undefined,
+        placeLongitude: placeLongitude ?? undefined,
         splitType,
         notes: notes.trim() || undefined,
         photo: photoUri || undefined,
@@ -253,7 +257,15 @@ export default function AddExpenseScreen() {
                 <Pressable
                   key={s.placeId}
                   style={{ paddingVertical: 10, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}
-                  onPress={() => { setPlaceName(s.description.split(',')[0]); setPlaceSuggestions([]); }}
+                  onPress={async () => {
+                    setPlaceName(s.description.split(',')[0]);
+                    setPlaceSuggestions([]);
+                    const loc = await getPlaceLocation(s.placeId);
+                    if (loc) {
+                      setPlaceLatitude(loc.lat);
+                      setPlaceLongitude(loc.lng);
+                    }
+                  }}
                 >
                   <Text style={{ fontSize: 13, color: colors.text }} numberOfLines={1}>{s.description}</Text>
                 </Pressable>
