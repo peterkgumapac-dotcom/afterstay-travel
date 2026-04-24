@@ -1112,51 +1112,11 @@ function DiscoverScreenInner() {
         {/* ═══════ PLANNER TAB — manual day-by-day timeline ═══════ */}
         {tab === 'planner' && (
           <>
-            {/* Summary strip */}
-            <View style={styles.plannerSummary}>
-              <View>
-                <Text style={styles.eyebrow}>
-                  {tripStartDate && tripEndDate
-                    ? `${formatDatePHT(tripStartDate)} — ${formatDatePHT(tripEndDate)} · ${(tripDays ?? 1) - 1} nights`
-                    : 'No trip dates'}
-                </Text>
-                <Text style={styles.plannerCount}>
-                  {plannerTotalCount} item{plannerTotalCount === 1 ? '' : 's'} planned
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.browsePlacesBtn}
-                activeOpacity={0.7}
-                onPress={() => setTab('places')}
-              >
-                <Text style={styles.browsePlacesBtnText}>Browse places {'\u2192'}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* AI Generate card with trip context */}
+            {/* Compact AI generate bar */}
             {!itineraryLoading && (
-              <View style={[styles.plannerSummary, { flexDirection: 'column', gap: 10 }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Sparkles size={14} color={colors.accent} strokeWidth={2} />
-                  <Text style={[styles.plannerCount, { flex: 1 }]}>
-                    {itinerary.length > 0 ? 'Regenerate itinerary' : 'AI Trip Planner'}
-                  </Text>
-                </View>
-
-                {/* Step 1: Trip context — auto-filled */}
-                <View style={{ gap: 4, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: colors.card2, borderRadius: 10 }}>
-                  {tripDest ? <Text style={{ fontSize: 12, color: colors.text2 }}>{'📍'} {tripDest}</Text> : null}
-                  {tripHotel ? <Text style={{ fontSize: 12, color: colors.text2 }}>{'🏨'} {tripHotel}</Text> : null}
-                  {tripStartDate && tripEndDate ? (
-                    <Text style={{ fontSize: 12, color: colors.text2 }}>{'📅'} {formatDatePHT(tripStartDate)} – {formatDatePHT(tripEndDate)} · {(tripDays ?? 1) - 1} nights</Text>
-                  ) : null}
-                  {tripGroupSize > 0 ? <Text style={{ fontSize: 12, color: colors.text2 }}>{'👥'} {tripGroupSize} traveler{tripGroupSize !== 1 ? 's' : ''}</Text> : null}
-                  {tripBudget > 0 ? <Text style={{ fontSize: 12, color: colors.text2 }}>{'💰'} {tripBudgetCurrency} {tripBudget.toLocaleString()} budget</Text> : null}
-                </View>
-
-                {/* Step 2: Style picker */}
-                <Text style={[styles.eyebrow, { marginTop: 4 }]}>What kind of trip?</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              <View style={{ gap: 10, marginBottom: 16 }}>
+                {/* Style + pace inline */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {ITINERARY_STYLES.map((s) => {
                     const active = style === s.id;
                     return (
@@ -1164,173 +1124,120 @@ function DiscoverScreenInner() {
                         key={s.id}
                         onPress={() => setStyle(s.id)}
                         activeOpacity={0.7}
-                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 6, paddingHorizontal: 12 }]}
+                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 5, paddingHorizontal: 10 }]}
                       >
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{s.label}</Text>
+                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 11 }]}>{s.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
-                </ScrollView>
+                </View>
 
-                {/* Pace picker */}
-                <Text style={styles.eyebrow}>How packed?</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                  {PACE_OPTIONS.map((p) => {
-                    const active = pace === p.id;
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        onPress={() => setPace(p.id)}
-                        activeOpacity={0.7}
-                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 6, paddingHorizontal: 12 }]}
-                      >
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>{p.label} · {p.desc}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-
-                {/* Optional prompt */}
-                <TextInput
-                  value={prompt}
-                  onChangeText={setPrompt}
-                  placeholder="Anything specific? e.g. snorkeling + sunset dinner"
-                  placeholderTextColor={colors.text3}
-                  style={{ fontSize: 13, color: colors.text, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
-                />
-
-                {/* Step 3: Generate button */}
-                <TouchableOpacity
-                  style={[styles.plannerEmptyBtn, { flexDirection: 'row', gap: 8, alignSelf: 'stretch', backgroundColor: colors.black, marginTop: 4 }]}
-                  activeOpacity={0.7}
-                  onPress={handleGenerateItinerary}
-                >
-                  <Sparkles size={14} color={colors.onBlack} strokeWidth={2} />
-                  <Text style={styles.plannerEmptyBtnText}>
-                    {itinerary.length > 0 ? 'Regenerate' : 'Plan my trip'}
-                  </Text>
-                </TouchableOpacity>
+                {/* Prompt + generate row */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    value={prompt}
+                    onChangeText={setPrompt}
+                    placeholder="e.g. snorkeling, sunset dinner..."
+                    placeholderTextColor={colors.text3}
+                    style={{ flex: 1, fontSize: 13, color: colors.text, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
+                  />
+                  <TouchableOpacity
+                    style={{ backgroundColor: colors.black, borderRadius: 10, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
+                    activeOpacity={0.7}
+                    onPress={handleGenerateItinerary}
+                  >
+                    <Sparkles size={16} color={colors.onBlack} strokeWidth={2} />
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
             {itineraryLoading && (
               <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                <MiniLoader message="Generating your itinerary..." />
+                <MiniLoader message="Planning your trip..." />
               </View>
             )}
             {itineraryError && (
               <Text style={{ color: colors.danger, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>{itineraryError}</Text>
             )}
 
-            {/* Top 5 per category */}
-            {getTopPicksByCategory(places, getDistanceKm).map((cat) => (
-              <View key={cat.key} style={{ marginBottom: 14 }}>
-                <Text style={[styles.eyebrow, { marginBottom: 8 }]}>{cat.label}</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                  {cat.places.map((p) => (
-                    <TouchableOpacity
-                      key={p.placeId ?? p.n}
-                      style={styles.topPickCard}
-                      activeOpacity={0.7}
-                      onPress={() => handleAddToPlanner(p)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Add ${p.n} to planner`}
-                    >
-                      <Image source={{ uri: p.img }} style={styles.topPickImage} />
-                      <Text style={styles.topPickName} numberOfLines={1}>{p.n}</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 10 }}>
-                        <Text style={{ fontSize: 10, color: colors.warn }}>{'★'} {p.r}</Text>
-                        <Text style={{ fontSize: 9, color: colors.text3 }}> · tap to add</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            ))}
-
-            {/* Day picker chips */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.plannerDayRow}
-            >
-              {plannerDays.map((d) => {
-                const count = (plannerItems[d.n] ?? []).length;
-                const active = plannerActiveDay === d.n;
-                return (
+            {/* Day accordion — all days in one scroll */}
+            {plannerDays.map((d) => {
+              const items = plannerItems[d.n] ?? [];
+              const isActive = plannerActiveDay === d.n;
+              return (
+                <View key={d.n} style={{ marginBottom: 2 }}>
+                  {/* Day header — tap to expand */}
                   <TouchableOpacity
-                    key={d.n}
-                    onPress={() => setPlannerActiveDay(d.n)}
+                    onPress={() => setPlannerActiveDay(isActive ? -1 : d.n)}
                     activeOpacity={0.7}
-                    style={[
-                      styles.plannerDayChip,
-                      {
-                        backgroundColor: active ? colors.accent : colors.card,
-                        borderColor: active ? colors.accent : colors.border,
-                      },
-                    ]}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      paddingVertical: 12,
+                      paddingHorizontal: 14,
+                      backgroundColor: isActive ? colors.card : 'transparent',
+                      borderRadius: isActive ? 12 : 0,
+                      borderBottomWidth: isActive ? 0 : 1,
+                      borderBottomColor: colors.border,
+                    }}
                   >
-                    <Text style={[styles.plannerDayLabel, { color: active ? '#fff' : colors.text3 }]}>
-                      {d.label}
-                    </Text>
-                    <Text style={[styles.plannerDayNum, { color: active ? '#fff' : colors.text }]}>
-                      Day {d.n}
-                    </Text>
-                    <Text style={[styles.plannerDayCount, { color: active ? 'rgba(255,255,255,0.75)' : colors.text3 }]}>
-                      {count > 0 ? `${count} item${count === 1 ? '' : 's'}` : 'empty'}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: isActive ? colors.accent : colors.text }}>
+                        Day {d.n}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: colors.text3 }}>{d.label} · {d.date}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {items.length > 0 && (
+                        <Text style={{ fontSize: 11, color: colors.text3, fontWeight: '600' }}>
+                          {items.length}
+                        </Text>
+                      )}
+                      <Text style={{ fontSize: 12, color: colors.text3 }}>{isActive ? '\u25B2' : '\u25BC'}</Text>
+                    </View>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
 
-            {/* Day timeline */}
-            <View style={styles.plannerTimeline}>
-              <Text style={styles.plannerDayEyebrow}>
-                Day {plannerActiveDay} · {plannerDays[plannerActiveDay - 1]?.date ?? ''}
-              </Text>
-
-              {plannerDayItems.length === 0 ? (
-                <View style={styles.plannerEmptyCard}>
-                  <Text style={styles.plannerEmptyTitle}>Nothing planned yet</Text>
-                  <Text style={styles.plannerEmptyBody}>
-                    Tap a place in the Places tab, then add it to your itinerary.
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.plannerEmptyBtn}
-                    activeOpacity={0.7}
-                    onPress={() => setTab('places')}
-                  >
-                    <Text style={styles.plannerEmptyBtnText}>Browse places</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View>
-                  {/* Vertical timeline line */}
-                  <View style={[styles.plannerLine, { backgroundColor: colors.border }]} />
-                  {plannerDayItems.map((item) => (
-                    <View key={item.id} style={styles.plannerItemRow}>
-                      <Text style={styles.plannerItemTime}>{item.time}</Text>
-                      <View style={[styles.plannerDot, { backgroundColor: colors.accent, borderColor: colors.canvas }]} />
-                      <View style={[styles.plannerItemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <View style={styles.plannerItemHeader}>
-                          <Text style={styles.plannerItemTitle}>{item.title}</Text>
+                  {/* Expanded day content */}
+                  {isActive && (
+                    <View style={{ paddingHorizontal: 14, paddingBottom: 16, backgroundColor: colors.card, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, marginBottom: 8 }}>
+                      {items.length === 0 ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                          <Text style={{ fontSize: 13, color: colors.text3, fontStyle: 'italic' }}>No activities yet</Text>
                           <TouchableOpacity
-                            onPress={() => removePlannerItem(item.id)}
-                            activeOpacity={0.6}
-                            hitSlop={8}
+                            style={{ marginTop: 10, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                            activeOpacity={0.7}
+                            onPress={() => setTab('places')}
                           >
-                            <Text style={{ color: colors.text3, fontSize: 16 }}>{'\u00D7'}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.accent }}>Add from Places</Text>
                           </TouchableOpacity>
                         </View>
-                        {item.note && (
-                          <Text style={styles.plannerItemNote}>{item.note}</Text>
-                        )}
-                      </View>
+                      ) : (
+                        <View style={{ gap: 8, marginTop: 8 }}>
+                          {items.map((item) => (
+                            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text3, width: 42, marginTop: 2 }}>{item.time}</Text>
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent, marginTop: 6 }} />
+                              <View style={{ flex: 1, backgroundColor: colors.bg, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text, flex: 1 }}>{item.title}</Text>
+                                  <TouchableOpacity onPress={() => removePlannerItem(item.id)} activeOpacity={0.6} hitSlop={8}>
+                                    <Text style={{ color: colors.text3, fontSize: 14 }}>{'\u00D7'}</Text>
+                                  </TouchableOpacity>
+                                </View>
+                                {item.note && (
+                                  <Text style={{ fontSize: 11, color: colors.text3, marginTop: 3 }}>{item.note}</Text>
+                                )}
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                     </View>
-                  ))}
+                  )}
                 </View>
-              )}
-            </View>
+              );
+            })}
           </>
         )}
 
