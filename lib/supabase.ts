@@ -275,14 +275,20 @@ function mapChecklist(row: Record<string, unknown>): ChecklistItem {
 }
 
 function momentPhotoUrl(row: Record<string, unknown>): string | undefined {
-  const publicUrl = row.public_url as string | undefined
-  if (publicUrl) return publicUrl
+  let url = row.public_url as string | undefined
   // Fallback: reconstruct from storage_path if public_url wasn't saved
-  const storagePath = row.storage_path as string | undefined
-  if (storagePath && SUPABASE_URL) {
-    return `${SUPABASE_URL}/storage/v1/object/public/moments/${storagePath}`
+  if (!url) {
+    const storagePath = row.storage_path as string | undefined
+    if (storagePath && SUPABASE_URL) {
+      url = `${SUPABASE_URL}/storage/v1/object/public/moments/${storagePath}`
+    }
   }
-  return undefined
+  if (!url) return undefined
+  // HEIC files: use Supabase render endpoint to serve as JPEG (Android can't decode HEIC)
+  if (url.match(/\.heic$/i)) {
+    return url.replace('/object/public/', '/render/image/public/') + '?format=origin'
+  }
+  return url
 }
 
 function mapMoment(row: Record<string, unknown>): Moment {
@@ -1015,7 +1021,8 @@ export async function addMoment(
   // If a local file URI is provided, compress and upload to Supabase Storage.
   if (input.localUri) {
     const compressed = await compressImage(input.localUri, 600, 0.6)
-    const ext = (input.localUri.split('.').pop() ?? 'jpg').toLowerCase()
+    // compressImage always outputs JPEG — use .jpeg regardless of original extension
+    const ext = 'jpeg'
     const friendlyName = buildMomentFilename(input, ext)
     storagePath = `trips/${tripId}/${friendlyName}`
 
