@@ -281,10 +281,11 @@ export default function HomeScreen() {
     };
   }, [load]);
 
-  // Only show the postcard loader if data takes more than 500ms
+  // Always show the branded postcard loader on cold start
   useEffect(() => {
     if (!loading) return;
-    const t = setTimeout(() => setShowLoader(true), 500);
+    // Brief delay so AfterStayLoader shows first (mark animation), then transition to postcard
+    const t = setTimeout(() => setShowLoader(true), 300);
     return () => clearTimeout(t);
   }, [loading]);
 
