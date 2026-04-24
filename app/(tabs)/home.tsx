@@ -265,29 +265,20 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let alive = true;
-    let freshLoaded = false;
-    // Show cached trip as instant preview, but load() will overwrite with fresh data
-    cacheGet<Trip | null>('trip:active').then(async (cached) => {
-      if (!alive || !cached || freshLoaded) return;
-      setTrip(cached);
-      const cachedFlights = await cacheGet<Flight[]>(`flights:${cached.id}`);
-      if (alive && cachedFlights && !freshLoaded) setFlights(cachedFlights);
-      // Show content immediately from cache — no loader needed
-      if (alive && !freshLoaded) setLoading(false);
-    });
-    load().then(() => { freshLoaded = true; });
-    return () => {
-      alive = false;
-    };
+    // Don't show stale cache — go straight to fresh data
+    // The loader plays for 3s minimum, giving Supabase time to respond
+    load();
+    return () => { alive = false; };
   }, [load]);
 
-  // Always show the branded postcard loader on cold start
+  // Always show branded loader for at least 3 seconds on cold start
   useEffect(() => {
     if (!loading) return;
-    // Brief delay so AfterStayLoader shows first (mark animation), then transition to postcard
-    const t = setTimeout(() => setShowLoader(true), 300);
+    setShowLoader(true);
+    // Minimum 3s loader — ensures fresh data arrives before content shows
+    const t = setTimeout(() => setLoaderDone(true), 3000);
     return () => clearTimeout(t);
-  }, [loading]);
+  }, []);
 
   // Hide tab bar during initial load
   useEffect(() => {
@@ -372,10 +363,8 @@ export default function HomeScreen() {
     [trip?.roomType, totalNights, dateRange],
   );
 
-  // Always show the branded loader on initial load (cold start).
-  // Once loaderDone fires, we never show it again until next mount.
-  if (!loaderDone && (loading || showLoader)) {
-    if (!showLoader) return <AfterStayLoader />;
+  // Show branded loader until both: 3s minimum passed AND data loaded
+  if (!loaderDone || loading) {
     return (
       <LivingPostcardLoader
         destination={trip?.destination ?? 'your trip'}
