@@ -211,6 +211,7 @@ function mapMember(row: Record<string, unknown>): GroupMember {
     id: row.id as string,
     name: (row.name as string) ?? '',
     role: ((row.role as string) || 'Member') as GroupMember['role'],
+    userId: (row.user_id as string) ?? undefined,
     phone: (row.phone as string) ?? undefined,
     email: (row.email as string) ?? undefined,
     profilePhoto: (row.avatar_url as string) ?? undefined,
@@ -376,6 +377,7 @@ export async function createTrip(input: {
       ...(input.cost != null ? { budget_limit: input.cost } : {}),
       ...(input.costCurrency ? { currency: input.costCurrency } : {}),
       ...(input.bookingRef ? { notes: `Booking ref: ${input.bookingRef}` } : {}),
+      ...(input.roomType ? { room_type: input.roomType } : {}),
     })
     .select('id')
     .single()
@@ -385,14 +387,29 @@ export async function createTrip(input: {
   cachedTripId = tripId
   cachedTrip = undefined // Invalidate cache so next fetch gets new trip
 
-  // Add members if provided
+  // Always add the organizer as Primary member
+  const userName = authData?.user?.user_metadata?.full_name
+    ?? authData?.user?.email?.split('@')[0]
+    ?? 'Organizer';
+  await supabase.from(T.groupMembers).insert({
+    trip_id: tripId,
+    name: userName,
+    role: 'Primary',
+    ...(userId ? { user_id: userId } : {}),
+  }).then(() => {}) // don't block on failure
+
+  // Add additional members if provided
   if (input.members && input.members.length > 0) {
-    const memberRows = input.members.map((name, i) => ({
-      trip_id: tripId,
-      name: name.trim(),
-      role: i === 0 ? 'Primary' : 'Member',
-    }))
-    await supabase.from(T.groupMembers).insert(memberRows)
+    const memberRows = input.members
+      .filter(n => n.trim().toLowerCase() !== userName.toLowerCase()) // skip if organizer is in list
+      .map((name) => ({
+        trip_id: tripId,
+        name: name.trim(),
+        role: 'Member' as const,
+      }))
+    if (memberRows.length > 0) {
+      await supabase.from(T.groupMembers).insert(memberRows)
+    }
   }
 
   return tripId
@@ -438,11 +455,15 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
     .single()
   if (tripError || !tripData) throw new Error('Trip not found')
 
-  // Add user as trip member
+  // Add user as trip member with user_id
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+
   const { error: memberError } = await supabase.from(T.groupMembers).insert({
     trip_id: tripId,
     name: userName,
     role: 'Member',
+    ...(userId ? { user_id: userId } : {}),
   })
   if (memberError) throw new Error(`joinTrip: ${memberError.message}`)
 

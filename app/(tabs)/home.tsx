@@ -182,10 +182,11 @@ export default function HomeScreen() {
       }
       if (t) {
         const [fs, ms, members] = await Promise.all([
-          getFlights(t.id).catch(() => [] as Flight[]),
-          getMoments(t.id).catch(() => [] as Moment[]),
-          getGroupMembers(t.id).catch(() => [] as GroupMember[]),
+          getFlights(t.id).catch((e) => { if (__DEV__) console.warn('[Home] flights error:', e); return [] as Flight[]; }),
+          getMoments(t.id).catch((e) => { if (__DEV__) console.warn('[Home] moments error:', e); return [] as Moment[]; }),
+          getGroupMembers(t.id).catch((e) => { if (__DEV__) console.warn('[Home] members error:', e); return [] as GroupMember[]; }),
         ]);
+        if (__DEV__) console.log(`[Home] loaded: ${fs.length} flights, ${ms.length} moments, ${members.length} members`);
         setFlights(fs);
         setMoments(ms);
         setMembers(members);

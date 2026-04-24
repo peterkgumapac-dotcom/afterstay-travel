@@ -894,12 +894,39 @@ export default function TripScreen() {
       }
     };
 
-    Alert.alert(member.name, 'Edit member details', [
-      { text: 'Change Photo', onPress: pickMemberPhoto },
-      { text: 'Edit Email', onPress: showEmailPrompt },
-      { text: 'Edit Phone', onPress: showPhonePrompt },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    const isOnApp = !!member.userId;
+    const subtitle = isOnApp
+      ? 'This member is on the app.'
+      : 'This member hasn\'t joined yet. Send them an invite link.';
+
+    const buttons: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [];
+
+    if (!isOnApp) {
+      buttons.push({
+        text: 'Send Invite Link',
+        onPress: async () => {
+          const msg = member.phone
+            ? `Join our trip on AfterStay! Download the app and use your invite code to see all the trip details.`
+            : `Join our trip on AfterStay!`;
+          const target = member.phone
+            ? `sms:${member.phone}?body=${encodeURIComponent(msg)}`
+            : member.email
+              ? `mailto:${member.email}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(msg)}`
+              : null;
+          if (target) {
+            Linking.openURL(target).catch(() => {});
+          } else {
+            router.push('/invite');
+          }
+        },
+      });
+    }
+    buttons.push({ text: 'Change Photo', onPress: pickMemberPhoto });
+    buttons.push({ text: 'Edit Email', onPress: showEmailPrompt });
+    buttons.push({ text: 'Edit Phone', onPress: showPhonePrompt });
+    buttons.push({ text: 'Cancel', style: 'cancel' });
+
+    Alert.alert(member.name, subtitle, buttons);
   };
 
   const handleMemberChat = async (member: GroupMember) => {

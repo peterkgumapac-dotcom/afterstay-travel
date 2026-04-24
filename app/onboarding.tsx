@@ -149,9 +149,9 @@ function Input({
 
 function PathPicker({ onPick, onSkip, name, colors }: { onPick: (p: Path) => void; onSkip: () => void; name: string; colors: ThemeColors }) {
   const paths = [
-    { id: 'plan' as const, kicker: 'A', label: 'Help me plan a trip', sub: "Tell us where you're dreaming of. We'll shape it into days.", icon: Plane },
-    { id: 'upload' as const, kicker: 'B', label: "I've already booked", sub: 'Drop in your confirmation screenshots — we\'ll read them and set up your trip.', icon: FileText },
-    { id: 'invited' as const, kicker: 'C', label: 'Someone invited me', sub: 'Trip details are already waiting. Just add your own flight.', icon: Users },
+    { id: 'upload' as const, kicker: 'A', label: "I've already booked", sub: 'Drop in your confirmation screenshots — we\'ll read them and set up your trip.', icon: FileText },
+    { id: 'invited' as const, kicker: 'B', label: 'Someone invited me', sub: 'Trip details are already waiting. Just enter your invite code.', icon: Users },
+    { id: 'plan' as const, kicker: 'C', label: 'Plan a new trip', sub: "Tell us where you're dreaming of. We'll shape it into days.", icon: Plane },
   ];
 
   return (
@@ -187,7 +187,7 @@ function PathPicker({ onPick, onSkip, name, colors }: { onPick: (p: Path) => voi
         ))}
       </View>
       <Text style={[shared.hint, { color: colors.text3 }]}>
-        Not sure? Start with <Text style={{ color: colors.accent, fontWeight: '600' }}>Plan a trip</Text> — you can upload bookings once you have them.
+        Already booked? Start with <Text style={{ color: colors.accent, fontWeight: '600' }}>I've already booked</Text> — we'll read your confirmation and set everything up.
       </Text>
       <TouchableOpacity onPress={onSkip} style={shared.skipBtn} activeOpacity={0.7}>
         <Text style={[shared.skipText, { color: colors.text3 }]}>Skip for now</Text>

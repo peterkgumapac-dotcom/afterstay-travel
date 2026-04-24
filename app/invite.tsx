@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Copy, Send, Users } from 'lucide-react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -69,7 +71,7 @@ export default function InviteScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={[styles.iconCircle, { backgroundColor: colors.accentBg }]}>
             <Users size={28} color={colors.accent} strokeWidth={1.8} />
@@ -99,6 +101,17 @@ export default function InviteScreen() {
               <Text style={styles.codeLabel}>INVITE CODE</Text>
               <Text style={styles.codeText}>{code}</Text>
               <Text style={styles.codeExpiry}>Expires in 7 days</Text>
+            </View>
+
+            {/* QR code */}
+            <View style={styles.qrWrap}>
+              <QRCode
+                value={inviteLink}
+                size={160}
+                backgroundColor="transparent"
+                color={colors.text}
+              />
+              <Text style={styles.qrHint}>Scan to join</Text>
             </View>
 
             {/* Share actions */}
@@ -142,7 +155,7 @@ export default function InviteScreen() {
         <Pressable onPress={() => router.back()} style={styles.closeBtn}>
           <Text style={styles.closeText}>Close</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -151,9 +164,9 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
     content: {
-      flex: 1,
       padding: spacing.xl,
-      justifyContent: 'center',
+      paddingTop: 40,
+      paddingBottom: 40,
       gap: spacing.xl,
     },
     header: { alignItems: 'center', gap: spacing.sm },
@@ -214,6 +227,23 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     codeExpiry: {
       fontSize: 11,
       color: colors.text3,
+    },
+
+    // QR code
+    qrWrap: {
+      alignItems: 'center',
+      padding: spacing.xl,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      gap: spacing.sm,
+    },
+    qrHint: {
+      fontSize: 11,
+      color: colors.text3,
+      fontWeight: '600',
+      marginTop: spacing.xs,
     },
 
     // Actions

@@ -79,7 +79,7 @@ export function OverviewTab({
                 )}
               </Text>
               <Text style={styles.memberRole}>
-                {m.role} · Booking linked
+                {m.role} · {m.userId ? 'On the app' : 'Not yet joined'}
               </Text>
             </View>
             <TouchableOpacity

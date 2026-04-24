@@ -79,6 +79,7 @@ export interface GroupMember {
   id: string;
   name: string;
   role: 'Primary' | 'Member';
+  userId?: string;
   flightId?: string;
   checkedBaggage?: boolean;
   phone?: string;
