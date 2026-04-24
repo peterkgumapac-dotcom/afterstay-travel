@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
+import AfterStayLoader from '@/components/AfterStayLoader';
 import { AnticipationHero } from '@/components/home/AnticipationHero';
 import { HomeMomentsPreview } from '@/components/home/HomeMomentsPreview';
 import { ArrivedCard } from '@/components/home/ArrivedCard';
@@ -144,6 +145,7 @@ export default function HomeScreen() {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [moments, setMoments] = useState<Moment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLoader, setShowLoader] = useState(false);
   const [loaderDone, setLoaderDone] = useState(false);
   const { setVisible: setTabBarVisible } = useTabBarVisibility();
   const [refreshing, setRefreshing] = useState(false);
@@ -266,11 +268,18 @@ export default function HomeScreen() {
     };
   }, [load]);
 
-  // Hide tab bar during initial load, show once loader is done
+  // Only show the postcard loader if data takes more than 500ms
   useEffect(() => {
-    const isInitialLoading = loading || !loaderDone;
+    if (!loading) return;
+    const t = setTimeout(() => setShowLoader(true), 500);
+    return () => clearTimeout(t);
+  }, [loading]);
+
+  // Hide tab bar during initial load
+  useEffect(() => {
+    const isInitialLoading = loading || (showLoader && !loaderDone);
     setTabBarVisible(!isInitialLoading);
-  }, [loading, loaderDone, setTabBarVisible]);
+  }, [loading, showLoader, loaderDone, setTabBarVisible]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -349,7 +358,18 @@ export default function HomeScreen() {
     [trip?.roomType, totalNights, dateRange],
   );
 
-  if (loading || !loaderDone) {
+  if (loading) {
+    if (!showLoader) return <AfterStayLoader />;
+    return (
+      <LivingPostcardLoader
+        destination={trip?.destination ?? 'your trip'}
+        name={userName || 'traveler'}
+        onDone={() => setLoaderDone(true)}
+      />
+    );
+  }
+
+  if (showLoader && !loaderDone) {
     return (
       <LivingPostcardLoader
         destination={trip?.destination ?? 'your trip'}
