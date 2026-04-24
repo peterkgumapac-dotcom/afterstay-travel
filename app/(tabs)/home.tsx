@@ -371,18 +371,10 @@ export default function HomeScreen() {
     [trip?.roomType, totalNights, dateRange],
   );
 
-  if (loading) {
+  // Always show the branded loader on initial load (cold start).
+  // Once loaderDone fires, we never show it again until next mount.
+  if (!loaderDone && (loading || showLoader)) {
     if (!showLoader) return <AfterStayLoader />;
-    return (
-      <LivingPostcardLoader
-        destination={trip?.destination ?? 'your trip'}
-        name={userName || 'traveler'}
-        onDone={() => setLoaderDone(true)}
-      />
-    );
-  }
-
-  if (showLoader && !loaderDone) {
     return (
       <LivingPostcardLoader
         destination={trip?.destination ?? 'your trip'}

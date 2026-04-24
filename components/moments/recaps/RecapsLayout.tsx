@@ -1,9 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Share2 } from 'lucide-react-native';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { captureRef } from 'react-native-view-shot';
-import * as Sharing from 'expo-sharing';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import type { MomentDisplay } from '../types';
@@ -39,6 +37,8 @@ export function RecapsLayout({ items, destination, tripStartDate }: RecapsLayout
     if (!ref) return;
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const { captureRef } = await import('react-native-view-shot');
+      const Sharing = await import('expo-sharing');
       const uri = await captureRef(ref, { format: 'png', quality: 1 });
       await Sharing.shareAsync(uri, { mimeType: 'image/png' });
     } catch {
