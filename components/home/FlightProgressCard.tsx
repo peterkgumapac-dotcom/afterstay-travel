@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -82,7 +82,7 @@ export function FlightProgressCard({
   arriveIso,
 }: FlightProgressCardProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   /* ── Real-time progress from flight times ── */
   const [now, setNow] = useState(Date.now());

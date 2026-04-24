@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -17,7 +18,7 @@ interface TrendingCardProps {
 
 export function TrendingCard({ item, onPress }: TrendingCardProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   return (
     <TouchableOpacity

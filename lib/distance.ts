@@ -34,10 +34,4 @@ export const formatDistance = (km: number): string => {
   return `${Math.round(km)} km`;
 };
 
-export const estimateWalkTime = (km: number): string => {
-  const minutes = Math.round((km / 4.5) * 60);
-  if (minutes < 60) return `${minutes} min walk`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m walk`;
-};
 

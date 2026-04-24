@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import Animated, {
@@ -161,7 +161,7 @@ interface WeatherForecastCardProps {
 
 export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destination }) => {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [days, setDays] = useState<DayForecast[]>([]);
   const [current, setCurrent] = useState<CurrentWeather | null>(null);
   const [loading, setLoading] = useState(true);
@@ -240,7 +240,8 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
 
   const detailStyle = useAnimatedStyle(() => ({
     opacity: expandAnim.value,
-    maxHeight: expandAnim.value * 600,
+    transform: [{ scaleY: expandAnim.value }],
+    height: expandAnim.value === 0 ? 0 : undefined,
     overflow: 'hidden' as const,
   }));
 

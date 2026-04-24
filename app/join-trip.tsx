@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,7 +26,7 @@ type Phase = 'code' | 'welcome' | 'flight';
 
 export default function JoinTripScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const { code: initialCode } = useLocalSearchParams<{ code?: string }>();
   const { user } = useAuth();

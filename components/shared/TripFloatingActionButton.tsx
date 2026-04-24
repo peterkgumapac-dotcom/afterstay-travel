@@ -4,7 +4,9 @@ import {
   Modal, Pressable, Text,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Plus, Camera, FileText, MessageCircle, Package, Receipt } from 'lucide-react-native';
+import {
+  Plus, Users, UserPlus, Camera, Package, Plane,
+} from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 
@@ -16,7 +18,15 @@ interface FabAction {
   onPress: () => void;
 }
 
-export const FloatingActionButton: React.FC = () => {
+interface TripFabProps {
+  onAddTrip: () => void;
+  onAddEssentials: () => void;
+}
+
+export const TripFloatingActionButton: React.FC<TripFabProps> = ({
+  onAddTrip,
+  onAddEssentials,
+}) => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
@@ -32,39 +42,39 @@ export const FloatingActionButton: React.FC = () => {
 
   const actions: FabAction[] = [
     {
-      id: 'chat',
-      icon: MessageCircle,
-      label: 'Group Chat',
-      color: (colors as any).fab1 ?? colors.accent,
-      onPress: () => router.push('/group-chat'),
+      id: 'trip',
+      icon: Plane,
+      label: 'Add Trip',
+      color: colors.fab1,
+      onPress: onAddTrip,
+    },
+    {
+      id: 'members',
+      icon: Users,
+      label: 'Add Members',
+      color: colors.fab2,
+      onPress: () => router.push('/add-member' as never),
+    },
+    {
+      id: 'invite',
+      icon: UserPlus,
+      label: 'Invite Members',
+      color: colors.fab3,
+      onPress: () => router.push('/invite' as never),
     },
     {
       id: 'moment',
       icon: Camera,
-      label: 'Capture Moment',
-      color: colors.fab2,
-      onPress: () => router.push('/add-moment'),
-    },
-    {
-      id: 'expense',
-      icon: Receipt,
-      label: 'Quick Expense',
+      label: 'Add Moments',
       color: colors.fab4,
-      onPress: () => router.push('/add-expense'),
+      onPress: () => router.push('/add-moment' as never),
     },
     {
-      id: 'pack',
+      id: 'essentials',
       icon: Package,
-      label: 'Add to Packing',
-      color: colors.fab3,
-      onPress: () => router.push('/(tabs)/trip'),
-    },
-    {
-      id: 'summary',
-      icon: FileText,
-      label: 'Trip Summary',
-      color: colors.fab1,
-      onPress: () => router.push('/trip-summary'),
+      label: 'Add Essentials',
+      color: (colors as any).fab5 ?? colors.accent,
+      onPress: onAddEssentials,
     },
   ];
 
@@ -171,6 +181,8 @@ export const FloatingActionButton: React.FC = () => {
         style={styles.fab}
         onPress={toggle}
         activeOpacity={0.85}
+        accessibilityLabel="Add to trip"
+        accessibilityRole="button"
       >
         <Animated.View style={{ transform: [{ rotate: rotation }] }}>
           <Plus color={colors.bg} size={28} strokeWidth={3} />

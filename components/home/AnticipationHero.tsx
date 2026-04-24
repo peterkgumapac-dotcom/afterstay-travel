@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -50,7 +50,7 @@ export const AnticipationHero: React.FC<Props> = ({
   members = [],
 }) => {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextIndex, setNextIndex] = useState(1);
   const fadeAnim = useSharedValue(0);
@@ -66,6 +66,7 @@ export const AnticipationHero: React.FC<Props> = ({
       ),
       -1,
     );
+    return () => cancelAnimation(kenBurnsScale);
   }, [kenBurnsScale]);
 
   const kenBurnsStyle = useAnimatedStyle(() => ({
@@ -75,18 +76,19 @@ export const AnticipationHero: React.FC<Props> = ({
   // Photo cross-fade
   useEffect(() => {
     if (photos.length <= 1) return;
+    let timeout: ReturnType<typeof setTimeout>;
     const interval = setInterval(() => {
       fadeAnim.value = withTiming(1, {
         duration: 900,
         easing: Easing.inOut(Easing.ease),
       });
-      setTimeout(() => {
+      timeout = setTimeout(() => {
         setCurrentIndex((p) => (p + 1) % photos.length);
         setNextIndex((p) => (p + 2) % photos.length);
         fadeAnim.value = 0;
       }, 900);
     }, SLIDE_DURATION);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); clearTimeout(timeout); };
   }, [photos.length, fadeAnim]);
 
   const fadeStyle = useAnimatedStyle(() => ({

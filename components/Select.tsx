@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -12,7 +13,7 @@ interface Props<T extends string> {
 
 export default function Select<T extends string>({ label, options, value, onChange }: Props<T>) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   return (
     <View>

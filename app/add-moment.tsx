@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -40,7 +40,7 @@ const ALL_TAGS: readonly MomentTag[] = [
 export default function AddMomentScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const [photos, setPhotos] = useState<PhotoItem[]>([]);

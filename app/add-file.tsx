@@ -3,7 +3,7 @@ import { documentDirectory, copyAsync, makeDirectoryAsync, getInfoAsync } from '
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -38,7 +38,7 @@ const FILE_TYPES: TripFileType[] = [
 
 export default function AddFileScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const [fileName, setFileName] = useState('');
   const [fileType, setFileType] = useState<TripFileType>('Other');

@@ -1,5 +1,8 @@
 // Date, countdown, formatting, and misc helpers.
 
+export const MS_PER_DAY = 86_400_000;
+export const MS_PER_HOUR = 3_600_000;
+
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**

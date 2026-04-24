@@ -3,7 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, FileText, Plane, Hotel, X } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -41,7 +41,7 @@ const GUIDELINES = [
 
 export default function ScanTripScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
 
   const [phase, setPhase] = useState<Phase>('upload');

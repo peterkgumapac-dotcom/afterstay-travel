@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,7 +20,7 @@ import { createInviteCode, getActiveTrip } from '@/lib/supabase';
 
 export default function InviteScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
 
   const [code, setCode] = useState<string | null>(null);

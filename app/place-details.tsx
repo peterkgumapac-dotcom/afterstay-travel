@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Phone, Globe, MapPin, Bookmark, Star } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AfterStayLoader from '@/components/AfterStayLoader';
-import { useTheme } from '@/constants/ThemeContext';
+import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { getPlaceDetails, type PlaceDetails } from '@/lib/google-places';
 import { addPlace } from '@/lib/supabase';
@@ -27,7 +27,7 @@ function priceLevelString(level?: number): string {
 
 export default function PlaceDetailsScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const { placeId, placeName } = useLocalSearchParams<{ placeId: string; placeName?: string }>();
   const router = useRouter();
   const [details, setDetails] = useState<PlaceDetails | null>(null);
@@ -244,7 +244,7 @@ export default function PlaceDetailsScreen() {
   );
 }
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: spacing.xxxl },

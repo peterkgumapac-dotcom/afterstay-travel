@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -22,7 +23,7 @@ const CELL_W = (SCREEN_W - 32 - 16) / 3; // 16px padding each side, 8px gap x2
 
 export function CategoryGrid({ categories, onSelect }: CategoryGridProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   return (
     <View style={styles.grid}>

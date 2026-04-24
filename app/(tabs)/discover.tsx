@@ -31,7 +31,7 @@ import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay, type ItineraryActivity, type PlannerScope, type PlannerPace } from '@/lib/anthropic';
 import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
-import { formatDatePHT } from '@/lib/utils';
+import { formatDatePHT, MS_PER_DAY } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
 import ExploreMap, { MAP_AVAILABLE } from '@/components/discover/ExploreMap';
 import { cacheGet, cacheSet } from '@/lib/cache';
@@ -719,11 +719,11 @@ function DiscoverScreenInner() {
           setTripGroupSize(Math.max(1, members.length));
           if (trip.startDate && trip.endDate) {
             const ms = new Date(trip.endDate + 'T00:00:00+08:00').getTime() - new Date(trip.startDate + 'T00:00:00+08:00').getTime();
-            setTripDays(Math.max(1, Math.ceil(ms / 86400000) + 1));
+            setTripDays(Math.max(1, Math.ceil(ms / MS_PER_DAY) + 1));
           }
         }
-      } catch {
-        // Trip load failure is non-fatal; features degrade gracefully
+      } catch (e) {
+        if (__DEV__) console.warn('[DiscoverScreen] load trip context failed:', e);
       }
     };
     placesCache.current = {};
@@ -739,8 +739,8 @@ function DiscoverScreenInner() {
       const result = await getSavedPlaces(tripId);
       setSavedPlaces(result);
       setSaved(new Set(result.filter((p) => p.saved !== false).map((p) => p.name)));
-    } catch {
-      // Saved places load failure is non-fatal
+    } catch (e) {
+      if (__DEV__) console.warn('[DiscoverScreen] load saved places failed:', e);
     } finally {
       setSavedLoading(false);
     }

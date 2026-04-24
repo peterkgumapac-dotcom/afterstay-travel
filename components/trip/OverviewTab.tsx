@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MessageCircle } from 'lucide-react-native';
 import type { GroupMember, Trip } from '@/lib/types';
@@ -30,7 +30,7 @@ export function OverviewTab({
   onMemberChat,
   onInvite,
 }: OverviewTabProps) {
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   return (
     <>

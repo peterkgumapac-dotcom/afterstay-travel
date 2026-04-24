@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { safeParse } from '@/lib/utils';
+import { safeParse, MS_PER_DAY, MS_PER_HOUR } from '@/lib/utils';
 
 interface Props {
   tripStartISO: string;
@@ -22,7 +22,7 @@ export function CountdownCard({
   onBoard,
 }: Props) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -45,9 +45,9 @@ export function CountdownCard({
 
   const tripStart = safeParse(tripStartISO).getTime();
   const diff = Math.max(0, tripStart - now);
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  const minutes = Math.floor((diff % 3600000) / 60000);
+  const days = Math.floor(diff / MS_PER_DAY);
+  const hours = Math.floor((diff % MS_PER_DAY) / MS_PER_HOUR);
+  const minutes = Math.floor((diff % MS_PER_HOUR) / 60000);
   const seconds = Math.floor((diff % 60000) / 1000);
 
   const label = safeParse(tripStartISO).toLocaleDateString('en-US', {

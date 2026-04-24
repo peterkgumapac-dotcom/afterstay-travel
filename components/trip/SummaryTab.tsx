@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ChevronRight, Plus } from 'lucide-react-native';
 import ConstellationHero from '@/components/summary/ConstellationHero';
@@ -30,7 +30,7 @@ export function SummaryTab({
   colors,
   onAddTrip,
 }: SummaryTabProps) {
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   return (
     <>

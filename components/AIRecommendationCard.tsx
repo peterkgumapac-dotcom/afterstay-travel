@@ -1,7 +1,8 @@
+import { useMemo } from 'react';
 import { Check, MapPin, Plus } from 'lucide-react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import type { AIRecommendation } from '@/lib/types';
 import Pill from './Pill';
@@ -16,7 +17,7 @@ interface Props {
 
 export default function AIRecommendationCard({ rec, saved, onSave, photoUri }: Props) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   return (
     <View style={styles.card}>
@@ -60,7 +61,7 @@ export default function AIRecommendationCard({ rec, saved, onSave, photoUri }: P
   );
 }
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.lg,

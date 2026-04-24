@@ -12,7 +12,7 @@ import {
   Luggage,
   Users,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,7 +27,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { elevation, radius, spacing, typography } from '@/constants/theme';
 import {
   getActiveTrip,
@@ -49,7 +49,7 @@ import type {
   PlaceCategory,
   Trip,
 } from '@/lib/types';
-import { safeParse } from '@/lib/utils';
+import { safeParse, MS_PER_DAY } from '@/lib/utils';
 
 // ---------- helpers ----------
 
@@ -81,7 +81,7 @@ function getCountdown(startDate: string, endDate: string): string {
   if (now >= start && now <= end) return 'Trip in progress!';
   if (now > end) return 'Trip completed';
   const diffMs = start.getTime() - now.getTime();
-  const days = Math.ceil(diffMs / 86_400_000);
+  const days = Math.ceil(diffMs / MS_PER_DAY);
   if (days === 1) return '1 day to go!';
   return `${days} days to go!`;
 }
@@ -106,7 +106,7 @@ function CollapsibleCard({
   defaultOpen?: boolean;
 }) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [open, setOpen] = useState(defaultOpen);
   const rotation = useRef(new Animated.Value(defaultOpen ? 1 : 0)).current;
 
@@ -142,13 +142,13 @@ function CollapsibleCard({
 
 function SimpleCard({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   return <View style={styles.card}>{children}</View>;
 }
 
 function ProgressBar({ pct, color }: { pct: number; color: string }) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   return (
     <View style={styles.progressTrack}>
       <View style={[styles.progressFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: color }]} />
@@ -158,7 +158,7 @@ function ProgressBar({ pct, color }: { pct: number; color: string }) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   if (!value) return null;
   return (
     <View style={styles.infoRow}>
@@ -182,7 +182,7 @@ function CopyRow({
   onUpdate?: (newValue: string) => void;
 }) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
@@ -267,7 +267,7 @@ function EditableInfoRow({
   onUpdate?: (newValue: string) => void;
 }) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
@@ -337,7 +337,7 @@ interface OverviewData {
 
 export default function TripOverviewScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -556,7 +556,7 @@ export default function TripOverviewScreen() {
 
 // ---------- styles ----------
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: {
     flex: 1,

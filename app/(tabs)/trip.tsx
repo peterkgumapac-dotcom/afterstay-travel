@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Image,
@@ -25,7 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { MoreHorizontal, Plus, Share2 } from 'lucide-react-native';
+import { ArrowLeft, MoreHorizontal, Share2 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,6 +32,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 
 import AddTripSheet from '@/components/summary/AddTripSheet';
+import { TripFloatingActionButton } from '@/components/shared/TripFloatingActionButton';
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
 import { MomentsTab } from '@/components/moments/MomentsTab';
@@ -647,7 +647,7 @@ const fullFlightStyles = (colors: ThemeColors) =>
 
 export default function TripScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
@@ -698,8 +698,8 @@ export default function TripScreen() {
       if (stats) setLifetimeStats(stats);
       setHighlightsData(highlights);
       setPastTripsData(past);
-    } catch {
-      // silent — UI shows empty state
+    } catch (e) {
+      if (__DEV__) console.warn('[TripScreen] load trip data failed:', e);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -958,7 +958,12 @@ export default function TripScreen() {
       >
         {/* Top bar */}
         <View style={styles.topBar}>
-          <Text style={styles.topBarTitle}>Trips</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12} accessibilityLabel="Back to Home">
+              <ArrowLeft size={22} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.topBarTitle}>Trips</Text>
+          </View>
           <View style={styles.topBarRight}>
             <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Share" onPress={handleShare}>
               <Share2 size={16} color={colors.text} />
@@ -1064,46 +1069,10 @@ export default function TripScreen() {
       </ScrollView>
 
       {/* FAB — action menu */}
-      <TouchableOpacity
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          const options = ['Add Trip', 'Add Members', 'Invite Members', 'Join Trip', 'Add Moments', 'Add Essentials', 'Cancel'];
-          const cancelIdx = 6;
-          const handler = (idx: number) => {
-            if (idx === 0) setAddOpen(true);
-            else if (idx === 1) router.push('/add-member' as never);
-            else if (idx === 2) router.push('/invite' as never);
-            else if (idx === 3) router.push('/join-trip' as never);
-            else if (idx === 4) router.push('/add-moment' as never);
-            else if (idx === 5) {
-              setActiveTab('essentials');
-              setAddingItem(true);
-            }
-          };
-          if (Platform.OS === 'ios') {
-            ActionSheetIOS.showActionSheetWithOptions(
-              { options, cancelButtonIndex: cancelIdx },
-              handler,
-            );
-          } else {
-            Alert.alert('Add to Trip', '', [
-              { text: 'Add Trip', onPress: () => handler(0) },
-              { text: 'Add Members', onPress: () => handler(1) },
-              { text: 'Invite Members', onPress: () => handler(2) },
-              { text: 'Join Trip', onPress: () => handler(3) },
-              { text: 'Add Moments', onPress: () => handler(4) },
-              { text: 'Add Essentials', onPress: () => handler(5) },
-              { text: 'Cancel', style: 'cancel' },
-            ]);
-          }
-        }}
-        accessibilityLabel="Add to trip"
-        accessibilityRole="button"
-        style={styles.fab}
-        activeOpacity={0.85}
-      >
-        <Plus size={22} color={colors.ink} strokeWidth={2.4} />
-      </TouchableOpacity>
+      <TripFloatingActionButton
+        onAddTrip={() => setAddOpen(true)}
+        onAddEssentials={() => { setActiveTab('essentials'); setAddingItem(true); }}
+      />
 
       {/* Add trip bottom sheet */}
       <AddTripSheet open={addOpen} onClose={() => setAddOpen(false)} />
@@ -1590,20 +1559,6 @@ const getStyles = (colors: ThemeColors) =>
     placeholderText: {
       color: colors.text3,
       fontSize: 13,
-    },
-
-    // FAB
-    fab: {
-      position: 'absolute',
-      right: 18,
-      bottom: 100,
-      width: 52,
-      height: 52,
-      borderRadius: 99,
-      backgroundColor: colors.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 60,
     },
 
     // Bottom spacer

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -16,7 +17,7 @@ export default function ProfileRow({
   tripLabel = 'My trip',
 }: Props) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const firstName = userName.split(' ')[0];
   const initial = firstName.charAt(0).toUpperCase();

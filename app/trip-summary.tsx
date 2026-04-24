@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -7,12 +7,12 @@ import {
 } from 'lucide-react-native';
 import { getActiveTrip, getExpenses, getFlights, getGroupMembers } from '../lib/supabase';
 import type { Expense, Flight, GroupMember, Trip } from '../lib/types';
-import { useTheme } from '@/constants/ThemeContext';
-import { formatDatePHT, formatTimePHT, safeParse } from '@/lib/utils';
+import { useTheme, ThemeColors } from '@/constants/ThemeContext';
+import { formatDatePHT, formatTimePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 
 export default function TripSummary() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -48,7 +48,7 @@ export default function TripSummary() {
         setTripSpent(dailyTotal);
         setTotal(t.budgetLimit ?? 0);
         setMembers(grp);
-      } catch {}
+      } catch (e) { if (__DEV__) console.warn('[TripSummary] load trip data failed:', e); }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -58,7 +58,7 @@ export default function TripSummary() {
 
   const tripStart = trip ? safeParse(trip.startDate) : new Date();
   const tripEnd = trip ? safeParse(trip.endDate) : new Date();
-  const tripDays = Math.max(1, Math.ceil((tripEnd.getTime() - tripStart.getTime()) / 86400000) + 1);
+  const tripDays = Math.max(1, Math.ceil((tripEnd.getTime() - tripStart.getTime()) / MS_PER_DAY) + 1);
   const days = Array.from({ length: tripDays }, (_, i) => {
     const d = new Date(tripStart);
     d.setDate(d.getDate() + i);
@@ -206,7 +206,7 @@ export default function TripSummary() {
   );
 }
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

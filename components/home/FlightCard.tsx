@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
@@ -12,7 +12,7 @@ interface Props {
 
 export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'outbound' }) => {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   if (!flightProp) {
     return (

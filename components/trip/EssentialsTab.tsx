@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Check, Download, FileText } from 'lucide-react-native';
 import type { TripFile } from '@/lib/types';
@@ -39,7 +39,7 @@ export function EssentialsTab({
   onUpload,
   onDownload,
 }: EssentialsTabProps) {
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   return (
     <>

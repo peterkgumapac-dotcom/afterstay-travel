@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated as RNAnimated,
   Dimensions,
@@ -36,7 +36,7 @@ const SUGGESTED = ['Seoul', 'Bali', 'Taipei', 'Hong Kong', 'Hanoi', 'Kyoto'];
 
 export default function AddTripSheet({ open, onClose }: AddTripSheetProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
 
   const [kind, setKind] = useState<TripKind>('upcoming');

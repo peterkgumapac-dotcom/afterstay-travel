@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as FileSystem from 'expo-file-system/legacy'
 import { compressImage } from './compressImage'
+import { MS_PER_DAY } from './utils'
 
 import type {
   ChecklistItem,
@@ -117,7 +118,7 @@ function mapTrip(row: Record<string, unknown>): Trip {
       ? Math.max(
           1,
           Math.round(
-            (parseDateSafe(end).getTime() - parseDateSafe(start).getTime()) / 86400000
+            (parseDateSafe(end).getTime() - parseDateSafe(start).getTime()) / MS_PER_DAY
           )
         )
       : 0

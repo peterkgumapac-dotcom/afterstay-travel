@@ -35,33 +35,3 @@ export async function cachedImageUri(remoteUrl: string): Promise<string> {
   return localFile.uri;
 }
 
-export async function evictStaleMedia(): Promise<void> {
-  const mediaDir = getMediaDir();
-  if (!mediaDir.exists) return;
-
-  const now = Date.now();
-
-  interface FileEntry { file: File; size: number; modTime: number }
-  const entries: FileEntry[] = [];
-
-  for (const item of mediaDir.list()) {
-    if (!(item instanceof File)) continue;
-    const size = item.size ?? 0;
-    const modTime = item.modificationTime ?? now;
-
-    if (now - modTime > NINETY_DAYS_MS) {
-      item.delete();
-      continue;
-    }
-    entries.push({ file: item, size, modTime });
-  }
-
-  entries.sort((a, b) => a.modTime - b.modTime);
-  let totalBytes = entries.reduce((sum, e) => sum + e.size, 0);
-
-  for (const entry of entries) {
-    if (totalBytes <= MAX_CACHE_BYTES) break;
-    entry.file.delete();
-    totalBytes -= entry.size;
-  }
-}

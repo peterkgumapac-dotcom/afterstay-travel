@@ -33,7 +33,7 @@ import {
   joinTripByCode,
 } from '@/lib/supabase';
 import { scanTripDocuments } from '@/lib/anthropic';
-import { formatDatePHT } from '@/lib/utils';
+import { formatDatePHT, MS_PER_DAY } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
@@ -647,8 +647,8 @@ export default function OnboardingScreen() {
 
       if (payload.kind === 'plan') {
         const today = new Date();
-        const startDate = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
-        const endDate = new Date(today.getTime() + 37 * 86400000).toISOString().slice(0, 10);
+        const startDate = new Date(today.getTime() + 30 * MS_PER_DAY).toISOString().slice(0, 10);
+        const endDate = new Date(today.getTime() + 37 * MS_PER_DAY).toISOString().slice(0, 10);
         await createTrip({
           name: `Trip to ${payload.dest}`,
           destination: payload.dest,

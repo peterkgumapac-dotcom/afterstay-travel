@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Calendar, Sparkles } from 'lucide-react-native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -14,7 +14,7 @@ import {
 import AfterStayLoader from '@/components/AfterStayLoader';
 import AIRecommendationCard from '@/components/AIRecommendationCard';
 import Select from '@/components/Select';
-import { useTheme } from '@/constants/ThemeContext';
+import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { generateItinerary, generateRecommendations } from '@/lib/anthropic';
 import { enrichRecommendations } from '@/lib/google-places';
@@ -60,7 +60,7 @@ type Step = 'questions' | 'loading' | 'results';
 
 export default function TripPlannerModal() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const [tab, setTab] = useState<PlannerTab>('recommendations');
   const [step, setStep] = useState<Step>('questions');
@@ -343,7 +343,7 @@ Powered by AfterStay — your personal travel companion.
   );
 }
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },

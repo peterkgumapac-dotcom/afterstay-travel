@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -41,7 +41,7 @@ const QUICK_ACCESS_KEY = 'quickAccess_v1';
 
 export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const mStyles = getModalStyles(colors);
   const [tiles, setTiles] = useState<Tile[]>(() => {
     if (!initialTiles) return DEFAULT_TILES;

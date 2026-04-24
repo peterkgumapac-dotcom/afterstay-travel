@@ -27,7 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Circle, Path, Polyline, Rect } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Swipeable } from 'react-native-gesture-handler';
+
 import { Car, Compass, Hotel, Package, Pencil, ShoppingBag, Trash2, UtensilsCrossed } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -42,7 +42,7 @@ import {
   updateTripBudgetLimit,
   updateTripBudgetMode,
 } from '@/lib/supabase';
-import { formatCurrency, formatDatePHT, safeParse } from '@/lib/utils';
+import { formatCurrency, formatDatePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 import type { Expense, GroupMember, Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
@@ -83,7 +83,7 @@ function smartTitle(e: Expense): string {
 export default function BudgetScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const [mode, setMode] = useState<BudgetMode>('track');
   const [tab, setTab] = useState<TabId>('overview');
@@ -117,7 +117,7 @@ export default function BudgetScreen() {
         else if (t.budgetLimit && t.budgetLimit > 0) setMode('budget');
         else setMode('track');
       }
-    } catch { /* silent */ } finally {
+    } catch (e) { if (__DEV__) console.warn('[BudgetScreen] load budget data failed:', e); } finally {
       setRefreshing(false);
     }
   }, []);
@@ -129,7 +129,7 @@ export default function BudgetScreen() {
   const spent = expenseSummary.total;
   const remaining = total - spent;
   const days = useMemo(() => trip ? Math.max(1, Math.ceil(
-    (safeParse(trip.endDate).getTime() - safeParse(trip.startDate).getTime()) / 86400000
+    (safeParse(trip.endDate).getTime() - safeParse(trip.startDate).getTime()) / MS_PER_DAY
   ) + 1) : 1, [trip?.startDate, trip?.endDate]);
   const perDay = total > 0 ? Math.round(total / days) : 0;
   const bState: BudgetState = total <= 0 ? 'cruising' : remaining / total > 0.5 ? 'cruising' : remaining / total > 0.2 ? 'low' : 'over';

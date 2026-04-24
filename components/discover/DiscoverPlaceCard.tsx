@@ -192,9 +192,9 @@ const getStyles = (colors: ThemeColors): {
       borderBottomColor: colors.border,
     },
     thumb: {
-      width: 64,
-      height: 64,
-      borderRadius: radius.sm,
+      width: 120,
+      height: 120,
+      borderRadius: radius.md,
       backgroundColor: colors.card2,
     },
     info: {

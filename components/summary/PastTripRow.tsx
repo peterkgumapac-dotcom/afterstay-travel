@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -25,7 +26,7 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 export default function PastTripRow({ trip }: PastTripRowProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const fullStars = '\u2605'.repeat(trip.rating);
   const emptyStars = '\u2605'.repeat(5 - trip.rating);

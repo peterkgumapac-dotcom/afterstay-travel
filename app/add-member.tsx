@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,7 +21,7 @@ import { addGroupMember } from '@/lib/supabase';
 export default function AddMemberScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

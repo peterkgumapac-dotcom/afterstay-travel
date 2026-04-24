@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
@@ -21,7 +21,7 @@ function getTerminalInfo(airline: string, iata: string): string | null {
 }
 
 export function MiniFlightCard({ f, colors }: MiniFlightCardProps) {
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const depTerminal = getTerminalInfo(f.airline, f.from);
   const arrTerminal = getTerminalInfo(f.airline, f.to);
 

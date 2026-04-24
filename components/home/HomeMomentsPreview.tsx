@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
@@ -19,7 +20,7 @@ export function HomeMomentsPreview({
   onViewAll,
 }: HomeMomentsPreviewProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   if (moments.length === 0) {
     return (

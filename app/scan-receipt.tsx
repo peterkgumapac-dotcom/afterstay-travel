@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
@@ -16,7 +16,7 @@ import {
 
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { ReceiptItemReview } from '@/components/budget/ReceiptItemReview';
-import { useTheme } from '@/constants/ThemeContext';
+import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { scanReceipt, type ScannedReceipt } from '@/lib/anthropic';
 import { compressImage } from '@/lib/compressImage';
@@ -27,7 +27,7 @@ type Phase = 'picking' | 'scanning' | 'review' | 'error';
 
 export default function ScanReceiptScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('picking');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -243,7 +243,7 @@ export default function ScanReceiptScreen() {
   return <View style={styles.container} />;
 }
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,

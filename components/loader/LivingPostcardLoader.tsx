@@ -154,7 +154,7 @@ export default function LivingPostcardLoader({
   name = 'Peter',
 }: LivingPostcardLoaderProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [idx, setIdx] = useState(0);
   const scenes = useMemo(() => buildScenes(name, destination), [name, destination]);
   const perScene = durationMs / scenes.length;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -27,7 +27,7 @@ import {
 
 export default function GroupChatScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const { user } = useAuth();
   const flatListRef = useRef<FlatList>(null);
@@ -69,7 +69,8 @@ export default function GroupChatScreen() {
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      const t = setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      return () => clearTimeout(t);
     }
   }, [messages.length]);
 

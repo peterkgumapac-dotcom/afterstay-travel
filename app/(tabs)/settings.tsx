@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, Plane, Bell, Info, ChevronRight, ArrowLeft, Sun, Moon, Palette, LogOut } from 'lucide-react-native';
@@ -225,8 +226,12 @@ export default function SettingsScreen() {
         {/* About */}
         <SectionLabel icon={<Info size={14} color={colors.green2} />} label="About" textColor={colors.text2} />
         <View style={dynamicStyles.card}>
-          <Text style={dynamicStyles.cardTitle}>AfterStay v{Constants.expoConfig?.version ?? '?'}</Text>
-          <Text style={dynamicStyles.cardSub}>Build {Constants.expoConfig?.extra?.eas?.projectId?.slice(0, 8) ?? '—'} · Expo SDK {Constants.expoConfig?.sdkVersion ?? '?'}</Text>
+          <Text style={dynamicStyles.cardTitle}>AfterStay Travel</Text>
+          <Text style={dynamicStyles.cardSub}>
+            Version {Constants.expoConfig?.version ?? '?'}
+            {Updates.updateId ? ` (${Updates.updateId.slice(0, 8)})` : ''}
+          </Text>
+          <Text style={dynamicStyles.cardSub}>Expo SDK {Constants.expoConfig?.sdkVersion ?? '?'}</Text>
         </View>
       </ScrollView>
 
@@ -297,7 +302,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: 40 },
+  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: 120 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.sm },
   sectionLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.7, marginLeft: spacing.xs },
   cardRow: { flexDirection: 'row', alignItems: 'center' },

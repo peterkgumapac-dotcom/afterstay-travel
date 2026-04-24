@@ -32,13 +32,12 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import {
   getActiveTrip,
   getExpenses,
-  getExpenseSummary,
   getFlights,
   getGroupMembers,
   getMoments,
 } from '@/lib/supabase';
 import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
-import { formatDatePHT, formatTimePHT, safeParse, tripStatusLabel } from '@/lib/utils';
+import { formatDatePHT, formatTimePHT, safeParse, tripStatusLabel, MS_PER_DAY } from '@/lib/utils';
 
 type TripPhase = 'upcoming' | 'inflight' | 'arrived' | 'active';
 
@@ -140,7 +139,7 @@ function CollapsibleSection({
 export default function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [moments, setMoments] = useState<Moment[]>([]);
@@ -232,17 +231,11 @@ export default function HomeScreen() {
           }
         }
 
-        // Fetch expense summary for active phase
-        const summary = await getExpenseSummary(t.id).catch(() => ({
-          total: 0,
-          byCategory: {},
-          count: 0,
-        }));
-        setTotalSpent(summary.total);
-
-        // Today's expenses
-        const todayIso = new Date().toISOString().slice(0, 10);
+        // Fetch expenses once — compute summary + today's totals locally
         const allExpenses = await getExpenses(t.id).catch(() => []);
+        setTotalSpent(allExpenses.reduce((sum, e) => sum + e.amount, 0));
+
+        const todayIso = new Date().toISOString().slice(0, 10);
         const todayExps = allExpenses.filter((e) => e.date === todayIso);
         setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
         setTodayCount(todayExps.length);
@@ -319,7 +312,6 @@ export default function HomeScreen() {
   );
 
   // Countdown computation
-  const MS_PER_DAY = 86400000;
   const tripStartMs = trip ? safeParse(trip.startDate).getTime() : 0;
   const tripEndMs = trip ? safeParse(trip.endDate).getTime() : 0;
   const nowMs = Date.now();

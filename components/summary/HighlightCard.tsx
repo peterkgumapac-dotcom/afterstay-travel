@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -17,7 +18,7 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 export default function HighlightCard({ icon, label, sub, tint }: HighlightCardProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   return (
     <View style={styles.card}>

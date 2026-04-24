@@ -154,7 +154,7 @@ export function TripActiveCard({
   todayCount = 0,
 }: TripActiveCardProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const dotScale = useSharedValue(1);
   const dotOpacity = useSharedValue(1);

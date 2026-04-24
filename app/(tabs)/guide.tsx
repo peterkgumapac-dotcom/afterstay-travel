@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -236,12 +236,12 @@ const styles_static = StyleSheet.create({
 
 export default function GuideScreen() {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const [tab, setTab] = useState<TabId>('property');
   const [trip, setTrip] = useState<Trip | null>(null);
 
   useEffect(() => {
-    getActiveTrip().then((t) => { if (t) setTrip(t); }).catch(() => {});
+    getActiveTrip().then((t) => { if (t) setTrip(t); }).catch((e) => { if (__DEV__) console.warn('[GuideScreen] load active trip failed:', e); });
   }, []);
 
   const hotelName = trip?.accommodation ?? PROPERTY.name;

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
@@ -240,7 +240,7 @@ export default function ConstellationHero({
   spent,
 }: ConstellationHeroProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const spentFormatted = `\u20B1${Math.round(spent / 1000)}k`;
 

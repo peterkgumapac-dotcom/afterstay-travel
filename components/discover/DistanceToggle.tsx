@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { InteractionManager, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Building2, MapPin, Footprints, Car } from 'lucide-react-native';
@@ -21,7 +21,7 @@ function DistanceToggle({
   onTravelModeChange,
 }: DistanceToggleProps) {
   const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const tapAnchor = useCallback((v: 'hotel' | 'me') => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
