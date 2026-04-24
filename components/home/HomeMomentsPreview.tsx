@@ -1,17 +1,72 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import type { GroupMember, Moment } from '@/lib/types';
 
-type ThemeColors = ReturnType<typeof useTheme>['colors'];
+const SLIDE_INTERVAL = 5000; // 5s per photo
+const FADE_DURATION = 1200; // 1.2s cross-fade
 
 interface HomeMomentsPreviewProps {
   moments: Moment[];
   members: GroupMember[];
   onViewAll?: () => void;
+}
+
+/** Cycles through photos with a slow cross-fade */
+function SlideshowImage({
+  photos,
+  offset = 0,
+  style,
+}: {
+  photos: string[];
+  offset?: number;
+  style: any;
+}) {
+  const [currentIdx, setCurrentIdx] = useState(offset % photos.length);
+  const [nextIdx, setNextIdx] = useState((offset + 1) % photos.length);
+  const fade = useSharedValue(0);
+
+  useEffect(() => {
+    if (photos.length <= 1) return;
+    let timeout: ReturnType<typeof setTimeout>;
+    const interval = setInterval(() => {
+      fade.value = withTiming(1, {
+        duration: FADE_DURATION,
+        easing: Easing.inOut(Easing.ease),
+      });
+      timeout = setTimeout(() => {
+        setCurrentIdx((p) => (p + 1) % photos.length);
+        setNextIdx((p) => (p + 2) % photos.length);
+        fade.value = 0;
+      }, FADE_DURATION);
+    }, SLIDE_INTERVAL);
+    return () => { clearInterval(interval); clearTimeout(timeout); };
+  }, [photos.length, fade]);
+
+  const fadeStyle = useAnimatedStyle(() => ({
+    opacity: fade.value,
+  }));
+
+  return (
+    <View style={[style, { overflow: 'hidden' }]}>
+      <Image source={{ uri: photos[currentIdx] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      {photos.length > 1 && (
+        <Animated.View style={[StyleSheet.absoluteFill, fadeStyle]}>
+          <Image source={{ uri: photos[nextIdx] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        </Animated.View>
+      )}
+    </View>
+  );
 }
 
 export function HomeMomentsPreview({
@@ -34,18 +89,28 @@ export function HomeMomentsPreview({
     );
   }
 
-  const photos = moments.filter((m) => m.photo).slice(0, 5);
-  const overflow = moments.length - photos.length;
+  const allPhotos = moments.filter((m) => m.photo).map((m) => m.photo!);
+  const displayPhotos = moments.filter((m) => m.photo).slice(0, 5);
+  const overflow = moments.length - displayPhotos.length;
 
-  // Layout: 1 photo = full width, 2 = side by side, 3+ = collage
-  if (photos.length === 1) {
+  // Shuffle photos for each slot so they don't all show the same sequence
+  const shuffled = useMemo(() => {
+    const arr = [...allPhotos];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }, [allPhotos.length]);
+
+  if (displayPhotos.length === 1) {
     return (
       <View style={styles.wrapper}>
         <Animated.View entering={FadeInDown.duration(300)}>
           <TouchableOpacity style={styles.singleCard} activeOpacity={0.85} onPress={onViewAll}>
-            <Image source={{ uri: photos[0].photo }} style={styles.singleImage} />
+            <SlideshowImage photos={allPhotos} style={styles.singleImage} />
             <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={styles.gradient}>
-              <Text style={styles.caption} numberOfLines={1}>{photos[0].caption || 'Trip moment'}</Text>
+              <Text style={styles.caption} numberOfLines={1}>{displayPhotos[0].caption || 'Trip moment'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
@@ -54,13 +119,13 @@ export function HomeMomentsPreview({
     );
   }
 
-  if (photos.length === 2) {
+  if (displayPhotos.length === 2) {
     return (
       <View style={styles.wrapper}>
         <Animated.View entering={FadeInDown.duration(300)} style={styles.row}>
-          {photos.map((m, i) => (
+          {displayPhotos.map((m, i) => (
             <TouchableOpacity key={m.id} style={styles.halfCard} activeOpacity={0.85} onPress={onViewAll}>
-              <Image source={{ uri: m.photo }} style={styles.fillImage} />
+              <SlideshowImage photos={allPhotos} offset={i * Math.floor(allPhotos.length / 2)} style={styles.fillImage} />
               <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={styles.gradient}>
                 <Text style={styles.smallCaption} numberOfLines={1}>{m.caption || ''}</Text>
               </LinearGradient>
@@ -72,28 +137,28 @@ export function HomeMomentsPreview({
     );
   }
 
-  // 3-5 photos: collage — big left + stacked right
-  const main = photos[0];
-  const side = photos.slice(1, 4);
-  const lastSide = side.length > 0 ? side[side.length - 1] : null;
-  const showOverflow = overflow > 0 || photos.length > 4;
+  // 3-5 photos: collage — big left + stacked right, all cycling
+  const main = displayPhotos[0];
+  const side = displayPhotos.slice(1, 4);
+  const showOverflow = overflow > 0 || displayPhotos.length > 4;
   const overflowNum = moments.length - 4;
 
   return (
     <View style={styles.wrapper}>
       <Animated.View entering={FadeInDown.duration(300)} style={styles.collage}>
-        {/* Left — big photo */}
+        {/* Left — big photo, cycles through all moments */}
         <TouchableOpacity style={styles.collageBig} activeOpacity={0.85} onPress={onViewAll}>
-          <Image source={{ uri: main.photo }} style={styles.fillImage} />
+          <SlideshowImage photos={allPhotos} offset={0} style={styles.fillImage} />
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.55)']} style={styles.gradient}>
             <Text style={styles.caption} numberOfLines={1}>{main.caption || ''}</Text>
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Right — stacked */}
+        {/* Right — stacked, each cycles with different offset */}
         <View style={styles.collageSide}>
           {side.map((m, i) => {
             const isLast = i === side.length - 1 && showOverflow && overflowNum > 0;
+            const photoOffset = Math.floor((allPhotos.length / (side.length + 1)) * (i + 1));
             return (
               <Animated.View
                 key={m.id}
@@ -101,7 +166,7 @@ export function HomeMomentsPreview({
                 style={styles.collageSideCard}
               >
                 <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={0.85} onPress={onViewAll}>
-                  <Image source={{ uri: m.photo }} style={styles.fillImage} />
+                  <SlideshowImage photos={allPhotos} offset={photoOffset} style={styles.fillImage} />
                   {isLast && (
                     <View style={styles.overflowBadge}>
                       <Text style={styles.overflowText}>+{overflowNum}</Text>
