@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { Edit3, MapPin, Share2, Trash2, X } from 'lucide-react-native';
+import { Download, Edit3, MapPin, MoreHorizontal, Share2, Trash2, X } from 'lucide-react-native';
 import React, { useCallback, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -105,6 +105,24 @@ export function MomentLightbox({
     }
   }, [current, onDelete, onClose]);
 
+  const handleDownload = useCallback(async () => {
+    if (!current?.photo) return;
+    setMenuVisible(false);
+    try {
+      const FileSystem = require('expo-file-system');
+      const MediaLibrary = require('expo-media-library');
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') return;
+      const filename = `afterstay_${Date.now()}.jpg`;
+      const fileUri = (FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? '') + filename;
+      const result = await FileSystem.downloadAsync(current.photo, fileUri);
+      await MediaLibrary.saveToLibraryAsync(result.uri);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      // ignore
+    }
+  }, [current]);
+
   const handleEdit = useCallback(() => {
     setMenuVisible(false);
     if (onEdit && current) onEdit(current.id);
@@ -127,8 +145,8 @@ export function MomentLightbox({
             <X size={18} color="#fff" strokeWidth={2} />
           </Pressable>
           <Text style={styles.counter}>{currentIdx + 1} / {moments.length}</Text>
-          <Pressable onPress={handleShare} style={styles.topBtn} accessibilityLabel="Share">
-            <Share2 size={16} color="#fff" strokeWidth={1.8} />
+          <Pressable onPress={() => { Haptics.selectionAsync(); setMenuVisible(true); }} style={styles.topBtn} accessibilityLabel="More options">
+            <MoreHorizontal size={20} color="#fff" strokeWidth={1.8} />
           </Pressable>
         </View>
 
@@ -171,8 +189,8 @@ export function MomentLightbox({
                 </View>
               ) : null}
             </View>
+            <MoreHorizontal size={20} color="rgba(255,255,255,0.5)" strokeWidth={1.8} />
           </View>
-          <View style={styles.pullIndicator} />
         </Pressable>
 
         {/* iOS-style pull-up menu */}
@@ -209,6 +227,7 @@ export function MomentLightbox({
               {/* Actions */}
               <View style={styles.menuActions}>
                 <MenuAction icon={Share2} label="Share" onPress={handleShare} />
+                <MenuAction icon={Download} label="Save to Device" onPress={handleDownload} />
                 {onEdit && <MenuAction icon={Edit3} label="Edit Details" onPress={handleEdit} />}
                 {onDelete && <MenuAction icon={Trash2} label="Delete" onPress={handleDelete} danger />}
               </View>
