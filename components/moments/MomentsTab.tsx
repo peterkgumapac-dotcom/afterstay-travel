@@ -431,6 +431,18 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           )
         }
         people={people}
+        allMoments={filtered}
+        onDelete={(id) => {
+          import('@/lib/supabase').then(({ deletePage }) => {
+            deletePage(id).catch(() => {});
+          });
+          setRawMoments((prev) => prev.filter((m) => m.id !== id));
+          setOpenIdx(null);
+        }}
+        onEdit={(id) => {
+          setOpenIdx(null);
+          setEditMomentId(id);
+        }}
       />
 
       {/* ---- Themed action sheet ---- */}

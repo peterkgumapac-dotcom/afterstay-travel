@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import {
+  ArrowLeft,
   Bed,
   CheckSquare,
   ChevronDown,
@@ -22,6 +23,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -418,6 +420,14 @@ export default function TripOverviewScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* Header bar */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
+          <ChevronLeft size={22} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginLeft: 10 }}>Trip Overview</Text>
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <SimpleCard>

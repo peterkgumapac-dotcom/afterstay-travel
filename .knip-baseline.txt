@@ -30,13 +30,12 @@ constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
 lib/distance.ts: haversine
 lib/google-places.ts: searchPlace
-Unused exported types (8)
+Unused exported types (7)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
 lib/anthropic.ts: ItineraryDayLegacy
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
-lib/supabase.ts: Profile
 lib/types.ts: WeatherDay
 utils/fate/generateSpinPlan.ts: SpinStep, SpinPlan
 Duplicate exports (1)

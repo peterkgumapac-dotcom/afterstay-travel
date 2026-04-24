@@ -1,23 +1,37 @@
-import React, { useEffect, useRef } from 'react';
-import { formatDatePHT } from '@/lib/utils';
+import * as Haptics from 'expo-haptics';
+import { Edit3, MapPin, Share2, Trash2, X } from 'lucide-react-native';
+import React, { useCallback, useRef, useState } from 'react';
 import {
-  View,
-  Text,
+  Dimensions,
+  FlatList,
   Image,
   Modal,
-  PanResponder,
-  TouchableOpacity,
-  ScrollView,
-  Animated,
+  Pressable,
+  Share,
   StyleSheet,
-  Dimensions,
+  Text,
+  View,
 } from 'react-native';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Animated, {
+  type SharedValue,
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import { GestureDetector, Gesture, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { useTheme } from '@/constants/ThemeContext';
+import { formatDatePHT } from '@/lib/utils';
+import { spacing } from '@/constants/theme';
 import { Avatar } from './Avatar';
 import type { MomentDisplay, PeopleMap } from './types';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 interface MomentLightboxProps {
   moment: MomentDisplay | null;
@@ -27,6 +41,9 @@ interface MomentLightboxProps {
   onPrev: () => void;
   onNext: () => void;
   people: PeopleMap;
+  allMoments?: MomentDisplay[];
+  onDelete?: (id: string) => void;
+  onEdit?: (id: string) => void;
 }
 
 export function MomentLightbox({
@@ -37,326 +54,302 @@ export function MomentLightbox({
   onPrev,
   onNext,
   people,
+  allMoments,
+  onDelete,
+  onEdit,
 }: MomentLightboxProps) {
   const { colors } = useTheme();
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const SWIPE_THRESHOLD = 60;
+  const insets = useSafeAreaInsets();
+  const [currentIdx, setCurrentIdx] = useState(index);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const flatListRef = useRef<FlatList<MomentDisplay>>(null);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gs) =>
-        Math.abs(gs.dx) > 15 && Math.abs(gs.dx) > Math.abs(gs.dy),
-      onPanResponderMove: (_, gs) => {
-        translateX.setValue(gs.dx);
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dx < -SWIPE_THRESHOLD) {
-          // Swipe left → next
-          Animated.timing(translateX, {
-            toValue: -SCREEN_W,
-            duration: 150,
-            useNativeDriver: true,
-          }).start(() => {
-            onNext();
-            translateX.setValue(0);
-          });
-        } else if (gs.dx > SWIPE_THRESHOLD) {
-          // Swipe right → prev
-          Animated.timing(translateX, {
-            toValue: SCREEN_W,
-            duration: 150,
-            useNativeDriver: true,
-          }).start(() => {
-            onPrev();
-            translateX.setValue(0);
-          });
-        } else {
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    }),
-  ).current;
+  const moments = allMoments ?? (moment ? [moment] : []);
+  const current = moments[currentIdx] ?? moment;
 
-  useEffect(() => {
-    if (moment) {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      fadeAnim.setValue(0);
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0 && viewableItems[0].index != null) {
+      setCurrentIdx(viewableItems[0].index);
     }
-  }, [moment, fadeAnim]);
+  }).current;
 
-  if (!moment) return null;
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
-  const authorKey = moment.authorKey ?? moment.takenBy ?? '';
+  const renderPhoto = useCallback(({ item }: { item: MomentDisplay }) => (
+    <View style={{ width: SCREEN_W, flex: 1, justifyContent: 'center' }}>
+      <Image
+        source={{ uri: item.photo, cache: 'force-cache' }}
+        style={styles.photo}
+        resizeMode="contain"
+      />
+    </View>
+  ), []);
+
+  const handleShare = useCallback(() => {
+    if (!current?.photo) return;
+    setMenuVisible(false);
+    Share.share({
+      message: [current.caption, current.location, formatDatePHT(current.date)]
+        .filter(Boolean)
+        .join(' — '),
+      url: current.photo,
+    });
+  }, [current]);
+
+  const handleDelete = useCallback(() => {
+    setMenuVisible(false);
+    if (onDelete && current) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      onDelete(current.id);
+      onClose();
+    }
+  }, [current, onDelete, onClose]);
+
+  const handleEdit = useCallback(() => {
+    setMenuVisible(false);
+    if (onEdit && current) onEdit(current.id);
+  }, [current, onEdit]);
+
+  if (!moment && moments.length === 0) return null;
+  if (!current) return null;
+
+  const authorKey = current.authorKey ?? current.takenBy ?? '';
   const person = people[authorKey] ?? { name: authorKey, color: colors.accent };
 
   return (
-    <Modal
-      visible
-      transparent
-      animationType="none"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <View style={styles.overlay}>
         {/* Top bar */}
-        <View style={styles.topBar}>
-          {/* Close button */}
-          <TouchableOpacity
-            onPress={onClose}
-            style={styles.topButton}
-            accessibilityLabel="Close"
-            accessibilityRole="button"
-          >
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-              <Path d="M18 6L6 18M6 6l12 12" stroke="#fff" strokeWidth={2} strokeLinecap="round" />
-            </Svg>
-          </TouchableOpacity>
-
-          <Text style={styles.counter}>
-            {index + 1} / {total}
-          </Text>
-
-          {/* Share button */}
-          <TouchableOpacity
-            style={styles.topButton}
-            accessibilityLabel="Share"
-            accessibilityRole="button"
-          >
-            <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-              <Path d="M16 6l-4-4-4 4M12 2v13" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-              <Path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
-          </TouchableOpacity>
+        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
+          <Pressable onPress={onClose} style={styles.topBtn} accessibilityLabel="Close">
+            <X size={18} color="#fff" strokeWidth={2} />
+          </Pressable>
+          <Text style={styles.counter}>{currentIdx + 1} / {moments.length}</Text>
+          <Pressable onPress={handleShare} style={styles.topBtn} accessibilityLabel="Share">
+            <Share2 size={16} color="#fff" strokeWidth={1.8} />
+          </Pressable>
         </View>
 
-        {/* Photo area — swipe left/right to navigate */}
-        <Animated.View
-          style={[styles.photoArea, { transform: [{ translateX }] }]}
-          {...panResponder.panHandlers}
+        {/* Photo pager */}
+        <FlatList
+          ref={flatListRef}
+          data={moments}
+          renderItem={renderPhoto}
+          keyExtractor={(item) => item.id}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={Math.min(index, moments.length - 1)}
+          getItemLayout={(_, idx) => ({
+            length: SCREEN_W,
+            offset: SCREEN_W * idx,
+            index: idx,
+          })}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          decelerationRate="fast"
+          style={{ flex: 1 }}
+        />
+
+        {/* Bottom info bar — tap to open menu */}
+        <Pressable
+          onPress={() => { Haptics.selectionAsync(); setMenuVisible(true); }}
+          style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}
         >
-          {moment.photo && (
-            <Image
-              source={{ uri: moment.photo }}
-              style={styles.photo}
-              resizeMode="cover"
-            />
-          )}
-        </Animated.View>
-
-        {/* Meta sheet */}
-        <ScrollView
-          style={styles.metaScroll}
-          contentContainerStyle={styles.metaContent}
-          bounces={false}
-        >
-          <View style={styles.metaSheet}>
-            {/* Author row */}
-            <View style={styles.authorRow}>
-              <Avatar authorKey={authorKey} people={people} size={28} />
-              <View style={styles.authorInfo}>
-                <Text style={styles.authorName}>{person.name}</Text>
-                <Text style={styles.authorDate}>
-                  {formatDatePHT(moment.date)}
-                </Text>
-              </View>
-            </View>
-
-            {/* Caption */}
-            {moment.caption ? (
-              <Text style={styles.caption}>{moment.caption}</Text>
-            ) : null}
-
-            {/* Location chip */}
-            <View style={styles.chipsRow}>
-              {(moment.place ?? moment.location) ? (
-                <MetaChip
-                  icon="pin"
-                  label={moment.place ?? moment.location ?? ''}
-                />
+          <View style={styles.bottomInfo}>
+            <Avatar authorKey={authorKey} people={people} size={28} />
+            <View style={styles.bottomText}>
+              <Text style={styles.bottomDate}>{formatDatePHT(current.date)}</Text>
+              {(current.place ?? current.location) ? (
+                <View style={styles.locationRow}>
+                  <MapPin size={10} color="rgba(255,255,255,0.5)" strokeWidth={2} />
+                  <Text style={styles.bottomLocation} numberOfLines={1}>
+                    {current.place ?? current.location}
+                  </Text>
+                </View>
               ) : null}
             </View>
           </View>
-        </ScrollView>
-      </Animated.View>
+          <View style={styles.pullIndicator} />
+        </Pressable>
+
+        {/* iOS-style pull-up menu */}
+        {menuVisible && (
+          <Animated.View
+            entering={FadeIn.duration(150)}
+            exiting={FadeOut.duration(100)}
+            style={styles.menuBackdrop}
+          >
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuVisible(false)} />
+            <Animated.View
+              entering={SlideInDown.springify().damping(18).stiffness(200)}
+              exiting={SlideOutDown.duration(200)}
+              style={[styles.menuSheet, { paddingBottom: insets.bottom + 20 }]}
+            >
+              <View style={styles.menuHandle} />
+
+              {/* Photo info */}
+              <View style={styles.menuInfoRow}>
+                <Avatar authorKey={authorKey} people={people} size={36} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.menuName}>{person.name || 'Unknown'}</Text>
+                  <Text style={styles.menuMeta}>
+                    {formatDatePHT(current.date)}
+                    {current.location ? ` · ${current.location}` : ''}
+                  </Text>
+                </View>
+              </View>
+
+              {current.caption ? (
+                <Text style={styles.menuCaption}>{current.caption}</Text>
+              ) : null}
+
+              {/* Actions */}
+              <View style={styles.menuActions}>
+                <MenuAction icon={Share2} label="Share" onPress={handleShare} />
+                {onEdit && <MenuAction icon={Edit3} label="Edit Details" onPress={handleEdit} />}
+                {onDelete && <MenuAction icon={Trash2} label="Delete" onPress={handleDelete} danger />}
+              </View>
+
+              <Pressable onPress={() => setMenuVisible(false)} style={styles.menuCancel}>
+                <Text style={styles.menuCancelText}>Cancel</Text>
+              </Pressable>
+            </Animated.View>
+          </Animated.View>
+        )}
+      </View>
     </Modal>
   );
 }
 
-// ---------------------------------------------------------------------------
-// MetaChip — SVG icons matching prototype verbatim
-// ---------------------------------------------------------------------------
-
-interface MetaChipProps {
-  icon: 'pin';
+function MenuAction({
+  icon: Icon,
+  label,
+  onPress,
+  danger,
+}: {
+  icon: typeof Share2;
   label: string;
-}
-
-function MetaChipIcon({ icon }: { icon: MetaChipProps['icon'] }) {
-  const stroke = 'currentColor';
-  switch (icon) {
-    case 'pin':
-      return (
-        <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
-          <Path
-            d="M12 22s-8-7.5-8-13a8 8 0 1116 0c0 5.5-8 13-8 13z"
-            stroke="rgba(255,255,255,0.85)"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-          <Circle
-            cx={12}
-            cy={9}
-            r={2.5}
-            stroke="rgba(255,255,255,0.85)"
-            strokeWidth={2}
-            fill="none"
-          />
-        </Svg>
-      );
-  }
-}
-
-function MetaChip({ icon, label }: MetaChipProps) {
+  onPress: () => void;
+  danger?: boolean;
+}) {
   return (
-    <View style={[styles.metaChip, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-      <MetaChipIcon icon={icon} />
-      <Text style={[styles.metaChipLabel, { color: 'rgba(255,255,255,0.85)' }]} numberOfLines={1}>
-        {label}
-      </Text>
-    </View>
+    <Pressable
+      onPress={() => { Haptics.selectionAsync(); onPress(); }}
+      style={({ pressed }) => [styles.menuAction, pressed && styles.menuActionPressed]}
+    >
+      <Icon size={18} color={danger ? '#e55' : '#fff'} strokeWidth={1.8} />
+      <Text style={[styles.menuActionLabel, danger && { color: '#e55' }]}>{label}</Text>
+    </Pressable>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(5,7,10,0.92)',
-  },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' },
+
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingTop: 54,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  topButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
+  topBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   counter: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.65)',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
     fontWeight: '600',
-    letterSpacing: 0.4,
   },
-  photoArea: {
-    flex: 1,
-    justifyContent: 'center',
+
+  photo: { width: '100%', height: '100%' },
+
+  // Bottom info bar
+  bottomBar: {
+    paddingTop: 12,
+    paddingHorizontal: 16,
     alignItems: 'center',
-    paddingHorizontal: 14,
   },
-  photo: {
-    width: SCREEN_W - 28,
-    aspectRatio: 3 / 4,
-    borderRadius: 14,
-  },
-  metaScroll: {
-    maxHeight: 280,
-  },
-  metaContent: {
-    padding: 14,
-  },
-  metaSheet: {
-    padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  authorRow: {
+  bottomInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 10,
+    alignSelf: 'stretch',
   },
-  authorInfo: {
-    flex: 1,
-    minWidth: 0,
+  bottomText: { flex: 1, gap: 2 },
+  bottomDate: { fontSize: 13, fontWeight: '600', color: '#fff' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  bottomLocation: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
+  pullIndicator: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginTop: 10,
   },
-  authorName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
+
+  // Pull-up menu
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
   },
-  authorDate: {
-    fontSize: 10.5,
-    color: 'rgba(255,255,255,0.6)',
+  menuSheet: {
+    backgroundColor: '#1c1c1e',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 8,
+    paddingHorizontal: 20,
   },
-  reactionsRow: {
-    flexDirection: 'row',
-    gap: 4,
+  menuHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center',
+    marginBottom: 16,
   },
-  reactionBadge: {
+  menuInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.10)',
+    gap: 12,
+    marginBottom: 12,
   },
-  reactionEmoji: {
-    fontSize: 11,
-  },
-  reactionCountText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.7)',
-  },
-  caption: {
+  menuName: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  menuMeta: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
+  menuCaption: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 10,
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: 16,
+    lineHeight: 20,
   },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+  menuActions: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    paddingTop: 8,
   },
-  metaChip: {
+  menuAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingVertical: 4,
-    paddingHorizontal: 9,
-    borderRadius: 999,
+    gap: 14,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  metaChipLabel: {
-    fontSize: 10.5,
-    fontWeight: '600',
-    letterSpacing: -0.05,
+  menuActionPressed: { opacity: 0.6 },
+  menuActionLabel: { fontSize: 15, fontWeight: '500', color: '#fff' },
+  menuCancel: {
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
   },
+  menuCancelText: { fontSize: 15, fontWeight: '600', color: '#fff' },
 });
