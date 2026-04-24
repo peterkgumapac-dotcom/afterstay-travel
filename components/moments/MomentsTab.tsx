@@ -214,7 +214,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     );
   }, [selectedIds]);
 
-  // Fetch moments + group members
+  // Fetch moments + group members, then prefetch images into HTTP cache
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -224,6 +224,14 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       ]);
       setRawMoments(moments);
       setMembers(groupMembers);
+
+      // Prefetch first 20 photos into the native HTTP cache in the background
+      const { Image: RNImage } = require('react-native');
+      const photosToCache = moments
+        .filter((m) => m.photo)
+        .slice(0, 20)
+        .map((m) => m.photo!);
+      photosToCache.forEach((uri) => RNImage.prefetch(uri).catch(() => {}));
     } finally {
       setLoading(false);
     }
