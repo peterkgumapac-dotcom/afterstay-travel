@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -16,7 +17,9 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { Bookmark, ChevronDown, Filter, Map, Plus, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import { Bookmark, CalendarDays, ChevronDown, Filter, Map, Plus, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+
+import EmptyState from '@/components/shared/EmptyState';
 
 import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -560,6 +563,7 @@ export default function DiscoverScreenWrapper() {
 
 function DiscoverScreenInner() {
   const { colors } = useTheme();
+  const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
   const [tab, setTab] = useState<TabId>('places');
@@ -1110,7 +1114,18 @@ function DiscoverScreenInner() {
         }
       >
         {/* ═══════ PLANNER TAB — manual day-by-day timeline ═══════ */}
-        {tab === 'planner' && (
+        {tab === 'planner' && plannerDays.length === 0 && (
+          <EmptyState
+            icon={CalendarDays}
+            title={tripId ? 'No days to plan' : 'No trip yet'}
+            subtitle={tripId
+              ? 'Your trip dates will appear here — browse Places and tap "Add to Planner" to fill your days.'
+              : 'Create a trip to start planning your days.'}
+            actionLabel={tripId ? undefined : 'Get Started'}
+            onAction={tripId ? undefined : () => router.push('/onboarding')}
+          />
+        )}
+        {tab === 'planner' && plannerDays.length > 0 && (
           <>
             {/* Compact AI generate bar */}
             {!itineraryLoading && (

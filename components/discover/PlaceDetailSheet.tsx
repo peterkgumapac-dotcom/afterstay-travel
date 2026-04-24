@@ -195,22 +195,35 @@ export const PlaceDetailSheet: React.FC<Props> = ({
     onSaveToggle?.();
   };
 
-  const handleDirections = () => {
+  const handleDirections = async () => {
     if (!details?.coords) return;
     const { lat, lng } = details.coords;
-    Linking.openURL(
-      `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-    );
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      if (__DEV__) console.warn('Failed to open URL:', url);
+    }
   };
 
-  const handleCall = () => {
+  const handleCall = async () => {
     if (!details?.phone) return;
-    Linking.openURL(`tel:${details.phone}`);
+    const url = `tel:${details.phone}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      if (__DEV__) console.warn('Failed to open URL:', url);
+    }
   };
 
-  const handleWebsite = () => {
+  const handleWebsite = async () => {
     if (!details?.website) return;
-    Linking.openURL(details.website);
+    const url = details.website;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      if (__DEV__) console.warn('Failed to open URL:', url);
+    }
   };
 
   const displayName = details?.name ?? initialName ?? 'Place Details';

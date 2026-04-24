@@ -24,7 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { ArrowLeft, MoreHorizontal, Share2 } from 'lucide-react-native';
+import { ArrowLeft, Map, MoreHorizontal, Share2 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -32,6 +32,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 
 import AddTripSheet from '@/components/summary/AddTripSheet';
+import EmptyState from '@/components/shared/EmptyState';
 import { TripFloatingActionButton } from '@/components/shared/TripFloatingActionButton';
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
@@ -868,6 +869,20 @@ export default function TripScreen() {
     };
 
     const pickMemberPhoto = async () => {
+      if (Platform.OS === 'ios') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'Photo Library Access',
+            'Please enable photo library access in Settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+            ],
+          );
+          return;
+        }
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.7,
@@ -892,11 +907,21 @@ export default function TripScreen() {
     ]);
   };
 
-  const handleMemberChat = (member: GroupMember) => {
+  const handleMemberChat = async (member: GroupMember) => {
     if (member.phone) {
-      Linking.openURL(`sms:${member.phone}`);
+      const url = `sms:${member.phone}`;
+      try {
+        await Linking.openURL(url);
+      } catch {
+        if (__DEV__) console.warn('Failed to open URL:', url);
+      }
     } else if (member.email) {
-      Linking.openURL(`mailto:${member.email}`);
+      const url = `mailto:${member.email}`;
+      try {
+        await Linking.openURL(url);
+      } catch {
+        if (__DEV__) console.warn('Failed to open URL:', url);
+      }
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -938,9 +963,35 @@ export default function TripScreen() {
     router.push('/add-file');
   };
 
-  const handleDownload = (fileUrl: string) => {
-    WebBrowser.openBrowserAsync(fileUrl);
+  const handleDownload = async (fileUrl: string) => {
+    try {
+      await WebBrowser.openBrowserAsync(fileUrl);
+    } catch {
+      if (__DEV__) console.warn('Failed to open browser:', fileUrl);
+    }
   };
+
+  if (!trip && !loading) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.topBar}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12} accessibilityLabel="Back to Home">
+              <ArrowLeft size={22} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.topBarTitle}>Trips</Text>
+          </View>
+        </View>
+        <EmptyState
+          icon={Map}
+          title="No active trip"
+          subtitle="Create a trip to see your overview, packing list, files, and travel companions."
+          actionLabel="Get Started"
+          onAction={() => router.push('/onboarding')}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

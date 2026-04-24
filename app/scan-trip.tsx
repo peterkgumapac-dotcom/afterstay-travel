@@ -7,6 +7,8 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -50,6 +52,20 @@ export default function ScanTripScreen() {
   const [errorMsg, setErrorMsg] = useState('');
 
   const pickImages = useCallback(async () => {
+    if (Platform.OS === 'ios') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Photo Library Access',
+          'Please enable photo library access in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+          ],
+        );
+        return;
+      }
+    }
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.8,

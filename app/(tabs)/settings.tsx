@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -9,13 +10,16 @@ import {
   TextInput,
   Modal,
   Image,
+  Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import * as ImagePicker from 'expo-image-picker';
 import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, Plane, Bell, Info, ChevronRight, ArrowLeft, Sun, Moon, Palette, LogOut } from 'lucide-react-native';
+import { Camera, User, Plane, Bell, Info, ChevronRight, ArrowLeft, Sun, Moon, Palette, LogOut } from 'lucide-react-native';
 import { spacing, radius } from '@/constants/theme';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
@@ -112,8 +116,36 @@ export default function SettingsScreen() {
     setModalVisible(true);
   };
 
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const pickAvatar = async () => {
+    if (Platform.OS === 'ios') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Photo Library Access',
+          'Please enable photo library access in Settings to change your profile picture.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+          ],
+        );
+        return;
+      }
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      saveProfile({ ...profile, avatarUri: result.assets[0].uri });
+    }
+  };
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso.length === 10 ? `${iso}T00:00:00+08:00` : iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
 
   const dynamicStyles = getDynamicStyles(colors);
 
@@ -240,6 +272,22 @@ export default function SettingsScreen() {
         <View style={styles.modalOverlay}>
           <View style={dynamicStyles.modalCard}>
             <Text style={dynamicStyles.modalTitle}>Edit Profile</Text>
+
+            {/* Avatar picker */}
+            <TouchableOpacity onPress={pickAvatar} activeOpacity={0.7} style={styles.avatarPicker}>
+              {profile.avatarUri ? (
+                <Image source={{ uri: profile.avatarUri }} style={styles.avatarLarge} />
+              ) : (
+                <View style={[dynamicStyles.avatarFallbackLarge]}>
+                  <User size={32} color={colors.text3} />
+                </View>
+              )}
+              <View style={[styles.cameraOverlay, { backgroundColor: colors.accent }]}>
+                <Camera size={14} color={colors.bg} strokeWidth={2.5} />
+              </View>
+            </TouchableOpacity>
+            <Text style={[dynamicStyles.cardSub, { textAlign: 'center', marginBottom: spacing.lg }]}>Tap photo to change</Text>
+
             <TextInput
               style={dynamicStyles.modalInput}
               value={editName}
@@ -285,6 +333,7 @@ const getDynamicStyles = (c: Record<string, string>) =>
     cardTitle: { fontSize: 15, fontWeight: '600', color: c.text },
     cardSub: { fontSize: 13, color: c.text2, marginTop: 2 },
     avatarFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.border, alignItems: 'center', justifyContent: 'center' },
+    avatarFallbackLarge: { width: 80, height: 80, borderRadius: 40, backgroundColor: c.border, alignItems: 'center', justifyContent: 'center' },
     divider: { height: 1, backgroundColor: c.border, marginVertical: spacing.md },
     toggleLabel: { fontSize: 14, color: c.text },
     modalCard: { width: '85%', backgroundColor: c.bg2, borderRadius: radius.lg, padding: spacing.xxl, borderWidth: 1, borderColor: c.border },
@@ -307,6 +356,9 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.7, marginLeft: spacing.xs },
   cardRow: { flexDirection: 'row', alignItems: 'center' },
   avatar: { width: 42, height: 42, borderRadius: 21 },
+  avatarLarge: { width: 80, height: 80, borderRadius: 40 },
+  avatarPicker: { alignSelf: 'center', marginBottom: spacing.sm },
+  cameraOverlay: { position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: spacing.xl, gap: spacing.sm },

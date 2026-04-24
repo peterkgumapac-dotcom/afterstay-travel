@@ -13,6 +13,8 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
+import { Compass, MapPin, Plane, Users } from 'lucide-react-native';
+
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { AnticipationHero } from '@/components/home/AnticipationHero';
 import { HomeMomentsPreview } from '@/components/home/HomeMomentsPreview';
@@ -21,6 +23,7 @@ import { CountdownCard } from '@/components/home/CountdownCard';
 import { FlightCard } from '@/components/home/FlightCard';
 import { FlightProgressCard } from '@/components/home/FlightProgressCard';
 import { TripActiveCard } from '@/components/home/TripActiveCard';
+import EmptyState from '@/components/shared/EmptyState';
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import ProfileRow from '@/components/home/ProfileRow';
@@ -40,7 +43,7 @@ import {
 import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
 import { formatDatePHT, formatTimePHT, safeParse, tripStatusLabel, MS_PER_DAY } from '@/lib/utils';
 
-type TripPhase = 'upcoming' | 'inflight' | 'arrived' | 'active';
+type TripPhase = 'planning' | 'upcoming' | 'inflight' | 'arrived' | 'active';
 
 const FALLBACK_PHOTOS = [
   'https://www.canyon.ph/wp-content/uploads/2023/01/CHRBoracay-Rooms-Executive-Suite-01.jpg',
@@ -241,6 +244,12 @@ export default function HomeScreen() {
         const todayExps = allExpenses.filter((e) => e.date === todayIso);
         setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
         setTodayCount(todayExps.length);
+        // If no outbound flight, determine phase from trip dates
+        if (!outbound) {
+          const tripStart = safeParse(t.startDate).getTime();
+          const daysAway = (tripStart - Date.now()) / MS_PER_DAY;
+          setPhase(daysAway > 7 ? 'planning' : 'upcoming');
+        }
       } else {
         setFlights([]);
         setMoments([]);
@@ -380,23 +389,38 @@ export default function HomeScreen() {
   }
 
   if (!trip) {
+    // Actual network error — show retry
+    if (error) {
+      return (
+        <SafeAreaView style={styles.fullCenter}>
+          <Text style={styles.errorTitle}>Couldn't load trip</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable
+            style={styles.retry}
+            onPress={() => {
+              setLoading(true);
+              load();
+            }}
+            accessibilityLabel="Retry loading trip"
+            accessibilityRole="button"
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </SafeAreaView>
+      );
+    }
+    // No trip — welcoming empty state
     return (
       <SafeAreaView style={styles.fullCenter}>
-        <Text style={styles.errorTitle}>Couldn't load trip</Text>
-        <Text style={styles.errorText}>
-          {error ?? 'No active trip found.'}
-        </Text>
-        <Pressable
-          style={styles.retry}
-          onPress={() => {
-            setLoading(true);
-            load();
-          }}
-          accessibilityLabel="Retry loading trip"
-          accessibilityRole="button"
-        >
-          <Text style={styles.retryText}>Retry</Text>
-        </Pressable>
+        <EmptyState
+          icon={Compass}
+          title="Your next adventure starts here"
+          subtitle="Create a trip to unlock your dashboard — add flights, budget, places, and more."
+          actionLabel="Get Started"
+          onAction={() => router.push('/onboarding')}
+          secondaryLabel="Join a friend's trip"
+          onSecondary={() => router.push('/onboarding')}
+        />
       </SafeAreaView>
     );
   }
@@ -479,6 +503,28 @@ export default function HomeScreen() {
                 todaySpent={todaySpent}
                 todayCount={todayCount}
               />
+            ) : phase === 'planning' ? (
+              <View style={styles.planningCard}>
+                <Text style={styles.planningEmoji}>🗺️</Text>
+                <Text style={styles.planningTitle}>Planning your trip</Text>
+                <Text style={styles.planningSubtitle}>
+                  {trip.destination} · {formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}
+                </Text>
+                <View style={styles.planningNudges}>
+                  <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/trip')}>
+                    <Plane size={16} color={colors.accent} />
+                    <Text style={styles.nudgeText}>Add your flights</Text>
+                  </Pressable>
+                  <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/trip')}>
+                    <Users size={16} color={colors.accent} />
+                    <Text style={styles.nudgeText}>Invite travel companions</Text>
+                  </Pressable>
+                  <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/discover')}>
+                    <MapPin size={16} color={colors.accent} />
+                    <Text style={styles.nudgeText}>Discover places to visit</Text>
+                  </Pressable>
+                </View>
+              </View>
             ) : (
               <CountdownCard
                 tripStartISO={
@@ -586,5 +632,46 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     phaseSection: {
       paddingHorizontal: 16,
       paddingBottom: 14,
+    },
+    planningCard: {
+      backgroundColor: colors.card,
+      borderRadius: 20,
+      padding: 24,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    planningEmoji: {
+      fontSize: 36,
+      marginBottom: 12,
+    },
+    planningTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 4,
+    },
+    planningSubtitle: {
+      fontSize: 13,
+      color: colors.text2,
+      marginBottom: 20,
+    },
+    planningNudges: {
+      width: '100%',
+      gap: 12,
+    },
+    nudgeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: colors.accentDim,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+    },
+    nudgeText: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.accent,
     },
   });

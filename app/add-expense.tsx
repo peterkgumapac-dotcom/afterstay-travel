@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -100,6 +101,20 @@ export default function AddExpenseScreen() {
   }, []);
 
   const pickPhoto = async () => {
+    if (Platform.OS === 'ios') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Photo Library Access',
+          'Please enable photo library access in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+          ],
+        );
+        return;
+      }
+    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,

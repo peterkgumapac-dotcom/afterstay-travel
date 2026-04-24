@@ -13,8 +13,8 @@ import Animated, {
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import type { GroupMember, Moment } from '@/lib/types';
 
-const SLIDE_INTERVAL = 5000; // 5s per photo
-const FADE_DURATION = 1200; // 1.2s cross-fade
+const SLIDE_INTERVAL = 8000; // 8s per photo — slow and relaxed
+const FADE_DURATION = 2000; // 2s cross-fade
 
 interface HomeMomentsPreviewProps {
   moments: Moment[];
@@ -40,15 +40,18 @@ function SlideshowImage({
     if (photos.length <= 1) return;
     let timeout: ReturnType<typeof setTimeout>;
     const interval = setInterval(() => {
+      // Cross-fade: fade in the next image on top
       fade.value = withTiming(1, {
         duration: FADE_DURATION,
         easing: Easing.inOut(Easing.ease),
       });
+      // After fade completes, swap: current becomes what was next, prepare new next
       timeout = setTimeout(() => {
         setCurrentIdx((p) => (p + 1) % photos.length);
         setNextIdx((p) => (p + 2) % photos.length);
+        // Reset instantly — invisible because current now shows the same image that was faded in
         fade.value = 0;
-      }, FADE_DURATION);
+      }, FADE_DURATION + 50); // small buffer after animation completes
     }, SLIDE_INTERVAL);
     return () => { clearInterval(interval); clearTimeout(timeout); };
   }, [photos.length, fade]);

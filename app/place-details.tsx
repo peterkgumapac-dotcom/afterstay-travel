@@ -49,7 +49,12 @@ export default function PlaceDetailsScreen() {
           } else {
             // No details from API — open Google Maps directly and go back
             const query = placeName ? encodeURIComponent(placeName + ' Boracay') : '';
-            Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${placeId}`);
+            const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${placeId}`;
+            try {
+              await Linking.openURL(fallbackUrl);
+            } catch {
+              if (__DEV__) console.warn('Failed to open URL:', fallbackUrl);
+            }
             if (router.canGoBack()) router.back();
           }
         }
@@ -57,7 +62,12 @@ export default function PlaceDetailsScreen() {
         if (!cancelled) {
           // On error, open Google Maps as fallback
           const query = placeName ? encodeURIComponent(placeName + ' Boracay') : '';
-          Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${placeId}`);
+          const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${placeId}`;
+          try {
+            await Linking.openURL(fallbackUrl);
+          } catch {
+            if (__DEV__) console.warn('Failed to open URL:', fallbackUrl);
+          }
           if (router.canGoBack()) router.back();
         }
       } finally {
@@ -93,20 +103,34 @@ export default function PlaceDetailsScreen() {
     }
   };
 
-  const onOpenMaps = () => {
+  const onOpenMaps = async () => {
     if (!placeId) return;
     const url = details?.url ?? `https://www.google.com/maps/place/?q=place_id:${placeId}`;
-    Linking.openURL(url);
+    try {
+      await Linking.openURL(url);
+    } catch {
+      if (__DEV__) console.warn('Failed to open URL:', url);
+    }
   };
 
-  const onCallPhone = () => {
+  const onCallPhone = async () => {
     if (!details?.formatted_phone_number) return;
-    Linking.openURL(`tel:${details.formatted_phone_number}`);
+    const url = `tel:${details.formatted_phone_number}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      if (__DEV__) console.warn('Failed to open URL:', url);
+    }
   };
 
-  const onOpenWebsite = () => {
+  const onOpenWebsite = async () => {
     if (!details?.website) return;
-    Linking.openURL(details.website);
+    const url = details.website;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      if (__DEV__) console.warn('Failed to open URL:', url);
+    }
   };
 
   if (loading) {

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -77,6 +78,20 @@ export default function AddFileScreen() {
   };
 
   const takePhoto = async () => {
+    if (Platform.OS === 'ios') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Camera Access',
+          'Please enable camera access in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+          ],
+        );
+        return;
+      }
+    }
     try {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,

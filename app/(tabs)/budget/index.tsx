@@ -30,8 +30,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Car, Compass, Hotel, Package, Pencil, ShoppingBag, Trash2, UtensilsCrossed } from 'lucide-react-native';
 
+import { Wallet } from 'lucide-react-native';
+
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing, radius } from '@/constants/theme';
+import EmptyState from '@/components/shared/EmptyState';
 import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import {
   deleteExpense,
@@ -181,6 +184,25 @@ export default function BudgetScreen() {
 
   const displayExpenses = showAllExpenses ? filteredExpenses : filteredExpenses.slice(0, 5);
   const maxDaySpend = Math.max(...spendingByDay.map(d => d[1]), 1);
+
+  if (!trip) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>Budget</Text>
+          </View>
+        </View>
+        <EmptyState
+          icon={Wallet}
+          title="No trip yet"
+          subtitle="Create a trip to start tracking expenses, set budgets, and split costs with your group."
+          actionLabel="Get Started"
+          onAction={() => router.push('/onboarding' as never)}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -395,6 +417,17 @@ export default function BudgetScreen() {
             )}
 
             {/* Expenses */}
+            {expenses.length === 0 && (
+              <View style={styles.section}>
+                <View style={[styles.nudgeCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+                  <Wallet size={28} color={colors.text3} strokeWidth={1.5} />
+                  <Text style={[styles.sectionTitle, { marginTop: 10 }]}>No expenses yet</Text>
+                  <Text style={{ fontSize: 13, color: colors.text2, textAlign: 'center', marginTop: 4 }}>
+                    Tap + Add to log your first expense
+                  </Text>
+                </View>
+              </View>
+            )}
             {expenses.length > 0 && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -585,6 +618,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
   section: { paddingHorizontal: 16, paddingTop: 14, gap: 8 },
+  nudgeCard: { alignItems: 'center', padding: 28, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed' },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '600', color: c.text },
   seeAllText: { fontSize: 12, fontWeight: '600', color: c.accent },

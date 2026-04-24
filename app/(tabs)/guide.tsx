@@ -29,7 +29,12 @@ import Svg, {
   Line,
 } from 'react-native-svg';
 
+import { Hotel, MapPin, StickyNote } from 'lucide-react-native';
+
+import { useRouter } from 'expo-router';
+
 import { useTheme } from '@/constants/ThemeContext';
+import EmptyState from '@/components/shared/EmptyState';
 import { getActiveTrip } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
@@ -236,6 +241,7 @@ const styles_static = StyleSheet.create({
 
 export default function GuideScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const [tab, setTab] = useState<TabId>('property');
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -244,10 +250,14 @@ export default function GuideScreen() {
     getActiveTrip().then((t) => { if (t) setTrip(t); }).catch((e) => { if (__DEV__) console.warn('[GuideScreen] load active trip failed:', e); });
   }, []);
 
-  const hotelName = trip?.accommodation ?? PROPERTY.name;
-  const hotelAddr = trip?.address ?? PROPERTY.desc;
-  const checkInTime = trip?.checkIn ?? PROPERTY.checkIn;
-  const checkOutTime = trip?.checkOut ?? PROPERTY.checkOut;
+  // Canyon Hotels backward compat — show hardcoded data only for Canyon trips
+  const isCanyon = trip?.accommodation?.toLowerCase().includes('canyon') ?? false;
+  const hasAccommodation = !!(trip?.accommodation);
+
+  const hotelName = hasAccommodation ? trip!.accommodation : (isCanyon ? PROPERTY.name : '');
+  const hotelAddr = trip?.address ?? (isCanyon ? PROPERTY.desc : '');
+  const checkInTime = trip?.checkIn ?? (isCanyon ? PROPERTY.checkIn : '');
+  const checkOutTime = trip?.checkOut ?? (isCanyon ? PROPERTY.checkOut : '');
   const destLabel = trip?.destination ?? '';
   const checkInDate = trip ? formatDatePHT(trip.startDate) : '';
   const checkOutDate = trip ? formatDatePHT(trip.endDate) : '';
@@ -262,13 +272,33 @@ export default function GuideScreen() {
     }
   })();
 
+  // No trip at all — show empty state
+  if (!trip) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.topBar}>
+          <View>
+            <Text style={styles.title}>Guide</Text>
+          </View>
+        </View>
+        <EmptyState
+          icon={Hotel}
+          title="No trip yet"
+          subtitle="Create a trip to see your property guide, nearby essentials, and group notes."
+          actionLabel="Get Started"
+          onAction={() => router.push('/onboarding')}
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Top bar */}
       <View style={styles.topBar}>
         <View>
           <Text style={styles.title}>Guide</Text>
-          <Text style={styles.subtitle}>{hotelName} {'\u00B7'} {destLabel}</Text>
+          <Text style={styles.subtitle}>{hotelName || destLabel} {hotelName && destLabel ? `\u00B7 ${destLabel}` : ''}</Text>
         </View>
         <TouchableOpacity
           style={styles.iconBtn}
@@ -330,7 +360,16 @@ export default function GuideScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ═══════ PROPERTY TAB ═══════ */}
-        {tab === 'property' && (
+        {tab === 'property' && !hasAccommodation && !isCanyon && (
+          <EmptyState
+            icon={Hotel}
+            title="No accommodation added"
+            subtitle="Add your hotel or stay details to see check-in times, amenities, and contact info."
+            actionLabel="Add Hotel Details"
+            onAction={() => router.push('/(tabs)/trip')}
+          />
+        )}
+        {tab === 'property' && (hasAccommodation || isCanyon) && (
           <>
             {/* Hero image */}
             <View style={styles.heroWrapper}>
@@ -393,9 +432,14 @@ export default function GuideScreen() {
               {/* Phone */}
               <TouchableOpacity
                 style={styles.contactRow}
-                onPress={() => {
+                onPress={async () => {
                   const phone = trip?.hotelPhone ?? PROPERTY.phone;
-                  Linking.openURL(`tel:${phone.replace(/[^+\d]/g, '')}`);
+                  const url = `tel:${phone.replace(/[^+\d]/g, '')}`;
+                  try {
+                    await Linking.openURL(url);
+                  } catch {
+                    if (__DEV__) console.warn('Failed to open URL:', url);
+                  }
                 }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -426,7 +470,14 @@ export default function GuideScreen() {
               {/* Email */}
               <TouchableOpacity
                 style={styles.contactRow}
-                onPress={() => Linking.openURL(`mailto:${PROPERTY.email}`)}
+                onPress={async () => {
+                  const url = `mailto:${PROPERTY.email}`;
+                  try {
+                    await Linking.openURL(url);
+                  } catch {
+                    if (__DEV__) console.warn('Failed to open URL:', url);
+                  }
+                }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={`Email ${PROPERTY.email}`}
@@ -456,7 +507,14 @@ export default function GuideScreen() {
         )}
 
         {/* ═══════ NEARBY TAB ═══════ */}
-        {tab === 'nearby' && (
+        {tab === 'nearby' && !isCanyon && (
+          <EmptyState
+            icon={MapPin}
+            title="Nearby places"
+            subtitle="Nearby essentials will appear here once your accommodation is set up."
+          />
+        )}
+        {tab === 'nearby' && isCanyon && (
           <>
             {/* Mini map card */}
             <View style={styles.mapCardWrapper}>
@@ -514,10 +572,15 @@ export default function GuideScreen() {
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel="Open map"
-                  onPress={() => {
+                  onPress={async () => {
                     const lat = 11.9710;
                     const lng = 121.9215;
-                    Linking.openURL(`https://maps.google.com/?q=${lat},${lng}`);
+                    const url = `https://maps.google.com/?q=${lat},${lng}`;
+                    try {
+                      await Linking.openURL(url);
+                    } catch {
+                      if (__DEV__) console.warn('Failed to open URL:', url);
+                    }
                   }}
                 >
                   <Text style={styles.openMapBtnText}>Open map {'\u2192'}</Text>
@@ -552,7 +615,14 @@ export default function GuideScreen() {
         )}
 
         {/* ═══════ NOTES TAB ═══════ */}
-        {tab === 'notes' && (
+        {tab === 'notes' && !isCanyon && (
+          <EmptyState
+            icon={StickyNote}
+            title="No notes yet"
+            subtitle="Add tips and reminders for your travel group — check-in tricks, local fares, sunset spots."
+          />
+        )}
+        {tab === 'notes' && isCanyon && (
           <>
             {/* Notes header */}
             <View style={styles.notesHeader}>
