@@ -365,13 +365,7 @@ export default function HomeScreen() {
 
   // Show branded loader until both: 3s minimum passed AND data loaded
   if (!loaderDone || loading) {
-    return (
-      <LivingPostcardLoader
-        destination={trip?.destination ?? 'your trip'}
-        name={userName || 'traveler'}
-        onDone={() => setLoaderDone(true)}
-      />
-    );
+    return <AfterStayLoader />;
   }
 
   if (!trip) {
