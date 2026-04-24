@@ -384,8 +384,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       letterSpacing: 0.16 * 9.5,
     },
     bigNumber: {
-      fontFamily: 'SpaceMono',
-      color: colors.text,
+            color: colors.text,
       fontSize: 20,
       fontWeight: '600',
       fontVariant: ['tabular-nums'],
@@ -419,8 +418,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       marginTop: 4,
     },
     pctLabel: {
-      fontFamily: 'SpaceMono',
-      color: colors.text3,
+            color: colors.text3,
       fontSize: 10.5,
       fontVariant: ['tabular-nums'],
     },
@@ -468,8 +466,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       alignItems: 'baseline',
     },
     budgetSpent: {
-      fontFamily: 'SpaceMono',
-      fontSize: 13,
+            fontSize: 13,
       fontWeight: '600',
       color: colors.text,
       fontVariant: ['tabular-nums'],
@@ -479,8 +476,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       color: colors.text3,
     },
     budgetPct: {
-      fontFamily: 'SpaceMono',
-      fontSize: 11,
+            fontSize: 11,
       color: colors.text3,
       fontVariant: ['tabular-nums'],
     },
@@ -534,8 +530,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       letterSpacing: 0.16 * 9.5,
     },
     todayAmount: {
-      fontFamily: 'SpaceMono',
-      fontSize: 13,
+            fontSize: 13,
       fontWeight: '600',
       color: colors.text,
       fontVariant: ['tabular-nums'] as any,
