@@ -4,6 +4,7 @@ import { Check } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
+import { thumbUrl } from '@/lib/imageUrl';
 import type { MomentDisplay } from './types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -163,7 +164,7 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
     <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300}>
       <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: '#1a1612' }}>
         <Image
-          source={{ uri: moment.photo, cache: 'force-cache' }}
+          source={{ uri: thumbUrl(moment.photo), cache: 'force-cache' }}
           style={{ width: '100%', height: '100%' }}
           resizeMode="cover"
           fadeDuration={200}

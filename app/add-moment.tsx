@@ -71,7 +71,7 @@ export default function AddMomentScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.5,
+      quality: 0.8,
       allowsMultipleSelection: true,
       selectionLimit: 20,
       exif: false,

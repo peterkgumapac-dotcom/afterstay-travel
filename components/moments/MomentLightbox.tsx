@@ -1,3 +1,4 @@
+import { fullUrl } from '@/lib/imageUrl';
 import * as Haptics from 'expo-haptics';
 import { Download, Edit3, MapPin, MoreHorizontal, Share2, Trash2, X } from 'lucide-react-native';
 import React, { useCallback, useRef, useState } from 'react';
@@ -78,7 +79,7 @@ export function MomentLightbox({
   const renderPhoto = useCallback(({ item }: { item: MomentDisplay }) => (
     <View style={{ width: SCREEN_W, flex: 1, justifyContent: 'center' }}>
       <Image
-        source={{ uri: item.photo, cache: 'force-cache' }}
+        source={{ uri: fullUrl(item.photo), cache: 'force-cache' }}
         style={styles.photo}
         resizeMode="contain"
       />

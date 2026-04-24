@@ -20,6 +20,7 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
+import { thumbUrl } from '@/lib/imageUrl';
 import { formatDatePHT } from '@/lib/utils';
 import { Avatar } from './Avatar';
 import type { MomentDisplay, PeopleMap } from './types';
@@ -264,7 +265,7 @@ function AnimatedPin({ cluster, isRevealed, isCurrent, authorColor, onPress, peo
           >
             {photoUri ? (
               <Image
-                source={{ uri: photoUri }}
+                source={{ uri: thumbUrl(photoUri) }}
                 style={styles.pinPhoto}
                 resizeMode="cover"
               />
@@ -820,7 +821,7 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
               >
                 {m.photo ? (
                   <Image
-                    source={{ uri: m.photo }}
+                    source={{ uri: thumbUrl(m.photo) }}
                     style={[
                       styles.listThumbImage,
                       !isRevealed && styles.listThumbGrayscale,

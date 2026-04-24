@@ -10,7 +10,10 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
+import { smallUrl } from '@/lib/imageUrl';
 import type { GroupMember, Moment } from '@/lib/types';
+
+const MAX_SLIDESHOW_PHOTOS = 8;
 
 const SLIDE_INTERVAL = 8000; // 8s per photo — slow and relaxed
 const FADE_DURATION = 2000; // 2s cross-fade
@@ -88,19 +91,22 @@ export function HomeMomentsPreview({
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
-  const allPhotos = moments.filter((m) => m.photo).map((m) => m.photo!);
   const displayPhotos = moments.filter((m) => m.photo).slice(0, 5);
   const overflow = moments.length - displayPhotos.length;
 
-  // Shuffle photos for each slot so they don't all show the same sequence
-  const shuffled = useMemo(() => {
-    const arr = [...allPhotos];
-    for (let i = arr.length - 1; i > 0; i--) {
+  // Limit slideshow to MAX_SLIDESHOW_PHOTOS and use small thumbnails
+  const allPhotos = useMemo(() => {
+    const photos = moments
+      .filter((m) => m.photo)
+      .slice(0, MAX_SLIDESHOW_PHOTOS)
+      .map((m) => smallUrl(m.photo!)!);
+    // Shuffle so each session feels different
+    for (let i = photos.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+      [photos[i], photos[j]] = [photos[j], photos[i]];
     }
-    return arr;
-  }, [allPhotos.length]);
+    return photos;
+  }, [moments.length]);
 
   if (moments.length === 0) {
     return (
