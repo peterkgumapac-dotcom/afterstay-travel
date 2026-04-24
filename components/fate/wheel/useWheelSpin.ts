@@ -12,9 +12,9 @@ import type { UseSoundsReturn } from '@/hooks/fate/useSounds';
 // Minimum velocity (deg/s) to trigger a spin
 const MIN_VELOCITY = 100;
 // Minimum spin velocity — even a light swipe gets a big spin
-const MIN_SPIN_VELOCITY = 2000;
-// Deceleration rate — 0.9994 gives ~10-15s spins at high velocity
-const DECELERATION = 0.9994;
+const MIN_SPIN_VELOCITY = 3500;
+// Deceleration rate — 0.9998 gives ~10-15s spins
+const DECELERATION = 0.9998;
 
 export interface UseWheelSpinReturn {
   rotation: ReturnType<typeof useSharedValue<number>>;
