@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
@@ -143,7 +144,9 @@ function CollapsibleSection({
 export default function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const navigation = useNavigation();
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const didInitialLoad = useRef(false);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [moments, setMoments] = useState<Moment[]>([]);
@@ -265,11 +268,32 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let alive = true;
-    // Don't show stale cache — go straight to fresh data
-    // The loader plays for 3s minimum, giving Supabase time to respond
     load();
+    didInitialLoad.current = true;
     return () => { alive = false; };
   }, [load]);
+
+  // Refresh budget + trip data when tab gets focus (e.g. after editing budget)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (!didInitialLoad.current) return; // skip first mount
+      const tripId = trip?.id;
+      if (!tripId) return;
+      // Lightweight refresh — just expenses + trip (for budgetLimit changes)
+      Promise.all([
+        getActiveTrip(),
+        getExpenses(tripId).catch(() => []),
+      ]).then(([freshTrip, allExpenses]) => {
+        if (freshTrip) setTrip(freshTrip);
+        setTotalSpent(allExpenses.reduce((sum, e) => sum + e.amount, 0));
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const todayExps = allExpenses.filter((e) => e.date === todayIso);
+        setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
+        setTodayCount(todayExps.length);
+      }).catch(() => {});
+    });
+    return unsubscribe;
+  }, [navigation, trip?.id]);
 
   // Always show branded loader for at least 3 seconds on cold start
   useEffect(() => {
