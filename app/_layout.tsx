@@ -5,10 +5,11 @@ import { Redirect, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
+import AfterStayLoader from '@/components/AfterStayLoader';
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { verifyConfig } from '@/lib/config';
@@ -43,10 +44,7 @@ function RootLayoutInner() {
     return (
       <NavThemeProvider value={navTheme}>
         <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
-        <View style={{ flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={c.accent} size="large" />
-          <Text style={{ color: c.text3, fontSize: 10, marginTop: 12 }}>v7 · Apr 22</Text>
-        </View>
+        <AfterStayLoader />
       </NavThemeProvider>
     );
   }

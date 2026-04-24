@@ -1,7 +1,7 @@
 import { Redirect } from 'expo-router';
 import { useAuth } from '@/lib/auth';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import AfterStayLoader from '@/components/AfterStayLoader';
 import { useTheme } from '@/constants/ThemeContext';
 import { cacheGet } from '@/lib/cache';
 import { getActiveTrip } from '@/lib/supabase';
@@ -29,11 +29,7 @@ export default function Index() {
   }, [session]);
 
   if (loading || (session && onboarded === null)) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
+    return <AfterStayLoader />;
   }
 
   if (!session) return <Redirect href="/auth/login" />;

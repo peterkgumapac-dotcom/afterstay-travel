@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import AfterStayLoader from '@/components/AfterStayLoader';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 
@@ -26,9 +26,5 @@ export default function AuthCallback() {
     }
   }, [session, router]);
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-      <ActivityIndicator color={colors.accent} size="large" />
-    </View>
-  );
+  return <AfterStayLoader />;
 }
