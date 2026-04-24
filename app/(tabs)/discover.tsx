@@ -1444,6 +1444,7 @@ function DiscoverScreenInner() {
                       onSave={toggleSave}
                       onRecommend={toggleRecommend}
                       onExplore={handleExplore}
+                      onAddToPlanner={handleAddToPlanner}
                     />
                   ))}
                   {placesWithDistance.length > visibleCount && (
@@ -1509,6 +1510,7 @@ function DiscoverScreenInner() {
                       isRecommended={recommended.has(p.name)}
                       onSave={toggleSave}
                       onRecommend={toggleRecommend}
+                      onAddToPlanner={handleAddToPlanner}
                     />
                   );
                 })}
