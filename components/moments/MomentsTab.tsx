@@ -132,8 +132,42 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   }, []);
 
   const handleLongPress = useCallback((id: string) => {
-    setSelectedIds(new Set([id]));
-  }, []);
+    const moment = rawMoments.find((m) => m.id === id);
+    Alert.alert(
+      moment?.caption || 'Photo',
+      undefined,
+      [
+        {
+          text: 'Share',
+          onPress: () => {
+            if (!moment?.photo) return;
+            import('react-native').then(({ Share }) => {
+              Share.share({
+                message: moment.caption
+                  ? `${moment.caption} — ${moment.location ?? ''}`
+                  : 'Trip moment',
+                url: moment.photo,
+              });
+            });
+          },
+        },
+        {
+          text: 'Select Multiple',
+          onPress: () => setSelectedIds(new Set([id])),
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const { deletePage } = await import('@/lib/supabase');
+            try { await deletePage(id); } catch { /* skip */ }
+            setRawMoments((prev) => prev.filter((m) => m.id !== id));
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  }, [rawMoments]);
 
   const handleDeleteSelected = useCallback(async () => {
     const count = selectedIds.size;
@@ -243,10 +277,16 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
         {/* ---- Layout switcher ---- */}
         <View style={s.switcherRow}>
-          <Text style={s.momentCountText}>
-            {filtered.length} {filtered.length === 1 ? 'moment' : 'moments'}
-            {activeDay !== 'all' ? ` · ${formatDatePHT(activeDay)}` : ''}
-          </Text>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => router.push('/moments-slideshow' as never)}
+          >
+            <Text style={s.momentCountText}>
+              {filtered.length} {filtered.length === 1 ? 'moment' : 'moments'}
+              {activeDay !== 'all' ? ` · ${formatDatePHT(activeDay)}` : ''}
+              {' →'}
+            </Text>
+          </TouchableOpacity>
 
           <View style={s.segmented}>
             {LAYOUT_OPTIONS.map((opt) => (
