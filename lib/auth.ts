@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as Linking from 'expo-linking';
+import { router as expoRouter } from 'expo-router';
 import { supabase, clearTripCache } from './supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
@@ -78,35 +79,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Handle deep link OAuth callbacks
+  // Handle deep link callbacks (OAuth + invite)
   useEffect(() => {
-    const handleOAuthUrl = async (url: string) => {
-      if (!url.includes('auth/callback')) return;
-
-      const codeMatch = url.match(/[?&]code=([^&#]+)/);
-      if (codeMatch) {
-        const code = codeMatch[1];
-        await supabase.auth.exchangeCodeForSession(code);
+    const handleDeepLink = async (url: string) => {
+      // OAuth callback: afterstay://auth/callback?code=...
+      if (url.includes('auth/callback')) {
+        const codeMatch = url.match(/[?&]code=([^&#]+)/);
+        if (codeMatch) {
+          await supabase.auth.exchangeCodeForSession(codeMatch[1]);
+          return;
+        }
+        const fragment = url.split('#')[1];
+        if (fragment) {
+          const params = new URLSearchParams(fragment);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          }
+        }
         return;
       }
 
-      const fragment = url.split('#')[1];
-      if (fragment) {
-        const params = new URLSearchParams(fragment);
-        const accessToken = params.get('access_token');
-        const refreshToken = params.get('refresh_token');
-        if (accessToken && refreshToken) {
-          await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-        }
+      // Invite deep link: afterstay://join-trip?code=X
+      const joinParamMatch = url.match(/[?&]code=([^&#]+)/);
+      if (url.includes('join-trip') && joinParamMatch) {
+        expoRouter.push({ pathname: '/join-trip', params: { code: joinParamMatch[1] } });
+        return;
+      }
+
+      // Universal link: https://afterstay.travel/join/CODE
+      const joinPathMatch = url.match(/\/join\/([A-Za-z0-9]+)/);
+      if (joinPathMatch) {
+        expoRouter.push({ pathname: '/join-trip', params: { code: joinPathMatch[1] } });
+        return;
       }
     };
 
-    Linking.getInitialURL().then((url) => { if (url) handleOAuthUrl(url); });
+    Linking.getInitialURL().then((url) => { if (url) handleDeepLink(url); });
 
-    const sub = Linking.addEventListener('url', ({ url }) => handleOAuthUrl(url));
+    const sub = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
     return () => sub.remove();
   }, []);
 

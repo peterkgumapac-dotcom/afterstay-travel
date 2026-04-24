@@ -36,6 +36,7 @@ import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
 import EmptyState from '@/components/shared/EmptyState';
 import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
+import SwipeableExpenseRow from '@/components/budget/SwipeableExpenseRow';
 import {
   deleteExpense,
   getActiveTrip,
@@ -165,6 +166,23 @@ export default function BudgetScreen() {
       }},
     ]);
   }, [load]);
+
+  const handleEditExpense = useCallback((e: Expense) => {
+    router.push({
+      pathname: '/add-expense',
+      params: {
+        editId: e.id,
+        description: e.description,
+        amount: String(e.amount),
+        currency: e.currency,
+        category: e.category,
+        date: e.date,
+        paidBy: e.paidBy ?? '',
+        placeName: e.placeName ?? '',
+        notes: e.notes ?? '',
+      },
+    });
+  }, [router]);
 
   const handleModeChange = useCallback((m: BudgetMode) => {
     setMode(m);
@@ -451,47 +469,52 @@ export default function BudgetScreen() {
                   const catColor = catConfig ? colors[catConfig.colorKey] : colors.text3;
 
                   return (
-                    <TouchableOpacity
+                    <SwipeableExpenseRow
                       key={e.id}
-                      style={styles.expenseRow}
-                      onPress={() => setExpandedExpense(isOpen ? null : e.id)}
-                      onLongPress={() => handleDeleteExpense(e.id, e.description)}
-                      activeOpacity={0.7}
+                      colors={colors}
+                      onEdit={() => handleEditExpense(e)}
+                      onDelete={() => handleDeleteExpense(e.id, e.description)}
                     >
-                      <View style={styles.expenseMain}>
-                        <View style={[styles.expenseIcon, { backgroundColor: catColor + '18' }]}>
-                          <CatIcon size={16} color={catColor} strokeWidth={1.8} />
-                        </View>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <View style={styles.expenseTopRow}>
-                            <Text style={styles.expenseTitle} numberOfLines={1}>{smartTitle(e)}</Text>
-                            <Text style={styles.expenseAmount}>{formatCurrency(e.amount, e.currency)}</Text>
+                      <TouchableOpacity
+                        style={styles.expenseRow}
+                        onPress={() => setExpandedExpense(isOpen ? null : e.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.expenseMain}>
+                          <View style={[styles.expenseIcon, { backgroundColor: catColor + '18' }]}>
+                            <CatIcon size={16} color={catColor} strokeWidth={1.8} />
                           </View>
-                          {mode === 'group' && payer ? (
-                            <Text style={styles.expenseMeta}>
-                              {payer.name.split(' ')[0]} paid · others owe <Text style={{ color: colors.accent, fontWeight: '600' }}>{formatCurrency(each, 'PHP')}</Text> each
-                            </Text>
-                          ) : (
-                            <Text style={styles.expenseMeta}>{e.category} · {e.paidBy ? `by ${e.paidBy.split(' ')[0]}` : formatDatePHT(e.date)}</Text>
-                          )}
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <View style={styles.expenseTopRow}>
+                              <Text style={styles.expenseTitle} numberOfLines={1}>{smartTitle(e)}</Text>
+                              <Text style={styles.expenseAmount}>{formatCurrency(e.amount, e.currency)}</Text>
+                            </View>
+                            {mode === 'group' && payer ? (
+                              <Text style={styles.expenseMeta}>
+                                {payer.name.split(' ')[0]} paid · others owe <Text style={{ color: colors.accent, fontWeight: '600' }}>{formatCurrency(each, 'PHP')}</Text> each
+                              </Text>
+                            ) : (
+                              <Text style={styles.expenseMeta}>{e.category} · {e.paidBy ? `by ${e.paidBy.split(' ')[0]}` : formatDatePHT(e.date)}</Text>
+                            )}
+                          </View>
                         </View>
-                      </View>
 
-                      {/* Expanded breakdown */}
-                      {isOpen && mode === 'group' && (
-                        <View style={styles.expenseBreakdown}>
-                          <View style={styles.breakdownRow}>
-                            <Text style={styles.breakdownLabel}>{payer?.name.split(' ')[0] ?? 'Payer'} paid</Text>
-                            <Text style={styles.breakdownValue}>{formatCurrency(e.amount, 'PHP')}</Text>
+                        {/* Expanded breakdown */}
+                        {isOpen && mode === 'group' && (
+                          <View style={styles.expenseBreakdown}>
+                            <View style={styles.breakdownRow}>
+                              <Text style={styles.breakdownLabel}>{payer?.name.split(' ')[0] ?? 'Payer'} paid</Text>
+                              <Text style={styles.breakdownValue}>{formatCurrency(e.amount, 'PHP')}</Text>
+                            </View>
+                            <View style={styles.breakdownRow}>
+                              <Text style={styles.breakdownLabel}>Split across {splitCount} · each</Text>
+                              <Text style={styles.breakdownValue}>{formatCurrency(each, 'PHP')}</Text>
+                            </View>
+                            <Text style={[styles.breakdownLabel, { marginTop: 4 }]}>{e.category}</Text>
                           </View>
-                          <View style={styles.breakdownRow}>
-                            <Text style={styles.breakdownLabel}>Split across {splitCount} · each</Text>
-                            <Text style={styles.breakdownValue}>{formatCurrency(each, 'PHP')}</Text>
-                          </View>
-                          <Text style={[styles.breakdownLabel, { marginTop: 4 }]}>{e.category}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
+                        )}
+                      </TouchableOpacity>
+                    </SwipeableExpenseRow>
                   );
                 })}
               </View>

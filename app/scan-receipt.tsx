@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 
+import { X } from 'lucide-react-native';
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { ReceiptItemReview } from '@/components/budget/ReceiptItemReview';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
@@ -240,7 +241,17 @@ export default function ScanReceiptScreen() {
   }
 
   // 'picking' phase — blank while action sheet is visible
-  return <View style={styles.container} />;
+  return (
+    <View style={styles.container}>
+      <Pressable style={styles.closeBtn} onPress={() => router.back()}>
+        <X size={22} color={colors.text2} strokeWidth={2} />
+      </Pressable>
+      <Text style={styles.pickingHint}>Choose an image to scan</Text>
+      <Pressable style={styles.retryBtn} onPress={showPicker}>
+        <Text style={styles.retryText}>Select image</Text>
+      </Pressable>
+    </View>
+  );
 }
 
 const getStyles = (colors: ThemeColors) => StyleSheet.create({
@@ -267,7 +278,7 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.md,
   },
   errorText: {
-    color: colors.red,
+    color: colors.danger,
     fontSize: 14,
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
@@ -278,13 +289,13 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: spacing.md,
   },
   retryBtn: {
-    backgroundColor: colors.green,
+    backgroundColor: colors.accent,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
     borderRadius: radius.md,
   },
   retryText: {
-    color: colors.white,
+    color: colors.bg,
     fontWeight: '700',
     fontSize: 14,
   },
@@ -298,5 +309,18 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   cancelText: {
     color: colors.text2,
     fontSize: 14,
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: spacing.xl,
+    right: spacing.xl,
+    padding: spacing.sm,
+    borderRadius: radius.xs,
+    backgroundColor: colors.card,
+  },
+  pickingHint: {
+    color: colors.text3,
+    fontSize: 14,
+    marginBottom: spacing.lg,
   },
 });

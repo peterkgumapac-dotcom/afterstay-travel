@@ -274,11 +274,22 @@ function mapChecklist(row: Record<string, unknown>): ChecklistItem {
   }
 }
 
+function momentPhotoUrl(row: Record<string, unknown>): string | undefined {
+  const publicUrl = row.public_url as string | undefined
+  if (publicUrl) return publicUrl
+  // Fallback: reconstruct from storage_path if public_url wasn't saved
+  const storagePath = row.storage_path as string | undefined
+  if (storagePath && SUPABASE_URL) {
+    return `${SUPABASE_URL}/storage/v1/object/public/moments/${storagePath}`
+  }
+  return undefined
+}
+
 function mapMoment(row: Record<string, unknown>): Moment {
   return {
     id: row.id as string,
     caption: (row.caption as string) ?? '',
-    photo: (row.public_url as string) ?? undefined,
+    photo: momentPhotoUrl(row),
     location: (row.location as string) ?? undefined,
     takenBy: (row.uploaded_by as string) ?? undefined,
     date: (row.taken_at as string) ?? new Date().toISOString().slice(0, 10),
