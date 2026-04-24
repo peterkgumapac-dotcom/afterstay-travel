@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { MessageCircle } from 'lucide-react-native';
+import { MessageCircle, UserPlus } from 'lucide-react-native';
 import type { GroupMember, Trip } from '@/lib/types';
 import { formatDatePHT, formatCurrency } from '@/lib/utils';
 import { GroupHeader } from './GroupHeader';
@@ -17,6 +17,7 @@ interface OverviewTabProps {
   onMemberEdit: (m: GroupMember) => void;
   onMemberChat: (m: GroupMember) => void;
   onInvite: () => void;
+  onAddMember: () => void;
   onLoad: () => void;
 }
 
@@ -29,6 +30,7 @@ export function OverviewTab({
   onMemberEdit,
   onMemberChat,
   onInvite,
+  onAddMember,
 }: OverviewTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
@@ -39,9 +41,15 @@ export function OverviewTab({
         kicker={`Group · ${members.length} traveler${members.length !== 1 ? 's' : ''}`}
         title="Who's going"
         action={
-          <TouchableOpacity onPress={onInvite}>
-            <Text style={styles.ghostAction}>Invite +</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity onPress={onAddMember} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <UserPlus size={12} color={colors.accent} strokeWidth={2} />
+              <Text style={styles.ghostAction}>Add</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onInvite}>
+              <Text style={styles.ghostAction}>Invite +</Text>
+            </TouchableOpacity>
+          </View>
         }
         colors={colors}
       />
@@ -79,7 +87,13 @@ export function OverviewTab({
                 )}
               </Text>
               <Text style={styles.memberRole}>
-                {m.role} · {m.userId ? 'On the app' : 'Not yet joined'}
+                {m.role === 'Primary' ? 'Organizer' : 'Member'} · {
+                  m.userId
+                    ? '● On the app'
+                    : m.email || m.phone
+                      ? '○ Added manually'
+                      : '○ Added manually'
+                }
               </Text>
             </View>
             <TouchableOpacity

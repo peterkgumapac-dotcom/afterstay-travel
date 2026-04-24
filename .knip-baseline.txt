@@ -18,7 +18,7 @@ lib/cache/storage.ts: lib/cache/storage.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
 utils/fate/randomWinner.ts: utils/fate/randomWinner.ts
 Unused dependencies (1)
-package.json: @expo/vector-icons, base64-arraybuffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-secure-store, expo-sharing, react-native-maps
+package.json: @expo/vector-icons, base64-arraybuffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-secure-store, react-native-maps
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
@@ -34,8 +34,9 @@ constants/fateTheme.ts: personColors, fateTiming
 lib/distance.ts: haversine
 lib/google-places.ts: searchPlace
 lib/utils.ts: tripStatusLabel
-Unused exported types (7)
+Unused exported types (8)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
+components/moments/recaps/generateRecap.ts: TripRecap
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
 lib/anthropic.ts: ItineraryDayLegacy

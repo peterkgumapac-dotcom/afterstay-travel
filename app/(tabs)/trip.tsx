@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Linking,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -54,6 +55,7 @@ import {
   updateMemberPhone,
   updateMemberPhoto,
 } from '@/lib/supabase';
+import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 import type {
   Flight,
@@ -653,6 +655,9 @@ export default function TripScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [newItemText, setNewItemText] = useState('');
+  const [editMember, setEditMember] = useState<GroupMember | null>(null);
+  const [editField, setEditField] = useState<'email' | 'phone' | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   // Data from Supabase
   const [trip, setTrip] = useState<Trip | null>(null);
@@ -811,70 +816,47 @@ export default function TripScreen() {
 
   const handleMemberEdit = (member: GroupMember) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const showEmailPrompt = () => {
-      if (Platform.OS === 'ios') {
-        Alert.prompt(
-          'Edit Email',
-          `Current: ${member.email || 'Not set'}`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Save',
-              onPress: (value?: string) => {
-                if (!value?.trim()) return;
-                updateMemberEmail(member.id, value.trim())
-                  .then(() => load())
-                  .catch(() => {});
-              },
-            },
-          ],
-          'plain-text',
-          member.email ?? '',
-          'email-address',
-        );
-      } else {
-        Alert.alert('Edit Email', 'Use the member settings to update email on Android.');
-      }
-    };
+    setEditMember(member);
+    setEditField(null);
+    setEditValue('');
+  };
 
-    const showPhonePrompt = () => {
-      if (Platform.OS === 'ios') {
-        Alert.prompt(
-          'Edit Phone',
-          `Current: ${member.phone || 'Not set'}`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Save',
-              onPress: (value?: string) => {
-                if (!value?.trim()) return;
-                updateMemberPhone(member.id, value.trim())
-                  .then(() => load())
-                  .catch(() => {});
-              },
-            },
-          ],
-          'plain-text',
-          member.phone ?? '',
-          'phone-pad',
-        );
-      } else {
-        Alert.alert('Edit Phone', 'Use the member settings to update phone on Android.');
-      }
-    };
+  const handleMemberAction = async (action: string) => {
+    if (!editMember) return;
+    const member = editMember;
 
-    const pickMemberPhoto = async () => {
+    if (action === 'calendar') {
+      setEditMember(null);
+      if (!trip) return;
+      const url = buildTripCalendarUrl({
+        trip,
+        flights: flightsData,
+        members: membersData,
+        inviteEmail: member.email || undefined,
+      });
+      Linking.openURL(url).catch(() => {});
+    } else if (action === 'invite') {
+      setEditMember(null);
+      const msg = `Join our trip on AfterStay! Download the app and use your invite code to see all the trip details.`;
+      const target = member.phone
+        ? `sms:${member.phone}?body=${encodeURIComponent(msg)}`
+        : member.email
+          ? `mailto:${member.email}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(msg)}`
+          : null;
+      if (target) {
+        Linking.openURL(target).catch(() => {});
+      } else {
+        router.push('/invite');
+      }
+    } else if (action === 'photo') {
+      setEditMember(null);
       if (Platform.OS === 'ios') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert(
-            'Photo Library Access',
-            'Please enable photo library access in Settings.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
-            ],
-          );
+          Alert.alert('Photo Library Access', 'Please enable photo library access in Settings.', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+          ]);
           return;
         }
       }
@@ -885,48 +867,25 @@ export default function TripScreen() {
         aspect: [1, 1],
       });
       if (!result.canceled && result.assets[0]) {
-        try {
-          await updateMemberPhoto(member.id, result.assets[0].uri);
-          load();
-        } catch {
-          Alert.alert('Failed to update photo');
-        }
+        await updateMemberPhoto(member.id, result.assets[0].uri).catch(() => {});
+        load();
       }
-    };
-
-    const isOnApp = !!member.userId;
-    const subtitle = isOnApp
-      ? 'This member is on the app.'
-      : 'This member hasn\'t joined yet. Send them an invite link.';
-
-    const buttons: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [];
-
-    if (!isOnApp) {
-      buttons.push({
-        text: 'Send Invite Link',
-        onPress: async () => {
-          const msg = member.phone
-            ? `Join our trip on AfterStay! Download the app and use your invite code to see all the trip details.`
-            : `Join our trip on AfterStay!`;
-          const target = member.phone
-            ? `sms:${member.phone}?body=${encodeURIComponent(msg)}`
-            : member.email
-              ? `mailto:${member.email}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(msg)}`
-              : null;
-          if (target) {
-            Linking.openURL(target).catch(() => {});
-          } else {
-            router.push('/invite');
-          }
-        },
-      });
+    } else if (action === 'email') {
+      setEditField('email');
+      setEditValue(member.email ?? '');
+    } else if (action === 'phone') {
+      setEditField('phone');
+      setEditValue(member.phone ?? '');
+    } else if (action === 'save') {
+      if (editField === 'email' && editValue.trim()) {
+        await updateMemberEmail(member.id, editValue.trim()).catch(() => {});
+      } else if (editField === 'phone' && editValue.trim()) {
+        await updateMemberPhone(member.id, editValue.trim()).catch(() => {});
+      }
+      setEditMember(null);
+      setEditField(null);
+      load();
     }
-    buttons.push({ text: 'Change Photo', onPress: pickMemberPhoto });
-    buttons.push({ text: 'Edit Email', onPress: showEmailPrompt });
-    buttons.push({ text: 'Edit Phone', onPress: showPhonePrompt });
-    buttons.push({ text: 'Cancel', style: 'cancel' });
-
-    Alert.alert(member.name, subtitle, buttons);
   };
 
   const handleMemberChat = async (member: GroupMember) => {
@@ -1100,6 +1059,7 @@ export default function TripScreen() {
             onMemberEdit={handleMemberEdit}
             onMemberChat={handleMemberChat}
             onInvite={handleInvite}
+            onAddMember={() => router.push('/add-member')}
             onLoad={load}
           />
         )}
@@ -1151,6 +1111,81 @@ export default function TripScreen() {
 
       {/* Add trip bottom sheet */}
       <AddTripSheet open={addOpen} onClose={() => setAddOpen(false)} />
+
+      {/* Member edit sheet */}
+      <Modal
+        visible={!!editMember}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditMember(null)}
+      >
+        <Pressable style={styles.sheetOverlay} onPress={() => { setEditMember(null); setEditField(null); }}>
+          <Pressable style={styles.sheetContent} onPress={(e) => e.stopPropagation()}>
+            {editMember && !editField && (
+              <>
+                <View style={styles.sheetHeader}>
+                  <Text style={styles.sheetTitle}>{editMember.name}</Text>
+                  <Text style={styles.sheetSub}>
+                    {editMember.userId ? 'On the app' : 'Not yet joined — send an invite'}
+                  </Text>
+                </View>
+                <View style={styles.sheetActions}>
+                  {!editMember.userId && (
+                    <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('invite')}>
+                      <Text style={styles.sheetBtnAccent}>Send Invite Link</Text>
+                    </Pressable>
+                  )}
+                  <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('calendar')}>
+                    <Text style={styles.sheetBtnAccent}>Send Calendar Invite</Text>
+                    {editMember.email && <Text style={styles.sheetBtnMeta}>{editMember.email}</Text>}
+                  </Pressable>
+                  <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('photo')}>
+                    <Text style={styles.sheetBtnText}>Change Photo</Text>
+                  </Pressable>
+                  <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('email')}>
+                    <Text style={styles.sheetBtnText}>Edit Email</Text>
+                    {editMember.email && <Text style={styles.sheetBtnMeta}>{editMember.email}</Text>}
+                  </Pressable>
+                  <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('phone')}>
+                    <Text style={styles.sheetBtnText}>Edit Phone</Text>
+                    {editMember.phone && <Text style={styles.sheetBtnMeta}>{editMember.phone}</Text>}
+                  </Pressable>
+                </View>
+                <Pressable style={styles.sheetClose} onPress={() => setEditMember(null)}>
+                  <Text style={styles.sheetCloseText}>Cancel</Text>
+                </Pressable>
+              </>
+            )}
+            {editMember && editField && (
+              <>
+                <View style={styles.sheetHeader}>
+                  <Text style={styles.sheetTitle}>{editField === 'email' ? 'Edit Email' : 'Edit Phone'}</Text>
+                  <Text style={styles.sheetSub}>{editMember.name}</Text>
+                </View>
+                <TextInput
+                  style={styles.sheetInput}
+                  value={editValue}
+                  onChangeText={setEditValue}
+                  placeholder={editField === 'email' ? 'email@example.com' : '+63 912 345 6789'}
+                  placeholderTextColor={colors.text3}
+                  keyboardType={editField === 'email' ? 'email-address' : 'phone-pad'}
+                  autoFocus
+                />
+                <Pressable
+                  style={[styles.sheetSaveBtn, !editValue.trim() && { opacity: 0.4 }]}
+                  onPress={() => handleMemberAction('save')}
+                  disabled={!editValue.trim()}
+                >
+                  <Text style={styles.sheetSaveBtnText}>Save</Text>
+                </Pressable>
+                <Pressable style={styles.sheetClose} onPress={() => setEditField(null)}>
+                  <Text style={styles.sheetCloseText}>Back</Text>
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1639,5 +1674,96 @@ const getStyles = (colors: ThemeColors) =>
     // Bottom spacer
     bottomSpacer: {
       height: 20,
+    },
+
+    // Member edit sheet
+    sheetOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'flex-end',
+    },
+    sheetContent: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 34,
+      paddingTop: 20,
+      paddingHorizontal: 20,
+    },
+    sheetHeader: {
+      alignItems: 'center',
+      marginBottom: 20,
+    },
+    sheetTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+      letterSpacing: -0.3,
+    },
+    sheetSub: {
+      fontSize: 12,
+      color: colors.text3,
+      marginTop: 4,
+    },
+    sheetActions: {
+      gap: 2,
+    },
+    sheetBtn: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 15,
+      paddingHorizontal: 16,
+      backgroundColor: colors.bg,
+      borderRadius: 12,
+      marginBottom: 6,
+    },
+    sheetBtnText: {
+      fontSize: 15,
+      fontWeight: '500',
+      color: colors.text,
+    },
+    sheetBtnAccent: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    sheetBtnMeta: {
+      fontSize: 12,
+      color: colors.text3,
+    },
+    sheetClose: {
+      alignItems: 'center',
+      paddingVertical: 14,
+      marginTop: 8,
+      backgroundColor: colors.bg,
+      borderRadius: 12,
+    },
+    sheetCloseText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text2,
+    },
+    sheetInput: {
+      fontSize: 16,
+      color: colors.text,
+      backgroundColor: colors.bg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      marginBottom: 12,
+    },
+    sheetSaveBtn: {
+      backgroundColor: colors.accent,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    sheetSaveBtnText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.bg,
     },
   });
