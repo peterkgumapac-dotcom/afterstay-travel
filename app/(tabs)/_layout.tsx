@@ -1,7 +1,8 @@
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import { Tabs } from 'expo-router';
 import { BookOpen, Compass, Home, Plane, Wallet } from 'lucide-react-native';
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
@@ -161,10 +162,24 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const [tabBarVisible, setTabBarVisible] = useState(true);
+  const [modalActive, setModalActive] = useState(false);
+  const rootNav = useNavigation();
+
+  // Hide tab bar when a modal screen is presented above the tabs
+  useEffect(() => {
+    const parent = rootNav.getParent();
+    if (!parent) return;
+    const unsubscribe = parent.addListener('state', (e: any) => {
+      const routes = e.data?.state?.routes ?? [];
+      const isModal = routes.length > 1;
+      setModalActive(isModal);
+    });
+    return unsubscribe;
+  }, [rootNav]);
 
   const visibilityValue = useMemo(
-    () => ({ visible: tabBarVisible, setVisible: setTabBarVisible }),
-    [tabBarVisible],
+    () => ({ visible: tabBarVisible && !modalActive, setVisible: setTabBarVisible }),
+    [tabBarVisible, modalActive],
   );
 
   return (
