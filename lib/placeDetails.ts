@@ -1,4 +1,3 @@
-import { CONFIG } from './config';
 
 export interface Review {
   authorName: string;

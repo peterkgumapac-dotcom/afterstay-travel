@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { Copy, MessageCircle, Send, Users } from 'lucide-react-native';
+import { Copy, Send, Users } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';

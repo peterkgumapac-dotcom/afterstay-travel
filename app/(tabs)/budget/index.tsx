@@ -25,15 +25,15 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Path, Polyline, Rect } from 'react-native-svg';
+import Svg, { Polyline } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Car, Compass, Hotel, Package, Pencil, ShoppingBag, Trash2, UtensilsCrossed } from 'lucide-react-native';
+import { Car, Compass, Package, Pencil, ShoppingBag, UtensilsCrossed } from 'lucide-react-native';
 
 import { Wallet } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
+import { radius } from '@/constants/theme';
 import EmptyState from '@/components/shared/EmptyState';
 import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import {

@@ -16,27 +16,25 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as WebBrowser from 'expo-web-browser';
-import { Bookmark, CalendarDays, ChevronDown, Filter, Map, Plus, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import { Bookmark, CalendarDays, ChevronDown, Filter, Map, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
 
 import EmptyState from '@/components/shared/EmptyState';
 
-import { CategoryGrid, type CategoryItem } from '@/components/discover/CategoryGrid';
+import { type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
   DiscoverPlaceCard,
   friendlyCategory,
   type DiscoverPlace,
 } from '@/components/discover/DiscoverPlaceCard';
-import { TrendingCard, type TrendingItem } from '@/components/discover/TrendingCard';
+import { type TrendingItem } from '@/components/discover/TrendingCard';
 import MiniLoader from '@/components/loader/MiniLoader';
-import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import { useTheme } from '@/constants/ThemeContext';
-import { generateItinerary, type ItineraryDay, type ItineraryActivity, type PlannerScope, type PlannerPace } from '@/lib/anthropic';
+import { generateItinerary, type ItineraryDay, type PlannerScope, type PlannerPace } from '@/lib/anthropic';
 import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
-import { formatDatePHT, MS_PER_DAY } from '@/lib/utils';
+import { MS_PER_DAY } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
-import ExploreMap, { MAP_AVAILABLE } from '@/components/discover/ExploreMap';
+import ExploreMap from '@/components/discover/ExploreMap';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, type NearbyPlace } from '@/lib/google-places';
 import {
@@ -48,7 +46,6 @@ import {
   voteOnPlace,
 } from '@/lib/supabase';
 import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
-import { CONFIG } from '@/lib/config';
 
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];

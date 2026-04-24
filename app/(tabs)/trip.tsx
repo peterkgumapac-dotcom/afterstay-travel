@@ -34,12 +34,9 @@ import { useRouter } from 'expo-router';
 import AddTripSheet from '@/components/summary/AddTripSheet';
 import EmptyState from '@/components/shared/EmptyState';
 import { TripFloatingActionButton } from '@/components/shared/TripFloatingActionButton';
-import ConstellationHero from '@/components/summary/ConstellationHero';
-import HighlightsStrip from '@/components/summary/HighlightsStrip';
 import { OverviewTab } from '@/components/trip/OverviewTab';
 import { SummaryTab } from '@/components/trip/SummaryTab';
 import { EssentialsTab } from '@/components/trip/EssentialsTab';
-import PastTripRow from '@/components/summary/PastTripRow';
 import { useTheme } from '@/constants/ThemeContext';
 import { colors as themeColors } from '@/constants/theme';
 import {
@@ -57,7 +54,7 @@ import {
   updateMemberPhone,
   updateMemberPhoto,
 } from '@/lib/supabase';
-import { formatDatePHT, formatTimePHT, formatCurrency } from '@/lib/utils';
+import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 import type {
   Flight,
   GroupMember,

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 import type { Flight } from '@/lib/types';

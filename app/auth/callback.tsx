@@ -1,11 +1,9 @@
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import AfterStayLoader from '@/components/AfterStayLoader';
-import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 
 export default function AuthCallback() {
-  const { colors } = useTheme();
   const router = useRouter();
   const { session } = useAuth();
 

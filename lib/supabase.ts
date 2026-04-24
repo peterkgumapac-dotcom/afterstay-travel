@@ -332,6 +332,14 @@ export async function createTrip(input: {
   startDate: string;
   endDate: string;
   members?: string[];
+  accommodation?: string;
+  address?: string;
+  checkIn?: string;
+  checkOut?: string;
+  roomType?: string;
+  bookingRef?: string;
+  cost?: number;
+  costCurrency?: string;
 }): Promise<string> {
   // Get authenticated user ID for trip ownership
   const { data: authData } = await supabase.auth.getUser();
@@ -361,6 +369,13 @@ export async function createTrip(input: {
       end_date: input.endDate,
       status,
       ...(userId ? { user_id: userId } : {}),
+      ...(input.accommodation ? { accommodation_name: input.accommodation } : {}),
+      ...(input.address ? { accommodation_address: input.address } : {}),
+      ...(input.checkIn ? { check_in: input.checkIn } : {}),
+      ...(input.checkOut ? { check_out: input.checkOut } : {}),
+      ...(input.cost != null ? { budget_limit: input.cost } : {}),
+      ...(input.costCurrency ? { currency: input.costCurrency } : {}),
+      ...(input.bookingRef ? { notes: `Booking ref: ${input.bookingRef}` } : {}),
     })
     .select('id')
     .single()

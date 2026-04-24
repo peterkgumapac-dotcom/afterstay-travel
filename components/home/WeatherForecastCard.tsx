@@ -10,7 +10,6 @@ import { ChevronDown } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import MiniLoader from '@/components/loader/MiniLoader';
-import { elevation } from '@/constants/theme';
 import { CONFIG } from '../../lib/config';
 
 interface HourData {

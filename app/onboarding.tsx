@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,7 +25,6 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 import { cacheSet } from '@/lib/cache';
 import { compressImage } from '@/lib/compressImage';
@@ -677,13 +676,32 @@ export default function OnboardingScreen() {
           Alert.alert('Missing info', 'Could not read destination or dates from your screenshots. Try again or plan manually.');
           return;
         }
-        await createTrip({
+        const tripId = await createTrip({
           name: `Trip to ${s.destination}`,
           destination: s.destination,
           startDate: s.startDate,
           endDate: s.endDate,
           members: s.members,
+          accommodation: s.accommodation,
+          address: s.address,
+          checkIn: s.checkIn,
+          checkOut: s.checkOut,
+          roomType: s.roomType,
+          bookingRef: s.bookingRef,
+          cost: s.cost,
+          costCurrency: s.costCurrency,
         });
+        // Insert scanned flights
+        if (s.flights?.length > 0) {
+          for (const f of s.flights) {
+            await addFlight({
+              tripId,
+              direction: f.direction || 'Outbound',
+              flightNumber: f.flightNumber,
+              airline: f.airline,
+            }).catch(() => {}); // Don't block trip creation on flight insert failure
+          }
+        }
       } else if (payload.kind === 'invited' && !payload.skipped && payload.flightNum && payload.tripId) {
         await addFlight({
           tripId: payload.tripId,

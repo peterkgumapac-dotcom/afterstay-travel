@@ -41,7 +41,7 @@ import {
   getMoments,
 } from '@/lib/supabase';
 import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
-import { formatDatePHT, formatTimePHT, safeParse, tripStatusLabel, MS_PER_DAY } from '@/lib/utils';
+import { formatDatePHT, formatTimePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 
 type TripPhase = 'planning' | 'upcoming' | 'inflight' | 'arrived' | 'active';
 
