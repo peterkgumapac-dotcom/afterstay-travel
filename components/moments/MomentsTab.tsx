@@ -13,7 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { getActiveTrip, getMoments, getGroupMembers } from '@/lib/supabase';
+import { getMoments, getGroupMembers } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Moment, GroupMember } from '@/lib/types';
 import type { MomentDisplay, PeopleMap } from './types';
@@ -22,9 +22,8 @@ import { DayChips } from './DayChips';
 import { BentoLayout } from './BentoLayout';
 import { MosaicLayout } from './MosaicLayout';
 import { DiaryLayout } from './DiaryLayout';
-import { MomentLightbox } from './MomentLightbox';
 import { MapLayout } from './MapLayout';
-import { RecapsLayout } from './recaps/RecapsLayout';
+import { MomentLightbox } from './MomentLightbox';
 import { PhotoActionSheet } from './PhotoActionSheet';
 import { PhotoEditSheet } from './PhotoEditSheet';
 
@@ -35,13 +34,13 @@ import { PhotoEditSheet } from './PhotoEditSheet';
 const LAYOUT_STORAGE_KEY = 'afterstay_moments_layout';
 const PEOPLE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#7f3712', '#9a7d52'];
 
-type LayoutMode = 'bento' | 'mosaic' | 'diary' | 'map' | 'recaps';
+type LayoutMode = 'bento' | 'mosaic' | 'diary' | 'map';
 
 const LAYOUT_OPTIONS: { value: LayoutMode; label: string }[] = [
   { value: 'bento', label: 'Bento' },
   { value: 'mosaic', label: 'Grid' },
   { value: 'diary', label: 'Diary' },
-  { value: 'recaps', label: 'Recaps' },
+  { value: 'map', label: 'Map' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -107,8 +106,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   const [rawMoments, setRawMoments] = useState<Moment[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
-  const [tripDestination, setTripDestination] = useState('');
-  const [tripStartDate, setTripStartDate] = useState('');
   const [loading, setLoading] = useState(true);
 
   const [activeDay, setActiveDay] = useState('all');
@@ -124,7 +121,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   // Load persisted layout preference
   useEffect(() => {
     AsyncStorage.getItem(LAYOUT_STORAGE_KEY).then((stored) => {
-      if (stored === 'bento' || stored === 'mosaic' || stored === 'diary' || stored === 'recaps') {
+      if (stored === 'bento' || stored === 'mosaic' || stored === 'diary' || stored === 'map') {
         setLayout(stored);
       }
     });
@@ -217,21 +214,16 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     );
   }, [selectedIds]);
 
-  // Fetch moments + group members + trip info
+  // Fetch moments + group members
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [moments, groupMembers, trip] = await Promise.all([
+      const [moments, groupMembers] = await Promise.all([
         getMoments(tripId).catch(() => [] as Moment[]),
         getGroupMembers(tripId).catch(() => [] as GroupMember[]),
-        getActiveTrip().catch(() => null),
       ]);
       setRawMoments(moments);
       setMembers(groupMembers);
-      if (trip) {
-        setTripDestination(trip.destination ?? '');
-        setTripStartDate(trip.startDate ?? '');
-      }
     } finally {
       setLoading(false);
     }
@@ -382,11 +374,11 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           />
         )}
 
-        {layout === 'recaps' && (
-          <RecapsLayout
+        {layout === 'map' && (
+          <MapLayout
             items={filtered}
-            destination={tripDestination}
-            tripStartDate={tripStartDate}
+            onOpen={handleOpen}
+            people={people}
           />
         )}
 

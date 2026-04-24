@@ -8,7 +8,6 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/constants/ThemeContext';
-import { smallUrl } from '@/lib/imageUrl';
 import { Avatar } from './Avatar';
 import type { MomentDisplay, PeopleMap } from './types';
 
@@ -45,7 +44,7 @@ export function MosaicTile({
       ]}
     >
       <ImageBackground
-        source={{ uri: smallUrl(moment.photo), cache: 'force-cache' }}
+        source={{ uri: moment.photo, cache: 'force-cache' }}
         style={styles.image}
         imageStyle={{ borderRadius: 13 }}
         resizeMode="cover"
