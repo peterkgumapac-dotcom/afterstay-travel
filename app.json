@@ -16,6 +16,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.afterstay.travel",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "AfterStay needs access to your photo library to add trip moments.",
+        "NSCameraUsageDescription": "AfterStay needs camera access to capture trip moments."
+      },
       "icon": {
         "light": "./assets/icon/afterstay-icon.png",
         "dark": "./assets/icon/afterstay-icon-dark.png",

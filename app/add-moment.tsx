@@ -60,6 +60,15 @@ export default function AddMomentScreen() {
   }, []);
 
   const pickImages = async () => {
+    if (Platform.OS === 'ios') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow photo library access in Settings to add moments.');
+        if (photos.length === 0) router.back();
+        return;
+      }
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       quality: 0.5,
