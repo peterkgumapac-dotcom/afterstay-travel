@@ -1,5 +1,7 @@
 // Image URL helpers — append Supabase Storage transform params for responsive sizing.
-// Only works with Supabase Storage public URLs; external URLs pass through unchanged.
+// Uses the standard /object/public/ endpoint with transform query params.
+// If transforms aren't enabled on the Supabase project, the original image is returned
+// (Supabase ignores unknown query params on the public endpoint).
 
 import { CONFIG } from './config';
 
@@ -7,37 +9,29 @@ const SUPABASE_HOST = CONFIG.SUPABASE_URL?.replace('https://', '') ?? '';
 
 type ImageSize = 'thumb' | 'small' | 'medium' | 'full';
 
-const SIZE_MAP: Record<ImageSize, { width: number; quality: number }> = {
-  thumb: { width: 150, quality: 60 },
-  small: { width: 300, quality: 70 },
-  medium: { width: 600, quality: 75 },
-  full: { width: 800, quality: 80 },
+const SIZE_MAP: Record<ImageSize, number> = {
+  thumb: 150,
+  small: 300,
+  medium: 600,
+  full: 800,
 };
 
 /**
- * Returns a resized image URL using Supabase Storage transforms.
- * Falls back to the original URL for non-Supabase images.
+ * Returns an image URL with width hint. For Supabase Storage URLs,
+ * appends ?width=N. For other URLs, returns as-is.
+ * Safe even if Supabase Image Transforms aren't enabled — the param is ignored.
  */
 export function imageUrl(url: string | undefined, size: ImageSize = 'medium'): string | undefined {
   if (!url) return undefined;
-
-  // Only transform Supabase Storage URLs
+  // Only add params to Supabase Storage URLs
   if (!SUPABASE_HOST || !url.includes(SUPABASE_HOST)) return url;
   if (!url.includes('/storage/v1/object/public/')) return url;
 
-  // Convert /object/public/ to /render/image/public/ for transforms
-  const transformUrl = url.replace(
-    '/storage/v1/object/public/',
-    '/storage/v1/render/image/public/',
-  );
-
-  const { width, quality } = SIZE_MAP[size];
-  return `${transformUrl}?width=${width}&quality=${quality}&resize=contain`;
+  const width = SIZE_MAP[size];
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}width=${width}`;
 }
 
-/**
- * Shorthand helpers
- */
 export const thumbUrl = (url: string | undefined) => imageUrl(url, 'thumb');
 export const smallUrl = (url: string | undefined) => imageUrl(url, 'small');
 export const mediumUrl = (url: string | undefined) => imageUrl(url, 'medium');
