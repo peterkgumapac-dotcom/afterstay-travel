@@ -77,18 +77,6 @@ export function HomeMomentsPreview({
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
-  if (moments.length === 0) {
-    return (
-      <View style={styles.wrapper}>
-        <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-          <Text style={styles.emptyText}>
-            No moments yet — capture your first
-          </Text>
-        </Animated.View>
-      </View>
-    );
-  }
-
   const allPhotos = moments.filter((m) => m.photo).map((m) => m.photo!);
   const displayPhotos = moments.filter((m) => m.photo).slice(0, 5);
   const overflow = moments.length - displayPhotos.length;
@@ -102,6 +90,18 @@ export function HomeMomentsPreview({
     }
     return arr;
   }, [allPhotos.length]);
+
+  if (moments.length === 0) {
+    return (
+      <View style={styles.wrapper}>
+        <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
+          <Text style={styles.emptyText}>
+            No moments yet — capture your first
+          </Text>
+        </Animated.View>
+      </View>
+    );
+  }
 
   if (displayPhotos.length === 1) {
     return (
