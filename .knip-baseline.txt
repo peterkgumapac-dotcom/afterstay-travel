@@ -23,13 +23,17 @@ Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (6)
+Unused exports (10)
+components/discover/CategoryGrid.tsx: CategoryGrid
+components/discover/ExploreMap.tsx: MAP_AVAILABLE
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
+components/discover/TrendingCard.tsx: TrendingCard
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
 lib/distance.ts: haversine
 lib/google-places.ts: searchPlace
+lib/utils.ts: tripStatusLabel
 Unused exported types (7)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
