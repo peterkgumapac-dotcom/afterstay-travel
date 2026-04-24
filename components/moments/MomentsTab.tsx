@@ -24,6 +24,8 @@ import { MosaicLayout } from './MosaicLayout';
 import { DiaryLayout } from './DiaryLayout';
 import { MapLayout } from './MapLayout';
 import { MomentLightbox } from './MomentLightbox';
+import { PhotoActionSheet } from './PhotoActionSheet';
+import { PhotoEditSheet } from './PhotoEditSheet';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -111,6 +113,10 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectMode = selectedIds.size > 0;
+  const [actionMomentId, setActionMomentId] = useState<string | null>(null);
+  const [editMomentId, setEditMomentId] = useState<string | null>(null);
+  const actionMoment = actionMomentId ? rawMoments.find((m) => m.id === actionMomentId) ?? null : null;
+  const editMoment = editMomentId ? rawMoments.find((m) => m.id === editMomentId) ?? null : null;
 
   // Load persisted layout preference
   useEffect(() => {
@@ -132,42 +138,58 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   }, []);
 
   const handleLongPress = useCallback((id: string) => {
-    const moment = rawMoments.find((m) => m.id === id);
-    Alert.alert(
-      moment?.caption || 'Photo',
-      undefined,
-      [
-        {
-          text: 'Share',
-          onPress: () => {
-            if (!moment?.photo) return;
-            import('react-native').then(({ Share }) => {
-              Share.share({
-                message: moment.caption
-                  ? `${moment.caption} — ${moment.location ?? ''}`
-                  : 'Trip moment',
-                url: moment.photo,
-              });
-            });
-          },
+    setActionMomentId(id);
+  }, []);
+
+  const handleActionShare = useCallback(() => {
+    if (!actionMoment?.photo) return;
+    import('react-native').then(({ Share }) => {
+      Share.share({
+        message: actionMoment.caption
+          ? `${actionMoment.caption} — ${actionMoment.location ?? ''}`
+          : 'Trip moment',
+        url: actionMoment.photo,
+      });
+    });
+  }, [actionMoment]);
+
+  const handleActionEdit = useCallback(() => {
+    if (actionMomentId) setEditMomentId(actionMomentId);
+  }, [actionMomentId]);
+
+  const handleActionSelectMultiple = useCallback(() => {
+    if (actionMomentId) setSelectedIds(new Set([actionMomentId]));
+  }, [actionMomentId]);
+
+  const handleActionDelete = useCallback(() => {
+    if (!actionMomentId) return;
+    const id = actionMomentId;
+    Alert.alert('Delete photo?', 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          const { deletePage } = await import('@/lib/supabase');
+          try { await deletePage(id); } catch { /* skip */ }
+          setRawMoments((prev) => prev.filter((m) => m.id !== id));
         },
-        {
-          text: 'Select Multiple',
-          onPress: () => setSelectedIds(new Set([id])),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const { deletePage } = await import('@/lib/supabase');
-            try { await deletePage(id); } catch { /* skip */ }
-            setRawMoments((prev) => prev.filter((m) => m.id !== id));
-          },
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ],
-    );
-  }, [rawMoments]);
+      },
+    ]);
+  }, [actionMomentId]);
+
+  const handleEditSave = useCallback(async (id: string, updates: { caption?: string; location?: string }) => {
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      await supabase.from('moments').update({
+        caption: updates.caption ?? null,
+        location: updates.location ?? null,
+      }).eq('id', id);
+      setRawMoments((prev) =>
+        prev.map((m) => m.id === id ? { ...m, caption: updates.caption ?? m.caption, location: updates.location ?? m.location } : m),
+      );
+    } catch { /* ignore */ }
+  }, []);
 
   const handleDeleteSelected = useCallback(async () => {
     const count = selectedIds.size;
@@ -409,6 +431,25 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           )
         }
         people={people}
+      />
+
+      {/* ---- Themed action sheet ---- */}
+      <PhotoActionSheet
+        visible={actionMomentId !== null}
+        title={actionMoment?.caption || actionMoment?.location || 'Photo'}
+        onShare={handleActionShare}
+        onEdit={handleActionEdit}
+        onSelectMultiple={handleActionSelectMultiple}
+        onDelete={handleActionDelete}
+        onClose={() => setActionMomentId(null)}
+      />
+
+      {/* ---- Edit details sheet ---- */}
+      <PhotoEditSheet
+        visible={editMomentId !== null}
+        moment={editMoment}
+        onSave={handleEditSave}
+        onClose={() => setEditMomentId(null)}
       />
     </>
   );
