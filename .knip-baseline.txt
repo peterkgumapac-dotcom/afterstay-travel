@@ -1,4 +1,4 @@
-Unused files (33)
+Unused files (34)
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
@@ -8,6 +8,7 @@ components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
 components/home/QuickAccessGrid.tsx: components/home/QuickAccessGrid.tsx
 components/home/SmartNudges.tsx: components/home/SmartNudges.tsx
+components/moments/TripRecapModal.tsx: components/moments/TripRecapModal.tsx
 components/moments/recaps/MinimalTemplate.tsx: components/moments/recaps/MinimalTemplate.tsx
 components/moments/recaps/PolaroidTemplate.tsx: components/moments/recaps/PolaroidTemplate.tsx
 components/moments/recaps/RecapsLayout.tsx: components/moments/recaps/RecapsLayout.tsx
@@ -23,7 +24,6 @@ design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
 design-reference/screens/login.jsx: design-reference/screens/login.jsx
 design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
-hooks/usePushNotifications.ts: hooks/usePushNotifications.ts
 lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 lib/imageUrl.ts: lib/imageUrl.ts
@@ -31,14 +31,15 @@ lib/qrph.ts: lib/qrph.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
 supabase/functions/ai-recommend/index.ts: supabase/functions/ai-recommend/index.ts
 supabase/functions/send-push-notification/index.ts: supabase/functions/send-push-notification/index.ts
+supabase/functions/trip-lifecycle-notifications/index.ts: supabase/functions/trip-lifecycle-notifications/index.ts
 utils/fate/randomWinner.ts: utils/fate/randomWinner.ts
 Unused dependencies (1)
-package.json: @expo/vector-icons, base64-arraybuffer, buffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-camera, expo-device, expo-notifications, expo-secure-store, expo-sharing, react-native-maps, react-native-view-shot
+package.json: @expo/vector-icons, base64-arraybuffer, buffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-camera, expo-device, expo-secure-store, react-native-maps, react-native-view-shot
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (11)
+Unused exports (12)
 components/discover/CategoryGrid.tsx: CategoryGrid
 components/discover/ExploreMap.tsx: MAP_AVAILABLE
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
@@ -46,13 +47,13 @@ components/discover/TrendingCard.tsx: TrendingCard
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
+hooks/useFilmFilters.ts: getFilter
 lib/anthropic.ts: generateRecommendations
 lib/distance.ts: haversine
 lib/google-places.ts: findPlacePhoto, enrichRecommendations
 lib/utils.ts: tripStatusLabel
-Unused exported types (8)
+Unused exported types (7)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
-components/moments/TripRecapModal.tsx: RecapPhoto
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
 lib/anthropic.ts: ItineraryDayLegacy

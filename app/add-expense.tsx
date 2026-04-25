@@ -23,7 +23,8 @@ import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { getPlaceLocation, placeAutocomplete } from '@/lib/google-places';
-import { addExpense, getGroupMembers, updateExpense } from '@/lib/supabase';
+import { addExpense, getGroupMembers, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
 import type { Expense } from '@/lib/types';
 
 const CATEGORY_EMOJI: Record<Expense['category'], string> = {
@@ -51,6 +52,7 @@ const SPLIT_TYPES: NonNullable<Expense['splitType']>[] = ['Equal', 'Custom', 'In
 export default function AddExpenseScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{
     editId?: string;
     description?: string;
@@ -178,6 +180,14 @@ export default function AddExpenseScreen() {
         await updateExpense(params.editId!, expenseData);
       } else {
         await addExpense(expenseData);
+        // Notify group members about new expense (best-effort, non-blocking)
+        if (user?.id && members.length >= 2) {
+          notifyExpenseAdded(
+            '', // empty tripId resolves from cache inside the function
+            { description: description.trim(), amount: parseFloat(amount), paidBy, currency },
+            user.id,
+          ).catch(() => {});
+        }
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();

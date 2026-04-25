@@ -11,6 +11,7 @@ import 'react-native-reanimated';
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { verifyConfig } from '@/lib/config';
 import { queryClient } from '@/lib/queryClient';
 
@@ -25,6 +26,7 @@ SplashScreen.preventAutoHideAsync();
 function RootLayoutInner() {
   const { mode, colors: c } = useTheme();
   const { loading } = useAuth();
+  usePushNotifications();
 
   const navTheme = {
     ...(mode === 'dark' ? DarkTheme : DefaultTheme),

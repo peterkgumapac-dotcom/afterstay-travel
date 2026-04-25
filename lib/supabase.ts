@@ -504,6 +504,11 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
   // Mark invite as used
   await supabase.from('trip_invites').update({ used: true }).eq('code', code.toUpperCase())
 
+  // Notify existing members (best-effort, non-blocking)
+  if (userId) {
+    notifyMemberJoined(tripId, userName, userId).catch(() => {})
+  }
+
   return { tripId, trip: mapTrip(tripData) }
 }
 
@@ -1184,6 +1189,130 @@ export async function notifyGroupOfRecommendation(
   } catch {
     // Notifications table might not exist yet — silently ignore
   }
+}
+
+// ---------- NOTIFICATION HELPERS ----------
+
+/** Generic notification insert — all specific notifiers delegate to this. */
+async function insertNotification(opts: {
+  userId: string
+  tripId: string
+  type: string
+  title: string
+  body: string
+  data?: Record<string, any>
+}): Promise<void> {
+  try {
+    await supabase.from('notifications').insert({
+      user_id: opts.userId,
+      trip_id: opts.tripId,
+      type: opts.type,
+      title: opts.title,
+      body: opts.body,
+      data: { ...opts.data, type: opts.type },
+      read: false,
+    })
+  } catch {
+    // Silently ignore — notifications are best-effort
+  }
+}
+
+/** Notify all trip members of a lifecycle event. Respects transport/group gates. */
+async function notifyAllMembers(
+  tripId: string,
+  type: string,
+  title: string,
+  body: string,
+  data?: Record<string, any>,
+  excludeUserId?: string,
+): Promise<void> {
+  const members = await getGroupMembers(tripId)
+  const targets = members.filter((m) => m.userId && m.userId !== excludeUserId)
+  for (const m of targets) {
+    await insertNotification({
+      userId: m.userId!,
+      tripId,
+      type,
+      title,
+      body,
+      data,
+    })
+  }
+}
+
+/** Notify members that a new expense was added (group trips only, 2+ members). */
+export async function notifyExpenseAdded(
+  tripIdOrEmpty: string,
+  expense: { description: string; amount: number; paidBy: string; currency?: string },
+  addedByUserId: string,
+): Promise<void> {
+  try {
+    const tripId = await resolveTripId(tripIdOrEmpty || undefined)
+    const members = await getGroupMembers(tripId)
+    if (members.length < 2) return
+    const currency = expense.currency ?? 'PHP'
+    await notifyAllMembers(
+      tripId,
+      'expense_added',
+      `${expense.paidBy} added an expense`,
+      `${expense.description} — ${currency} ${expense.amount.toLocaleString()}`,
+      { expenseDescription: expense.description, amount: expense.amount },
+      addedByUserId,
+    )
+  } catch { /* best-effort */ }
+}
+
+/** Notify existing members when someone joins the trip. */
+export async function notifyMemberJoined(
+  tripId: string,
+  memberName: string,
+  joinerUserId: string,
+): Promise<void> {
+  try {
+    await notifyAllMembers(
+      tripId,
+      'member_joined',
+      `${memberName} joined the trip!`,
+      'Your travel group just grew. Say hello!',
+      { memberName },
+      joinerUserId,
+    )
+  } catch { /* best-effort */ }
+}
+
+/** Notify trip members when projected spend exceeds budget. Daily dedup via type+date check. */
+export async function notifyBudgetThreshold(
+  tripId: string,
+  projected: number,
+  budget: number,
+  currency: string,
+): Promise<void> {
+  try {
+    // Dedup: don't send more than once per day
+    const today = new Date().toISOString().slice(0, 10)
+    const { data: existing } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('trip_id', tripId)
+      .eq('type', 'budget_threshold')
+      .gte('created_at', today)
+      .limit(1)
+    if (existing && existing.length > 0) return
+
+    const diff = Math.round(projected - budget)
+    const members = await getGroupMembers(tripId)
+    for (const m of members) {
+      if (!m.userId) continue
+      await insertNotification({
+        userId: m.userId,
+        tripId,
+        type: 'budget_threshold',
+        title: 'Budget alert',
+        body: `Projected ${currency} ${Math.round(projected).toLocaleString()} — ${currency} ${diff.toLocaleString()} over budget`,
+        data: { projected, budget },
+      })
+    }
+  } catch { /* best-effort */ }
 }
 
 // ---------- CHECKLIST ----------

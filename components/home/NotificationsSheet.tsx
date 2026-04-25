@@ -4,10 +4,12 @@ import { useRouter } from 'expo-router';
 import {
   AlertTriangle,
   Bell,
+  Car,
   CheckCircle,
   Clock,
   DollarSign,
   MapPin,
+  Plane,
   TrendingUp,
   UserPlus,
   Users,
@@ -157,6 +159,9 @@ function dbNotifIcon(type: string): React.ComponentType<any> {
     case 'member_joined': return UserPlus;
     case 'check_in_reminder': case 'check_out_reminder': return Clock;
     case 'vote_needed': return Users;
+    case 'flight_boarding': return Plane;
+    case 'departure_prep': return Car;
+    case 'trip_starting': case 'last_day': return MapPin;
     case 'trip_recap_ready': return CheckCircle;
     default: return Bell;
   }
