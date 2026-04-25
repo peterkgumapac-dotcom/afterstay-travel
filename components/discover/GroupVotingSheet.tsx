@@ -18,6 +18,9 @@ import {
   Check,
   ChevronRight,
   Star,
+  Users,
+  UserPlus,
+  PartyPopper,
 } from 'lucide-react-native'
 import * as Haptics from 'expo-haptics'
 
@@ -152,7 +155,10 @@ export default function GroupVotingSheet({
     }
   }, [placeIdx, places.length])
 
-  if (!place) return null
+  // Empty state: no places to vote on
+  const showEmptyNoPlaces = !place && members.length >= 2
+  // Empty state: solo traveler (< 2 members)
+  const showEmptySolo = members.length < 2
 
   return (
     <Modal
@@ -182,6 +188,39 @@ export default function GroupVotingSheet({
               <X size={22} color={colors.text2} />
             </TouchableOpacity>
           </View>
+
+          {/* Empty state: solo traveler */}
+          {showEmptySolo ? (
+            <View style={s.emptyWrap}>
+              <View style={s.emptyIconWrap}>
+                <UserPlus size={32} color={colors.accent} />
+              </View>
+              <Text style={s.emptyTitle}>Invite your travel group</Text>
+              <Text style={s.emptyBody}>
+                Group voting needs at least 2 members. Invite companions to vote on places together.
+              </Text>
+            </View>
+          ) : showEmptyNoPlaces ? (
+            <View style={s.emptyWrap}>
+              <View style={s.emptyIconWrap}>
+                <PartyPopper size={32} color={colors.accent} />
+              </View>
+              <Text style={s.emptyTitle}>All caught up!</Text>
+              <Text style={s.emptyBody}>
+                No places waiting for votes right now. Discover and recommend places to start a group vote.
+              </Text>
+            </View>
+          ) : !place ? (
+            <View style={s.emptyWrap}>
+              <View style={s.emptyIconWrap}>
+                <Users size={32} color={colors.text3} />
+              </View>
+              <Text style={s.emptyTitle}>No places to vote on</Text>
+              <Text style={s.emptyBody}>
+                Save and recommend places from the Discover tab to start group voting.
+              </Text>
+            </View>
+          ) : (
 
           <ScrollView
             showsVerticalScrollIndicator={false}
@@ -342,6 +381,7 @@ export default function GroupVotingSheet({
               </TouchableOpacity>
             )}
           </ScrollView>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
@@ -394,6 +434,35 @@ const getStyles = (colors: any) =>
     },
     closeBtn: {
       padding: 4,
+    },
+
+    // Empty states
+    emptyWrap: {
+      alignItems: 'center',
+      paddingHorizontal: 32,
+      paddingVertical: 48,
+      gap: 12,
+    },
+    emptyIconWrap: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: colors.accentDim,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    emptyTitle: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    emptyBody: {
+      fontSize: 13,
+      color: colors.text2,
+      textAlign: 'center',
+      lineHeight: 19,
     },
 
     // Place card
