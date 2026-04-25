@@ -1028,16 +1028,19 @@ export async function addMoment(
   let storagePath: string | undefined
   let publicUrl: string | undefined
 
-  // If a local file URI is provided, compress and upload to Supabase Storage.
+  // If a local file URI is provided, compress (images) and upload to Supabase Storage.
   if (input.localUri) {
-    const compressed = await compressImage(input.localUri, 600, 0.6)
-    // compressImage always outputs JPEG — use .jpeg regardless of original extension
-    const ext = 'jpeg'
+    const rawExt = (input.localUri.split('.').pop() ?? 'jpg').toLowerCase()
+    const isVideo = ['mp4', 'mov', 'avi', 'webm', 'm4v'].includes(rawExt)
+
+    // Videos: upload as-is. Images: compress to JPEG.
+    const fileToUpload = isVideo ? input.localUri : await compressImage(input.localUri, 600, 0.6)
+    const ext = isVideo ? rawExt : 'jpeg'
     const friendlyName = buildMomentFilename(input, ext)
     storagePath = `trips/${tripId}/${friendlyName}`
 
     // Read as base64 — more reliable than fetch→blob on RN Android
-    const base64 = await FileSystem.readAsStringAsync(compressed, {
+    const base64 = await FileSystem.readAsStringAsync(fileToUpload, {
       encoding: FileSystem.EncodingType.Base64,
     })
     const binaryStr = atob(base64)

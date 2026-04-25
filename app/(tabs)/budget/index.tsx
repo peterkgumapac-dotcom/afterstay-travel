@@ -52,7 +52,7 @@ import type { Expense, GroupMember, Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type BudgetState = 'cruising' | 'low' | 'over';
-type BudgetMode = 'track' | 'budget' | 'group';
+type BudgetMode = 'budget' | 'group';
 type TabId = 'overview' | 'fate';
 
 // ── Category config ──────────────────────────────────────────────────
@@ -89,7 +89,7 @@ export default function BudgetScreen() {
   const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
-  const [mode, setMode] = useState<BudgetMode>('track');
+  const [mode, setMode] = useState<BudgetMode>('budget');
   const [tab, setTab] = useState<TabId>('overview');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -124,8 +124,7 @@ export default function BudgetScreen() {
         setMembers(mems);
         // Auto-detect mode
         if (mems.length >= 2) setMode('group');
-        else if (t.budgetLimit && t.budgetLimit > 0) setMode('budget');
-        else setMode('track');
+        else setMode('budget');
       }
     } catch (e) { if (__DEV__) console.warn('[BudgetScreen] load budget data failed:', e); } finally {
       setRefreshing(false);
@@ -240,11 +239,7 @@ export default function BudgetScreen() {
 
   const handleModeChange = useCallback((m: BudgetMode) => {
     setMode(m);
-    if (trip) {
-      const supabaseMode = m === 'budget' || m === 'group' ? 'Limited' : 'Unlimited';
-      updateTripBudgetMode(trip.id, supabaseMode).catch(() => {});
-    }
-  }, [trip]);
+  }, []);
 
   const handleSaveBudget = useCallback(() => {
     const num = parseFloat(budgetInput.replace(/[^0-9.]/g, ''));
@@ -293,10 +288,10 @@ export default function BudgetScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Mode pill — Track / Budget / Group */}
+      {/* Mode pill — Budget / Group */}
       <View style={styles.modePadding}>
         <View style={styles.segControl}>
-          {(['track', 'budget', 'group'] as const).map(m => {
+          {(['budget', 'group'] as const).map(m => {
             const active = mode === m;
             return (
               <Pressable
@@ -305,7 +300,7 @@ export default function BudgetScreen() {
                 onPress={() => handleModeChange(m)}
               >
                 <Text style={[styles.segText, active && styles.segTextActive]}>
-                  {m === 'track' ? 'Track' : m === 'budget' ? 'Budget' : 'Group'}
+                  {m === 'budget' ? 'Budget' : 'Group'}
                 </Text>
               </Pressable>
             );
@@ -338,66 +333,98 @@ export default function BudgetScreen() {
         {tab === 'overview' && (
           <>
             {/* Status banner */}
-            {(mode === 'budget' || mode === 'group') && total > 0 && (
+            {total > 0 && (
               <View style={styles.section}>
                 <BudgetStatusBanner state={bState} spent={spent} total={total} />
               </View>
             )}
 
             {/* Budget card */}
-            {(mode === 'budget' || mode === 'group') && (
-              <View style={styles.section}>
-                <View style={styles.budgetCard}>
-                  <View style={styles.budgetHeader}>
-                    <View>
-                      <Text style={styles.eyebrow}>Trip budget · {days} days</Text>
-                      <View style={styles.budgetAmountRow}>
-                        <Text style={styles.budgetCurrency}>{'\u20B1'}</Text>
-                        <Text style={styles.budgetAmount}>{total.toLocaleString()}</Text>
-                        <TouchableOpacity onPress={() => { setBudgetInput(String(total)); setShowBudgetModal(true); }} hitSlop={8}>
-                          <Pencil size={13} color={colors.text3} strokeWidth={1.8} />
-                        </TouchableOpacity>
-                      </View>
-                      <Text style={styles.budgetPerDay}>{formatCurrency(perDay, 'PHP')}/day target</Text>
-                    </View>
+            <View style={styles.section}>
+              <View style={styles.budgetCard}>
+                <View style={styles.budgetHeader}>
+                  <View>
+                    <Text style={styles.eyebrow}>{total > 0 ? `Trip budget · ${days} days` : 'Total spent'}</Text>
+                    {total > 0 ? (
+                      <>
+                        <View style={styles.budgetAmountRow}>
+                          <Text style={styles.budgetCurrency}>{'\u20B1'}</Text>
+                          <Text style={styles.budgetAmount}>{total.toLocaleString()}</Text>
+                          <TouchableOpacity onPress={() => { setBudgetInput(String(total)); setShowBudgetModal(true); }} hitSlop={8}>
+                            <Pencil size={13} color={colors.text3} strokeWidth={1.8} />
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.budgetPerDay}>{formatCurrency(perDay, 'PHP')}/day target</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.trackAmount}>{formatCurrency(spent, trip?.costCurrency ?? 'PHP')}</Text>
+                        <Text style={styles.trackSub}>
+                          {expenses.length} expense{expenses.length !== 1 ? 's' : ''} · {days} days ·{' '}
+                          <Text style={{ color: colors.accent }} onPress={() => { setBudgetInput(''); setShowBudgetModal(true); }}>Set a limit</Text>
+                        </Text>
+                      </>
+                    )}
                   </View>
-
-                  {/* Progress bar */}
-                  <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: `${Math.min(100, total > 0 ? (spent / total) * 100 : 0)}%` }]} />
-                  </View>
-                  <View style={styles.progressLabels}>
-                    <Text style={styles.progressText}>Spent <Text style={styles.progressBold}>{formatCurrency(spent, 'PHP')}</Text></Text>
-                    <Text style={styles.progressText}>Left <Text style={[styles.progressBold, { color: colors.accent }]}>{formatCurrency(remaining, 'PHP')}</Text></Text>
-                  </View>
-
-                  {/* Lodging one-liner */}
-                  {trip?.accommodation && (
-                    <View style={styles.lodgingRow}>
-                      <View style={styles.lodgingCheck}>
-                        <Svg width={12} height={12} viewBox="0 0 24 24" fill="none"><Polyline points="20 6 9 17 4 12" stroke={colors.accent} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.lodgingTitle} numberOfLines={1}>Lodging · {trip.accommodation}</Text>
-                        <Text style={styles.lodgingSub}>Paid in full · {members.length} travelers</Text>
-                      </View>
-                      {trip.cost != null && <Text style={styles.lodgingAmount}>{formatCurrency(trip.cost, trip.costCurrency ?? 'PHP')}</Text>}
-                    </View>
-                  )}
                 </View>
-              </View>
-            )}
 
-            {/* Track mode — simple total */}
-            {mode === 'track' && (
-              <View style={styles.section}>
-                <View style={styles.trackCard}>
-                  <Text style={styles.eyebrow}>Total spent</Text>
-                  <Text style={styles.trackAmount}>{formatCurrency(spent, trip?.costCurrency ?? 'PHP')}</Text>
-                  <Text style={styles.trackSub}>{expenses.length} expense{expenses.length !== 1 ? 's' : ''} · {days} days</Text>
-                </View>
+                {/* Progress bar — only with limit */}
+                {total > 0 && (
+                  <>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${Math.min(100, (spent / total) * 100)}%` }]} />
+                    </View>
+                    <View style={styles.progressLabels}>
+                      <Text style={styles.progressText}>Spent <Text style={styles.progressBold}>{formatCurrency(spent, 'PHP')}</Text></Text>
+                      <Text style={styles.progressText}>Left <Text style={[styles.progressBold, { color: colors.accent }]}>{formatCurrency(remaining, 'PHP')}</Text></Text>
+                    </View>
+                  </>
+                )}
+
+                {/* Lodging one-liner */}
+                {trip?.accommodation && (
+                  <View style={styles.lodgingRow}>
+                    <View style={styles.lodgingCheck}>
+                      <Svg width={12} height={12} viewBox="0 0 24 24" fill="none"><Polyline points="20 6 9 17 4 12" stroke={colors.accent} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.lodgingTitle} numberOfLines={1}>Lodging · {trip.accommodation}</Text>
+                      <Text style={styles.lodgingSub}>Paid in full · {members.length} travelers</Text>
+                    </View>
+                    {trip.cost != null && <Text style={styles.lodgingAmount}>{formatCurrency(trip.cost, trip.costCurrency ?? 'PHP')}</Text>}
+                  </View>
+                )}
               </View>
-            )}
+            </View>
+
+            {/* Payment QR shortcuts */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Payment QR</Text>
+              <View style={{ gap: 8 }}>
+                {paymentQrs.map((qr, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={styles.qrRow}
+                    onPress={() => { setViewingQr(qr); setShowQrModal(true); }}
+                    onLongPress={() => removePaymentQr(idx)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.qrThumb, { borderColor: colors.border }]}>
+                      <Image source={{ uri: qr.uri }} style={{ width: 44, height: 44, borderRadius: 8 }} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.qrLabel}>{qr.label}</Text>
+                      <Text style={styles.qrHint}>Tap to show · long press to remove</Text>
+                    </View>
+                    <QrCode size={20} color={colors.accent} />
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity style={styles.qrUploadBtn} onPress={pickPaymentQr} activeOpacity={0.7}>
+                  <QrCode size={18} color={colors.accent} />
+                  <Text style={styles.qrUploadText}>{paymentQrs.length > 0 ? 'Add another QR' : 'Add payment QR'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
             {/* Person filter — Group mode */}
             {mode === 'group' && members.length >= 2 && (
@@ -573,35 +600,6 @@ export default function BudgetScreen() {
                 })}
               </View>
             )}
-
-            {/* Payment QR shortcuts */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Payment QR</Text>
-              <View style={{ gap: 8 }}>
-                {paymentQrs.map((qr, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={styles.qrRow}
-                    onPress={() => { setViewingQr(qr); setShowQrModal(true); }}
-                    onLongPress={() => removePaymentQr(idx)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.qrThumb, { borderColor: colors.border }]}>
-                      <Image source={{ uri: qr.uri }} style={{ width: 44, height: 44, borderRadius: 8 }} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.qrLabel}>{qr.label}</Text>
-                      <Text style={styles.qrHint}>Tap to show · long press to remove</Text>
-                    </View>
-                    <QrCode size={20} color={colors.accent} />
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity style={styles.qrUploadBtn} onPress={pickPaymentQr} activeOpacity={0.7}>
-                  <QrCode size={18} color={colors.accent} />
-                  <Text style={styles.qrUploadText}>{paymentQrs.length > 0 ? 'Add another QR' : 'Add payment QR'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
 
             {/* Settle cards — Group mode only */}
             {mode === 'group' && members.length >= 2 && (() => {

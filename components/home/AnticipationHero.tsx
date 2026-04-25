@@ -104,7 +104,26 @@ export const AnticipationHero: React.FC<Props> = ({
     [photos.length],
   );
 
-  if (photos.length === 0) return null;
+  if (photos.length === 0) {
+    // No hotel photos — show destination name over gradient
+    return (
+      <View style={styles.outerWrap}>
+        <View style={[styles.container, { backgroundColor: colors.card }]}>
+          <LinearGradient
+            colors={[colors.accentDim, colors.bg]}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.emptyHero}>
+            <Text style={styles.emptyDestination}>{destination || 'Your Trip'}</Text>
+            <Text style={styles.emptyDateRange}>{dateRange}</Text>
+            {hotelName ? (
+              <Text style={styles.emptyHotel}>{hotelName}</Text>
+            ) : null}
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.outerWrap}>
@@ -312,5 +331,30 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       color: 'rgba(255,255,255,0.75)',
       fontSize: 11,
       marginLeft: 10,
+    },
+    emptyHero: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    emptyDestination: {
+      fontSize: 28,
+      fontWeight: '600',
+      color: colors.text,
+      letterSpacing: -0.5,
+      textAlign: 'center',
+    },
+    emptyDateRange: {
+      fontSize: 13,
+      color: colors.text2,
+      marginTop: 6,
+      textAlign: 'center',
+    },
+    emptyHotel: {
+      fontSize: 12,
+      color: colors.text3,
+      marginTop: 4,
+      textAlign: 'center',
     },
   });

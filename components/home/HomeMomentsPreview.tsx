@@ -9,6 +9,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { Camera } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import type { GroupMember, Moment } from '@/lib/types';
 
@@ -102,13 +105,21 @@ export function HomeMomentsPreview({
     return arr;
   }, [allPhotos.length]);
 
+  const router = useRouter();
+
   if (moments.length === 0) {
     return (
       <View style={styles.wrapper}>
         <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
-          <Text style={styles.emptyText}>
-            No moments yet — capture your first
-          </Text>
+          <Camera size={24} color={colors.text3} strokeWidth={1.5} />
+          <Text style={styles.emptyText}>No moments yet</Text>
+          <TouchableOpacity
+            style={styles.emptyBtn}
+            activeOpacity={0.7}
+            onPress={() => router.push('/add-moment' as never)}
+          >
+            <Text style={styles.emptyBtnText}>Capture your first</Text>
+          </TouchableOpacity>
         </Animated.View>
       </View>
     );
@@ -206,9 +217,10 @@ const getStyles = (colors: ThemeColors) =>
 
     /* Empty */
     emptyCard: {
-      paddingVertical: 32,
+      paddingVertical: 28,
       paddingHorizontal: 20,
       alignItems: 'center',
+      gap: 8,
       borderRadius: 14,
       borderWidth: 1,
       borderStyle: 'dashed',
@@ -216,6 +228,18 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.card,
     },
     emptyText: { fontSize: 13, color: colors.text3, fontWeight: '500' },
+    emptyBtn: {
+      backgroundColor: colors.accent,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 99,
+      marginTop: 4,
+    },
+    emptyBtnText: {
+      color: colors.bg,
+      fontSize: 12,
+      fontWeight: '600',
+    },
 
     /* Single photo */
     singleCard: {

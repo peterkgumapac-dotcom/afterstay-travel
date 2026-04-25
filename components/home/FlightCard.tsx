@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Plane } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
@@ -13,14 +15,23 @@ interface Props {
 export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'outbound' }) => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const router = useRouter();
 
   if (!flightProp) {
     return (
-      <View style={styles.card}>
-        <Text style={{ color: colors.text3, fontSize: 13, textAlign: 'center', paddingVertical: 20 }}>
-          No {direction} flight data available
+      <TouchableOpacity
+        style={[styles.card, { alignItems: 'center', paddingVertical: 24 }]}
+        activeOpacity={0.7}
+        onPress={() => router.push('/(tabs)/trip')}
+      >
+        <Plane size={22} color={colors.text3} strokeWidth={1.5} />
+        <Text style={{ color: colors.text2, fontSize: 13, fontWeight: '500', marginTop: 8 }}>
+          Add your {direction} flight
         </Text>
-      </View>
+        <Text style={{ color: colors.text3, fontSize: 11, marginTop: 2 }}>
+          Tap to add flight details
+        </Text>
+      </TouchableOpacity>
     );
   }
 
