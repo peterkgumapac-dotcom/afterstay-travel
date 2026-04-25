@@ -5,6 +5,7 @@ import React, { createContext, useContext, useMemo, useState } from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { useTheme } from '@/constants/ThemeContext';
 
 /* ---------- Tab bar visibility context ---------- */
@@ -184,6 +185,9 @@ export default function TabLayout() {
         <Tabs.Screen name="guide" options={{ href: null }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
       </Tabs>
+
+      {/* Global FAB — shared across all tabs */}
+      {tabBarVisible && <FloatingActionButton />}
     </TabBarVisibilityContext.Provider>
   );
 }

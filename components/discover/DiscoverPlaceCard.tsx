@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
-import { Image, ImageStyle, StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { Image, ImageStyle, Pressable, StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Footprints, Car, Plus } from 'lucide-react-native';
+import { Footprints, Car, Plus, Check, X as XIcon, Clock } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing, radius } from '@/constants/theme';
 import { fmtKm, travelTime as calcTravelTime } from '@/lib/utils';
+import type { PlaceVote } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
@@ -54,7 +55,15 @@ interface DiscoverPlaceCardProps {
   onRecommend: (name: string) => void;
   onExplore?: (placeId: string | undefined, name: string) => void;
   onAddToPlanner?: (place: DiscoverPlace) => void;
+  /** Per-member votes for group consensus display */
+  voteByMember?: Record<string, PlaceVote>;
+  /** Member ID → display name for avatar initials */
+  memberNames?: Record<string, string>;
+  totalMembers?: number;
+  onVoteTap?: () => void;
 }
+
+const VOTE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b']
 
 export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   place,
@@ -64,6 +73,10 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   onSave,
   onExplore,
   onAddToPlanner,
+  voteByMember,
+  memberNames,
+  totalMembers,
+  onVoteTap,
 }: DiscoverPlaceCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -133,6 +146,56 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
             </>
           )}
         </View>
+
+        {/* Vote consensus row — only when vote data exists */}
+        {voteByMember && totalMembers && totalMembers >= 2 && Object.keys(voteByMember).length > 0 && (
+          <Pressable
+            style={styles.voteRow}
+            onPress={(e) => { e.stopPropagation?.(); onVoteTap?.(); }}
+            hitSlop={4}
+          >
+            {/* Overlapping avatar circles */}
+            <View style={styles.voteAvatars}>
+              {Object.keys(voteByMember).slice(0, 3).map((memberId, i) => {
+                const initial = memberNames?.[memberId]?.charAt(0).toUpperCase() ?? '?'
+                return (
+                  <View
+                    key={memberId}
+                    style={[
+                      styles.voteAvatar,
+                      {
+                        backgroundColor: VOTE_COLORS[i % VOTE_COLORS.length],
+                        marginLeft: i === 0 ? 0 : -6,
+                        zIndex: 3 - i,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.voteAvatarText}>{initial}</Text>
+                  </View>
+                )
+              })}
+              {Object.keys(voteByMember).length > 3 && (
+                <View style={[styles.voteAvatar, { backgroundColor: colors.bg3, marginLeft: -6 }]}>
+                  <Text style={[styles.voteAvatarText, { color: colors.text2 }]}>
+                    +{Object.keys(voteByMember).length - 3}
+                  </Text>
+                </View>
+              )}
+            </View>
+            {/* Summary text */}
+            {(() => {
+              const yes = Object.values(voteByMember).filter((v) => v === '👍 Yes').length
+              const voted = Object.keys(voteByMember).length
+              const pending = totalMembers - voted
+              return (
+                <Text style={styles.voteSummary}>
+                  {yes > 0 ? `${yes}/${totalMembers} yes` : `${voted} voted`}
+                  {pending > 0 ? ` · ${pending} pending` : ''}
+                </Text>
+              )
+            })()}
+          </Pressable>
+        )}
       </View>
 
       {/* Add to planner */}
@@ -175,13 +238,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   );
 });
 
-const getStyles = (colors: ThemeColors): {
-  row: ViewStyle; thumb: ImageStyle; info: ViewStyle; tagRow: ViewStyle;
-  category: TextStyle; openBadge: ViewStyle; openText: TextStyle;
-  closedBadge: ViewStyle; closedText: TextStyle; name: TextStyle;
-  metaRow: ViewStyle; rating: TextStyle; dot: TextStyle; meta: TextStyle;
-  addBtn: ViewStyle; bookmarkBtn: ViewStyle;
-} =>
+const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     row: {
       flexDirection: 'row',
@@ -272,5 +329,40 @@ const getStyles = (colors: ThemeColors): {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: 44,
+    },
+    // Vote consensus row
+    voteRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+      marginTop: 6,
+      paddingVertical: 3,
+      paddingHorizontal: 6,
+      backgroundColor: colors.bg3,
+      borderRadius: 8,
+      alignSelf: 'flex-start' as const,
+    },
+    voteAvatars: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+    },
+    voteAvatar: {
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      justifyContent: 'center' as const,
+      alignItems: 'center' as const,
+      borderWidth: 1.5,
+      borderColor: colors.bg3,
+    },
+    voteAvatarText: {
+      fontSize: 9,
+      fontWeight: '700' as const,
+      color: '#fff',
+    },
+    voteSummary: {
+      fontSize: 10,
+      fontWeight: '500' as const,
+      color: colors.text2,
     },
   });

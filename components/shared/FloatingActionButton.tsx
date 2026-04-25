@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, TouchableOpacity, StyleSheet, Animated,
-  Modal, Pressable, Text,
+  Modal, Pressable, Text, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, Camera, FileText, MessageCircle, Package, Receipt } from 'lucide-react-native';
+import {
+  Plus, Camera, Receipt, Plane, UserPlus, Package,
+} from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 
@@ -13,94 +15,57 @@ interface FabAction {
   id: string;
   icon: React.ComponentType<any>;
   label: string;
-  color: string;
   onPress: () => void;
 }
 
 export const FloatingActionButton: React.FC = () => {
   const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const s = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
-  const menuAnims = [
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-  ];
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const actions: FabAction[] = [
-    {
-      id: 'chat',
-      icon: MessageCircle,
-      label: 'Group Chat',
-      color: (colors as any).fab1 ?? colors.accent,
-      onPress: () => router.push('/group-chat'),
-    },
-    {
-      id: 'moment',
-      icon: Camera,
-      label: 'Capture Moment',
-      color: colors.fab2,
-      onPress: () => router.push('/add-moment'),
-    },
-    {
-      id: 'expense',
-      icon: Receipt,
-      label: 'Quick Expense',
-      color: colors.fab4,
-      onPress: () => router.push('/add-expense'),
-    },
-    {
-      id: 'pack',
-      icon: Package,
-      label: 'Add to Packing',
-      color: colors.fab3,
-      onPress: () => router.push('/(tabs)/trip'),
-    },
-    {
-      id: 'summary',
-      icon: FileText,
-      label: 'Trip Summary',
-      color: colors.fab1,
-      onPress: () => router.push('/trip-summary'),
-    },
+    { id: 'moment', icon: Camera, label: 'Capture Moment', onPress: () => router.push('/add-moment') },
+    { id: 'expense', icon: Receipt, label: 'Quick Expense', onPress: () => router.push('/scan-receipt') },
+    { id: 'invite', icon: UserPlus, label: 'Invite Members', onPress: () => router.push('/invite' as never) },
+    { id: 'trip', icon: Plane, label: 'Plan Trip', onPress: () => router.push('/trip-planner') },
+    { id: 'pack', icon: Package, label: 'Packing List', onPress: () => router.push('/(tabs)/trip') },
   ];
+
+  const menuAnims = useRef(actions.map(() => new Animated.Value(0))).current;
+
+  const bottomOffset = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 16;
+  // Position FAB just above the tab bar (tab bar height ~56 + padding)
+  const fabBottom = bottomOffset + 68;
+
+  // Pulse ring animation
+  useEffect(() => {
+    if (open) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.5, duration: 1400, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 0, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [open]);
 
   useEffect(() => {
     if (open) {
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-
+      Animated.timing(rotateAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
       menuAnims.forEach((anim, i) => {
         setTimeout(() => {
-          Animated.spring(anim, {
-            toValue: 1,
-            friction: 6,
-            tension: 80,
-            useNativeDriver: true,
-          }).start();
-        }, i * 50);
+          Animated.spring(anim, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }).start();
+        }, (actions.length - 1 - i) * 50);
       });
     } else {
-      Animated.timing(rotateAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-
+      Animated.timing(rotateAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
       menuAnims.forEach((anim) => {
-        Animated.timing(anim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }).start();
+        Animated.timing(anim, { toValue: 0, duration: 150, useNativeDriver: true }).start();
       });
     }
   }, [open]);
@@ -116,129 +81,181 @@ export const FloatingActionButton: React.FC = () => {
     setTimeout(() => action.onPress(), 200);
   };
 
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '135deg'],
-  });
+  const rotation = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '135deg'] });
+  const pulseScale = pulseAnim;
+  const pulseOpacity = pulseAnim.interpolate({ inputRange: [1, 1.5], outputRange: [0.4, 0] });
 
   return (
     <>
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <View style={styles.menuContainer} pointerEvents="box-none">
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
+          {/* Action items */}
+          <View style={[s.menuContainer, { bottom: fabBottom + 70 }]}>
             {actions.map((action, i) => {
               const ActionIcon = action.icon;
-              const translateY = menuAnims[i].interpolate({
-                inputRange: [0, 1],
-                outputRange: [50, 0],
-              });
-
+              const translateY = menuAnims[i].interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
               return (
                 <Animated.View
                   key={action.id}
-                  style={[
-                    styles.menuItem,
-                    {
-                      opacity: menuAnims[i],
-                      transform: [
-                        { translateY },
-                        { scale: menuAnims[i] },
-                      ],
-                    },
-                  ]}
+                  style={[s.menuItem, {
+                    opacity: menuAnims[i],
+                    transform: [{ translateY }, { scale: menuAnims[i].interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+                  }]}
                 >
-                  <TouchableOpacity style={styles.labelPill} onPress={() => handleAction(action)} activeOpacity={0.7}>
-                    <Text style={styles.labelText}>{action.label}</Text>
+                  <TouchableOpacity style={s.labelPill} onPress={() => handleAction(action)} activeOpacity={0.7}>
+                    <Text style={s.labelText}>{action.label}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: action.color }]}
-                    onPress={() => handleAction(action)}
-                    activeOpacity={0.85}
-                  >
-                    <ActionIcon color={colors.white} size={22} strokeWidth={2.5} />
+                  <TouchableOpacity style={s.actionDot} onPress={() => handleAction(action)} activeOpacity={0.85}>
+                    <ActionIcon color={colors.accent} size={20} strokeWidth={2} />
                   </TouchableOpacity>
                 </Animated.View>
               );
             })}
           </View>
+
+          {/* FAB in open state */}
+          <TouchableOpacity
+            style={[s.fab, s.fabOpen, { bottom: fabBottom }]}
+            onPress={toggle}
+            activeOpacity={0.85}
+          >
+            <Animated.View style={{ transform: [{ rotate: rotation }] }}>
+              <Plus color={colors.bg} size={26} strokeWidth={2.5} />
+            </Animated.View>
+          </TouchableOpacity>
         </Pressable>
       </Modal>
 
-      <TouchableOpacity
-        style={[styles.fab, { bottom: Math.max(insets.bottom, 20) + 56 }]}
-        onPress={toggle}
-        activeOpacity={0.85}
-      >
-        <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-          <Plus color={colors.bg} size={28} strokeWidth={3} />
-        </Animated.View>
-      </TouchableOpacity>
+      {/* FAB -- idle state */}
+      <View style={[s.fabWrap, { bottom: fabBottom }]} pointerEvents="box-none">
+        {/* Pulse ring */}
+        {!open && (
+          <Animated.View style={[s.pulseRing, { transform: [{ scale: pulseScale }], opacity: pulseOpacity }]} />
+        )}
+        <TouchableOpacity
+          style={s.fab}
+          onPress={toggle}
+          activeOpacity={0.85}
+          accessibilityLabel="Quick actions"
+          accessibilityRole="button"
+        >
+          <Animated.View style={{ transform: [{ rotate: rotation }] }}>
+            <Plus color={colors.bg} size={26} strokeWidth={2.5} />
+          </Animated.View>
+        </TouchableOpacity>
+      </View>
     </>
   );
 };
 
-const getStyles = (colors: ThemeColors) => StyleSheet.create({
-  fab: {
+const FAB_SIZE = 54;
+
+const getStyles = (c: ThemeColors) => StyleSheet.create({
+  fabWrap: {
     position: 'absolute',
     right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.ink,
-    opacity: 0.85,
+    zIndex: 100,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+  },
+  fab: {
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    backgroundColor: c.accent,
+    opacity: 0.92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: c.accent,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 12,
+      },
+      android: { elevation: 10 },
+    }),
+  },
+  fabOpen: {
+    position: 'absolute',
+    right: 20,
+    backgroundColor: c.accentLt,
+    opacity: 1,
+    ...Platform.select({
+      ios: {
+        shadowColor: c.accent,
+        shadowOpacity: 0.5,
+        shadowRadius: 24,
+      },
+      android: { elevation: 12 },
+    }),
     zIndex: 100,
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
+    borderWidth: 1.5,
+    borderColor: c.accent,
   },
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
   },
   menuContainer: {
     position: 'absolute',
-    bottom: 175,
     right: 20,
     alignItems: 'flex-end',
-    gap: 14,
+    gap: 12,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   labelPill: {
-    backgroundColor: colors.card,
+    backgroundColor: `${c.bg}F2`, // ~95% opacity
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingVertical: 9,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+      },
+      android: { elevation: 6 },
+    }),
   },
   labelText: {
-    color: colors.text,
+    color: c.text,
     fontSize: 13,
     fontWeight: '600',
+    letterSpacing: -0.1,
   },
-  actionBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  actionDot: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: `${c.card}F2`, // ~95% opacity
+    borderWidth: 1,
+    borderColor: c.accentBorder,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.28,
+        shadowRadius: 14,
+      },
+      android: { elevation: 6 },
+    }),
   },
 });

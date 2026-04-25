@@ -34,7 +34,6 @@ import { useRouter } from 'expo-router';
 
 import AddTripSheet from '@/components/summary/AddTripSheet';
 import EmptyState from '@/components/shared/EmptyState';
-import { TripFloatingActionButton } from '@/components/shared/TripFloatingActionButton';
 import { OverviewTab } from '@/components/trip/OverviewTab';
 import { SummaryTab } from '@/components/trip/SummaryTab';
 import { EssentialsTab } from '@/components/trip/EssentialsTab';
@@ -1149,12 +1148,6 @@ export default function TripScreen() {
         {/* Bottom spacer -- keep outside tabs */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
-
-      {/* FAB — action menu */}
-      <TripFloatingActionButton
-        onAddTrip={() => setAddOpen(true)}
-        onAddEssentials={() => { setActiveTab('essentials'); setAddingItem(true); }}
-      />
 
       {/* Add trip bottom sheet */}
       <AddTripSheet open={addOpen} onClose={() => setAddOpen(false)} />

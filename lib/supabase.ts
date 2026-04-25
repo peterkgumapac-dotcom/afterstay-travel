@@ -264,6 +264,9 @@ function mapPlace(row: Record<string, unknown>): Place {
     latitude: num(row.latitude),
     longitude: num(row.longitude),
     saved: row.saved != null ? !!row.saved : undefined,
+    voteByMember: row.vote_by_member
+      ? (row.vote_by_member as Record<string, PlaceVote>)
+      : undefined,
   }
 }
 
@@ -717,6 +720,10 @@ export async function updateTripBudgetLimit(tripId: string, limit: number): Prom
 export interface PaymentQr {
   label: string;
   uri: string;
+  /** Payment link for branded QR generation */
+  qrData?: string;
+  /** Bank/wallet name (GCash, Maya, BPI, etc.) */
+  bank?: string;
 }
 
 export async function getPaymentQrs(tripId: string): Promise<PaymentQr[]> {
@@ -769,6 +776,19 @@ export async function addPaymentQr(
   return next
 }
 
+export async function addGeneratedPaymentQr(
+  tripId: string,
+  label: string,
+  qrData: string,
+  bank: string,
+): Promise<PaymentQr[]> {
+  const current = await getPaymentQrs(tripId)
+  const next = [...current, { label, uri: '', qrData, bank }]
+  const { error } = await supabase.from(T.trips).update({ payment_qrs: next }).eq('id', tripId)
+  if (error) throw new Error(`addGeneratedPaymentQr: ${error.message}`)
+  return next
+}
+
 export async function removePaymentQr(tripId: string, index: number): Promise<PaymentQr[]> {
   const current = await getPaymentQrs(tripId)
   const next = current.filter((_, i) => i !== index)
@@ -780,6 +800,35 @@ export async function removePaymentQr(tripId: string, index: number): Promise<Pa
   if (error) throw new Error(`removePaymentQr: ${error.message}`)
 
   return next
+}
+
+// ── Curated Lists (AI Recommendations via Edge Function) ───────────
+
+export interface CuratedItem {
+  name: string;
+  reason: string;
+  source_url?: string;
+  rating?: number;
+  price?: string;
+  category?: string;
+}
+
+export async function getCuratedList(args: {
+  destination: string;
+  category: string;
+  area?: string;
+  hotelName?: string;
+  count?: number;
+}): Promise<{ items: CuratedItem[]; cached: boolean }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('ai-recommend', {
+      body: args,
+    })
+    if (error || !data?.items) return { items: [], cached: false }
+    return data as { items: CuratedItem[]; cached: boolean }
+  } catch {
+    return { items: [], cached: false }
+  }
 }
 
 // ---------- FLIGHTS ----------
@@ -1019,6 +1068,114 @@ export async function savePlace(placeId: string, saved: boolean): Promise<void> 
     .update({ saved })
     .eq('id', placeId)
   if (error) throw new Error(`savePlace: ${error.message}`)
+}
+
+// ---------- GROUP VOTING ----------
+
+/** Derive consensus vote from per-member votes. Majority wins; ties stay Pending. */
+export function deriveConsensus(
+  votes: Record<string, PlaceVote>,
+  totalMembers: number,
+): PlaceVote {
+  const entries = Object.values(votes)
+  const yes = entries.filter((v) => v === '👍 Yes').length
+  const no = entries.filter((v) => v === '👎 No').length
+  const majority = Math.ceil(totalMembers / 2)
+  if (yes >= majority) return '👍 Yes'
+  if (no >= majority) return '👎 No'
+  return 'Pending'
+}
+
+/**
+ * Cast a vote as a specific group member. Updates vote_by_member JSONB
+ * and derives the consensus vote field.
+ */
+export async function voteAsMember(
+  placeId: string,
+  memberId: string,
+  vote: PlaceVote,
+  totalMembers: number,
+): Promise<Record<string, PlaceVote>> {
+  // Read current votes
+  const { data, error: readErr } = await supabase
+    .from(T.places)
+    .select('vote_by_member')
+    .eq('id', placeId)
+    .single()
+  if (readErr) throw new Error(`voteAsMember read: ${readErr.message}`)
+
+  const current = (data?.vote_by_member as Record<string, PlaceVote>) ?? {}
+  const updated = { ...current, [memberId]: vote }
+  const consensus = deriveConsensus(updated, totalMembers)
+
+  const { error: writeErr } = await supabase
+    .from(T.places)
+    .update({ vote_by_member: updated, vote: consensus })
+    .eq('id', placeId)
+  if (writeErr) throw new Error(`voteAsMember write: ${writeErr.message}`)
+
+  return updated
+}
+
+/** Subscribe to vote changes on places for a trip. Returns unsubscribe function. */
+export function subscribeToPlaceVotes(
+  tripId: string,
+  onUpdate: (placeId: string, voteByMember: Record<string, PlaceVote>, vote: PlaceVote) => void,
+): () => void {
+  const channel = supabase
+    .channel(`place-votes:${tripId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'places',
+        filter: `trip_id=eq.${tripId}`,
+      },
+      (payload: any) => {
+        const row = payload.new
+        if (row.vote_by_member) {
+          onUpdate(
+            row.id,
+            row.vote_by_member as Record<string, PlaceVote>,
+            (row.vote as PlaceVote) ?? 'Pending',
+          )
+        }
+      },
+    )
+    .subscribe()
+
+  return () => { supabase.removeChannel(channel) }
+}
+
+/** Notify all group members (except the recommender) that a place needs votes. */
+export async function notifyGroupOfRecommendation(
+  tripId: string,
+  placeName: string,
+  placeId: string,
+  recommenderName: string,
+  recommenderUserId: string,
+): Promise<void> {
+  try {
+    const members = await getGroupMembers(tripId)
+    const targets = members.filter(
+      (m) => m.userId && m.userId !== recommenderUserId,
+    )
+    if (targets.length === 0) return
+
+    const rows = targets.map((m) => ({
+      user_id: m.userId,
+      type: 'vote_needed',
+      title: `${recommenderName} recommends ${placeName}`,
+      body: 'Tap to vote — should the group visit this place?',
+      data: { tripId, placeId, placeName, recommenderName },
+      read: false,
+    }))
+
+    await supabase.from('notifications').insert(rows)
+  } catch {
+    // Notifications table might not exist yet — silently ignore
+  }
 }
 
 // ---------- CHECKLIST ----------

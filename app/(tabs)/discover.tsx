@@ -44,8 +44,13 @@ import {
   getSavedPlaces,
   savePlace,
   voteOnPlace,
+  voteAsMember,
+  notifyGroupOfRecommendation,
 } from '@/lib/supabase';
-import type { Place, PlaceCategory, PlaceVote } from '@/lib/types';
+import { useAuth } from '@/lib/auth';
+import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
+import { useVoteSubscription } from '@/hooks/useVoteSubscription';
+import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
 
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
@@ -614,6 +619,28 @@ function DiscoverScreenInner() {
   const [tripDays, setTripDays] = useState<number | undefined>();
   const [tripHotel, setTripHotel] = useState('');
   const [tripGroupSize, setTripGroupSize] = useState(0);
+  const [tripMembers, setTripMembers] = useState<GroupMember[]>([]);
+  const [showVotingSheet, setShowVotingSheet] = useState(false);
+  const [votingPlace, setVotingPlace] = useState<Place | null>(null);
+  const { user } = useAuth();
+  const currentMemberId = useMemo(
+    () => tripMembers.find((m) => m.userId === user?.id)?.id ?? '',
+    [tripMembers, user?.id],
+  );
+  const memberNames = useMemo(
+    () => Object.fromEntries(tripMembers.map((m) => [m.id, m.name])),
+    [tripMembers],
+  );
+
+  // Realtime vote updates from other members
+  useVoteSubscription(tripId, useCallback(
+    (placeId: string, voteByMember: Record<string, any>, vote: any) => {
+      setSavedPlaces((prev) =>
+        prev.map((p) => (p.id === placeId ? { ...p, voteByMember, vote } : p)),
+      );
+    },
+    [],
+  ));
   const [tripBudget, setTripBudget] = useState(0);
   const [tripBudgetCurrency, setTripBudgetCurrency] = useState('PHP');
 
@@ -621,24 +648,28 @@ function DiscoverScreenInner() {
   const [plannerActiveDay, setPlannerActiveDay] = useState(1);
   const [plannerItems, setPlannerItems] = useState<Record<number, { id: string; time: string; title: string; note: string | null }[]>>({});
 
-  // Compute trip day labels from real dates
-  const plannerDays = useMemo(() => {
-    if (!tripStartDate || !tripDays) return [];
-    const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-    return Array.from({ length: tripDays }, (_, i) => {
-      const d = new Date(tripStartDate + 'T00:00:00+08:00');
-      d.setDate(d.getDate() + i);
-      return {
-        n: i + 1,
-        label: DAY_NAMES[d.getDay()],
-        date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      };
-    });
-  }, [tripStartDate, tripDays]);
+  // Auto-detect current day of trip
+  const todayDayNumber = useMemo(() => {
+    if (!tripStartDate) return 1;
+    const startMs = new Date(tripStartDate + 'T00:00:00+08:00').getTime();
+    const nowMs = Date.now();
+    if (nowMs < startMs) return 1; // pre-trip
+    return Math.floor((nowMs - startMs) / MS_PER_DAY) + 1;
+  }, [tripStartDate]);
+
+  const todayLabel = useMemo(() => {
+    if (!tripStartDate) return 'Today';
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const d = new Date(tripStartDate + 'T00:00:00+08:00');
+    d.setDate(d.getDate() + todayDayNumber - 1);
+    return `${DAY_NAMES[d.getDay()]} · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  }, [tripStartDate, todayDayNumber]);
+
+  const hasTripDates = !!(tripStartDate && tripEndDate);
 
   const plannerDayItems = useMemo(() =>
-    (plannerItems[plannerActiveDay] ?? []).slice().sort((a, b) => a.time.localeCompare(b.time)),
-    [plannerItems, plannerActiveDay],
+    (plannerItems[todayDayNumber] ?? []).slice().sort((a, b) => a.time.localeCompare(b.time)),
+    [plannerItems, todayDayNumber],
   );
 
   const plannerTotalCount = useMemo(() =>
@@ -647,11 +678,11 @@ function DiscoverScreenInner() {
   );
 
   const removePlannerItem = useCallback((id: string) => {
-    setPlannerItems(prev => ({
+    setPlannerItems((prev) => ({
       ...prev,
-      [plannerActiveDay]: (prev[plannerActiveDay] ?? []).filter(x => x.id !== id),
+      [todayDayNumber]: (prev[todayDayNumber] ?? []).filter(x => x.id !== id),
     }));
-  }, [plannerActiveDay]);
+  }, [todayDayNumber]);
 
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
@@ -726,6 +757,7 @@ function DiscoverScreenInner() {
           setTripBudgetCurrency(trip.costCurrency ?? 'PHP');
           const members = await getGroupMembers(trip.id).catch(() => []);
           setTripGroupSize(Math.max(1, members.length));
+          setTripMembers(members);
           if (trip.startDate && trip.endDate) {
             const ms = new Date(trip.endDate + 'T00:00:00+08:00').getTime() - new Date(trip.startDate + 'T00:00:00+08:00').getTime();
             setTripDays(Math.max(1, Math.ceil(ms / MS_PER_DAY) + 1));
@@ -905,6 +937,16 @@ function DiscoverScreenInner() {
     if (existingPlace) {
       try {
         await voteOnPlace(existingPlace.id, '\uD83D\uDC4D Yes' as PlaceVote);
+        // Record member vote and notify group
+        if (currentMemberId && tripMembers.length >= 2) {
+          const updated = await voteAsMember(existingPlace.id, currentMemberId, '👍 Yes' as PlaceVote, tripMembers.length);
+          setSavedPlaces((prev) => prev.map((p) => (p.id === existingPlace.id ? { ...p, voteByMember: updated } : p)));
+          if (tripId && user) {
+            notifyGroupOfRecommendation(tripId, name, existingPlace.id, user.user_metadata?.name ?? 'Someone', user.id).catch(() => {});
+          }
+          setVotingPlace({ ...existingPlace, voteByMember: updated });
+          setShowVotingSheet(true);
+        }
       } catch {
         setRecommended((s) => {
           const next = new Set(s);
@@ -948,9 +990,7 @@ function DiscoverScreenInner() {
     setItineraryError(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const chosenStyle = itineraryScope === 'surprise'
-        ? ITINERARY_STYLES[Math.floor(Math.random() * ITINERARY_STYLES.length)].id
-        : style;
+      const chosenStyle = style;
       const interests = STYLE_TO_INTERESTS[chosenStyle] ?? ['beach', 'food', 'activities'];
       const promptInterests = prompt.trim()
         ? [...interests, prompt.trim()]
@@ -968,58 +1008,52 @@ function DiscoverScreenInner() {
         budgetCurrency: tripBudgetCurrency,
       });
       setItinerary(result);
-      // Populate planner items from AI result
+      // Populate planner items — map AI days to actual trip days
       const newItems: Record<number, { id: string; time: string; title: string; note: string | null }[]> = {};
       for (const day of result) {
-        newItems[day.day] = (day.activities ?? []).map((act, i) => ({
-          id: `ai-${day.day}-${i}`,
+        // For "today" scope, day 1 maps to todayDayNumber
+        // For "whole" scope, day N maps directly
+        const dayKey = itineraryScope === 'today' ? todayDayNumber : day.day;
+        newItems[dayKey] = (day.activities ?? []).map((act, i) => ({
+          id: `ai-${dayKey}-${i}`,
           time: act.timeSlot?.replace(/[^\d:]/g, '').slice(0, 5) || `${9 + i}:00`,
           title: act.name,
-          note: act.duration ? `${act.duration} · ${act.cost ?? ''}` : null,
+          note: act.duration ? `${act.duration}${act.cost ? ` · ${act.cost}` : ''}` : null,
         }));
       }
-      setPlannerItems(newItems);
-      if (result.length > 0) {
-        setPlannerActiveDay(result[0].day);
-      }
+      setPlannerItems((prev) => ({ ...prev, ...newItems }));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to generate itinerary';
       setItineraryError(message);
     } finally {
       setItineraryLoading(false);
     }
-  }, [style, prompt, itineraryScope, pace, tripDays, tripStartDate]);
+  }, [style, prompt, itineraryScope, pace, tripDays, tripStartDate, todayDayNumber]);
 
   const handleAddToPlanner = useCallback((place: DiscoverPlace) => {
-    if (plannerDays.length === 0) {
+    if (!hasTripDates) {
       Alert.alert('No Trip', 'No trip dates set. Create a trip first.');
       return;
     }
-    const options = plannerDays.map((d) => ({
-      text: `Day ${d.n} · ${d.date}`,
-      onPress: () => {
-        setPlannerItems((prev) => {
-          const existing = prev[d.n] ?? [];
-          const newItem = {
-            id: `${place.placeId ?? place.n}-${Date.now()}`,
-            time: '12:00',
-            title: place.n,
-            note: `${friendlyCategory(place.t)} · ${place.d}`,
-          };
-          return {
-            ...prev,
-            [d.n]: [...existing, newItem].sort((a, b) => a.time.localeCompare(b.time)),
-          };
-        });
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        Alert.alert('Added', `${place.n} added to Day ${d.n}`);
-      },
-    }));
-    Alert.alert('Add to Planner', `Add "${place.n}" to which day?`, [
-      ...options,
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [plannerDays]);
+    // Add directly to today's plan
+    const now = new Date();
+    const nextHour = `${String(Math.min(now.getHours() + 1, 23)).padStart(2, '0')}:00`;
+    setPlannerItems((prev) => {
+      const existing = prev[todayDayNumber] ?? [];
+      const newItem = {
+        id: `${place.placeId ?? place.n}-${Date.now()}`,
+        time: nextHour,
+        title: place.n,
+        note: `${friendlyCategory(place.t)} · ${place.d}`,
+      };
+      return {
+        ...prev,
+        [todayDayNumber]: [...existing, newItem].sort((a, b) => a.time.localeCompare(b.time)),
+      };
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert('Added', `${place.n} added to today's plan`);
+  }, [hasTripDates, todayDayNumber]);
 
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
@@ -1123,23 +1157,60 @@ function DiscoverScreenInner() {
         }
       >
         {/* ═══════ PLANNER TAB — manual day-by-day timeline ═══════ */}
-        {tab === 'planner' && plannerDays.length === 0 && (
+        {tab === 'planner' && !hasTripDates && (
           <EmptyState
             icon={CalendarDays}
-            title={tripId ? 'No days to plan' : 'No trip yet'}
+            title={tripId ? 'No trip dates set' : 'No trip yet'}
             subtitle={tripId
-              ? 'Your trip dates will appear here — browse Places and tap "Add to Planner" to fill your days.'
+              ? 'Set your trip dates to start planning.'
               : 'Create a trip to start planning your days.'}
             actionLabel={tripId ? undefined : 'Get Started'}
             onAction={tripId ? undefined : () => router.push('/onboarding')}
           />
         )}
-        {tab === 'planner' && plannerDays.length > 0 && (
+        {tab === 'planner' && hasTripDates && (
           <>
-            {/* Compact AI generate bar */}
+            {/* Scope toggle: Today vs Whole Trip */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+              <TouchableOpacity
+                onPress={() => setItineraryScope('today')}
+                activeOpacity={0.7}
+                style={{
+                  flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+                  backgroundColor: itineraryScope === 'today' ? colors.accent : colors.card,
+                  borderWidth: 1, borderColor: itineraryScope === 'today' ? colors.accent : colors.border,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: itineraryScope === 'today' ? colors.bg : colors.text }}>
+                  Plan Today
+                </Text>
+                <Text style={{ fontSize: 10, color: itineraryScope === 'today' ? colors.bg : colors.text3, marginTop: 2 }}>
+                  Day {todayDayNumber} · {todayLabel}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setItineraryScope('whole')}
+                activeOpacity={0.7}
+                style={{
+                  flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+                  backgroundColor: itineraryScope === 'whole' ? colors.accent : colors.card,
+                  borderWidth: 1, borderColor: itineraryScope === 'whole' ? colors.accent : colors.border,
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: itineraryScope === 'whole' ? colors.bg : colors.text }}>
+                  Whole Trip
+                </Text>
+                <Text style={{ fontSize: 10, color: itineraryScope === 'whole' ? colors.bg : colors.text3, marginTop: 2 }}>
+                  {tripDays} days
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Questions: style + pace + interests */}
             {!itineraryLoading && (
               <View style={{ gap: 10, marginBottom: 16 }}>
-                {/* Style + pace inline */}
+                {/* Q1: What's your vibe? */}
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase' }}>What's your vibe?</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {ITINERARY_STYLES.map((s) => {
                     const active = style === s.id;
@@ -1148,120 +1219,100 @@ function DiscoverScreenInner() {
                         key={s.id}
                         onPress={() => setStyle(s.id)}
                         activeOpacity={0.7}
-                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 5, paddingHorizontal: 10 }]}
+                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 6, paddingHorizontal: 12 }]}
                       >
-                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 11 }]}>{s.label}</Text>
+                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 12 }]}>{s.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
-                {/* Prompt + generate row */}
+                {/* Q2: How packed? */}
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 6 }}>How packed?</Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {PACE_OPTIONS.map((p) => {
+                    const active = pace === p.id;
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={() => setPace(p.id)}
+                        activeOpacity={0.7}
+                        style={[styles.chip, active && styles.chipActive, { flex: 1, alignItems: 'center', paddingVertical: 8 }]}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 12, fontWeight: '600' }]}>{p.label}</Text>
+                        <Text style={{ fontSize: 9, color: active ? colors.accent : colors.text3, marginTop: 1 }}>{p.desc}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Q3: Anything specific? */}
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 6 }}>Anything specific?</Text>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TextInput
                     value={prompt}
                     onChangeText={setPrompt}
-                    placeholder="e.g. snorkeling, sunset dinner..."
+                    placeholder="e.g. snorkeling, sunset dinner, local food..."
                     placeholderTextColor={colors.text3}
                     style={{ flex: 1, fontSize: 13, color: colors.text, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
                   />
-                  <TouchableOpacity
-                    style={{ backgroundColor: colors.black, borderRadius: 10, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
-                    activeOpacity={0.7}
-                    onPress={handleGenerateItinerary}
-                  >
-                    <Sparkles size={16} color={colors.onBlack} strokeWidth={2} />
-                  </TouchableOpacity>
                 </View>
+
+                {/* Generate button */}
+                <TouchableOpacity
+                  style={{ backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 4 }}
+                  activeOpacity={0.7}
+                  onPress={handleGenerateItinerary}
+                >
+                  <Sparkles size={16} color={colors.bg} strokeWidth={2} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.bg }}>
+                    {itineraryScope === 'today' ? 'Generate today\'s plan' : 'Generate full trip plan'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
             {itineraryLoading && (
-              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                <MiniLoader message="Planning your trip..." />
+              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                <MiniLoader message={itineraryScope === 'today' ? 'Planning your day...' : 'Planning your trip...'} />
               </View>
             )}
             {itineraryError && (
               <Text style={{ color: colors.danger, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>{itineraryError}</Text>
             )}
 
-            {/* Day accordion — all days in one scroll */}
-            {plannerDays.map((d) => {
-              const items = plannerItems[d.n] ?? [];
-              const isActive = plannerActiveDay === d.n;
-              return (
-                <View key={d.n} style={{ marginBottom: 2 }}>
-                  {/* Day header — tap to expand */}
-                  <TouchableOpacity
-                    onPress={() => setPlannerActiveDay(isActive ? -1 : d.n)}
-                    activeOpacity={0.7}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingVertical: 12,
-                      paddingHorizontal: 14,
-                      backgroundColor: isActive ? colors.card : 'transparent',
-                      borderRadius: isActive ? 12 : 0,
-                      borderBottomWidth: isActive ? 0 : 1,
-                      borderBottomColor: colors.border,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: isActive ? colors.accent : colors.text }}>
-                        Day {d.n}
-                      </Text>
-                      <Text style={{ fontSize: 12, color: colors.text3 }}>{d.label} · {d.date}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      {items.length > 0 && (
-                        <Text style={{ fontSize: 11, color: colors.text3, fontWeight: '600' }}>
-                          {items.length}
-                        </Text>
-                      )}
-                      <Text style={{ fontSize: 12, color: colors.text3 }}>{isActive ? '\u25B2' : '\u25BC'}</Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* Expanded day content */}
-                  {isActive && (
-                    <View style={{ paddingHorizontal: 14, paddingBottom: 16, backgroundColor: colors.card, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, marginBottom: 8 }}>
-                      {items.length === 0 ? (
-                        <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                          <Text style={{ fontSize: 13, color: colors.text3, fontStyle: 'italic' }}>No activities yet</Text>
-                          <TouchableOpacity
-                            style={{ marginTop: 10, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
-                            activeOpacity={0.7}
-                            onPress={() => setTab('places')}
-                          >
-                            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.accent }}>Add from Places</Text>
+            {/* Results timeline */}
+            {plannerDayItems.length > 0 && (
+              <View style={{ marginTop: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.accent, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
+                  {itineraryScope === 'today' ? `Day ${todayDayNumber} · ${todayLabel}` : 'Your Plan'}
+                </Text>
+                <View style={{ backgroundColor: colors.card, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border, gap: 10 }}>
+                  {plannerDayItems.map((item) => (
+                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.accent, width: 46, marginTop: 2 }}>{item.time}</Text>
+                      <View style={{ width: 2, backgroundColor: colors.accentBorder, alignSelf: 'stretch', borderRadius: 1 }} />
+                      <View style={{ flex: 1, backgroundColor: colors.bg, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text, flex: 1 }}>{item.title}</Text>
+                          <TouchableOpacity onPress={() => removePlannerItem(item.id)} activeOpacity={0.6} hitSlop={8}>
+                            <Text style={{ color: colors.text3, fontSize: 14 }}>{'\u00D7'}</Text>
                           </TouchableOpacity>
                         </View>
-                      ) : (
-                        <View style={{ gap: 8, marginTop: 8 }}>
-                          {items.map((item) => (
-                            <View key={item.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text3, width: 42, marginTop: 2 }}>{item.time}</Text>
-                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent, marginTop: 6 }} />
-                              <View style={{ flex: 1, backgroundColor: colors.bg, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border }}>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text, flex: 1 }}>{item.title}</Text>
-                                  <TouchableOpacity onPress={() => removePlannerItem(item.id)} activeOpacity={0.6} hitSlop={8}>
-                                    <Text style={{ color: colors.text3, fontSize: 14 }}>{'\u00D7'}</Text>
-                                  </TouchableOpacity>
-                                </View>
-                                {item.note && (
-                                  <Text style={{ fontSize: 11, color: colors.text3, marginTop: 3 }}>{item.note}</Text>
-                                )}
-                              </View>
-                            </View>
-                          ))}
-                        </View>
-                      )}
+                        {item.note && (
+                          <Text style={{ fontSize: 11, color: colors.text3, marginTop: 3 }}>{item.note}</Text>
+                        )}
+                      </View>
                     </View>
-                  )}
+                  ))}
                 </View>
-              );
-            })}
+              </View>
+            )}
+
+            {plannerDayItems.length === 0 && !itineraryLoading && (
+              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                <Text style={{ fontSize: 12, color: colors.text3 }}>Choose your vibe and tap generate</Text>
+              </View>
+            )}
           </>
         )}
 
@@ -1544,6 +1595,13 @@ function DiscoverScreenInner() {
                       onSave={toggleSave}
                       onRecommend={toggleRecommend}
                       onAddToPlanner={handleAddToPlanner}
+                      voteByMember={p.voteByMember}
+                      memberNames={memberNames}
+                      totalMembers={tripMembers.length}
+                      onVoteTap={() => {
+                        setVotingPlace(p);
+                        setShowVotingSheet(true);
+                      }}
                     />
                   );
                 })}
@@ -1577,6 +1635,23 @@ function DiscoverScreenInner() {
         initialName={detailPlaceName}
         saved={saved.has(detailPlaceName)}
         onClose={() => setShowDetail(false)}
+        onRecommend={() => {
+          setShowDetail(false);
+          if (detailPlaceName) toggleRecommend(detailPlaceName);
+        }}
+        isRecommended={recommended.has(detailPlaceName)}
+      />
+      <GroupVotingSheet
+        visible={showVotingSheet}
+        onClose={() => setShowVotingSheet(false)}
+        place={votingPlace}
+        members={tripMembers}
+        currentMemberId={currentMemberId}
+        onVoteUpdated={(placeId, votes) => {
+          setSavedPlaces((prev) =>
+            prev.map((p) => (p.id === placeId ? { ...p, voteByMember: votes } : p)),
+          );
+        }}
       />
     </SafeAreaView>
   );

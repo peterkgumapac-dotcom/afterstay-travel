@@ -16,8 +16,13 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { Compass, MapPin, Plane, Users } from 'lucide-react-native';
 
+import { useAuth } from '@/lib/auth';
+import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
+import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { AnticipationHero } from '@/components/home/AnticipationHero';
+import { TopPicksSection as HomeTopPicks } from '@/components/discover/TopPicksSection';
+import NotificationsSheet, { useNotificationCount } from '@/components/home/NotificationsSheet';
 import { HomeMomentsPreview } from '@/components/home/HomeMomentsPreview';
 import { ArrivedCard } from '@/components/home/ArrivedCard';
 import { CountdownCard } from '@/components/home/CountdownCard';
@@ -25,10 +30,8 @@ import { FlightCard } from '@/components/home/FlightCard';
 import { FlightProgressCard } from '@/components/home/FlightProgressCard';
 import { TripActiveCard } from '@/components/home/TripActiveCard';
 import EmptyState from '@/components/shared/EmptyState';
-import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import ProfileRow from '@/components/home/ProfileRow';
-import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
@@ -40,8 +43,9 @@ import {
   getFlights,
   getGroupMembers,
   getMoments,
+  getSavedPlaces,
 } from '@/lib/supabase';
-import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
+import type { Flight, GroupMember, Moment, Place, Trip } from '@/lib/types';
 import { setHotelCoords } from '@/lib/config';
 import { formatDatePHT, formatTimePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 
@@ -146,11 +150,13 @@ export default function HomeScreen() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [moments, setMoments] = useState<Moment[]>([]);
+  const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [showLoader, setShowLoader] = useState(false);
   const [loaderDone, setLoaderDone] = useState(false);
   const { setVisible: setTabBarVisible } = useTabBarVisibility();
   const [refreshing, setRefreshing] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [error, setError] = useState<string>();
 
   const [phase, setPhase] = useState<TripPhase>('upcoming');
@@ -160,6 +166,44 @@ export default function HomeScreen() {
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState<string>();
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [showVotingSheet, setShowVotingSheet] = useState(false);
+  const { user } = useAuth();
+
+  // Resolve current user's group member ID
+  const currentMemberId = useMemo(
+    () => members.find((m) => m.userId === user?.id)?.id ?? '',
+    [members, user?.id],
+  );
+
+  // Places needing group votes
+  const pendingVotePlaces = useMemo(
+    () => savedPlaces.filter((p) => {
+      if (p.vote !== 'Pending') return false;
+      const votes = p.voteByMember ?? {};
+      return Object.keys(votes).length < members.length;
+    }),
+    [savedPlaces, members],
+  );
+
+  const handleGroupVoteTap = useCallback(() => {
+    setShowVotingSheet(true);
+  }, []);
+
+  const handleVoteUpdated = useCallback((placeId: string, votes: Record<string, any>) => {
+    setSavedPlaces((prev) =>
+      prev.map((p) => (p.id === placeId ? { ...p, voteByMember: votes } : p)),
+    );
+  }, []);
+
+  // Realtime vote updates from other members
+  useVoteSubscription(trip?.id ?? null, useCallback(
+    (placeId: string, voteByMember: Record<string, any>, vote: any) => {
+      setSavedPlaces((prev) =>
+        prev.map((p) => (p.id === placeId ? { ...p, voteByMember, vote } : p)),
+      );
+    },
+    [],
+  ));
 
   const load = useCallback(async (force = false) => {
     try {
@@ -181,15 +225,17 @@ export default function HomeScreen() {
         if (t.hotelLat && t.hotelLng) setHotelCoords(t.hotelLat, t.hotelLng);
       }
       if (t) {
-        const [fs, ms, members] = await Promise.all([
+        const [fs, ms, members, places] = await Promise.all([
           getFlights(t.id).catch((e) => { if (__DEV__) console.warn('[Home] flights error:', e); return [] as Flight[]; }),
           getMoments(t.id).catch((e) => { if (__DEV__) console.warn('[Home] moments error:', e); return [] as Moment[]; }),
           getGroupMembers(t.id).catch((e) => { if (__DEV__) console.warn('[Home] members error:', e); return [] as GroupMember[]; }),
+          getSavedPlaces(t.id).catch(() => [] as Place[]),
         ]);
         if (__DEV__) console.log(`[Home] loaded: ${fs.length} flights, ${ms.length} moments, ${members.length} members`);
         setFlights(fs);
         setMoments(ms);
         setMembers(members);
+        setSavedPlaces(places);
         await cacheSet(`flights:${t.id}`, fs);
 
         const primary = members.find((m) => m.role === 'Primary');
@@ -368,13 +414,18 @@ export default function HomeScreen() {
     return { status: 'active' as const, dayNumber, totalDays };
   }, [nowMs, tripStartMs, tripEndMs, totalDays]);
 
-  // Quick access tiles
-  const quickAccessTiles = useMemo(() => [
-    { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: trip?.checkIn || '3:00 PM' },
-    { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: trip?.checkOut || '12:00 PM' },
-    { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: trip?.wifiSsid || 'Not set' },
-    { id: 'door', iconName: 'door', label: 'Door code', value: trip?.doorCode ? '\u2022\u2022\u2022\u2022' : '\u2014' },
-  ], [trip?.checkIn, trip?.checkOut, trip?.wifiSsid, trip?.doorCode]);
+  // Notification count for bell badge
+  const notifProps = useMemo(() => ({
+    dayOfTrip: countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1,
+    totalDays: countdown.totalDays,
+    daysLeft: countdown.totalDays - (countdown.status === 'active' ? countdown.dayNumber ?? 1 : 0),
+    spent: totalSpent,
+    budget: trip?.budgetLimit ?? 0,
+    savedPlaces,
+    members,
+    destination: trip?.destination ?? '',
+  }), [countdown, totalSpent, trip?.budgetLimit, trip?.destination, savedPlaces, members]);
+  const notifCount = useNotificationCount(notifProps);
 
   // Room info
   const roomInfo = useMemo(
@@ -440,7 +491,13 @@ export default function HomeScreen() {
         }
       >
         {/* 1. Top bar */}
-        <ProfileRow userName={userName} avatarUrl={userAvatar} tripLabel={trip.destination ? `${trip.destination} trip` : undefined} />
+        <ProfileRow
+          userName={userName}
+          avatarUrl={userAvatar}
+          tripLabel={trip.destination ? `${trip.destination} trip` : undefined}
+          notificationCount={notifCount}
+          onBellPress={() => setShowNotifications(true)}
+        />
 
         {/* 2. Hero slideshow */}
         <AnticipationHero
@@ -557,6 +614,8 @@ export default function HomeScreen() {
           </Animated.View>
         </View>
 
+        {/* Smart nudges moved to bell icon → NotificationsSheet */}
+
         {/* 4. Moments preview — first after trip card */}
         <SectionHeader
           kicker={`Moments · Day ${countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1}`}
@@ -599,19 +658,37 @@ export default function HomeScreen() {
           );
         })()}
 
-        {/* 7. Quick access — collapsible */}
-        <CollapsibleSection
-          kicker="Stay · Quick access"
-          title="Everything for check-in"
-          defaultOpen={false}
-        >
-          <QuickAccessGrid tiles={quickAccessTiles} />
-        </CollapsibleSection>
+        {/* 7. Top Picks — collapsible */}
+        {trip.destination && (
+          <CollapsibleSection
+            kicker="Curated for you"
+            title={`Top picks in ${trip.destination}`}
+          >
+            <HomeTopPicks
+              destination={trip.destination}
+              hotelName={trip.accommodation || undefined}
+            />
+          </CollapsibleSection>
+        )}
 
         {/* Bottom spacer for FAB clearance */}
         <View style={{ height: 80 }} />
       </ScrollView>
-      <FloatingActionButton />
+      <NotificationsSheet
+        visible={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        onGroupVoteTap={handleGroupVoteTap}
+        {...notifProps}
+      />
+      <GroupVotingSheet
+        visible={showVotingSheet}
+        onClose={() => setShowVotingSheet(false)}
+        place={pendingVotePlaces[0] ?? null}
+        pendingPlaces={pendingVotePlaces}
+        members={members}
+        currentMemberId={currentMemberId}
+        onVoteUpdated={handleVoteUpdated}
+      />
     </SafeAreaView>
   );
 }

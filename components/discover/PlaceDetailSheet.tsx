@@ -24,6 +24,7 @@ import {
   Bookmark,
   BookmarkCheck,
   Navigation,
+  Users,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -47,6 +48,9 @@ interface Props {
   onSaveToggle?: () => void;
   distanceKm?: number;
   travelMode?: 'walk' | 'car';
+  /** Called when user taps "Recommend to Group" */
+  onRecommend?: () => void;
+  isRecommended?: boolean;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -166,6 +170,8 @@ export const PlaceDetailSheet: React.FC<Props> = ({
   onSaveToggle,
   distanceKm,
   travelMode = 'walk',
+  onRecommend,
+  isRecommended,
 }) => {
   const { colors } = useTheme();
   const s = getStyles(colors);
@@ -326,6 +332,21 @@ export const PlaceDetailSheet: React.FC<Props> = ({
                     {saved ? 'Saved' : 'Save'}
                   </Text>
                 </TouchableOpacity>
+
+                {onRecommend && (
+                  <TouchableOpacity
+                    style={s.actionBtn}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      onRecommend();
+                    }}
+                  >
+                    <Users size={20} color={isRecommended ? colors.accent : colors.text2} />
+                    <Text style={[s.actionLabel, isRecommended && { color: colors.accent }]}>
+                      {isRecommended ? 'Recommended' : 'Recommend'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity style={s.actionBtn} onPress={handleDirections}>
                   <Navigation size={20} color={colors.accent} />
