@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Calendar, Sparkles } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -19,7 +19,7 @@ import { radius, spacing } from '@/constants/theme';
 import { generateItinerary, generateRecommendations } from '@/lib/anthropic';
 import { enrichRecommendations } from '@/lib/google-places';
 import type { ItineraryDay, ItineraryActivity, PlannerPace } from '@/lib/anthropic';
-import { addPlace } from '@/lib/supabase';
+import { addPlace, getActiveTrip } from '@/lib/supabase';
 import type { AIRecommendation, PlaceCategory } from '@/lib/types';
 
 const FIRST_TIME = ['First visit', 'Been before', 'Local-ish'] as const;
@@ -71,6 +71,13 @@ export default function TripPlannerModal() {
   const [itineraryPace, setItineraryPace] = useState<PlannerPace>('relaxed');
   const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
   const [error, setError] = useState<string>();
+  const [tripDest, setTripDest] = useState('');
+
+  useEffect(() => {
+    getActiveTrip().then((t) => {
+      if (t?.destination) setTripDest(t.destination);
+    }).catch(() => {});
+  }, []);
 
   const toggleInterest = (key: string) => {
     setInterests(list =>
@@ -265,7 +272,7 @@ export default function TripPlannerModal() {
 
       <View style={{ gap: spacing.md }}>
         <Select<FirstTime>
-          label="First time in Boracay?"
+          label={`First time in ${tripDest || 'this destination'}?`}
           options={FIRST_TIME}
           value={firstTime}
           onChange={setFirstTime}

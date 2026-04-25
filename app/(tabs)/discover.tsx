@@ -182,6 +182,7 @@ const CATEGORIES: readonly CategoryItem[] = [
   { id: 'coffee', label: 'Coffee', emoji: '\u2615', color: '#a0845c' },
 ] as const;
 
+// Boracay-specific sample suggestions — TODO: make dynamic based on trip destination
 const CATEGORY_SUGGESTIONS: Record<string, readonly string[]> = {
   beach: [
     'Puka Shell Beach',
@@ -253,6 +254,7 @@ const ACTIVITY_CATEGORY_EMOJI: Record<string, string> = {
   Nightlife: '🌙', Wellness: '🧘', Shopping: '🛍', Transport: '🚗',
 };
 
+// Sample fallback places shown when the API returns no results
 const PLACES: readonly DiscoverPlace[] = [
   {
     n: 'Puka Shell Beach',

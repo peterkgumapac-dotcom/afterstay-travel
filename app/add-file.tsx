@@ -137,7 +137,7 @@ export default function AddFileScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <FormField
           label="File Name"
-          placeholder="e.g. Boarding Pass — Peter"
+          placeholder="e.g. Boarding Pass"
           value={fileName}
           onChangeText={setFileName}
           autoFocus

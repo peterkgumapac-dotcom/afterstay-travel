@@ -222,7 +222,11 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
 
   const loadForecast = async (cancelled = false) => {
     try {
-      const location = destination || '11.9710,121.9215';
+      const location = destination || '';
+      if (!location) {
+        if (!cancelled) setLoading(false);
+        return;
+      }
       const res = await fetch(
         `https://api.weatherapi.com/v1/forecast.json?key=${CONFIG.WEATHER_KEY}&q=${encodeURIComponent(location)}&days=5&aqi=no&alerts=no`,
       );

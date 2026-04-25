@@ -71,8 +71,7 @@ function smartTitle(e: Expense): string {
     .replace(/^dinner for multiple people with /i, '')
     .replace(/^purchase at /i, '')
     .replace(/^online payment to /i, '')
-    .replace(/ in boracay$/i, '')
-    .replace(/ in .*philippines$/i, '');
+    .replace(/ in \w[\w\s]*$/i, '');
   if (e.placeName && e.placeName.length > 2) {
     const catMap: Record<string, string> = { Food: 'Food', Transport: 'Ride', Activity: 'Activity', Shopping: 'Shopping', Accommodation: 'Stay', Other: '' };
     const prefix = catMap[e.category] ?? '';
@@ -102,8 +101,12 @@ export default function BudgetScreen() {
   const [showAllExpenses, setShowAllExpenses] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
-  const [paymentQr, setPaymentQr] = useState<string | null>(null);
+  const [paymentQrs, setPaymentQrs] = useState<{ label: string; uri: string }[]>([]);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [viewingQr, setViewingQr] = useState<{ label: string; uri: string } | null>(null);
+  const [showQrNameModal, setShowQrNameModal] = useState(false);
+  const [pendingQrUri, setPendingQrUri] = useState<string | null>(null);
+  const [qrNameInput, setQrNameInput] = useState('');
 
   // ── Data loading ──
   const load = useCallback(async (force = false) => {
@@ -131,12 +134,20 @@ export default function BudgetScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Payment QR ──
-  const qrKey = trip?.id ? `payment_qr_${trip.id}` : null;
+  // ── Payment QRs (multi-bank) ──
+  const qrKey = trip?.id ? `payment_qrs_${trip.id}` : null;
 
   useEffect(() => {
     if (!qrKey) return;
-    AsyncStorage.getItem(qrKey).then((uri) => { if (uri) setPaymentQr(uri); });
+    AsyncStorage.getItem(qrKey).then((raw) => {
+      if (!raw) return;
+      try { setPaymentQrs(JSON.parse(raw)); } catch { /* ignore */ }
+    });
+  }, [qrKey]);
+
+  const saveQrs = useCallback(async (next: { label: string; uri: string }[]) => {
+    setPaymentQrs(next);
+    if (qrKey) await AsyncStorage.setItem(qrKey, JSON.stringify(next));
   }, [qrKey]);
 
   const pickPaymentQr = useCallback(async () => {
@@ -144,23 +155,32 @@ export default function BudgetScreen() {
       mediaTypes: ['images'],
       quality: 0.8,
     });
-    if (result.canceled || !result.assets?.[0]?.uri || !qrKey) return;
-    const uri = result.assets[0].uri;
-    setPaymentQr(uri);
-    await AsyncStorage.setItem(qrKey, uri);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [qrKey]);
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+    setPendingQrUri(result.assets[0].uri);
+    setQrNameInput('');
+    setShowQrNameModal(true);
+  }, []);
 
-  const removePaymentQr = useCallback(async () => {
-    if (!qrKey) return;
-    Alert.alert('Remove QR', 'Remove your payment QR code?', [
+  const confirmAddQr = useCallback(async () => {
+    if (!pendingQrUri) return;
+    const label = qrNameInput.trim() || 'Payment QR';
+    const next = [...paymentQrs, { label, uri: pendingQrUri }];
+    await saveQrs(next);
+    setPendingQrUri(null);
+    setShowQrNameModal(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [pendingQrUri, qrNameInput, paymentQrs, saveQrs]);
+
+  const removePaymentQr = useCallback((idx: number) => {
+    const name = paymentQrs[idx]?.label ?? 'this QR';
+    Alert.alert('Remove QR', `Remove ${name}?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: async () => {
-        setPaymentQr(null);
-        await AsyncStorage.removeItem(qrKey);
+      { text: 'Remove', style: 'destructive', onPress: () => {
+        const next = paymentQrs.filter((_, i) => i !== idx);
+        saveQrs(next);
       }},
     ]);
-  }, [qrKey]);
+  }, [paymentQrs, saveQrs]);
 
   // ── Derived values ──
   const total = trip?.budgetLimit ?? 0;
@@ -554,31 +574,33 @@ export default function BudgetScreen() {
               </View>
             )}
 
-            {/* Payment QR shortcut */}
+            {/* Payment QR shortcuts */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Payment QR</Text>
-              {paymentQr ? (
-                <TouchableOpacity
-                  style={styles.qrRow}
-                  onPress={() => setShowQrModal(true)}
-                  onLongPress={removePaymentQr}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.qrThumb, { borderColor: colors.border }]}>
-                    <Image source={{ uri: paymentQr }} style={{ width: 44, height: 44, borderRadius: 8 }} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.qrLabel}>My QR Code</Text>
-                    <Text style={styles.qrHint}>Tap to show · long press to remove</Text>
-                  </View>
-                  <QrCode size={20} color={colors.accent} />
-                </TouchableOpacity>
-              ) : (
+              <View style={{ gap: 8 }}>
+                {paymentQrs.map((qr, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={styles.qrRow}
+                    onPress={() => { setViewingQr(qr); setShowQrModal(true); }}
+                    onLongPress={() => removePaymentQr(idx)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.qrThumb, { borderColor: colors.border }]}>
+                      <Image source={{ uri: qr.uri }} style={{ width: 44, height: 44, borderRadius: 8 }} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.qrLabel}>{qr.label}</Text>
+                      <Text style={styles.qrHint}>Tap to show · long press to remove</Text>
+                    </View>
+                    <QrCode size={20} color={colors.accent} />
+                  </TouchableOpacity>
+                ))}
                 <TouchableOpacity style={styles.qrUploadBtn} onPress={pickPaymentQr} activeOpacity={0.7}>
                   <QrCode size={18} color={colors.accent} />
-                  <Text style={styles.qrUploadText}>Add payment QR</Text>
+                  <Text style={styles.qrUploadText}>{paymentQrs.length > 0 ? 'Add another QR' : 'Add payment QR'}</Text>
                 </TouchableOpacity>
-              )}
+              </View>
             </View>
 
             {/* Settle cards — Group mode only */}
@@ -653,15 +675,40 @@ export default function BudgetScreen() {
       <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowQrModal(false)}>
           <View style={styles.qrModalCard}>
-            <Text style={styles.qrModalTitle}>Scan to pay me</Text>
-            {paymentQr && (
-              <Image source={{ uri: paymentQr }} style={styles.qrModalImage} resizeMode="contain" />
+            <Text style={styles.qrModalTitle}>{viewingQr?.label ?? 'Payment QR'}</Text>
+            {viewingQr && (
+              <Image source={{ uri: viewingQr.uri }} style={styles.qrModalImage} resizeMode="contain" />
             )}
             <TouchableOpacity onPress={() => setShowQrModal(false)} style={styles.qrModalClose}>
               <Text style={[styles.modalBtn, { color: colors.text3 }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
+      </Modal>
+
+      {/* QR name input modal */}
+      <Modal visible={showQrNameModal} transparent animationType="fade" onRequestClose={() => setShowQrNameModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Name this QR</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={qrNameInput}
+              onChangeText={setQrNameInput}
+              placeholder="e.g. GCash, Maya, BPI"
+              placeholderTextColor={colors.text3}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => { setShowQrNameModal(false); setPendingQrUri(null); }}>
+                <Text style={[styles.modalBtn, { color: colors.text3 }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={confirmAddQr}>
+                <Text style={[styles.modalBtn, { color: colors.accent }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Edit budget modal */}

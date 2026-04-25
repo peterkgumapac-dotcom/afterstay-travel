@@ -150,8 +150,8 @@ function AnimatedEllipsis({ colors }: { readonly colors: ReturnType<typeof useTh
 export default function LivingPostcardLoader({
   onDone,
   durationMs = 6500,
-  destination = 'Boracay',
-  name = 'Peter',
+  destination = 'your trip',
+  name = 'Traveler',
 }: LivingPostcardLoaderProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);

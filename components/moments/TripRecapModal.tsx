@@ -57,6 +57,39 @@ type Phase = 'loading' | 'scatter' | 'tidy' | 'slideshow' | 'end';
 type WipeType = 'horizontal' | 'vertical' | 'diagonal';
 const WIPE_CYCLE: WipeType[] = ['horizontal', 'vertical', 'diagonal'];
 
+// ── ImagePreloader ────────────────────────────────────────────────────
+// Renders invisible images to warm the native cache, fires onReady when all loaded.
+
+function ImagePreloader({ uris, onReady }: { uris: string[]; onReady: () => void }) {
+  const loaded = useRef(new Set<number>());
+  const total = uris.length;
+
+  const handleLoad = useCallback((idx: number) => {
+    loaded.current.add(idx);
+    if (loaded.current.size >= total) onReady();
+  }, [total, onReady]);
+
+  // Timeout fallback — don't wait forever for slow images
+  useEffect(() => {
+    const t = setTimeout(onReady, 6000);
+    return () => clearTimeout(t);
+  }, [onReady]);
+
+  return (
+    <View style={S.preloader}>
+      {uris.map((uri, i) => (
+        <Image
+          key={i}
+          source={{ uri }}
+          style={S.preloadImg}
+          onLoad={() => handleLoad(i)}
+          onError={() => handleLoad(i)} // count errors as loaded to not block
+        />
+      ))}
+    </View>
+  );
+}
+
 // ── PolaroidCard ──────────────────────────────────────────────────────
 
 interface CardLayout {
@@ -85,11 +118,10 @@ const PolaroidCard = React.memo(function PolaroidCard({
       op.value = withDelay(d, withTiming(1, { duration: 200 }));
     } else if (phase === 'tidy') {
       const ease = Easing.inOut(Easing.cubic);
+      const gridScale = GRID_CELL / CARD_W;
       tx.value = withTiming(layout.gridX, { duration: TIDY_DUR, easing: ease });
       ty.value = withTiming(layout.gridY, { duration: TIDY_DUR, easing: ease });
       rot.value = withTiming(0, { duration: TIDY_DUR, easing: ease });
-      // Scale down to fit grid
-      const gridScale = GRID_CELL / CARD_W;
       sc.value = withTiming(gridScale, { duration: TIDY_DUR, easing: ease });
     }
     return () => {
@@ -105,10 +137,7 @@ const PolaroidCard = React.memo(function PolaroidCard({
       left: tx.value, top: ty.value,
       width: CARD_W,
       opacity: op.value,
-      transform: [
-        { scale: sc.value },
-        { rotateZ: `${rot.value}deg` },
-      ],
+      transform: [{ scale: sc.value }, { rotateZ: `${rot.value}deg` }],
     };
   });
 
@@ -122,29 +151,24 @@ const PolaroidCard = React.memo(function PolaroidCard({
 // ── WipeSlide ─────────────────────────────────────────────────────────
 
 const WipeSlide = React.memo(function WipeSlide({
-  uri, wipeType, revealing, onDone,
+  uri, wipeType, revealing,
 }: {
-  uri: string; wipeType: WipeType; revealing: boolean; onDone?: () => void;
+  uri: string; wipeType: WipeType; revealing: boolean;
 }) {
-  const clip = useSharedValue(0);
+  const clip = useSharedValue(revealing ? 0 : 1);
   const kenBurns = useSharedValue(1);
 
   useEffect(() => {
     cancelAnimation(clip);
     cancelAnimation(kenBurns);
-
     if (revealing) {
       clip.value = 0;
-      clip.value = withTiming(1, {
-        duration: WIPE_DUR,
-        easing: Easing.inOut(Easing.cubic),
-      });
+      clip.value = withTiming(1, { duration: WIPE_DUR, easing: Easing.inOut(Easing.cubic) });
       kenBurns.value = 1;
       kenBurns.value = withTiming(1.05, { duration: SLIDE_DUR, easing: Easing.linear });
     } else {
-      clip.value = 1; // fully revealed (current slide)
+      clip.value = 1;
     }
-
     return () => { cancelAnimation(clip); cancelAnimation(kenBurns); };
   }, [revealing, uri]);
 
@@ -152,34 +176,16 @@ const WipeSlide = React.memo(function WipeSlide({
     'worklet';
     const t = clip.value;
     if (wipeType === 'horizontal') {
-      return {
-        position: 'absolute' as const, top: 0, left: 0,
-        width: interpolate(t, [0, 1], [0, SW]),
-        height: SH, overflow: 'hidden' as const,
-      };
+      return { position: 'absolute' as const, top: 0, left: 0, width: interpolate(t, [0, 1], [0, SW]), height: SH, overflow: 'hidden' as const };
     } else if (wipeType === 'vertical') {
-      return {
-        position: 'absolute' as const, top: 0, left: 0,
-        width: SW,
-        height: interpolate(t, [0, 1], [0, SH]),
-        overflow: 'hidden' as const,
-      };
+      return { position: 'absolute' as const, top: 0, left: 0, width: SW, height: interpolate(t, [0, 1], [0, SH]), overflow: 'hidden' as const };
     }
-    // diagonal
-    return {
-      position: 'absolute' as const, top: 0, left: 0,
-      width: interpolate(t, [0, 1], [0, SW]),
-      height: interpolate(t, [0, 1], [0, SH]),
-      overflow: 'hidden' as const,
-    };
+    return { position: 'absolute' as const, top: 0, left: 0, width: interpolate(t, [0, 1], [0, SW]), height: interpolate(t, [0, 1], [0, SH]), overflow: 'hidden' as const };
   });
 
   const imgStyle = useAnimatedStyle(() => {
     'worklet';
-    return {
-      width: SW, height: SH,
-      transform: [{ scale: kenBurns.value }],
-    };
+    return { width: SW, height: SH, transform: [{ scale: kenBurns.value }] };
   });
 
   return (
@@ -200,27 +206,20 @@ export default function TripRecapModal({ photos: raw, visible, onClose }: Props)
     return valid.length > MAX ? shuffle(valid).slice(0, MAX) : shuffle(valid);
   }, [raw]);
 
-  // Pre-compute scatter + grid layouts
   const cardLayouts = useMemo<CardLayout[]>(() => {
-    return photos.map((_, i) => {
-      const spreadX = (Math.random() - 0.5) * (SW - CARD_W);
-      const spreadY = (Math.random() - 0.5) * (SH * 0.45);
-      return {
-        scatterX: SW / 2 + spreadX - CARD_W / 2,
-        scatterY: SH / 2 + spreadY - CARD_W / 2,
-        scatterRot: (Math.random() - 0.5) * 16,
-        gridX: GRID_PAD + (i % GRID_COLS) * (GRID_CELL + GRID_GAP),
-        gridY: 80 + Math.floor(i / GRID_COLS) * (GRID_CELL + GRID_GAP),
-      };
-    });
+    return photos.map((_, i) => ({
+      scatterX: SW / 2 + (Math.random() - 0.5) * (SW - CARD_W) - CARD_W / 2,
+      scatterY: SH / 2 + (Math.random() - 0.5) * (SH * 0.45) - CARD_W / 2,
+      scatterRot: (Math.random() - 0.5) * 16,
+      gridX: GRID_PAD + (i % GRID_COLS) * (GRID_CELL + GRID_GAP),
+      gridY: 80 + Math.floor(i / GRID_COLS) * (GRID_CELL + GRID_GAP),
+    }));
   }, [photos]);
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [slideIdx, setSlideIdx] = useState(0);
   const [paused, setPaused] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const pauseRemaining = useRef(SLIDE_DUR);
-  const slideStartTime = useRef(0);
 
   const gridOp = useSharedValue(1);
   const screenOp = useSharedValue(1);
@@ -234,42 +233,29 @@ export default function TripRecapModal({ photos: raw, visible, onClose }: Props)
     if (!visible) {
       clearT(); setPhase('loading'); setSlideIdx(0); setPaused(false);
       gridOp.value = 1; screenOp.value = 1; progressW.value = 0;
-      pauseRemaining.current = SLIDE_DUR;
     }
   }, [visible]);
 
   // Empty
   useEffect(() => {
-    if (visible && photos.length === 0) {
-      const t = setTimeout(onClose, 1000);
-      return () => clearTimeout(t);
-    }
+    if (visible && photos.length === 0) { const t = setTimeout(onClose, 1000); return () => clearTimeout(t); }
   }, [visible, photos.length, onClose]);
 
-  // Preload → scatter
-  useEffect(() => {
-    if (!visible || photos.length === 0) return;
-    setPhase('loading');
-    Promise.all(photos.map((p) => Image.prefetch(p.uri).catch(() => {}))).then(() => {
-      setPhase('scatter');
-    });
-  }, [visible, photos]);
+  // Called when images are warmed in native cache
+  const handleImagesReady = useCallback(() => {
+    setPhase('scatter');
+  }, []);
 
-  // Scatter → tidy → slideshow
+  // Scatter → tidy → slideshow chain
   useEffect(() => {
     if (phase !== 'scatter') return;
-    const scatterEnd = photos.length * SCATTER_STAGGER + 400; // spring settle
+    const scatterEnd = photos.length * SCATTER_STAGGER + 400;
     const t1 = setTimeout(() => {
-      // Hold scattered
       const t2 = setTimeout(() => {
         setPhase('tidy');
-        // After tidy, fade grid and start slideshow
         const t3 = setTimeout(() => {
           gridOp.value = withTiming(0, { duration: GRID_FADE, easing: Easing.inOut(Easing.quad) });
-          const t4 = setTimeout(() => {
-            setPhase('slideshow');
-            setSlideIdx(0);
-          }, GRID_FADE);
+          const t4 = setTimeout(() => { setPhase('slideshow'); setSlideIdx(0); }, GRID_FADE);
           addT(t4);
         }, TIDY_DUR);
         addT(t3);
@@ -284,20 +270,14 @@ export default function TripRecapModal({ photos: raw, visible, onClose }: Props)
     if (phase !== 'slideshow') return;
     cancelAnimation(progressW);
     progressW.value = 0;
-    const totalDur = photos.length * (SLIDE_DUR + WIPE_DUR);
-    progressW.value = withTiming(1, { duration: totalDur, easing: Easing.linear });
+    progressW.value = withTiming(1, { duration: photos.length * (SLIDE_DUR + WIPE_DUR), easing: Easing.linear });
   }, [phase, photos.length]);
 
   // Auto-advance
   useEffect(() => {
     if (phase !== 'slideshow' || paused) return;
-
-    slideStartTime.current = Date.now();
-    pauseRemaining.current = SLIDE_DUR;
-
     const t = setTimeout(() => {
-      const next = slideIdx + 1;
-      if (next >= photos.length) {
+      if (slideIdx + 1 >= photos.length) {
         setPhase('end');
         const t1 = setTimeout(() => {
           screenOp.value = withTiming(0, { duration: END_FADE, easing: Easing.inOut(Easing.quad) });
@@ -306,25 +286,12 @@ export default function TripRecapModal({ photos: raw, visible, onClose }: Props)
         }, END_HOLD);
         addT(t1);
       } else {
-        setSlideIdx(next);
+        setSlideIdx((i) => i + 1);
       }
     }, SLIDE_DUR);
     addT(t);
-
-    return () => {
-      const idx = timers.current.indexOf(t);
-      if (idx >= 0) { clearTimeout(t); timers.current.splice(idx, 1); }
-    };
+    return () => { const idx = timers.current.indexOf(t); if (idx >= 0) { clearTimeout(t); timers.current.splice(idx, 1); } };
   }, [phase, slideIdx, paused, photos.length, onClose]);
-
-  // Pause handling
-  useEffect(() => {
-    if (phase !== 'slideshow') return;
-    if (paused) {
-      const elapsed = Date.now() - slideStartTime.current;
-      pauseRemaining.current = Math.max(200, SLIDE_DUR - elapsed);
-    }
-  }, [paused, phase]);
 
   // Navigation
   const goNext = useCallback(() => {
@@ -332,123 +299,72 @@ export default function TripRecapModal({ photos: raw, visible, onClose }: Props)
     clearT();
     if (slideIdx + 1 >= photos.length) {
       setPhase('end');
-      const t1 = setTimeout(() => {
-        screenOp.value = withTiming(0, { duration: END_FADE });
-        const t2 = setTimeout(onClose, END_FADE + 50);
-        addT(t2);
-      }, END_HOLD);
+      const t1 = setTimeout(() => { screenOp.value = withTiming(0, { duration: END_FADE }); const t2 = setTimeout(onClose, END_FADE + 50); addT(t2); }, END_HOLD);
       addT(t1);
-    } else {
-      setSlideIdx((i) => i + 1);
-    }
+    } else { setSlideIdx((i) => i + 1); }
   }, [phase, slideIdx, photos.length, onClose]);
 
   const goPrev = useCallback(() => {
     if (phase !== 'slideshow' || slideIdx <= 0) return;
-    clearT();
-    setSlideIdx((i) => i - 1);
+    clearT(); setSlideIdx((i) => i - 1);
   }, [phase, slideIdx]);
 
   // Gestures
-  const tap = Gesture.Tap().onEnd((e) => {
-    'worklet';
-    if (e.absoluteX > SW * 0.5) runOnJS(goNext)();
-    else runOnJS(goPrev)();
-  });
-
+  const tap = Gesture.Tap().onEnd((e) => { 'worklet'; if (e.absoluteX > SW * 0.5) runOnJS(goNext)(); else runOnJS(goPrev)(); });
   const longPress = Gesture.LongPress().minDuration(400)
     .onStart(() => { 'worklet'; runOnJS(setPaused)(true); })
     .onEnd(() => { 'worklet'; runOnJS(setPaused)(false); });
-
-  const pan = Gesture.Pan().activeOffsetY(50)
-    .onEnd((e) => { 'worklet'; if (e.translationY > 100) runOnJS(onClose)(); });
-
+  const pan = Gesture.Pan().activeOffsetY(50).onEnd((e) => { 'worklet'; if (e.translationY > 100) runOnJS(onClose)(); });
   const gesture = Gesture.Race(pan, Gesture.Exclusive(longPress, tap));
 
-  // Animated styles
   const gridStyle = useAnimatedStyle(() => { 'worklet'; return { opacity: gridOp.value }; });
   const fadeStyle = useAnimatedStyle(() => { 'worklet'; return { opacity: screenOp.value }; });
-  const barStyle = useAnimatedStyle(() => {
-    'worklet';
-    return { width: `${progressW.value * 100}%` };
-  });
-
-  const wipeType = WIPE_CYCLE[slideIdx % 3];
+  const barStyle = useAnimatedStyle(() => { 'worklet'; return { width: `${progressW.value * 100}%` }; });
 
   return (
     <Modal visible={visible} animationType="fade" transparent={false} onRequestClose={onClose}>
       <Animated.View style={[S.root, fadeStyle]}>
         <GestureDetector gesture={gesture}>
           <View style={S.content}>
-
-            {/* Loading */}
+            {/* Preload images into native cache */}
             {phase === 'loading' && photos.length > 0 && (
-              <View style={S.center}>
-                <Text style={S.loadingText}>Loading...</Text>
-              </View>
+              <>
+                <View style={S.center}><Text style={S.loadingText}>Loading...</Text></View>
+                <ImagePreloader uris={photos.map((p) => p.uri)} onReady={handleImagesReady} />
+              </>
             )}
 
-            {/* Empty */}
             {photos.length === 0 && (
-              <View style={S.center}>
-                <Text style={S.loadingText}>No photos</Text>
-              </View>
+              <View style={S.center}><Text style={S.loadingText}>No photos</Text></View>
             )}
 
             {/* Polaroid scatter + tidy */}
             {(phase === 'scatter' || phase === 'tidy') && (
               <Animated.View style={[StyleSheet.absoluteFill, gridStyle]}>
                 {photos.map((p, i) => (
-                  <PolaroidCard
-                    key={`p-${i}`}
-                    uri={p.uri}
-                    index={i}
-                    layout={cardLayouts[i]}
-                    phase={phase}
-                  />
+                  <PolaroidCard key={`p-${i}`} uri={p.uri} index={i} layout={cardLayouts[i]} phase={phase} />
                 ))}
               </Animated.View>
             )}
 
-            {/* Slideshow with wipe transitions */}
+            {/* Slideshow */}
             {(phase === 'slideshow' || phase === 'end') && (
               <View style={StyleSheet.absoluteFill}>
-                {/* Current slide (fully revealed) */}
                 {slideIdx > 0 && (
-                  <WipeSlide
-                    key={`cur-${slideIdx - 1}`}
-                    uri={photos[slideIdx - 1]?.uri ?? photos[0].uri}
-                    wipeType={WIPE_CYCLE[(slideIdx - 1) % 3]}
-                    revealing={false}
-                  />
+                  <WipeSlide key={`cur-${slideIdx - 1}`} uri={photos[slideIdx - 1]?.uri ?? photos[0].uri} wipeType={WIPE_CYCLE[(slideIdx - 1) % 3]} revealing={false} />
                 )}
-                {/* Incoming slide (wipe reveal) */}
-                <WipeSlide
-                  key={`inc-${slideIdx}`}
-                  uri={photos[slideIdx]?.uri ?? photos[0].uri}
-                  wipeType={wipeType}
-                  revealing={true}
-                />
+                <WipeSlide key={`inc-${slideIdx}`} uri={photos[slideIdx]?.uri ?? photos[0].uri} wipeType={WIPE_CYCLE[slideIdx % 3]} revealing={true} />
               </View>
             )}
           </View>
         </GestureDetector>
 
-        {/* Progress bar */}
         {(phase === 'slideshow' || phase === 'end') && (
-          <View style={S.progressTrack}>
-            <Animated.View style={[S.progressFill, barStyle]} />
-          </View>
+          <View style={S.progressTrack}><Animated.View style={[S.progressFill, barStyle]} /></View>
         )}
 
-        {/* Paused */}
-        {paused && (
-          <View style={S.pausedWrap} pointerEvents="none">
-            <Text style={S.pausedText}>PAUSED</Text>
-          </View>
-        )}
+        {paused && <View style={S.pausedWrap} pointerEvents="none"><Text style={S.pausedText}>PAUSED</Text></View>}
 
-        {/* Close */}
         <Pressable style={S.closeBtn} onPress={onClose} hitSlop={12}>
           <X size={28} color="#fff" strokeWidth={2} />
         </Pressable>
@@ -462,38 +378,19 @@ const S = StyleSheet.create({
   content: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: '#555', fontSize: 14 },
+  preloader: { position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' },
+  preloadImg: { width: 1, height: 1 },
   polaroid: {
     backgroundColor: '#fff',
-    paddingTop: CARD_PAD,
-    paddingHorizontal: CARD_PAD,
-    paddingBottom: CARD_BOTTOM,
+    paddingTop: CARD_PAD, paddingHorizontal: CARD_PAD, paddingBottom: CARD_BOTTOM,
     borderRadius: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
   },
-  polaroidPhoto: {
-    width: PHOTO_SIZE,
-    height: PHOTO_SIZE,
-    borderRadius: 1,
-  },
-  progressTrack: {
-    position: 'absolute', top: 0, left: 0, right: 0,
-    height: 2, backgroundColor: 'rgba(255,255,255,0.15)',
-  },
+  polaroidPhoto: { width: PHOTO_SIZE, height: PHOTO_SIZE, borderRadius: 1 },
+  progressTrack: { position: 'absolute', top: 0, left: 0, right: 0, height: 2, backgroundColor: 'rgba(255,255,255,0.15)' },
   progressFill: { height: 2, backgroundColor: '#fff' },
-  pausedWrap: {
-    position: 'absolute', top: SH / 2 - 12, left: 0, right: 0,
-    alignItems: 'center',
-  },
-  pausedText: {
-    color: 'rgba(255,255,255,0.4)', fontSize: 12,
-    fontWeight: '700', letterSpacing: 3,
-  },
-  closeBtn: {
-    position: 'absolute', top: 50, right: 16,
-    width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
-  },
+  pausedWrap: { position: 'absolute', top: SH / 2 - 12, left: 0, right: 0, alignItems: 'center' },
+  pausedText: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '700', letterSpacing: 3 },
+  closeBtn: { position: 'absolute', top: 50, right: 16, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
 });

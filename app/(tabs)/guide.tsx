@@ -550,9 +550,9 @@ export default function GuideScreen() {
                   accessibilityRole="button"
                   accessibilityLabel="Open map"
                   onPress={async () => {
-                    const lat = 11.9710;
-                    const lng = 121.9215;
-                    const url = `https://maps.google.com/?q=${lat},${lng}`;
+                    const query = trip?.accommodation || trip?.destination || '';
+                    if (!query) return;
+                    const url = `https://maps.google.com/?q=${encodeURIComponent(query)}`;
                     try {
                       await Linking.openURL(url);
                     } catch {
