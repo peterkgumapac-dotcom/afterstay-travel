@@ -21,11 +21,13 @@ import {
   Users,
   UserPlus,
   PartyPopper,
+  Swords,
 } from 'lucide-react-native'
 import * as Haptics from 'expo-haptics'
 
 import { useTheme } from '@/constants/ThemeContext'
 import { voteAsMember, deriveConsensus } from '@/lib/supabase'
+import RPSTiebreakerSheet from './RPSTiebreakerSheet'
 import type { Place, PlaceVote, GroupMember } from '@/lib/types'
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window')
@@ -118,6 +120,22 @@ export default function GroupVotingSheet({
   const totalMembers = members.length
   const consensus = deriveConsensus(votes, totalMembers)
   const myVote = votes[currentMemberId]
+
+  // Tie detection: all members voted but no majority
+  const allVoted = Object.keys(votes).length >= totalMembers
+  const isTied = allVoted && consensus === 'Pending'
+
+  // RPS tiebreaker state
+  const [showRps, setShowRps] = useState(false)
+
+  const handleRpsSettled = useCallback(
+    (settledPlaceId: string, winnerVote: PlaceVote) => {
+      // Update local state to reflect the winner's decision
+      onVoteUpdated?.(settledPlaceId, votes)
+      setTimeout(() => setShowRps(false), 1500)
+    },
+    [votes, onVoteUpdated],
+  )
 
   const handleVote = useCallback(
     async (vote: PlaceVote) => {
@@ -373,6 +391,21 @@ export default function GroupVotingSheet({
               </TouchableOpacity>
             </View>
 
+            {/* Tiebreaker button — shown when all voted but tied */}
+            {isTied && (
+              <TouchableOpacity
+                style={s.tiebreakerBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  setShowRps(true)
+                }}
+                activeOpacity={0.7}
+              >
+                <Swords size={18} color={colors.accent} />
+                <Text style={s.tiebreakerText}>Can't decide? Settle it!</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Next place */}
             {places.length > 1 && placeIdx < places.length - 1 && (
               <TouchableOpacity style={s.nextBtn} onPress={goNext}>
@@ -381,6 +414,20 @@ export default function GroupVotingSheet({
               </TouchableOpacity>
             )}
           </ScrollView>
+          )}
+
+          {/* RPS Tiebreaker */}
+          {place && (
+            <RPSTiebreakerSheet
+              visible={showRps}
+              onClose={() => setShowRps(false)}
+              placeId={place.id}
+              placeName={place.name}
+              members={members}
+              currentMemberId={currentMemberId}
+              memberVotes={votes}
+              onSettled={handleRpsSettled}
+            />
           )}
         </Pressable>
       </Pressable>
@@ -661,6 +708,26 @@ const getStyles = (colors: any) =>
     },
     voteBtnNoActiveText: {
       color: '#fff',
+    },
+
+    // Tiebreaker
+    tiebreakerBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      marginHorizontal: 16,
+      marginTop: 12,
+      paddingVertical: 12,
+      borderRadius: 12,
+      backgroundColor: colors.accentDim,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    tiebreakerText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.accent,
     },
 
     // Next place

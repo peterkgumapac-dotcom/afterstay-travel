@@ -1200,6 +1200,164 @@ export async function notifyGroupOfRecommendation(
   }
 }
 
+// ---------- ROCK PAPER SCISSORS TIEBREAKER ----------
+
+export type RPSMove = 'rock' | 'paper' | 'scissors'
+export type RPSGameStatus = 'playing' | 'settled'
+
+export interface RPSGameState {
+  status: RPSGameStatus
+  moves: Record<string, RPSMove>    // memberId → move
+  winner?: string                   // memberId of winner
+  winnerVote?: PlaceVote            // the vote that wins
+  round: number
+}
+
+/** Determine RPS winner between two moves. Returns 1 if a wins, -1 if b wins, 0 if tie. */
+function rpsResult(a: RPSMove, b: RPSMove): number {
+  if (a === b) return 0
+  if (
+    (a === 'rock' && b === 'scissors') ||
+    (a === 'paper' && b === 'rock') ||
+    (a === 'scissors' && b === 'paper')
+  ) return 1
+  return -1
+}
+
+/** Resolve RPS game: find winner among all moves. Returns winnerId or null if tie. */
+function resolveRps(
+  moves: Record<string, RPSMove>,
+  memberVotes: Record<string, PlaceVote>,
+): { winnerId: string | null; winnerVote: PlaceVote | null } {
+  const ids = Object.keys(moves)
+  if (ids.length < 2) return { winnerId: null, winnerVote: null }
+
+  // For 2 players: direct comparison
+  if (ids.length === 2) {
+    const result = rpsResult(moves[ids[0]], moves[ids[1]])
+    if (result === 0) return { winnerId: null, winnerVote: null }
+    const winnerId = result === 1 ? ids[0] : ids[1]
+    return { winnerId, winnerVote: memberVotes[winnerId] ?? '👍 Yes' }
+  }
+
+  // For 3+ players: count unique moves. If all same or all different → tie.
+  const uniqueMoves = new Set(Object.values(moves))
+  if (uniqueMoves.size === 1 || uniqueMoves.size === 3) {
+    return { winnerId: null, winnerVote: null }
+  }
+  // Exactly 2 unique moves: the winning move beats the losing move
+  const moveArr = Array.from(uniqueMoves) as RPSMove[]
+  const winningMove = rpsResult(moveArr[0], moveArr[1]) === 1 ? moveArr[0] : moveArr[1]
+  // Winners are all players who picked the winning move
+  const winners = ids.filter((id) => moves[id] === winningMove)
+  // Pick the first winner (deterministic)
+  const winnerId = winners[0]
+  return { winnerId, winnerVote: memberVotes[winnerId] ?? '👍 Yes' }
+}
+
+/** Start or join an RPS game for a tied place. */
+export async function submitRpsMove(
+  placeId: string,
+  memberId: string,
+  move: RPSMove,
+  totalMembers: number,
+  memberVotes: Record<string, PlaceVote>,
+): Promise<RPSGameState> {
+  // Read current game state
+  const { data, error: readErr } = await supabase
+    .from(T.places)
+    .select('rps_game_state')
+    .eq('id', placeId)
+    .single()
+  if (readErr) throw new Error(`submitRpsMove read: ${readErr.message}`)
+
+  const current: RPSGameState = data?.rps_game_state ?? {
+    status: 'playing',
+    moves: {},
+    round: 1,
+  }
+
+  // Add this member's move
+  const updatedMoves = { ...current.moves, [memberId]: move }
+  const allIn = Object.keys(updatedMoves).length >= totalMembers
+
+  let newState: RPSGameState
+
+  if (allIn) {
+    // Resolve the game
+    const { winnerId, winnerVote } = resolveRps(updatedMoves, memberVotes)
+    if (winnerId && winnerVote) {
+      newState = {
+        status: 'settled',
+        moves: updatedMoves,
+        winner: winnerId,
+        winnerVote,
+        round: current.round,
+      }
+      // Update the place vote to the winner's vote
+      await supabase
+        .from(T.places)
+        .update({
+          rps_game_state: newState,
+          vote: winnerVote,
+        })
+        .eq('id', placeId)
+    } else {
+      // Tie in RPS — reset for another round
+      newState = {
+        status: 'playing',
+        moves: {},
+        round: current.round + 1,
+      }
+      await supabase
+        .from(T.places)
+        .update({ rps_game_state: newState })
+        .eq('id', placeId)
+    }
+  } else {
+    // Still waiting for others
+    newState = { ...current, moves: updatedMoves }
+    await supabase
+      .from(T.places)
+      .update({ rps_game_state: newState })
+      .eq('id', placeId)
+  }
+
+  return newState
+}
+
+/** Subscribe to RPS game state changes on a specific place. */
+export function subscribeToPlaceRps(
+  placeId: string,
+  onUpdate: (state: RPSGameState | null) => void,
+): () => void {
+  const channel = supabase
+    .channel(`place-rps:${placeId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'places',
+        filter: `id=eq.${placeId}`,
+      },
+      (payload: any) => {
+        onUpdate(payload.new.rps_game_state ?? null)
+      },
+    )
+    .subscribe()
+
+  return () => { supabase.removeChannel(channel) }
+}
+
+/** Reset RPS game state for a place (for revote). */
+export async function resetRpsGame(placeId: string): Promise<void> {
+  await supabase
+    .from(T.places)
+    .update({ rps_game_state: null, vote: 'Pending' })
+    .eq('id', placeId)
+}
+
 // ---------- NOTIFICATION HELPERS ----------
 
 /** Generic notification insert — all specific notifiers delegate to this. */

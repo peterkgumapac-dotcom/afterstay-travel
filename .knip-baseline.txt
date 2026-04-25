@@ -1,4 +1,4 @@
-Unused files (34)
+Unused files (35)
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
@@ -13,6 +13,7 @@ components/moments/recaps/MinimalTemplate.tsx: components/moments/recaps/Minimal
 components/moments/recaps/PolaroidTemplate.tsx: components/moments/recaps/PolaroidTemplate.tsx
 components/moments/recaps/RecapsLayout.tsx: components/moments/recaps/RecapsLayout.tsx
 components/moments/recaps/generateRecap.ts: components/moments/recaps/generateRecap.ts
+components/shared/PremiumGate.tsx: components/shared/PremiumGate.tsx
 components/shared/TripFloatingActionButton.tsx: components/shared/TripFloatingActionButton.tsx
 design-reference/components/icons.jsx: design-reference/components/icons.jsx
 design-reference/components/shell.jsx: design-reference/components/shell.jsx
@@ -52,12 +53,13 @@ lib/anthropic.ts: generateRecommendations
 lib/distance.ts: haversine
 lib/google-places.ts: findPlacePhoto, enrichRecommendations
 lib/utils.ts: tripStatusLabel
-Unused exported types (7)
+Unused exported types (8)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
-lib/anthropic.ts: ItineraryDayLegacy
+lib/anthropic.ts: ItineraryDayLegacy, GeneratedMemoryContent
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
+lib/tripMemoryBuilder.ts: TripMemoryData
 lib/types.ts: WeatherDay
 utils/fate/generateSpinPlan.ts: SpinStep, SpinPlan
 Duplicate exports (1)
