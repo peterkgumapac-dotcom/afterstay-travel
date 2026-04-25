@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View, TouchableOpacity, StyleSheet, Animated,
   Modal, Pressable, Text, Platform,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
+import { getActiveTrip, getGroupMembers } from '@/lib/supabase';
 
 interface FabAction {
   id: string;
@@ -26,16 +27,38 @@ export const FloatingActionButton: React.FC = () => {
   const [open, setOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [transport, setTransport] = useState<string | undefined>();
+  const [memberCount, setMemberCount] = useState(0);
 
-  const actions: FabAction[] = [
-    { id: 'moment', icon: Camera, label: 'Capture Moment', onPress: () => router.push('/add-moment') },
-    { id: 'expense', icon: Receipt, label: 'Quick Expense', onPress: () => router.push('/scan-receipt') },
-    { id: 'invite', icon: UserPlus, label: 'Invite Members', onPress: () => router.push('/invite' as never) },
-    { id: 'trip', icon: Plane, label: 'Plan Trip', onPress: () => router.push('/trip-planner') },
-    { id: 'pack', icon: Package, label: 'Packing List', onPress: () => router.push('/(tabs)/trip') },
-  ];
+  // Load trip context for conditional actions
+  useEffect(() => {
+    getActiveTrip().then((trip) => {
+      if (trip) {
+        setTransport(trip.transport);
+        getGroupMembers(trip.id).then((m) => setMemberCount(m.length)).catch(() => {});
+      }
+    }).catch(() => {});
+  }, []);
 
-  const menuAnims = useRef(actions.map(() => new Animated.Value(0))).current;
+  const isPlane = !transport || transport === 'plane';
+
+  const actions: FabAction[] = useMemo(() => {
+    const items: FabAction[] = [
+      { id: 'moment', icon: Camera, label: 'Capture Moment', onPress: () => router.push('/add-moment') },
+      { id: 'expense', icon: Receipt, label: 'Quick Expense', onPress: () => router.push('/scan-receipt') },
+    ];
+    // Show invite action — always available so users can grow their group
+    items.push({ id: 'invite', icon: UserPlus, label: memberCount >= 2 ? 'Invite Members' : 'Invite Companions', onPress: () => router.push('/invite' as never) });
+    // Show Plan Trip only for plane transport or unset
+    if (isPlane) {
+      items.push({ id: 'trip', icon: Plane, label: 'Plan Trip', onPress: () => router.push('/trip-planner') });
+    }
+    items.push({ id: 'pack', icon: Package, label: 'Packing List', onPress: () => router.push('/(tabs)/trip') });
+    return items;
+  }, [isPlane, memberCount, router]);
+
+  // Allocate max possible anims (5) so ref is stable across action count changes
+  const menuAnims = useRef(Array.from({ length: 5 }, () => new Animated.Value(0))).current;
 
   const bottomOffset = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 16;
   // Position FAB just above the tab bar (tab bar height ~56 + padding)
@@ -120,7 +143,7 @@ export const FloatingActionButton: React.FC = () => {
             activeOpacity={0.85}
           >
             <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-              <Plus color={colors.bg} size={26} strokeWidth={2.5} />
+              <Plus color={colors.bg} size={22} strokeWidth={2.5} />
             </Animated.View>
           </TouchableOpacity>
         </Pressable>
@@ -140,7 +163,7 @@ export const FloatingActionButton: React.FC = () => {
           accessibilityRole="button"
         >
           <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-            <Plus color={colors.bg} size={26} strokeWidth={2.5} />
+            <Plus color={colors.bg} size={22} strokeWidth={2.5} />
           </Animated.View>
         </TouchableOpacity>
       </View>
@@ -148,7 +171,7 @@ export const FloatingActionButton: React.FC = () => {
   );
 };
 
-const FAB_SIZE = 54;
+const FAB_SIZE = 48;
 
 const getStyles = (c: ThemeColors) => StyleSheet.create({
   fabWrap: {

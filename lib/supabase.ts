@@ -373,6 +373,7 @@ export async function createTrip(input: {
   bookingRef?: string;
   cost?: number;
   costCurrency?: string;
+  transport?: string;
 }): Promise<string> {
   // Get authenticated user ID for trip ownership
   const { data: authData } = await supabase.auth.getUser();
@@ -410,6 +411,7 @@ export async function createTrip(input: {
       ...(input.costCurrency ? { currency: input.costCurrency } : {}),
       ...(input.bookingRef ? { notes: `Booking ref: ${input.bookingRef}` } : {}),
       ...(input.roomType ? { room_type: input.roomType } : {}),
+      ...(input.transport ? { transport_mode: input.transport } : {}),
     })
     .select('id')
     .single()
@@ -1122,8 +1124,14 @@ export function subscribeToPlaceVotes(
   tripId: string,
   onUpdate: (placeId: string, voteByMember: Record<string, PlaceVote>, vote: PlaceVote) => void,
 ): () => void {
+  const channelName = `place-votes:${tripId}`
+
+  // Remove any existing channel with the same name to avoid duplicate subscription error
+  const existing = supabase.getChannels().find((ch) => ch.topic === `realtime:${channelName}`)
+  if (existing) supabase.removeChannel(existing)
+
   const channel = supabase
-    .channel(`place-votes:${tripId}`)
+    .channel(channelName)
     .on(
       'postgres_changes',
       {

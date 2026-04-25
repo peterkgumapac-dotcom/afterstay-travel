@@ -185,6 +185,11 @@ export default function HomeScreen() {
     [savedPlaces, members],
   );
 
+  // Transport gating: show flight features only for plane transport or when unset
+  const isPlaneTransport = !trip?.transport || trip.transport === 'plane';
+  const hasFlights = flights.length > 0;
+  const showFlightFeatures = isPlaneTransport || hasFlights;
+
   const handleGroupVoteTap = useCallback(() => {
     setShowVotingSheet(true);
   }, []);
@@ -577,10 +582,12 @@ export default function HomeScreen() {
                   {trip.destination} · {formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}
                 </Text>
                 <View style={styles.planningNudges}>
-                  <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/trip')}>
-                    <Plane size={16} color={colors.accent} />
-                    <Text style={styles.nudgeText}>Add your flights</Text>
-                  </Pressable>
+                  {showFlightFeatures && (
+                    <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/trip')}>
+                      <Plane size={16} color={colors.accent} />
+                      <Text style={styles.nudgeText}>Add your flights</Text>
+                    </Pressable>
+                  )}
                   <Pressable style={styles.nudgeRow} onPress={() => router.push('/invite')}>
                     <Users size={16} color={colors.accent} />
                     <Text style={styles.nudgeText}>Invite travel companions</Text>
@@ -637,8 +644,8 @@ export default function HomeScreen() {
           <WeatherForecastCard destination={trip.destination} />
         </CollapsibleSection>
 
-        {/* 6. Flight card */}
-        {(() => {
+        {/* 6. Flight card — only for plane transport or existing flights */}
+        {showFlightFeatures && (() => {
           const activeFlight = phase === 'active'
             ? flights.find((f) => f.direction === 'Return')
             : flights.find((f) => f.direction === 'Outbound');

@@ -202,8 +202,17 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
   const [step, setStep] = useState(0);
   const [dest, setDest] = useState('');
   const [vibes, setVibes] = useState<string[]>([]);
+  const [transport, setTransport] = useState('');
   const [when, setWhen] = useState('');
   const [travelers, setTravelers] = useState(2);
+
+  const TRANSPORT = [
+    { id: 'plane', label: 'Flying', icon: '✈️', sub: 'Taking a flight' },
+    { id: 'car', label: 'Driving', icon: '🚗', sub: 'Road trip or rental' },
+    { id: 'bus', label: 'Bus / Coach', icon: '🚌', sub: 'Bus or coach' },
+    { id: 'ferry', label: 'Ferry / Boat', icon: '⛴️', sub: 'By sea' },
+    { id: '', label: 'Not sure yet', icon: '🤷', sub: 'I\'ll figure it out later' },
+  ];
 
   const VIBES = [
     { id: 'beach', label: 'Beach & water', icon: '🌊' },
@@ -219,8 +228,8 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
   if (step === 0) {
     return (
       <ScrollView contentContainerStyle={shared.scrollContent}>
-        <BrandRow step={1} of={3} colors={colors} />
-        <Header onBack={onBack} kicker="Plan — 1 of 3" title="Where are you dreaming of?" sub="A city, country, or just a feeling." colors={colors} />
+        <BrandRow step={1} of={4} colors={colors} />
+        <Header onBack={onBack} kicker="Plan — 1 of 4" title="Where are you dreaming of?" sub="A city, country, or just a feeling." colors={colors} />
         <View style={shared.section}>
           <FieldLabel label="Destination" colors={colors} />
           <Input value={dest} onChange={setDest} placeholder="Lisbon, Kyoto, somewhere warm…" colors={colors} autoFocus />
@@ -247,8 +256,8 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
   if (step === 1) {
     return (
       <ScrollView contentContainerStyle={shared.scrollContent}>
-        <BrandRow step={2} of={3} colors={colors} />
-        <Header onBack={() => setStep(0)} kicker="Plan — 2 of 3" title="What's the shape of this trip?" sub="Pick whatever feels right. Multi-select is fine." colors={colors} />
+        <BrandRow step={2} of={4} colors={colors} />
+        <Header onBack={() => setStep(0)} kicker="Plan — 2 of 4" title="What's the shape of this trip?" sub="Pick whatever feels right. Multi-select is fine." colors={colors} />
         <View style={shared.section}>
           <View style={shared.vibeGrid}>
             {VIBES.map(v => {
@@ -275,10 +284,42 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
     );
   }
 
+  if (step === 2) {
+    return (
+      <ScrollView contentContainerStyle={shared.scrollContent}>
+        <BrandRow step={3} of={4} colors={colors} />
+        <Header onBack={() => setStep(1)} kicker="Plan — 3 of 4" title="How are you getting there?" sub="This helps us show the right features for your trip." colors={colors} />
+        <View style={shared.section}>
+          {TRANSPORT.map(t => {
+            const on = transport === t.id;
+            return (
+              <TouchableOpacity
+                key={t.id || 'unsure'}
+                onPress={() => setTransport(t.id)}
+                style={[shared.optionBtn, { backgroundColor: on ? colors.accentBg : colors.card, borderColor: on ? colors.accent : colors.border, flexDirection: 'row', gap: 12 }]}
+              >
+                <Text style={{ fontSize: 20 }}>{t.icon}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[shared.optionText, { color: on ? colors.accent : colors.text }]}>{t.label}</Text>
+                  <Text style={{ fontSize: 12, color: colors.text3, marginTop: 1 }}>{t.sub}</Text>
+                </View>
+                {on && <CheckCircle size={16} color={colors.accent} strokeWidth={2} />}
+              </TouchableOpacity>
+            );
+          })}
+          <PrimaryBtn onPress={() => setStep(3)} disabled={false} colors={colors}>
+            <Text style={[shared.primaryText, { color: colors.onBlack }]}>Continue</Text>
+            <ArrowRight size={14} color={colors.onBlack} strokeWidth={2} />
+          </PrimaryBtn>
+        </View>
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={shared.scrollContent}>
-      <BrandRow step={3} of={3} colors={colors} />
-      <Header onBack={() => setStep(1)} kicker="Plan — 3 of 3" title="When, and with whom?" sub="Rough dates work. You can refine everything later." colors={colors} />
+      <BrandRow step={4} of={4} colors={colors} />
+      <Header onBack={() => setStep(2)} kicker="Plan — 4 of 4" title="When, and with whom?" sub="Rough dates work. You can refine everything later." colors={colors} />
       <View style={shared.section}>
         <FieldLabel label="Approximate dates" colors={colors} />
         {WHEN.map(opt => {
@@ -313,7 +354,7 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
         </View>
 
         <View style={{ height: 14 }} />
-        <PrimaryBtn onPress={() => onDone({ kind: 'plan', dest, vibes, when, travelers })} disabled={!when} colors={colors}>
+        <PrimaryBtn onPress={() => onDone({ kind: 'plan', dest, vibes, transport, when, travelers })} disabled={!when} colors={colors}>
           <Text style={[shared.primaryText, { color: !when ? colors.text3 : colors.onBlack }]}>Draft my trip</Text>
           <ArrowRight size={14} color={!when ? colors.text3 : colors.onBlack} strokeWidth={2} />
         </PrimaryBtn>
@@ -669,6 +710,7 @@ export default function OnboardingScreen() {
           destination: payload.dest,
           startDate,
           endDate,
+          transport: payload.transport || undefined,
         });
       } else if (payload.kind === 'upload' && payload.scanned) {
         const s = payload.scanned;
@@ -690,6 +732,7 @@ export default function OnboardingScreen() {
           bookingRef: s.bookingRef,
           cost: s.cost,
           costCurrency: s.costCurrency,
+          transport: s.flights?.length > 0 ? 'plane' : undefined,
         });
         // Insert scanned flights
         if (s.flights?.length > 0) {

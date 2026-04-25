@@ -758,6 +758,11 @@ function DiscoverScreenInner() {
           const members = await getGroupMembers(trip.id).catch(() => []);
           setTripGroupSize(Math.max(1, members.length));
           setTripMembers(members);
+          // Default travel mode based on transport (car/bus → car, else walk)
+          if (trip.transport === 'car' || trip.transport === 'bus') {
+            const cached = await cacheGet<'walk' | 'car'>('discover:travelMode');
+            if (!cached) setTravelMode('car');
+          }
           if (trip.startDate && trip.endDate) {
             const ms = new Date(trip.endDate + 'T00:00:00+08:00').getTime() - new Date(trip.startDate + 'T00:00:00+08:00').getTime();
             setTripDays(Math.max(1, Math.ceil(ms / MS_PER_DAY) + 1));
@@ -1065,8 +1070,9 @@ function DiscoverScreenInner() {
       place: p,
       distanceKm: getDistanceKm(p.lat, p.lng),
     }));
+    const nearbyRadius = travelMode === 'car' ? 10 : 2;
     const filtered = filters.nearby
-      ? withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= 2)
+      ? withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= nearbyRadius)
       : withDist;
     return filtered.sort((a, b) => {
       // Open places first, then by distance
@@ -1171,20 +1177,20 @@ function DiscoverScreenInner() {
         {tab === 'planner' && hasTripDates && (
           <>
             {/* Scope toggle: Today vs Whole Trip */}
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
               <TouchableOpacity
                 onPress={() => setItineraryScope('today')}
                 activeOpacity={0.7}
                 style={{
-                  flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+                  flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
                   backgroundColor: itineraryScope === 'today' ? colors.accent : colors.card,
                   borderWidth: 1, borderColor: itineraryScope === 'today' ? colors.accent : colors.border,
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '700', color: itineraryScope === 'today' ? colors.bg : colors.text }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: itineraryScope === 'today' ? colors.bg : colors.text }}>
                   Plan Today
                 </Text>
-                <Text style={{ fontSize: 10, color: itineraryScope === 'today' ? colors.bg : colors.text3, marginTop: 2 }}>
+                <Text style={{ fontSize: 9, color: itineraryScope === 'today' ? colors.bg : colors.text3, marginTop: 1 }}>
                   Day {todayDayNumber} · {todayLabel}
                 </Text>
               </TouchableOpacity>
@@ -1192,15 +1198,15 @@ function DiscoverScreenInner() {
                 onPress={() => setItineraryScope('whole')}
                 activeOpacity={0.7}
                 style={{
-                  flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+                  flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
                   backgroundColor: itineraryScope === 'whole' ? colors.accent : colors.card,
                   borderWidth: 1, borderColor: itineraryScope === 'whole' ? colors.accent : colors.border,
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '700', color: itineraryScope === 'whole' ? colors.bg : colors.text }}>
+                <Text style={{ fontSize: 12, fontWeight: '700', color: itineraryScope === 'whole' ? colors.bg : colors.text }}>
                   Whole Trip
                 </Text>
-                <Text style={{ fontSize: 10, color: itineraryScope === 'whole' ? colors.bg : colors.text3, marginTop: 2 }}>
+                <Text style={{ fontSize: 9, color: itineraryScope === 'whole' ? colors.bg : colors.text3, marginTop: 1 }}>
                   {tripDays} days
                 </Text>
               </TouchableOpacity>
@@ -1208,10 +1214,10 @@ function DiscoverScreenInner() {
 
             {/* Questions: style + pace + interests */}
             {!itineraryLoading && (
-              <View style={{ gap: 10, marginBottom: 16 }}>
+              <View style={{ gap: 8, marginBottom: 12 }}>
                 {/* Q1: What's your vibe? */}
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase' }}>What's your vibe?</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase' }}>What's your vibe?</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
                   {ITINERARY_STYLES.map((s) => {
                     const active = style === s.id;
                     return (
@@ -1219,17 +1225,17 @@ function DiscoverScreenInner() {
                         key={s.id}
                         onPress={() => setStyle(s.id)}
                         activeOpacity={0.7}
-                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 6, paddingHorizontal: 12 }]}
+                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 5, paddingHorizontal: 10 }]}
                       >
-                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 12 }]}>{s.label}</Text>
+                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 11 }]}>{s.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
                 {/* Q2: How packed? */}
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 6 }}>How packed?</Text>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 }}>How packed?</Text>
+                <View style={{ flexDirection: 'row', gap: 5 }}>
                   {PACE_OPTIONS.map((p) => {
                     const active = pace === p.id;
                     return (
@@ -1237,35 +1243,33 @@ function DiscoverScreenInner() {
                         key={p.id}
                         onPress={() => setPace(p.id)}
                         activeOpacity={0.7}
-                        style={[styles.chip, active && styles.chipActive, { flex: 1, alignItems: 'center', paddingVertical: 8 }]}
+                        style={[styles.chip, active && styles.chipActive, { flex: 1, alignItems: 'center', paddingVertical: 6 }]}
                       >
-                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 12, fontWeight: '600' }]}>{p.label}</Text>
-                        <Text style={{ fontSize: 9, color: active ? colors.accent : colors.text3, marginTop: 1 }}>{p.desc}</Text>
+                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 11, fontWeight: '600' }]}>{p.label}</Text>
+                        <Text style={{ fontSize: 8, color: active ? colors.accent : colors.text3, marginTop: 1 }}>{p.desc}</Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
                 {/* Q3: Anything specific? */}
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 6 }}>Anything specific?</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <TextInput
-                    value={prompt}
-                    onChangeText={setPrompt}
-                    placeholder="e.g. snorkeling, sunset dinner, local food..."
-                    placeholderTextColor={colors.text3}
-                    style={{ flex: 1, fontSize: 13, color: colors.text, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}
-                  />
-                </View>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 }}>Anything specific?</Text>
+                <TextInput
+                  value={prompt}
+                  onChangeText={setPrompt}
+                  placeholder="e.g. snorkeling, sunset dinner, local food..."
+                  placeholderTextColor={colors.text3}
+                  style={{ fontSize: 12, color: colors.text, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
+                />
 
                 {/* Generate button */}
                 <TouchableOpacity
-                  style={{ backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 4 }}
+                  style={{ backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 2 }}
                   activeOpacity={0.7}
                   onPress={handleGenerateItinerary}
                 >
-                  <Sparkles size={16} color={colors.bg} strokeWidth={2} />
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: colors.bg }}>
+                  <Sparkles size={14} color={colors.bg} strokeWidth={2} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.bg }}>
                     {itineraryScope === 'today' ? 'Generate today\'s plan' : 'Generate full trip plan'}
                   </Text>
                 </TouchableOpacity>
