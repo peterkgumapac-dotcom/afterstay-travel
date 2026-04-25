@@ -25,7 +25,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { ArrowLeft, Map, MoreHorizontal, Share2 } from 'lucide-react-native';
+import { ArrowLeft, Archive, CheckCircle, Map, MoreHorizontal, Pencil, Share2, X } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -816,67 +816,61 @@ export default function TripScreen() {
     Share.share({ message: `Check out our trip to ${trip?.destination ?? 'somewhere amazing'}!` });
   };
 
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
   const handleMore = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowMoreMenu(true);
+  };
+
+  const handleEditTrip = () => {
+    setShowMoreMenu(false);
+    router.push('/trip-overview');
+  };
+
+  const handleFinishTrip = () => {
+    setShowMoreMenu(false);
     Alert.alert(
-      trip?.destination ?? 'Trip Options',
-      undefined,
+      'Finish this trip?',
+      'Your trip will be marked as completed and a Trip Memory will be generated.',
       [
+        { text: 'Not yet', style: 'cancel' },
         {
-          text: 'Edit Trip Details',
-          onPress: () => router.push('/onboarding'),
-        },
-        {
-          text: 'Finish Trip',
-          onPress: () => {
-            Alert.alert(
-              'Finish this trip?',
-              'Your trip will be saved and a Trip Memory will be generated.',
-              [
-                { text: 'Not yet', style: 'cancel' },
-                {
-                  text: 'Finish',
-                  onPress: async () => {
-                    if (!trip) return;
-                    try {
-                      await finishTrip(trip.id);
-                      router.push({ pathname: '/trip-memory', params: { tripId: trip.id } } as never);
-                    } catch (e: any) {
-                      Alert.alert('Error', e?.message ?? 'Could not finish trip');
-                    }
-                  },
-                },
-              ],
-            );
+          text: 'Finish & Generate Memory',
+          onPress: async () => {
+            if (!trip) return;
+            try {
+              await finishTrip(trip.id);
+              router.push({ pathname: '/trip-memory', params: { tripId: trip.id } } as never);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Could not finish trip');
+            }
           },
         },
+      ],
+    );
+  };
+
+  const handleArchiveTrip = () => {
+    setShowMoreMenu(false);
+    Alert.alert(
+      'Archive this trip?',
+      'It will move to your past trips without generating a memory. You can still view it later.',
+      [
+        { text: 'Keep Trip', style: 'cancel' },
         {
-          text: 'Cancel / Archive Trip',
+          text: 'Archive',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert(
-              'Archive this trip?',
-              'It will move to your past trips without generating a memory.',
-              [
-                { text: 'Keep Trip', style: 'cancel' },
-                {
-                  text: 'Archive',
-                  style: 'destructive',
-                  onPress: async () => {
-                    if (!trip) return;
-                    try {
-                      await archiveTrip(trip.id);
-                      router.replace('/(tabs)/home');
-                    } catch (e: any) {
-                      Alert.alert('Error', e?.message ?? 'Could not archive trip');
-                    }
-                  },
-                },
-              ],
-            );
+          onPress: async () => {
+            if (!trip) return;
+            try {
+              await archiveTrip(trip.id);
+              router.replace('/(tabs)/home');
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Could not archive trip');
+            }
           },
         },
-        { text: 'Cancel', style: 'cancel' },
       ],
     );
   };
@@ -1249,6 +1243,59 @@ export default function TripScreen() {
                 </Pressable>
               </>
             )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {/* Trip options menu sheet */}
+      <Modal visible={showMoreMenu} transparent animationType="fade" onRequestClose={() => setShowMoreMenu(false)}>
+        <Pressable style={styles.menuOverlay} onPress={() => setShowMoreMenu(false)}>
+          <Pressable style={styles.menuSheet} onPress={() => {}}>
+            <View style={styles.menuHandle}><View style={styles.menuHandleBar} /></View>
+            <Text style={styles.menuTitle}>{trip?.destination ?? 'Trip Options'}</Text>
+            {trip?.startDate && (
+              <Text style={styles.menuSubtitle}>{trip.startDate} – {trip.endDate}</Text>
+            )}
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity style={styles.menuRow} onPress={handleEditTrip} activeOpacity={0.7}>
+              <View style={[styles.menuIconWrap, { backgroundColor: colors.accentBg }]}>
+                <Pencil size={18} color={colors.accent} />
+              </View>
+              <View style={styles.menuRowText}>
+                <Text style={styles.menuRowTitle}>Edit Trip Details</Text>
+                <Text style={styles.menuRowSub}>Update accommodation, dates, and info</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuRow} onPress={handleFinishTrip} activeOpacity={0.7}>
+              <View style={[styles.menuIconWrap, { backgroundColor: 'rgba(45,106,46,0.15)' }]}>
+                <CheckCircle size={18} color="#2d6a2e" />
+              </View>
+              <View style={styles.menuRowText}>
+                <Text style={styles.menuRowTitle}>Finish Trip</Text>
+                <Text style={styles.menuRowSub}>Complete your trip and generate a memory</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.menuRow} onPress={handleArchiveTrip} activeOpacity={0.7}>
+              <View style={[styles.menuIconWrap, { backgroundColor: 'rgba(196,85,74,0.12)' }]}>
+                <Archive size={18} color={colors.danger} />
+              </View>
+              <View style={styles.menuRowText}>
+                <Text style={[styles.menuRowTitle, { color: colors.danger }]}>Archive Trip</Text>
+                <Text style={styles.menuRowSub}>Move to past trips without a memory</Text>
+              </View>
+            </TouchableOpacity>
+
+            <View style={{ height: 8 }} />
+            <TouchableOpacity
+              style={styles.menuCancelBtn}
+              onPress={() => setShowMoreMenu(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.menuCancelText}>Cancel</Text>
+            </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1831,5 +1878,85 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 15,
       fontWeight: '700',
       color: colors.bg,
+    },
+
+    // Trip options menu sheet
+    menuOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'flex-end',
+    },
+    menuSheet: {
+      backgroundColor: colors.canvas,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingHorizontal: 20,
+      paddingBottom: 36,
+    },
+    menuHandle: {
+      alignItems: 'center',
+      paddingTop: 10,
+      paddingBottom: 8,
+    },
+    menuHandleBar: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.text3,
+    },
+    menuTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 2,
+    },
+    menuSubtitle: {
+      fontSize: 12,
+      color: colors.text3,
+      marginBottom: 4,
+    },
+    menuDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginVertical: 12,
+    },
+    menuRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      paddingVertical: 12,
+    },
+    menuIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    menuRowText: {
+      flex: 1,
+    },
+    menuRowTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    menuRowSub: {
+      fontSize: 12,
+      color: colors.text3,
+      marginTop: 1,
+    },
+    menuCancelBtn: {
+      alignItems: 'center',
+      paddingVertical: 14,
+      borderRadius: 14,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    menuCancelText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text2,
     },
   });

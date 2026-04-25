@@ -1,10 +1,15 @@
-Unused files (35)
+Unused files (41)
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
 components/budget/PaymentQRCard.tsx: components/budget/PaymentQRCard.tsx
 components/budget/QRScannerModal.tsx: components/budget/QRScannerModal.tsx
 components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
+components/curation/CurationLightbox.tsx: components/curation/CurationLightbox.tsx
+components/curation/CurationProgress.tsx: components/curation/CurationProgress.tsx
+components/curation/FavoriteStack.tsx: components/curation/FavoriteStack.tsx
+components/curation/GlowOverlay.tsx: components/curation/GlowOverlay.tsx
+components/curation/PhotoLayer.tsx: components/curation/PhotoLayer.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
 components/home/QuickAccessGrid.tsx: components/home/QuickAccessGrid.tsx
 components/home/SmartNudges.tsx: components/home/SmartNudges.tsx
@@ -25,6 +30,7 @@ design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
 design-reference/screens/login.jsx: design-reference/screens/login.jsx
 design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
+hooks/useCurationGesture.ts: hooks/useCurationGesture.ts
 lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 lib/imageUrl.ts: lib/imageUrl.ts
