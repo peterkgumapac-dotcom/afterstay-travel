@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Star } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 
@@ -18,27 +19,35 @@ interface PastTrip {
 
 interface PastTripRowProps {
   trip: PastTrip;
+  hasMemory?: boolean;
+  onPress?: () => void;
 }
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 // ---------- COMPONENT ----------
 
-export default function PastTripRow({ trip }: PastTripRowProps) {
+export default function PastTripRow({ trip, hasMemory, onPress }: PastTripRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
   const fullStars = '\u2605'.repeat(trip.rating);
   const emptyStars = '\u2605'.repeat(5 - trip.rating);
 
+  const Wrapper = onPress ? TouchableOpacity : View;
+  const wrapperProps = onPress ? { onPress, activeOpacity: 0.7 } : {};
+
   return (
-    <View style={styles.row}>
+    <Wrapper style={styles.row} {...wrapperProps as any}>
       <View style={styles.flagContainer}>
         <Text style={styles.flag}>{trip.flag}</Text>
       </View>
 
       <View style={styles.info}>
-        <Text style={styles.dest}>{trip.dest}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={styles.dest}>{trip.dest}</Text>
+          {hasMemory && <Star size={12} color={colors.accent} fill={colors.accent} />}
+        </View>
         <Text style={styles.dates}>
           {trip.dates} {'\u00B7'} {trip.nights} nights
         </Text>
@@ -53,7 +62,7 @@ export default function PastTripRow({ trip }: PastTripRowProps) {
           <Text style={styles.ratingEmpty}>{emptyStars}</Text>
         </Text>
       </View>
-    </View>
+    </Wrapper>
   );
 }
 

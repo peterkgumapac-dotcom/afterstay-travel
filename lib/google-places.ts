@@ -71,6 +71,11 @@ export async function searchPlace(
   };
 }
 
+export async function findPlacePhoto(name: string, location?: string): Promise<string | null> {
+  const result = await searchPlace(name, location);
+  return result?.photo_url ?? null;
+}
+
 export interface NearbyPlace {
   place_id: string;
   name: string;

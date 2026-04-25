@@ -476,3 +476,120 @@ function extractJson(text: string): unknown {
   }
   return JSON.parse(candidate.slice(firstBracket, lastBracket + 1));
 }
+
+/** Extract a JSON object (not array) from AI response text. */
+function extractJsonObject(text: string): Record<string, unknown> {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenced ? fenced[1] : text;
+  const firstBrace = candidate.indexOf('{');
+  const lastBrace = candidate.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1) {
+    throw new Error('No JSON object found in AI response.');
+  }
+  return JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
+}
+
+// ── Trip Memory generation ──────────────────────────────────────────
+
+import type { TripMemoryStats, TripMemoryVibe } from './types';
+
+export interface GeneratedMemoryContent {
+  narrative: string;
+  dayHighlights: { day: string; summary: string }[];
+  statsCard: TripMemoryStats;
+  vibeAnalysis: TripMemoryVibe;
+}
+
+export async function generateTripMemory(args: {
+  destination: string;
+  startDate: string;
+  endDate: string;
+  nights: number;
+  accommodation: string;
+  memberNames: string[];
+  moments: { date: string; caption: string; location?: string; tags: string[] }[];
+  places: { name: string; category: string; vote: string; rating?: number; notes?: string }[];
+  expenses: { description: string; amount: number; category: string; date: string }[];
+  flights: { direction: string; from: string; to: string; airline: string }[];
+}): Promise<GeneratedMemoryContent> {
+  const key = CONFIG.ANTHROPIC_KEY;
+  if (!key) throw new Error('Anthropic API key missing. Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env.');
+
+  const systemPrompt = `You are a gifted travel memoir writer. Given structured trip data, you create warm, vivid, second-person narratives that capture the essence of a journey.
+
+Your output is a single JSON object with exactly these keys:
+{
+  "narrative": "2-3 paragraph prose summary of the entire trip, written in second person ('You arrived...', 'Your mornings were spent...'). Warm, specific, evocative — reference real places, foods, and moments from the data. Not generic.",
+  "dayHighlights": [{"day": "2026-04-20", "summary": "1-2 sentence highlight of this day"}],
+  "statsCard": {
+    "mostPhotographedSpot": "place name or null",
+    "favoriteFood": "food place or dish or null",
+    "busiestDay": "day label like 'Day 3 — Tuesday' or null",
+    "totalPhotos": number,
+    "totalPlacesVisited": number,
+    "totalExpenses": number,
+    "longestDayOut": "day label or null",
+    "topTag": "most common moment tag or null"
+  },
+  "vibeAnalysis": {
+    "dominantMood": "one word like 'Relaxed' or 'Adventurous'",
+    "topTags": ["top 3 moment tags"],
+    "vibeDescription": "One vivid sentence describing the trip's overall vibe"
+  }
+}
+
+Rules:
+- Return ONLY the JSON object, no prose before or after, no code fences.
+- Use the actual data provided — never invent places or events.
+- dayHighlights should only include days that have moment data.
+- Keep the narrative under 300 words.
+- The tone should feel like a personal journal entry, not a travel brochure.`;
+
+  const tripData = {
+    destination: args.destination,
+    dates: `${args.startDate} to ${args.endDate} (${args.nights} nights)`,
+    accommodation: args.accommodation,
+    travelers: args.memberNames.join(', '),
+    flights: args.flights,
+    moments: args.moments,
+    placesVisited: args.places,
+    topExpenses: args.expenses,
+  };
+
+  const userMsg = `Here is the complete trip data. Generate the trip memory JSON.\n\n${JSON.stringify(tripData, null, 2)}`;
+
+  const res = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': ANTHROPIC_VERSION,
+      'content-type': 'application/json',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMsg }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    if (body.includes('credit balance is too low')) {
+      throw new Error('Anthropic API credits exhausted. Please add credits at console.anthropic.com → Plans & Billing.');
+    }
+    throw new Error(`Anthropic ${res.status}: ${body}`);
+  }
+
+  const data = await res.json();
+  const text: string = data?.content?.[0]?.text ?? '';
+  const json = extractJsonObject(text) as Record<string, unknown>;
+
+  return {
+    narrative: (json.narrative as string) ?? '',
+    dayHighlights: (json.dayHighlights as GeneratedMemoryContent['dayHighlights']) ?? [],
+    statsCard: (json.statsCard as TripMemoryStats) ?? { totalPhotos: 0, totalPlacesVisited: 0, totalExpenses: 0 },
+    vibeAnalysis: (json.vibeAnalysis as TripMemoryVibe) ?? { dominantMood: '', topTags: [], vibeDescription: '' },
+  };
+}

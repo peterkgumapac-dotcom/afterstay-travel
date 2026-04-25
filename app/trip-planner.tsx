@@ -1,518 +1,317 @@
-import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import { Calendar, Sparkles } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
+  ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { ArrowLeft, ExternalLink, Search, Sparkles, Star, X } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import AfterStayLoader from '@/components/AfterStayLoader';
-import AIRecommendationCard from '@/components/AIRecommendationCard';
-import Select from '@/components/Select';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
-import { generateItinerary, generateRecommendations } from '@/lib/anthropic';
-import { enrichRecommendations } from '@/lib/google-places';
-import type { ItineraryDay, ItineraryActivity, PlannerPace } from '@/lib/anthropic';
-import { addPlace, getActiveTrip } from '@/lib/supabase';
-import type { AIRecommendation, PlaceCategory } from '@/lib/types';
+import { getCuratedList, getActiveTrip, type CuratedItem } from '@/lib/supabase';
 
-const FIRST_TIME = ['First visit', 'Been before', 'Local-ish'] as const;
-type FirstTime = (typeof FIRST_TIME)[number];
-
-const INTERESTS: { key: string; label: string; emoji: string }[] = [
-  { key: 'Food & Drink', label: 'Food & Drink', emoji: '\uD83C\uDF7D' },
-  { key: 'Coffee', label: 'Coffee', emoji: '\u2615' },
-  { key: 'Beach & Water', label: 'Beach & Water', emoji: '\uD83C\uDFD6' },
-  { key: 'Nightlife', label: 'Nightlife', emoji: '\uD83C\uDF89' },
-  { key: 'Family-friendly', label: 'Family-friendly', emoji: '\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67' },
-  { key: 'Nature & Outdoors', label: 'Nature & Outdoors', emoji: '\uD83C\uDF3F' },
-  { key: 'Culture & History', label: 'Culture & History', emoji: '\uD83C\uDFDB' },
-  { key: 'Shopping', label: 'Shopping', emoji: '\uD83D\uDECD' },
-  { key: 'Wellness', label: 'Wellness', emoji: '\uD83D\uDC86' },
+const QUICK_SEARCHES = [
+  'cafes',
+  'restaurants',
+  'beaches',
+  'nightlife',
+  'activities',
+  'coffee shops',
+  'street food',
+  'sunset spots',
+  'snorkeling',
+  'massage & spa',
 ];
-
-const ITINERARY_PACES: { key: PlannerPace; label: string; desc: string; emoji: string }[] = [
-  { key: 'packed', label: 'Packed', desc: 'Morning to night, every day', emoji: '\uD83D\uDD25' },
-  { key: 'relaxed', label: 'Relaxed', desc: '2-3 activities/day', emoji: '\uD83C\uDF3A' },
-  { key: 'moderate', label: 'Moderate', desc: '3-4 activities/day', emoji: '\uD83C\uDFB2' },
-];
-
-const CATEGORY_MAP: Record<string, PlaceCategory> = {
-  'Eat': 'Eat',
-  'Coffee': 'Coffee',
-  'Do': 'Do',
-  'Nature': 'Nature',
-  'Essentials': 'Essentials',
-  'Nightlife': 'Nightlife',
-  'Wellness': 'Wellness',
-  'Culture': 'Culture',
-  'Transport': 'Transport',
-};
-
-type PlannerTab = 'recommendations' | 'itinerary';
-type Step = 'questions' | 'loading' | 'results';
 
 export default function TripPlannerModal() {
   const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const s = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
-  const [tab, setTab] = useState<PlannerTab>('recommendations');
-  const [step, setStep] = useState<Step>('questions');
-  const [firstTime, setFirstTime] = useState<FirstTime>('First visit');
-  const [interests, setInterests] = useState<string[]>([]);
-  const [recs, setRecs] = useState<(AIRecommendation & { photoUri?: string | null; googleMapsUri?: string | null; googlePlaceId?: string | null; totalRatings?: number; lat?: number; lng?: number })[]>([]);
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const [itineraryPace, setItineraryPace] = useState<PlannerPace>('relaxed');
-  const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
+
+  const [query, setQuery] = useState('');
+  const [destination, setDestination] = useState('');
+  const [hotelName, setHotelName] = useState('');
+  const [results, setResults] = useState<CuratedItem[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const [tripDest, setTripDest] = useState('');
+  const [searched, setSearched] = useState(false);
 
   useEffect(() => {
     getActiveTrip().then((t) => {
-      if (t?.destination) setTripDest(t.destination);
+      if (t?.destination) setDestination(t.destination);
+      if (t?.accommodation) setHotelName(t.accommodation);
     }).catch(() => {});
   }, []);
 
-  const toggleInterest = (key: string) => {
-    setInterests(list =>
-      list.includes(key) ? list.filter(i => i !== key) : [...list, key]
-    );
-  };
-
-  const generate = async () => {
-    if (interests.length === 0) {
-      Alert.alert('Pick at least one interest');
-      return;
-    }
-    setStep('loading');
+  const search = useCallback(async (q: string) => {
+    if (!q.trim() || !destination) return;
+    setLoading(true);
     setError(undefined);
+    setSearched(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      if (tab === 'recommendations') {
-        const results = await generateRecommendations({ firstTime, interests });
-        const enriched = await enrichRecommendations(results);
-        setRecs(enriched);
-      } else {
-        const days = await generateItinerary({ scope: 'whole', pace: itineraryPace, interests });
-        setItinerary(days);
-      }
-      setStep('results');
-    } catch (e: any) {
-      setError(e?.message ?? 'Unknown error');
-      setStep('questions');
-    }
-  };
-
-  const save = async (rec: AIRecommendation & { photoUri?: string | null; googleMapsUri?: string | null; googlePlaceId?: string | null; totalRatings?: number; lat?: number; lng?: number }) => {
-    const id = `${rec.name}::${rec.category}`;
-    if (savedIds.has(id)) return;
-    const cat = CATEGORY_MAP[rec.category] ?? 'Do';
-    try {
-      await addPlace({
-        name: rec.name,
-        category: cat,
-        distance: rec.distance,
-        notes: rec.reason,
-        priceEstimate: rec.price_estimate,
-        rating: rec.rating,
-        source: 'Suggested',
-        vote: 'Pending',
-        photoUrl: rec.photoUri ?? undefined,
-        googlePlaceId: rec.googlePlaceId ?? undefined,
-        googleMapsUri: rec.googleMapsUri ?? undefined,
-        totalRatings: rec.totalRatings ?? undefined,
-        latitude: rec.lat ?? undefined,
-        longitude: rec.lng ?? undefined,
+      const result = await getCuratedList({
+        destination,
+        category: q.trim(),
+        hotelName: hotelName || undefined,
       });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setSavedIds(s => new Set(s).add(id));
+      setResults(result.items);
     } catch (e: any) {
-      Alert.alert('Save failed', e?.message ?? 'Unknown error');
+      setError(e?.message ?? 'Failed to search');
+      setResults([]);
+    } finally {
+      setLoading(false);
     }
+  }, [destination, hotelName]);
+
+  const handleQuickSearch = (term: string) => {
+    setQuery(term);
+    search(term);
   };
 
-  // ── Loading ────────────────────────────────────────────
-  if (step === 'loading') {
-    return (
-      <AfterStayLoader />
-    );
-  }
+  const handleSubmit = () => {
+    if (query.trim()) search(query.trim());
+  };
 
-  // ── Results: Recommendations ───────────────────────────
-  if (step === 'results' && tab === 'recommendations') {
-    const grouped: Record<string, typeof recs> = {};
-    for (const r of recs) {
-      grouped[r.category] = grouped[r.category] ?? [];
-      grouped[r.category].push(r);
-    }
-    return (
-      <ScrollView style={styles.safe} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Your picks</Text>
-        <Text style={styles.sub}>Tap save to add to your trip board.</Text>
-
-        {Object.entries(grouped).map(([cat, items]) => (
-          <View key={cat} style={{ gap: spacing.sm }}>
-            <Text style={styles.groupTitle}>{cat}</Text>
-            {items.map((r, i) => (
-              <AIRecommendationCard
-                key={`${cat}-${i}`}
-                rec={r}
-                saved={savedIds.has(`${r.name}::${r.category}`)}
-                onSave={() => save(r)}
-                photoUri={r.photoUri}
-                googleMapsUri={r.googleMapsUri}
-              />
-            ))}
-          </View>
-        ))}
-
-        <Pressable onPress={() => setStep('questions')} style={styles.againBtn}>
-          <Text style={styles.againText}>Start over</Text>
-        </Pressable>
-        <Pressable onPress={() => router.back()} style={styles.doneBtn}>
-          <Text style={styles.doneText}>Done</Text>
-        </Pressable>
-      </ScrollView>
-    );
-  }
-
-  // ── Results: Itinerary ─────────────────────────────────
-  if (step === 'results' && tab === 'itinerary') {
-    return (
-      <ScrollView style={styles.safe} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Your Itinerary</Text>
-        <Text style={styles.sub}>{itineraryPace} pace — {itinerary.length} days</Text>
-
-        {itinerary.map((day) => (
-          <View key={day.day} style={styles.dayCard}>
-            <View style={styles.dayHeader}>
-              <Calendar size={14} color={colors.green2} />
-              <Text style={styles.dayTitle}>Day {day.day}</Text>
-              <Text style={styles.dayDate}>{day.date}</Text>
-            </View>
-            <Text style={styles.dayTheme}>{day.theme}</Text>
-
-            {/* Structured activity cards */}
-            {(day.activities ?? []).map((act: ItineraryActivity, i: number) => (
-              <View key={`${day.day}-${i}`} style={styles.daySection}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.daySectionLabel}>{act.timeSlot}</Text>
-                  <Text style={{ fontSize: 10, color: colors.text3 }}>{act.duration} · {act.cost}</Text>
-                </View>
-                <Text style={styles.daySectionText}>{act.name}</Text>
-                <Text style={{ fontSize: 12, color: colors.text2, marginTop: 2 }}>{act.description}</Text>
-                {act.tip ? (
-                  <View style={styles.tipRow}>
-                    <Text style={styles.tipText}>{act.tip}</Text>
-                  </View>
-                ) : null}
-              </View>
-            ))}
-
-            {/* Legacy fallback */}
-            {!(day.activities?.length) && (day as any).morning && (
-              <>
-                <View style={styles.daySection}>
-                  <Text style={styles.daySectionLabel}>Morning</Text>
-                  <Text style={styles.daySectionText}>{(day as any).morning}</Text>
-                </View>
-                <View style={styles.daySection}>
-                  <Text style={styles.daySectionLabel}>Afternoon</Text>
-                  <Text style={styles.daySectionText}>{(day as any).afternoon}</Text>
-                </View>
-                <View style={styles.daySection}>
-                  <Text style={styles.daySectionLabel}>Evening</Text>
-                  <Text style={styles.daySectionText}>{(day as any).evening}</Text>
-                </View>
-              </>
-            )}
-          </View>
-        ))}
-
-        <Pressable onPress={() => setStep('questions')} style={styles.againBtn}>
-          <Text style={styles.againText}>Start over</Text>
-        </Pressable>
-        <Pressable onPress={() => router.back()} style={styles.doneBtn}>
-          <Text style={styles.doneText}>Done</Text>
-        </Pressable>
-      </ScrollView>
-    );
-  }
-
-  // ── Questions ──────────────────────────────────────────
   return (
-    <ScrollView style={styles.safe} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Build your picks</Text>
-      <Text style={styles.sub}>Tell us a bit about your trip.</Text>
-
-      {/* Tab toggle */}
-      <View style={styles.tabRow}>
-        <Pressable
-          onPress={() => setTab('recommendations')}
-          style={[styles.tabBtn, tab === 'recommendations' && styles.tabBtnActive]}
-        >
-          <Text style={[styles.tabText, tab === 'recommendations' && styles.tabTextActive]}>
-            Recommendations
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setTab('itinerary')}
-          style={[styles.tabBtn, tab === 'itinerary' && styles.tabBtnActive]}
-        >
-          <Text style={[styles.tabText, tab === 'itinerary' && styles.tabTextActive]}>
-            Itinerary
-          </Text>
-        </Pressable>
+    <SafeAreaView style={s.safe} edges={['top']}>
+      {/* Header */}
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
+          <ArrowLeft size={22} color={colors.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title}>Explore</Text>
+          {destination ? <Text style={s.subtitle}>{destination}</Text> : null}
+        </View>
       </View>
 
-      <View style={{ gap: spacing.md }}>
-        <Select<FirstTime>
-          label={`First time in ${tripDest || 'this destination'}?`}
-          options={FIRST_TIME}
-          value={firstTime}
-          onChange={setFirstTime}
-        />
-
-        <View>
-          <Text style={styles.label}>What are you into?</Text>
-          <View style={styles.interestGrid}>
-            {INTERESTS.map(i => {
-              const active = interests.includes(i.key);
-              return (
-                <Pressable
-                  key={i.key}
-                  onPress={() => toggleInterest(i.key)}
-                  style={({ pressed }) => [
-                    styles.interestTile,
-                    active ? styles.interestTileActive : null,
-                    pressed ? { opacity: 0.7 } : null,
-                  ]}
-                >
-                  <Text style={styles.emoji}>{i.emoji}</Text>
-                  <Text style={[styles.interestText, active ? { color: colors.green2 } : null]}>
-                    {i.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+      {/* Search bar */}
+      <View style={s.searchWrap}>
+        <View style={s.searchBar}>
+          <Search size={16} color={colors.text3} />
+          <TextInput
+            style={s.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            placeholder={`Search "top 5 cafes", "best beaches"...`}
+            placeholderTextColor={colors.text3}
+            returnKeyType="search"
+            onSubmitEditing={handleSubmit}
+            autoFocus
+          />
+          {query.length > 0 && (
+            <TouchableOpacity onPress={() => { setQuery(''); setSearched(false); setResults([]); }} hitSlop={8}>
+              <X size={16} color={colors.text3} />
+            </TouchableOpacity>
+          )}
         </View>
+        <TouchableOpacity style={s.searchBtn} onPress={handleSubmit} activeOpacity={0.7}>
+          <Sparkles size={16} color={colors.bg} />
+        </TouchableOpacity>
+      </View>
 
-        {/* Pace selector */}
-        {tab === 'itinerary' && (
-          <View>
-            <Text style={styles.label}>Pace</Text>
-            <View style={{ gap: spacing.sm }}>
-              {ITINERARY_PACES.map((m) => {
-                const active = itineraryPace === m.key;
-                return (
-                  <Pressable
-                    key={m.key}
-                    onPress={() => setItineraryPace(m.key)}
-                    style={[styles.modeCard, active && styles.modeCardActive]}
-                  >
-                    <Text style={styles.modeEmoji}>{m.emoji}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.modeLabel, active && { color: colors.green2 }]}>
-                        {m.label}
-                      </Text>
-                      <Text style={styles.modeDesc}>{m.desc}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Quick search chips */}
+        {!searched && (
+          <>
+            <Text style={s.sectionLabel}>POPULAR SEARCHES</Text>
+            <View style={s.chipGrid}>
+              {QUICK_SEARCHES.map((term) => (
+                <TouchableOpacity
+                  key={term}
+                  style={s.chip}
+                  onPress={() => handleQuickSearch(term)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.chipText}>{term}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
+
+            <View style={s.helpCard}>
+              <Sparkles size={18} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.helpTitle}>AI-powered search</Text>
+                <Text style={s.helpText}>
+                  Results sourced from Reddit, TripAdvisor, Google, and travel blogs. Try "best sunset dinner spots" or "hidden gem beaches".
+                </Text>
+              </View>
+            </View>
+          </>
+        )}
+
+        {/* Loading */}
+        {loading && (
+          <View style={s.loadingWrap}>
+            <ActivityIndicator color={colors.accent} size="large" />
+            <Text style={s.loadingText}>Searching the web for real recommendations...</Text>
+            <Text style={s.loadingSub}>This may take 10-15 seconds</Text>
           </View>
         )}
-      </View>
 
-      {error ? <Text style={styles.err}>{error}</Text> : null}
+        {/* Error */}
+        {error && !loading && (
+          <View style={s.errorWrap}>
+            <Text style={s.errorText}>{error}</Text>
+            <TouchableOpacity onPress={handleSubmit} style={s.retryBtn}>
+              <Text style={s.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-      <Pressable
-        onPress={generate}
-        style={({ pressed }) => [styles.generateBtn, pressed ? { opacity: 0.8 } : null]}
-      >
-        <Sparkles size={16} color={colors.white} />
-        <Text style={styles.generateText}>
-          {tab === 'itinerary' ? 'Generate Itinerary' : 'Generate Recommendations'}
-        </Text>
-      </Pressable>
+        {/* Results */}
+        {!loading && searched && results.length > 0 && (
+          <>
+            <Text style={s.sectionLabel}>
+              TOP {results.length} · {query.toUpperCase()}
+            </Text>
+            {results.map((item, i) => (
+              <TouchableOpacity
+                key={`${item.name}-${i}`}
+                style={s.resultCard}
+                activeOpacity={item.source_url ? 0.7 : 1}
+                onPress={() => item.source_url && Linking.openURL(item.source_url).catch(() => {})}
+              >
+                <Text style={s.rank}>{i + 1}</Text>
+                <View style={{ flex: 1 }}>
+                  <View style={s.resultTop}>
+                    <Text style={s.resultName}>{item.name}</Text>
+                    {item.rating && (
+                      <View style={s.ratingBadge}>
+                        <Star size={10} color={colors.accent} fill={colors.accent} />
+                        <Text style={s.ratingText}>{item.rating}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={s.resultReason} numberOfLines={3}>{item.reason}</Text>
+                  <View style={s.resultMeta}>
+                    {item.price && <Text style={s.priceText}>{item.price}</Text>}
+                    {item.source_url && (
+                      <View style={s.sourceBadge}>
+                        <ExternalLink size={10} color={colors.text3} />
+                        <Text style={s.sourceText}>
+                          {item.source_url.includes('reddit') ? 'Reddit'
+                            : item.source_url.includes('tripadvisor') ? 'TripAdvisor'
+                            : item.source_url.includes('google') ? 'Google'
+                            : 'Web'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
 
-      <Text style={styles.note}>
-Powered by AfterStay — your personal travel companion.
-      </Text>
-    </ScrollView>
+        {/* No results */}
+        {!loading && searched && results.length === 0 && !error && (
+          <View style={s.emptyWrap}>
+            <Text style={s.emptyText}>No results found. Try a different search.</Text>
+          </View>
+        )}
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const getStyles = (colors: ThemeColors) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
-  center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  title: { color: colors.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
-  sub: { color: colors.text2, fontSize: 13, marginTop: -spacing.sm },
-  label: {
-    color: colors.text3,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: spacing.sm,
+const getStyles = (c: ThemeColors) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4,
+  },
+  title: { fontSize: 22, fontWeight: '600', letterSpacing: -0.5, color: c.text },
+  subtitle: { fontSize: 10, color: c.text3, letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: '600', marginTop: 1 },
+
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 12,
+  },
+  searchBar: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: c.card, borderWidth: 1, borderColor: c.border,
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
+  },
+  searchInput: { flex: 1, fontSize: 14, color: c.text },
+  searchBtn: {
+    width: 42, height: 42, borderRadius: 14,
+    backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center',
   },
 
-  // Tab toggle
-  tabRow: {
-    flexDirection: 'row',
-    backgroundColor: colors.bg3,
-    borderRadius: radius.md,
-    padding: 3,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: radius.sm,
-  },
-  tabBtnActive: {
-    backgroundColor: colors.card,
-  },
-  tabText: {
-    color: colors.text3,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  tabTextActive: {
-    color: colors.text,
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
+
+  sectionLabel: {
+    fontSize: 10, fontWeight: '700', letterSpacing: 1.5,
+    color: c.text3, marginBottom: 10, marginTop: 8,
   },
 
-  // Interests
-  interestGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  interestTile: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    gap: 4,
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  chip: {
+    paddingVertical: 8, paddingHorizontal: 16,
+    backgroundColor: c.card, borderWidth: 1, borderColor: c.border,
+    borderRadius: 99,
   },
-  interestTileActive: {
-    backgroundColor: colors.green + '22',
-    borderColor: colors.green,
-  },
-  emoji: { fontSize: 22 },
-  interestText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+  chipText: { fontSize: 13, fontWeight: '600', color: c.text },
 
-  // Itinerary mode cards
-  modeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
+  helpCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    padding: 16, backgroundColor: c.accentBg, borderWidth: 1,
+    borderColor: c.accentBorder, borderRadius: 16,
   },
-  modeCardActive: {
-    backgroundColor: colors.green + '18',
-    borderColor: colors.green,
-  },
-  modeEmoji: { fontSize: 24 },
-  modeLabel: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  modeDesc: { color: colors.text2, fontSize: 12, marginTop: 2 },
+  helpTitle: { fontSize: 14, fontWeight: '600', color: c.text },
+  helpText: { fontSize: 12, color: c.text2, marginTop: 4, lineHeight: 18 },
 
-  // Generate
-  generateBtn: {
-    backgroundColor: colors.purple,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: 14,
-    borderRadius: radius.md,
-  },
-  generateText: { color: colors.white, fontWeight: '700', fontSize: 14 },
-  loadingTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: spacing.md },
-  loadingSub: { color: colors.text2, fontSize: 13 },
+  loadingWrap: { alignItems: 'center', gap: 12, paddingVertical: 60 },
+  loadingText: { fontSize: 14, fontWeight: '600', color: c.text },
+  loadingSub: { fontSize: 12, color: c.text3 },
 
-  // Results
-  groupTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginTop: spacing.sm,
+  errorWrap: { alignItems: 'center', gap: 8, paddingVertical: 40 },
+  errorText: { fontSize: 13, color: c.danger, textAlign: 'center' },
+  retryBtn: {
+    paddingVertical: 8, paddingHorizontal: 20,
+    backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 12,
   },
-  err: { color: colors.red, fontSize: 13 },
-  note: { color: colors.text3, fontSize: 11, textAlign: 'center' },
-  againBtn: { paddingVertical: spacing.md, alignItems: 'center' },
-  againText: { color: colors.text2, fontSize: 14 },
-  doneBtn: { backgroundColor: colors.card, paddingVertical: 14, borderRadius: radius.md, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
-  doneText: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  retryText: { fontSize: 13, fontWeight: '600', color: c.accent },
 
-  // Itinerary day cards
-  dayCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.sm,
+  resultCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    padding: 16, backgroundColor: c.card, borderWidth: 1,
+    borderColor: c.border, borderRadius: 16, marginBottom: 10,
   },
-  dayHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  rank: {
+    fontSize: 22, fontWeight: '700', color: c.accent,
+    width: 28, textAlign: 'center', fontVariant: ['tabular-nums'],
   },
-  dayTitle: {
-    color: colors.green2,
-    fontSize: 14,
-    fontWeight: '800',
+  resultTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  resultName: { fontSize: 15, fontWeight: '600', color: c.text, flex: 1 },
+  ratingBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 6, paddingVertical: 3,
+    backgroundColor: c.accentBg, borderRadius: 8,
   },
-  dayDate: {
-    color: colors.text2,
-    fontSize: 12,
+  ratingText: { fontSize: 11, fontWeight: '700', color: c.accent },
+  resultReason: { fontSize: 12.5, color: c.text2, marginTop: 4, lineHeight: 18 },
+  resultMeta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 8,
   },
-  dayTheme: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: spacing.xs,
-  },
-  daySection: {
-    gap: 2,
-  },
-  daySectionLabel: {
-    color: colors.purple,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  daySectionText: {
-    color: colors.text,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  tipRow: {
-    marginTop: spacing.xs,
-    backgroundColor: colors.green + '14',
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-  },
-  tipText: {
-    color: colors.green2,
-    fontSize: 12,
-    lineHeight: 16,
-  },
+  priceText: { fontSize: 11, color: c.text3, fontWeight: '600' },
+  sourceBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  sourceText: { fontSize: 10, color: c.text3 },
+
+  emptyWrap: { alignItems: 'center', paddingVertical: 40 },
+  emptyText: { fontSize: 13, color: c.text3 },
 });

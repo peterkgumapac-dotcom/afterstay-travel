@@ -37,7 +37,7 @@ const TAB_LABELS: Record<string, string> = {
   moments: 'Moments',
   discover: 'Discover',
   budget: 'Budget',
-  trip: 'Our Trip',
+  trip: 'My Trips',
 };
 
 function TabBarOverlay({ state, descriptors, navigation, insets }: BottomTabBarProps) {
@@ -179,7 +179,7 @@ export default function TabLayout() {
         <Tabs.Screen name="moments" options={{ title: 'Moments' }} />
         <Tabs.Screen name="discover" options={{ title: 'Discover' }} />
         <Tabs.Screen name="budget" options={{ title: 'Budget' }} />
-        <Tabs.Screen name="trip" options={{ title: 'Our Trip' }} />
+        <Tabs.Screen name="trip" options={{ title: 'My Trips' }} />
 
         {/* Hidden tabs — accessible via gear icon */}
         <Tabs.Screen name="guide" options={{ href: null }} />

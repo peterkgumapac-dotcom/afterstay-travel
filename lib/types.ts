@@ -212,3 +212,79 @@ export interface Highlight {
   supportingData?: Record<string, unknown>;
   rank: number;
 }
+
+// ---------- Premium + Trip Memories ----------
+
+export type UserTier = 'free' | 'premium';
+
+export interface TripMemoryStats {
+  mostPhotographedSpot?: string;
+  favoriteFood?: string;
+  busiestDay?: string;
+  totalPhotos: number;
+  totalPlacesVisited: number;
+  totalExpenses: number;
+  longestDayOut?: string;
+  topTag?: string;
+}
+
+export interface TripMemoryVibe {
+  dominantMood: string;
+  topTags: string[];
+  vibeDescription: string;
+}
+
+export interface TripMemorySnapshot {
+  destination: string;
+  startDate: string;
+  endDate: string;
+  nights: number;
+  accommodation: string;
+  memberNames: string[];
+  memberCount: number;
+  heroImageUrl?: string;
+}
+
+export interface TripMemoryExpenses {
+  total: number;
+  currency: string;
+  topCategories: { category: string; amount: number }[];
+  biggestSplurge?: { description: string; amount: number };
+  dailyAverage: number;
+}
+
+export interface TripMemoryPlace {
+  name: string;
+  category: string;
+  rating?: number;
+  vote: string;
+}
+
+export interface TripMemoryFlight {
+  direction: string;
+  airline: string;
+  flightNumber: string;
+  from: string;
+  to: string;
+}
+
+export type TripMemoryStatus = 'draft' | 'saved';
+
+export interface TripMemory {
+  id: string;
+  tripId: string;
+  userId: string;
+  narrative: string;
+  dayHighlights: { day: string; summary: string }[];
+  statsCard: TripMemoryStats;
+  vibeAnalysis: TripMemoryVibe;
+  tripSnapshot: TripMemorySnapshot;
+  expenseSummary: TripMemoryExpenses;
+  placesSummary: TripMemoryPlace[];
+  flightSummary: TripMemoryFlight[];
+  heroMomentId?: string;
+  featuredMomentIds: string[];
+  status: TripMemoryStatus;
+  createdAt: string;
+  savedAt?: string;
+}

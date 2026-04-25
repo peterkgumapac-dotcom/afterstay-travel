@@ -121,6 +121,10 @@ function RootLayoutInner() {
           name="place-details"
           options={{ presentation: 'modal', title: 'Place Details', headerShown: true }}
         />
+        <Stack.Screen
+          name="trip-memory"
+          options={{ presentation: 'modal', title: 'Trip Memory', headerShown: false }}
+        />
       </Stack>
     </NavThemeProvider>
   );

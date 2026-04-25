@@ -17,6 +17,7 @@ interface SummaryTabProps {
   pastTrips: PastTripDisplay[];
   colors: ThemeColors;
   onAddTrip: () => void;
+  onTripPress?: (tripId: string) => void;
 }
 
 export function SummaryTab({
@@ -29,6 +30,7 @@ export function SummaryTab({
   pastTrips,
   colors,
   onAddTrip,
+  onTripPress,
 }: SummaryTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
@@ -63,7 +65,12 @@ export function SummaryTab({
       />
       <View style={styles.listContainer}>
         {pastTrips.map((t, i) => (
-          <PastTripRow key={i} trip={t} />
+          <PastTripRow
+            key={i}
+            trip={t}
+            hasMemory={t.hasMemory}
+            onPress={t.tripId && onTripPress ? () => onTripPress(t.tripId!) : undefined}
+          />
         ))}
 
         {/* Add past trip row */}

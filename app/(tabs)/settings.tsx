@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Camera, User, Plane, Bell, Info, ChevronRight, ArrowLeft, Sun, Moon, Palette, LogOut } from 'lucide-react-native';
+import { Camera, User, Plane, Bell, Info, ChevronRight, ArrowLeft, Sun, Moon, Palette, LogOut, Crown } from 'lucide-react-native';
 import { spacing, radius } from '@/constants/theme';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
@@ -240,6 +240,19 @@ export default function SettingsScreen() {
             <Text style={dynamicStyles.toggleLabel}>Packing Reminders</Text>
             <Switch value={notifications.packingReminders} onValueChange={() => toggleNotification('packingReminders')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
           </View>
+        </View>
+
+        {/* Subscription */}
+        <SectionLabel icon={<Crown size={14} color={colors.accent} />} label="Subscription" textColor={colors.text2} />
+        <View style={dynamicStyles.card}>
+          <Text style={dynamicStyles.cardTitle}>Free Plan</Text>
+          <Text style={dynamicStyles.cardSub}>Upgrade to save Trip Memories and unlock premium features</Text>
+          <TouchableOpacity
+            onPress={() => Alert.alert('Premium', 'Premium subscriptions coming soon!')}
+            style={{ marginTop: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, backgroundColor: colors.accentBg, borderRadius: radius.sm, alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.accentBorder }}
+          >
+            <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>Upgrade</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Account */}

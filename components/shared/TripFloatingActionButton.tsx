@@ -202,6 +202,7 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: colors.ink,
+    opacity: 0.85,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: colors.accent,

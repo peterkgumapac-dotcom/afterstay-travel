@@ -27,6 +27,7 @@ export interface FlightDisplayData {
 }
 
 export interface PastTripDisplay {
+  tripId?: string;
   flag: string;
   dest: string;
   country: string;
@@ -35,6 +36,7 @@ export interface PastTripDisplay {
   spent: number;
   miles: number;
   rating: number;
+  hasMemory?: boolean;
 }
 
 // ---------- CONSTANTS ----------

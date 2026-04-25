@@ -54,6 +54,8 @@ import {
   updateMemberPhone,
   updateMemberPhoto,
   updateTripProperty,
+  finishTrip,
+  archiveTrip,
 } from '@/lib/supabase';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
@@ -825,22 +827,45 @@ export default function TripScreen() {
           onPress: () => router.push('/onboarding'),
         },
         {
-          text: 'Archive Trip',
+          text: 'Finish Trip',
+          onPress: () => {
+            Alert.alert(
+              'Finish this trip?',
+              'Your trip will be saved and a Trip Memory will be generated.',
+              [
+                { text: 'Not yet', style: 'cancel' },
+                {
+                  text: 'Finish',
+                  onPress: async () => {
+                    if (!trip) return;
+                    try {
+                      await finishTrip(trip.id);
+                      router.push({ pathname: '/trip-memory', params: { tripId: trip.id } } as never);
+                    } catch (e: any) {
+                      Alert.alert('Error', e?.message ?? 'Could not finish trip');
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+        {
+          text: 'Cancel / Archive Trip',
+          style: 'destructive',
           onPress: () => {
             Alert.alert(
               'Archive this trip?',
-              'It will move to your past trips. You can start a new one after.',
+              'It will move to your past trips without generating a memory.',
               [
-                { text: 'Cancel', style: 'cancel' },
+                { text: 'Keep Trip', style: 'cancel' },
                 {
                   text: 'Archive',
                   style: 'destructive',
                   onPress: async () => {
                     if (!trip) return;
                     try {
-                      const { clearTripCache } = await import('@/lib/supabase');
-                      await updateTripProperty(trip.id, 'status', 'Completed');
-                      clearTripCache();
+                      await archiveTrip(trip.id);
                       router.replace('/(tabs)/home');
                     } catch (e: any) {
                       Alert.alert('Error', e?.message ?? 'Could not archive trip');
@@ -1006,7 +1031,7 @@ export default function TripScreen() {
             <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityLabel="Back to Home">
               <ArrowLeft size={22} color={colors.text} />
             </TouchableOpacity>
-            <Text style={styles.topBarTitle}>Trips</Text>
+            <Text style={styles.topBarTitle}>My Trips</Text>
           </View>
         </View>
         <EmptyState
@@ -1039,7 +1064,7 @@ export default function TripScreen() {
             <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityLabel="Back to Home">
               <ArrowLeft size={22} color={colors.text} />
             </TouchableOpacity>
-            <Text style={styles.topBarTitle}>Trips</Text>
+            <Text style={styles.topBarTitle}>My Trips</Text>
           </View>
           <View style={styles.topBarRight}>
             <TouchableOpacity style={styles.iconBtn} accessibilityLabel="Share" onPress={handleShare}>
@@ -1122,6 +1147,7 @@ export default function TripScreen() {
             pastTrips={pastTripsDisplay}
             colors={colors}
             onAddTrip={() => setAddOpen(true)}
+            onTripPress={(tripId) => router.push({ pathname: '/trip-memory', params: { tripId } } as never)}
           />
         )}
 

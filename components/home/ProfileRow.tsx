@@ -9,12 +9,16 @@ interface Props {
   userName: string;
   avatarUrl?: string;
   tripLabel?: string;
+  notificationCount?: number;
+  onBellPress?: () => void;
 }
 
 export default function ProfileRow({
   userName,
   avatarUrl,
   tripLabel = 'My trip',
+  notificationCount = 0,
+  onBellPress,
 }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -69,7 +73,7 @@ export default function ProfileRow({
       {/* Right: bell + avatar */}
       <View style={styles.rightSide}>
         <Pressable
-          onPress={() => {}}
+          onPress={onBellPress}
           style={styles.iconButton}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityLabel="Notifications"
@@ -91,6 +95,11 @@ export default function ProfileRow({
               strokeLinejoin="round"
             />
           </Svg>
+          {notificationCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
+            </View>
+          )}
         </Pressable>
         <Pressable
           onPress={() => router.push('/(tabs)/settings')}
@@ -160,6 +169,24 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: 18,
+    },
+    badge: {
+      position: 'absolute',
+      top: 4,
+      right: 2,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: colors.danger,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 3,
+    },
+    badgeText: {
+      color: '#fff',
+      fontSize: 9,
+      fontWeight: '800',
+      lineHeight: 12,
     },
     avatarButton: {
       width: 32,

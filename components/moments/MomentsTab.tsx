@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import {
   Alert,
   View,
@@ -10,7 +11,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Play } from 'lucide-react-native';
+import { Film as FilmIcon } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
@@ -28,7 +29,8 @@ import { MapLayout } from './MapLayout';
 import { MomentLightbox } from './MomentLightbox';
 import { PhotoActionSheet } from './PhotoActionSheet';
 import { PhotoEditSheet } from './PhotoEditSheet';
-import TripRecapModal from './TripRecapModal';
+import { FilmEditor } from './FilmEditor';
+import { PhotoGridPicker } from './PhotoGridPicker';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -119,7 +121,9 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const selectMode = selectedIds.size > 0;
   const [actionMomentId, setActionMomentId] = useState<string | null>(null);
   const [editMomentId, setEditMomentId] = useState<string | null>(null);
-  const [showRecap, setShowRecap] = useState(false);
+  const [filmMoments, setFilmMoments] = useState<MomentDisplay[] | null>(null);
+  const [filmInitIdx, setFilmInitIdx] = useState(0);
+  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
   const actionMoment = actionMomentId ? rawMoments.find((m) => m.id === actionMomentId) ?? null : null;
   const editMoment = editMomentId ? rawMoments.find((m) => m.id === editMomentId) ?? null : null;
 
@@ -346,11 +350,19 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
               </Pressable>
             ))}
             <Pressable
-              onPress={() => setShowRecap(true)}
-              style={[s.segBtn, s.recapBtn]}
+              onPress={() => {
+                const photoMoments = filtered.filter((m) => m.photo);
+                if (photoMoments.length > 0) {
+                  Haptics.selectionAsync();
+                  setShowPhotoPicker(true);
+                } else {
+                  Alert.alert('No photos', 'Add a moment with a photo to use Film.');
+                }
+              }}
+              style={[s.segBtn, s.filmBtn]}
             >
-              <Play size={9} color="#000" fill="#000" strokeWidth={0} />
-              <Text style={s.recapText}>Recap</Text>
+              <FilmIcon size={10} color="#000" strokeWidth={2.4} />
+              <Text style={s.filmText}>Film</Text>
             </Pressable>
           </View>
         </View>
@@ -465,6 +477,11 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           setOpenIdx(null);
           setEditMomentId(id);
         }}
+        onFilm={(m) => {
+          // Single photo from lightbox — open editor directly
+          setFilmMoments([m]);
+          setFilmInitIdx(0);
+        }}
       />
 
       {/* ---- Themed action sheet ---- */}
@@ -486,12 +503,27 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         onClose={() => setEditMomentId(null)}
       />
 
-      <TripRecapModal
-        visible={showRecap}
-        photos={filtered.filter((m) => m.photo).map((m) => ({ uri: m.photo!, placeName: m.place ?? m.location }))}
-        dayLabel={activeDay !== 'all' ? `Day · ${formatDatePHT(activeDay)}` : 'Trip Recap'}
-        onClose={() => setShowRecap(false)}
+      {/* ---- Photo grid picker for Film ---- */}
+      <PhotoGridPicker
+        visible={showPhotoPicker}
+        moments={filtered.filter((m) => m.photo)}
+        onConfirm={(selected) => {
+          setShowPhotoPicker(false);
+          setFilmMoments(selected);
+          setFilmInitIdx(0);
+        }}
+        onClose={() => setShowPhotoPicker(false)}
       />
+
+      {/* ---- Film editor ---- */}
+      {filmMoments && (
+        <FilmEditor
+          visible={filmMoments !== null}
+          moments={filmMoments}
+          initialIndex={filmInitIdx}
+          onClose={() => setFilmMoments(null)}
+        />
+      )}
     </>
   );
 }
@@ -550,15 +582,15 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       shadowRadius: 6,
       elevation: 4,
     },
-    recapBtn: {
+    filmBtn: {
       backgroundColor: colors.accent,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 3,
+      gap: 4,
       paddingHorizontal: 12,
       marginLeft: 4,
     },
-    recapText: {
+    filmText: {
       fontSize: 10.5,
       fontWeight: '600',
       color: '#000',

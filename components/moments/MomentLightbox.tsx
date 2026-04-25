@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { Download, Edit3, MapPin, MoreHorizontal, Share2, Trash2, X } from 'lucide-react-native';
+import { Download, Edit3, Film, MapPin, MoreHorizontal, Share2, Trash2, X } from 'lucide-react-native';
 import React, { useCallback, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -44,6 +44,7 @@ interface MomentLightboxProps {
   allMoments?: MomentDisplay[];
   onDelete?: (id: string) => void;
   onEdit?: (id: string) => void;
+  onFilm?: (moment: MomentDisplay) => void;
 }
 
 export function MomentLightbox({
@@ -57,6 +58,7 @@ export function MomentLightbox({
   allMoments,
   onDelete,
   onEdit,
+  onFilm,
 }: MomentLightboxProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -127,6 +129,15 @@ export function MomentLightbox({
     setMenuVisible(false);
     if (onEdit && current) onEdit(current.id);
   }, [current, onEdit]);
+
+  const handleFilm = useCallback(() => {
+    setMenuVisible(false);
+    if (onFilm && current) {
+      onClose();
+      // Small delay so the lightbox closes before FilmEditor opens
+      setTimeout(() => onFilm(current), 200);
+    }
+  }, [current, onFilm, onClose]);
 
   const isVisible = moment !== null;
 
@@ -202,7 +213,7 @@ export function MomentLightbox({
           >
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuVisible(false)} />
             <Animated.View
-              entering={SlideInDown.springify().damping(18).stiffness(200)}
+              entering={SlideInDown.duration(280).damping(24)}
               exiting={SlideOutDown.duration(200)}
               style={[styles.menuSheet, { paddingBottom: insets.bottom + 20 }]}
             >
@@ -228,6 +239,7 @@ export function MomentLightbox({
               <View style={styles.menuActions}>
                 <MenuAction icon={Share2} label="Share" onPress={handleShare} />
                 <MenuAction icon={Download} label="Save to Device" onPress={handleDownload} />
+                {onFilm && current?.photo && <MenuAction icon={Film} label="Film Editor" onPress={handleFilm} />}
                 {onEdit && <MenuAction icon={Edit3} label="Edit Details" onPress={handleEdit} />}
                 {onDelete && <MenuAction icon={Trash2} label="Delete" onPress={handleDelete} danger />}
               </View>

@@ -29,6 +29,7 @@ import { CountdownCard } from '@/components/home/CountdownCard';
 import { FlightCard } from '@/components/home/FlightCard';
 import { FlightProgressCard } from '@/components/home/FlightProgressCard';
 import { TripActiveCard } from '@/components/home/TripActiveCard';
+import { TripCompletedCard } from '@/components/home/TripCompletedCard';
 import EmptyState from '@/components/shared/EmptyState';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import ProfileRow from '@/components/home/ProfileRow';
@@ -49,7 +50,7 @@ import type { Flight, GroupMember, Moment, Place, Trip } from '@/lib/types';
 import { setHotelCoords } from '@/lib/config';
 import { formatDatePHT, formatTimePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 
-type TripPhase = 'planning' | 'upcoming' | 'inflight' | 'arrived' | 'active';
+type TripPhase = 'planning' | 'upcoming' | 'inflight' | 'arrived' | 'active' | 'completed';
 
 // No fallback photos — hero shows gradient when trip has no hotel photos
 const FALLBACK_PHOTOS: string[] = [];
@@ -296,8 +297,12 @@ export default function HomeScreen() {
         const todayExps = allExpenses.filter((e) => e.date === todayIso);
         setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
         setTodayCount(todayExps.length);
-        // If no outbound flight, determine phase from trip dates
-        if (!outbound) {
+        // Check if trip is completed (status or past end date)
+        const tripEnd = safeParse(t.endDate).getTime() + MS_PER_DAY; // end of last day
+        if (t.status === 'Completed' || Date.now() > tripEnd) {
+          setPhase('completed');
+        } else if (!outbound) {
+          // If no outbound flight, determine phase from trip dates
           const tripStart = safeParse(t.startDate).getTime();
           const daysAway = (tripStart - Date.now()) / MS_PER_DAY;
           setPhase(daysAway > 7 ? 'planning' : 'upcoming');
@@ -573,6 +578,13 @@ export default function HomeScreen() {
                 budget={trip.budgetLimit ?? 0}
                 todaySpent={todaySpent}
                 todayCount={todayCount}
+              />
+            ) : phase === 'completed' ? (
+              <TripCompletedCard
+                destination={trip.destination}
+                nights={trip.nights}
+                momentCount={moments.length}
+                onViewMemory={() => router.push({ pathname: '/trip-memory', params: { tripId: trip.id } } as never)}
               />
             ) : phase === 'planning' ? (
               <View style={styles.planningCard}>

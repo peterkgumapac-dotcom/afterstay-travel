@@ -50,6 +50,7 @@ import {
   updateTripBudgetMode,
 } from '@/lib/supabase';
 import type { PaymentQr } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
 import { formatCurrency, formatDatePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 import type { Expense, GroupMember, Trip } from '@/lib/types';
 
@@ -90,6 +91,7 @@ function smartTitle(e: Expense): string {
 export default function BudgetScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { user } = useAuth();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
   const [mode, setMode] = useState<BudgetMode>('budget');
@@ -164,7 +166,7 @@ export default function BudgetScreen() {
       const next = await addPaymentQr(trip.id, label, pendingQrUri);
       setPaymentQrs(next);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Failed to upload QR code');
     }
     setPendingQrUri(null);
@@ -679,7 +681,7 @@ export default function BudgetScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* QR view modal — branded */}
+      {/* QR view modal — branded card */}
       <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowQrModal(false)}>
           <View style={styles.qrModalCard}>
@@ -688,18 +690,16 @@ export default function BudgetScreen() {
               <Text style={styles.qrModalBrandName}>AfterStay</Text>
             </View>
             <Text style={styles.qrModalTitle}>{viewingQr?.label ?? 'Payment QR'}</Text>
-            {viewingQr && (
+            {viewingQr?.uri ? (
               <View style={styles.qrModalImageWrap}>
                 <Image source={{ uri: viewingQr.uri }} style={styles.qrModalImage} resizeMode="contain" />
               </View>
-            )}
+            ) : null}
             <Text style={styles.qrModalScan}>Scan to pay</Text>
-            <TouchableOpacity onPress={() => setShowQrModal(false)} style={styles.qrModalClose}>
-              <Text style={[styles.modalBtn, { color: colors.text3 }]}>Close</Text>
-            </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
+
 
       {/* QR name input modal */}
       <Modal visible={showQrNameModal} transparent animationType="fade" onRequestClose={() => setShowQrNameModal(false)}>

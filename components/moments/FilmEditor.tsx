@@ -47,9 +47,10 @@ const PHOTO_ASPECT = 4 / 3;
 const PHOTO_H = SCREEN_W / PHOTO_ASPECT;
 const CINEMATIC_BAR_H = PHOTO_H * 0.12;
 
-// ImageFormat.JPEG = 3 (not re-exported from @shopify/react-native-skia main entry)
-const JPEG_FORMAT = 3;
-const JPEG_QUALITY = 95;
+// Skia encodeToBase64 quality (0-100). We use PNG for reliability —
+// the JPEG enum (3) isn't re-exported from the main package entry and
+// passing raw numerics causes native bridge errors on some devices.
+const EXPORT_QUALITY = 100;
 
 // ── Queue item ──────────────────────────────────────────────────────────────
 
@@ -125,8 +126,8 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
       const snapshot = canvas.makeImageSnapshot();
       if (!snapshot) return null;
 
-      const base64 = snapshot.encodeToBase64(JPEG_FORMAT, JPEG_QUALITY);
-      const path = `${FileSystem.cacheDirectory}afterstay_film_${Date.now()}.jpg`;
+      const base64 = snapshot.encodeToBase64();
+      const path = `${FileSystem.cacheDirectory}afterstay_film_${Date.now()}.png`;
       await FileSystem.writeAsStringAsync(path, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -184,7 +185,7 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
       if (!uri) return;
 
       await Sharing.shareAsync(uri, {
-        mimeType: 'image/jpeg',
+        mimeType: 'image/png',
         dialogTitle: 'Share to Stories',
       });
     } catch {
@@ -240,6 +241,9 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
     }
 
     let saved = 0;
+
+    // For each queued item: switch to that photo+filter, wait for render,
+    // snapshot the canvas, and save. We process sequentially.
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       const m = moments.find((mo) => mo.id === item.momentId);
@@ -247,14 +251,19 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
 
       setExportProgress(`Saving ${i + 1} of ${queue.length}...`);
 
-      // Switch to this photo + filter so canvas renders it
+      // Switch canvas to this photo + filter
       setCurrentIdx(moments.indexOf(m));
       setActiveFilter(FILM_FILTERS.find((f) => f.id === item.filterId) ?? FILM_FILTERS[0]);
 
-      // Wait for Skia to render the new image
-      await new Promise((r) => setTimeout(r, 400));
+      // Wait for Skia to load the image and render — useImage is async.
+      // We poll the canvas ref for a valid snapshot up to 2s.
+      let uri: string | null = null;
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise((r) => setTimeout(r, 300));
+        uri = await exportImage();
+        if (uri) break;
+      }
 
-      const uri = await exportImage();
       if (uri) {
         try {
           await MediaLibrary.saveToLibraryAsync(uri);
