@@ -53,11 +53,10 @@ lib/anthropic.ts: generateRecommendations
 lib/distance.ts: haversine
 lib/google-places.ts: findPlacePhoto, enrichRecommendations
 lib/utils.ts: tripStatusLabel
-Unused exported types (9)
+Unused exported types (8)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
-hooks/useCurationGesture.ts: CurationAction
 lib/anthropic.ts: ItineraryDayLegacy, GeneratedMemoryContent
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
 lib/tripMemoryBuilder.ts: TripMemoryData

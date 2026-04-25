@@ -28,6 +28,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatDatePHT } from '@/lib/utils';
 import { spacing } from '@/constants/theme';
+import { useCurationGesture, type CurationAction } from '@/hooks/useCurationGesture';
+import { GlowOverlay } from '@/components/curation/GlowOverlay';
 import { Avatar } from './Avatar';
 import type { MomentDisplay, PeopleMap } from './types';
 
@@ -45,6 +47,8 @@ interface MomentLightboxProps {
   onDelete?: (id: string) => void;
   onEdit?: (id: string) => void;
   onFilm?: (moment: MomentDisplay) => void;
+  /** Called when user swipes up (favorite) or down (skip) on a photo */
+  onCurate?: (id: string, action: CurationAction) => void;
 }
 
 export function MomentLightbox({
@@ -59,6 +63,7 @@ export function MomentLightbox({
   onDelete,
   onEdit,
   onFilm,
+  onCurate,
 }: MomentLightboxProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -68,6 +73,31 @@ export function MomentLightbox({
 
   const moments = allMoments ?? (moment ? [moment] : []);
   const current = moments[currentIdx] ?? moment;
+
+  // Swipe-up/down curation gesture
+  const handleCurationCommit = useCallback(
+    (action: CurationAction) => {
+      const m = moments[currentIdx];
+      if (!m || !onCurate) return;
+      onCurate(m.id, action);
+      // Advance to next photo or close if last
+      if (currentIdx < moments.length - 1) {
+        const nextIdx = currentIdx + 1;
+        setCurrentIdx(nextIdx);
+        flatListRef.current?.scrollToIndex({ index: nextIdx, animated: true });
+      } else {
+        onClose();
+      }
+    },
+    [moments, currentIdx, onCurate, onClose],
+  );
+
+  const { gesture: curationGesture, cardStyle, glowStyle } = useCurationGesture({
+    onCommit: handleCurationCommit,
+    favoriteCount: 0,
+    maxFavorites: 999,
+    enabled: !!onCurate,
+  });
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0 && viewableItems[0].index != null) {
@@ -149,7 +179,7 @@ export function MomentLightbox({
 
   return (
     <Modal visible={isVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <GestureHandlerRootView style={styles.overlay}>
         {/* Top bar */}
         <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
           <Pressable onPress={onClose} style={styles.topBtn} accessibilityLabel="Close">
@@ -161,26 +191,31 @@ export function MomentLightbox({
           </Pressable>
         </View>
 
-        {/* Photo pager */}
-        <FlatList
-          ref={flatListRef}
-          data={moments}
-          renderItem={renderPhoto}
-          keyExtractor={(item) => item.id}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          initialScrollIndex={Math.min(index, moments.length - 1)}
-          getItemLayout={(_, idx) => ({
-            length: SCREEN_W,
-            offset: SCREEN_W * idx,
-            index: idx,
-          })}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-          decelerationRate="fast"
-          style={{ flex: 1 }}
-        />
+        {/* Photo pager with curation gesture */}
+        <GestureDetector gesture={curationGesture}>
+          <Animated.View style={[{ flex: 1 }, onCurate ? cardStyle : undefined]}>
+            <FlatList
+              ref={flatListRef}
+              data={moments}
+              renderItem={renderPhoto}
+              keyExtractor={(item) => item.id}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              initialScrollIndex={Math.min(index, moments.length - 1)}
+              getItemLayout={(_, idx) => ({
+                length: SCREEN_W,
+                offset: SCREEN_W * idx,
+                index: idx,
+              })}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={viewabilityConfig}
+              decelerationRate="fast"
+              style={{ flex: 1 }}
+            />
+            {onCurate && <GlowOverlay glowStyle={glowStyle} />}
+          </Animated.View>
+        </GestureDetector>
 
         {/* Bottom info bar — tap to open menu */}
         <Pressable
@@ -250,7 +285,7 @@ export function MomentLightbox({
             </Animated.View>
           </Animated.View>
         )}
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
