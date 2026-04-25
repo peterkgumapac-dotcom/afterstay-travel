@@ -22,19 +22,20 @@ export function usePushNotifications() {
     let Notifs: any = null;
 
     async function setup() {
+      // expo-notifications throws on require() in Expo Go since SDK 53.
+      // Wrap everything in a single try/catch to prevent crashes.
       try {
-        Notifs = require('expo-notifications');
+        Notifs = await import('expo-notifications');
       } catch {
-        return; // module not installed
+        return; // not available in Expo Go
       }
 
-      // Probe the module — throws in Expo Go since SDK 53
       let existing: string;
       try {
         const perm = await Notifs.getPermissionsAsync();
         existing = perm.status;
       } catch {
-        return; // native module not available (Expo Go or missing native build)
+        return; // native module not available
       }
 
       // Configure foreground behavior
