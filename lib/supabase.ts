@@ -1088,7 +1088,7 @@ export async function savePlace(placeId: string, saved: boolean): Promise<void> 
 
 // ---------- GROUP VOTING ----------
 
-/** Derive consensus vote from per-member votes. Majority wins; ties stay Pending. */
+/** Derive consensus vote from per-member votes. Strict majority wins; equal splits stay Pending. */
 export function deriveConsensus(
   votes: Record<string, PlaceVote>,
   totalMembers: number,
@@ -1096,6 +1096,8 @@ export function deriveConsensus(
   const entries = Object.values(votes)
   const yes = entries.filter((v) => v === '👍 Yes').length
   const no = entries.filter((v) => v === '👎 No').length
+  // Equal split = tie (Pending), not a Yes win
+  if (yes === no && yes > 0) return 'Pending'
   const majority = Math.ceil(totalMembers / 2)
   if (yes >= majority) return '👍 Yes'
   if (no >= majority) return '👎 No'
