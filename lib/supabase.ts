@@ -26,7 +26,16 @@ import type {
   Trip,
   TripFile,
   TripFileType,
+  TripMemory,
+  TripMemoryExpenses,
+  TripMemoryFlight,
+  TripMemoryPlace,
+  TripMemorySnapshot,
+  TripMemoryStats,
+  TripMemoryStatus,
+  TripMemoryVibe,
   TripStatus,
+  UserTier,
 } from './types'
 
 // ---------- client ----------
@@ -1545,6 +1554,7 @@ export interface Profile {
   fullName: string;
   avatarUrl?: string;
   phone?: string;
+  tier: UserTier;
 }
 
 export async function getProfile(userId: string): Promise<Profile | null> {
@@ -1559,6 +1569,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     fullName: data.full_name ?? '',
     avatarUrl: data.avatar_url ?? undefined,
     phone: data.phone ?? undefined,
+    tier: (data.tier as UserTier) ?? 'free',
   }
 }
 
@@ -1631,4 +1642,116 @@ export async function getPastTrips(userId: string): Promise<Trip[]> {
     .order('start_date', { ascending: false })
   if (!data) return []
   return data.map(mapTrip)
+}
+
+// ---------- TRIP LIFECYCLE ----------
+
+/** Mark a trip as Completed (finish early or natural end). */
+export async function finishTrip(tripId: string): Promise<void> {
+  const { error } = await supabase
+    .from(T.trips)
+    .update({ status: 'Completed' })
+    .eq('id', tripId)
+  if (error) throw new Error(`finishTrip: ${error.message}`)
+  clearTripCache()
+}
+
+/** Archive/cancel a trip without generating a memory. */
+export async function archiveTrip(tripId: string): Promise<void> {
+  const { error } = await supabase
+    .from(T.trips)
+    .update({ status: 'Completed' })
+    .eq('id', tripId)
+  if (error) throw new Error(`archiveTrip: ${error.message}`)
+  clearTripCache()
+}
+
+// ---------- TRIP MEMORIES ----------
+
+function mapTripMemory(row: Record<string, unknown>): TripMemory {
+  return {
+    id: row.id as string,
+    tripId: row.trip_id as string,
+    userId: row.user_id as string,
+    narrative: (row.narrative as string) ?? '',
+    dayHighlights: (row.day_highlights as TripMemory['dayHighlights']) ?? [],
+    statsCard: (row.stats_card as TripMemoryStats) ?? { totalPhotos: 0, totalPlacesVisited: 0, totalExpenses: 0 },
+    vibeAnalysis: (row.vibe_analysis as TripMemoryVibe) ?? { dominantMood: '', topTags: [], vibeDescription: '' },
+    tripSnapshot: (row.trip_snapshot as TripMemorySnapshot) ?? { destination: '', startDate: '', endDate: '', nights: 0, accommodation: '', memberNames: [], memberCount: 0 },
+    expenseSummary: (row.expense_summary as TripMemoryExpenses) ?? { total: 0, currency: 'PHP', topCategories: [], dailyAverage: 0 },
+    placesSummary: (row.places_summary as TripMemoryPlace[]) ?? [],
+    flightSummary: (row.flight_summary as TripMemoryFlight[]) ?? [],
+    heroMomentId: (row.hero_moment_id as string) ?? undefined,
+    featuredMomentIds: (row.featured_moment_ids as string[]) ?? [],
+    status: (row.status as TripMemoryStatus) ?? 'draft',
+    createdAt: row.created_at as string,
+    savedAt: (row.saved_at as string) ?? undefined,
+  }
+}
+
+/** Get the trip memory for a specific trip (current user). */
+export async function getTripMemory(tripId: string): Promise<TripMemory | null> {
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+  if (!userId) return null
+
+  const { data, error } = await supabase
+    .from('trip_memories')
+    .select('*')
+    .eq('trip_id', tripId)
+    .eq('user_id', userId)
+    .single()
+  if (error || !data) return null
+  return mapTripMemory(data)
+}
+
+/** Get all saved trip memories for a user (for past trips list). */
+export async function getAllTripMemories(userId: string): Promise<TripMemory[]> {
+  const { data } = await supabase
+    .from('trip_memories')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'saved')
+    .order('created_at', { ascending: false })
+  if (!data) return []
+  return data.map(mapTripMemory)
+}
+
+/** Upsert a draft trip memory (overwrites existing draft). */
+export async function saveTripMemoryDraft(
+  memory: Omit<TripMemory, 'id' | 'createdAt' | 'savedAt'>
+): Promise<string> {
+  const row = {
+    trip_id: memory.tripId,
+    user_id: memory.userId,
+    narrative: memory.narrative,
+    day_highlights: memory.dayHighlights,
+    stats_card: memory.statsCard,
+    vibe_analysis: memory.vibeAnalysis,
+    trip_snapshot: memory.tripSnapshot,
+    expense_summary: memory.expenseSummary,
+    places_summary: memory.placesSummary,
+    flight_summary: memory.flightSummary,
+    hero_moment_id: memory.heroMomentId ?? null,
+    featured_moment_ids: memory.featuredMomentIds,
+    status: 'draft',
+  }
+
+  const { data, error } = await supabase
+    .from('trip_memories')
+    .upsert(row, { onConflict: 'trip_id,user_id' })
+    .select('id')
+    .single()
+  if (error) throw new Error(`saveTripMemoryDraft: ${error.message}`)
+  return data.id as string
+}
+
+/** Finalize a draft memory — marks it as saved (immutable). */
+export async function finalizeTripMemory(memoryId: string): Promise<void> {
+  const { error } = await supabase
+    .from('trip_memories')
+    .update({ status: 'saved', saved_at: new Date().toISOString() })
+    .eq('id', memoryId)
+    .eq('status', 'draft')
+  if (error) throw new Error(`finalizeTripMemory: ${error.message}`)
 }

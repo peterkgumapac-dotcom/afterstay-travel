@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, CalendarDays, ChevronDown, Filter, Map, Search, SlidersHorizontal, Sparkles } from 'lucide-react-native';
+import { Bookmark, CalendarDays, ChevronDown, ChevronRight, Filter, Map, Search, SlidersHorizontal, Sparkles, ThumbsUp, Users, Vote } from 'lucide-react-native';
 
 import EmptyState from '@/components/shared/EmptyState';
 
@@ -630,6 +630,20 @@ function DiscoverScreenInner() {
   const memberNames = useMemo(
     () => Object.fromEntries(tripMembers.map((m) => [m.id, m.name])),
     [tripMembers],
+  );
+
+  // Places awaiting group votes
+  const pendingVotePlaces = useMemo(
+    () => savedPlaces.filter((p) => {
+      if (p.vote !== 'Pending') return false;
+      const votes = p.voteByMember ?? {};
+      return Object.keys(votes).length < tripMembers.length;
+    }),
+    [savedPlaces, tripMembers],
+  );
+  const votedPlaces = useMemo(
+    () => savedPlaces.filter((p) => p.voteByMember && Object.keys(p.voteByMember).length > 0 && p.vote !== 'Pending'),
+    [savedPlaces],
   );
 
   // Realtime vote updates from other members
@@ -1583,6 +1597,89 @@ function DiscoverScreenInner() {
               </View>
             ) : (
               <>
+                {/* ── Group Voting Section ── */}
+                {tripMembers.length >= 2 && (pendingVotePlaces.length > 0 || votedPlaces.length > 0) && (
+                  <View style={styles.votingSection}>
+                    <View style={styles.votingSectionHeader}>
+                      <Users size={16} color={colors.accent} strokeWidth={2} />
+                      <Text style={styles.votingSectionTitle}>Group Voting</Text>
+                      {pendingVotePlaces.length > 0 && (
+                        <View style={styles.votingBadge}>
+                          <Text style={styles.votingBadgeText}>{pendingVotePlaces.length} pending</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {pendingVotePlaces.length > 0 && (
+                      <>
+                        <Text style={styles.votingSubhead}>Needs your vote</Text>
+                        {pendingVotePlaces.map((p) => {
+                          const votes = p.voteByMember ?? {};
+                          const yes = Object.values(votes).filter((v) => v === '👍 Yes').length;
+                          const voted = Object.keys(votes).length;
+                          return (
+                            <TouchableOpacity
+                              key={p.id}
+                              style={styles.votingRow}
+                              activeOpacity={0.7}
+                              onPress={() => { setVotingPlace(p); setShowVotingSheet(true); }}
+                            >
+                              {p.photoUrl ? (
+                                <Image source={{ uri: p.photoUrl }} style={styles.votingThumb} />
+                              ) : (
+                                <View style={[styles.votingThumb, { backgroundColor: colors.bg3, justifyContent: 'center', alignItems: 'center' }]}>
+                                  <ThumbsUp size={14} color={colors.text3} />
+                                </View>
+                              )}
+                              <View style={styles.votingInfo}>
+                                <Text style={styles.votingName} numberOfLines={1}>{p.name}</Text>
+                                <Text style={styles.votingMeta}>
+                                  {voted}/{tripMembers.length} voted{yes > 0 ? ` · ${yes} yes` : ''}
+                                </Text>
+                              </View>
+                              <ChevronRight size={16} color={colors.text3} />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    {votedPlaces.length > 0 && (
+                      <>
+                        <Text style={styles.votingSubhead}>Decided</Text>
+                        {votedPlaces.map((p) => {
+                          const isYes = p.vote === '👍 Yes';
+                          return (
+                            <TouchableOpacity
+                              key={p.id}
+                              style={styles.votingRow}
+                              activeOpacity={0.7}
+                              onPress={() => { setVotingPlace(p); setShowVotingSheet(true); }}
+                            >
+                              {p.photoUrl ? (
+                                <Image source={{ uri: p.photoUrl }} style={styles.votingThumb} />
+                              ) : (
+                                <View style={[styles.votingThumb, { backgroundColor: colors.bg3, justifyContent: 'center', alignItems: 'center' }]}>
+                                  <ThumbsUp size={14} color={colors.text3} />
+                                </View>
+                              )}
+                              <View style={styles.votingInfo}>
+                                <Text style={styles.votingName} numberOfLines={1}>{p.name}</Text>
+                                <View style={[styles.votingDecision, { backgroundColor: isYes ? 'rgba(45,106,46,0.15)' : 'rgba(158,58,52,0.15)' }]}>
+                                  <Text style={{ fontSize: 11, fontWeight: '600', color: isYes ? '#2d6a2e' : '#9e3a34' }}>
+                                    {isYes ? 'Going' : 'Skipped'}
+                                  </Text>
+                                </View>
+                              </View>
+                              <ChevronRight size={16} color={colors.text3} />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </>
+                    )}
+                  </View>
+                )}
+
                 <View style={styles.savedHeaderRow}>
                   <Text style={styles.savedCount}>
                     {savedPlaces.length} saved {'\u00B7'} {recommended.size} recommended
@@ -2153,6 +2250,81 @@ const getStyles = (colors: ThemeColors) =>
     },
 
     // Saved header
+    // Group voting section
+    votingSection: {
+      marginBottom: 16,
+      padding: 14,
+      backgroundColor: colors.card,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    votingSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 10,
+    },
+    votingSectionTitle: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    votingBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 10,
+      backgroundColor: colors.accentBg,
+    },
+    votingBadgeText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    votingSubhead: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text3,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginTop: 6,
+      marginBottom: 6,
+    },
+    votingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    votingThumb: {
+      width: 40,
+      height: 40,
+      borderRadius: 8,
+    },
+    votingInfo: {
+      flex: 1,
+    },
+    votingName: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    votingMeta: {
+      fontSize: 11,
+      color: colors.text3,
+      marginTop: 1,
+    },
+    votingDecision: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      marginTop: 2,
+    },
+
     savedHeaderRow: {
       flexDirection: 'row',
       alignItems: 'center',
