@@ -117,6 +117,7 @@ export function MomentLightbox({
     </View>
   ), []);
 
+
   const handleShare = useCallback(() => {
     if (!current?.photo) return;
     setMenuVisible(false);
@@ -191,31 +192,36 @@ export function MomentLightbox({
           </Pressable>
         </View>
 
-        {/* Photo pager with curation gesture */}
-        <GestureDetector gesture={curationGesture}>
-          <Animated.View style={[{ flex: 1 }, onCurate ? cardStyle : undefined]}>
-            <FlatList
-              ref={flatListRef}
-              data={moments}
-              renderItem={renderPhoto}
-              keyExtractor={(item) => item.id}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              initialScrollIndex={Math.min(index, moments.length - 1)}
-              getItemLayout={(_, idx) => ({
-                length: SCREEN_W,
-                offset: SCREEN_W * idx,
-                index: idx,
-              })}
-              onViewableItemsChanged={onViewableItemsChanged}
-              viewabilityConfig={viewabilityConfig}
-              decelerationRate="fast"
-              style={{ flex: 1 }}
-            />
-            {onCurate && <GlowOverlay glowStyle={glowStyle} />}
-          </Animated.View>
-        </GestureDetector>
+        {/* Photo pager */}
+        <Animated.View style={[{ flex: 1 }, onCurate ? cardStyle : undefined]}>
+          <FlatList
+            ref={flatListRef}
+            data={moments}
+            renderItem={renderPhoto}
+            keyExtractor={(item) => item.id}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={Math.min(index, moments.length - 1)}
+            getItemLayout={(_, idx) => ({
+              length: SCREEN_W,
+              offset: SCREEN_W * idx,
+              index: idx,
+            })}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            decelerationRate="fast"
+            scrollEnabled={!onCurate}
+            style={{ flex: 1 }}
+          />
+          {/* Curation gesture overlay — captures vertical swipes above the FlatList */}
+          {onCurate && (
+            <GestureDetector gesture={curationGesture}>
+              <Animated.View style={StyleSheet.absoluteFill} />
+            </GestureDetector>
+          )}
+          {onCurate && <GlowOverlay glowStyle={glowStyle} />}
+        </Animated.View>
 
         {/* Bottom info bar — tap to open menu */}
         <Pressable

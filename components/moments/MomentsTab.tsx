@@ -31,6 +31,8 @@ import { PhotoActionSheet } from './PhotoActionSheet';
 import { PhotoEditSheet } from './PhotoEditSheet';
 import { FilmEditor } from './FilmEditor';
 import { PhotoGridPicker } from './PhotoGridPicker';
+import { CurationLightbox } from '@/components/curation/CurationLightbox';
+import { Modal } from 'react-native';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -124,6 +126,9 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [filmMoments, setFilmMoments] = useState<MomentDisplay[] | null>(null);
   const [filmInitIdx, setFilmInitIdx] = useState(0);
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [curationDay, setCurationDay] = useState<{ dateLabel: string; photos: { id: string; uri: string }[] } | null>(null);
+  const [curatedDays, setCuratedDays] = useState<Set<string>>(new Set());
+  const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
   const actionMoment = actionMomentId ? rawMoments.find((m) => m.id === actionMomentId) ?? null : null;
   const editMoment = editMomentId ? rawMoments.find((m) => m.id === editMomentId) ?? null : null;
 
@@ -199,6 +204,36 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       );
     } catch (err) { if (__DEV__) console.warn('[Moments] edit failed:', err); }
   }, []);
+
+  // Curation: long-press a day chip to curate that day's photos
+  const handleCurationLongPress = useCallback((day: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const source = day === 'all' ? rawMoments : rawMoments.filter((m) => m.date === day);
+    const photosForCuration = source
+      .filter((m) => m.photo)
+      .map((m) => ({ id: m.id, uri: m.photo! }));
+    if (photosForCuration.length === 0) return;
+    const dateLabel = day === 'all' ? 'All Days' : formatDatePHT(day);
+    setCurationDay({ dateLabel, photos: photosForCuration });
+  }, [rawMoments]);
+
+  const handleCurationComplete = useCallback((selectedPhotoIds: string[]) => {
+    setFavoritedIds((prev) => {
+      const next = new Set(prev);
+      selectedPhotoIds.forEach((id) => next.add(id));
+      return next;
+    });
+    // Mark this day as curated
+    if (curationDay) {
+      const dayKey = curationDay.dateLabel === 'All Days' ? 'all' : activeDay;
+      setCuratedDays((prev) => {
+        const next = new Set(prev);
+        next.add(dayKey);
+        return next;
+      });
+    }
+    setCurationDay(null);
+  }, [curationDay, activeDay]);
 
   const handleDeleteSelected = useCallback(async () => {
     const count = selectedIds.size;
@@ -312,8 +347,10 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         <DayChips
           active={activeDay}
           onChange={setActiveDay}
+          onLongPress={handleCurationLongPress}
           counts={dayCounts}
           total={allMoments.length}
+          curatedDays={curatedDays}
         />
 
         {/* ---- Layout switcher ---- */}
@@ -482,6 +519,19 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           setFilmMoments([m]);
           setFilmInitIdx(0);
         }}
+        onCurate={(id, action) => {
+          if (action === 'favorite') {
+            // Mark as favorite — add to curation set for recaps
+            setRawMoments((prev) =>
+              prev.map((m) => (m.id === id ? { ...m, isFavorite: true } : m)),
+            );
+          } else {
+            // Skip — remove favorite flag if it was set
+            setRawMoments((prev) =>
+              prev.map((m) => (m.id === id ? { ...m, isFavorite: false } : m)),
+            );
+          }
+        }}
       />
 
       {/* ---- Themed action sheet ---- */}
@@ -524,6 +574,23 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           onClose={() => setFilmMoments(null)}
         />
       )}
+
+      {/* ---- Curation lightbox ---- */}
+      <Modal
+        visible={curationDay !== null}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setCurationDay(null)}
+      >
+        {curationDay && (
+          <CurationLightbox
+            day={curationDay}
+            maxFavorites={3}
+            onComplete={handleCurationComplete}
+            onDismiss={() => setCurationDay(null)}
+          />
+        )}
+      </Modal>
     </>
   );
 }
