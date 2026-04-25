@@ -1598,7 +1598,7 @@ function DiscoverScreenInner() {
             ) : (
               <>
                 {/* ── Group Voting Section ── */}
-                {tripMembers.length >= 2 && (pendingVotePlaces.length > 0 || votedPlaces.length > 0) && (
+                {tripMembers.length >= 2 && (
                   <View style={styles.votingSection}>
                     <View style={styles.votingSectionHeader}>
                       <Users size={16} color={colors.accent} strokeWidth={2} />
@@ -1609,6 +1609,17 @@ function DiscoverScreenInner() {
                         </View>
                       )}
                     </View>
+
+                    {/* Empty state for groups with no votes yet */}
+                    {pendingVotePlaces.length === 0 && votedPlaces.length === 0 && (
+                      <View style={styles.votingEmpty}>
+                        <ThumbsUp size={20} color={colors.text3} strokeWidth={1.6} />
+                        <Text style={styles.votingEmptyTitle}>No places to vote on yet</Text>
+                        <Text style={styles.votingEmptyBody}>
+                          Tap the {'\u{1F465}'} icon on any place in the Places tab to recommend it to your group.
+                        </Text>
+                      </View>
+                    )}
 
                     {pendingVotePlaces.length > 0 && (
                       <>
@@ -2323,6 +2334,23 @@ const getStyles = (colors: ThemeColors) =>
       paddingVertical: 2,
       borderRadius: 6,
       marginTop: 2,
+    },
+    votingEmpty: {
+      alignItems: 'center',
+      paddingVertical: 16,
+      gap: 6,
+    },
+    votingEmptyTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text2,
+    },
+    votingEmptyBody: {
+      fontSize: 12,
+      color: colors.text3,
+      textAlign: 'center',
+      lineHeight: 17,
+      paddingHorizontal: 8,
     },
 
     savedHeaderRow: {
