@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Image, ImageStyle, Pressable, StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Footprints, Car, Plus, Check, X as XIcon, Clock } from 'lucide-react-native';
+import { Footprints, Car, Plus, Check, X as XIcon, Clock, Users } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing, radius } from '@/constants/theme';
@@ -55,6 +55,8 @@ interface DiscoverPlaceCardProps {
   onRecommend: (name: string) => void;
   onExplore?: (placeId: string | undefined, name: string) => void;
   onAddToPlanner?: (place: DiscoverPlace) => void;
+  /** Whether to show the recommend-to-group button */
+  showRecommend?: boolean;
   /** Per-member votes for group consensus display */
   voteByMember?: Record<string, PlaceVote>;
   /** Member ID → display name for avatar initials */
@@ -71,8 +73,11 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   travelMode = 'walk',
   isSaved,
   onSave,
+  onRecommend,
   onExplore,
   onAddToPlanner,
+  showRecommend,
+  isRecommended,
   voteByMember,
   memberNames,
   totalMembers,
@@ -212,6 +217,20 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
         </TouchableOpacity>
       )}
 
+      {/* Recommend to group */}
+      {showRecommend && (
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation?.(); onRecommend(place.n); }}
+          style={styles.recommendBtn}
+          activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel={isRecommended ? 'Recommended' : 'Recommend to group'}
+          hitSlop={8}
+        >
+          <Users size={14} color={isRecommended ? colors.accent : colors.text3} strokeWidth={2} />
+        </TouchableOpacity>
+      )}
+
       {/* Bookmark */}
       <TouchableOpacity
         onPress={(e) => { e.stopPropagation?.(); onSave(place.n); }}
@@ -321,6 +340,13 @@ const getStyles = (colors: ThemeColors) =>
       height: 32,
       alignItems: 'center',
       justifyContent: 'center',
+      minHeight: 44,
+    },
+    recommendBtn: {
+      width: 32,
+      height: 32,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
       minHeight: 44,
     },
     bookmarkBtn: {

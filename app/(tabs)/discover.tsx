@@ -1176,134 +1176,147 @@ function DiscoverScreenInner() {
         )}
         {tab === 'planner' && hasTripDates && (
           <>
-            {/* Scope toggle: Today vs Whole Trip */}
-            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
-              <TouchableOpacity
-                onPress={() => setItineraryScope('today')}
-                activeOpacity={0.7}
-                style={{
-                  flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
-                  backgroundColor: itineraryScope === 'today' ? colors.accent : colors.card,
-                  borderWidth: 1, borderColor: itineraryScope === 'today' ? colors.accent : colors.border,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: itineraryScope === 'today' ? colors.bg : colors.text }}>
-                  Plan Today
-                </Text>
-                <Text style={{ fontSize: 9, color: itineraryScope === 'today' ? colors.bg : colors.text3, marginTop: 1 }}>
-                  Day {todayDayNumber} · {todayLabel}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setItineraryScope('whole')}
-                activeOpacity={0.7}
-                style={{
-                  flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center',
-                  backgroundColor: itineraryScope === 'whole' ? colors.accent : colors.card,
-                  borderWidth: 1, borderColor: itineraryScope === 'whole' ? colors.accent : colors.border,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: itineraryScope === 'whole' ? colors.bg : colors.text }}>
-                  Whole Trip
-                </Text>
-                <Text style={{ fontSize: 9, color: itineraryScope === 'whole' ? colors.bg : colors.text3, marginTop: 1 }}>
-                  {tripDays} days
-                </Text>
-              </TouchableOpacity>
+            {/* Scope toggle: Today vs Whole Trip — matches Budget segmented control */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+              {(['today', 'whole'] as const).map((scope) => {
+                const active = itineraryScope === scope;
+                return (
+                  <TouchableOpacity
+                    key={scope}
+                    onPress={() => setItineraryScope(scope)}
+                    activeOpacity={0.7}
+                    style={{
+                      flex: 1, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, alignItems: 'center',
+                      backgroundColor: active ? colors.accentBg : colors.card,
+                      borderWidth: 1, borderColor: active ? colors.accentBorder : colors.border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: active ? colors.accent : colors.text }}>
+                      {scope === 'today' ? 'Plan Today' : 'Whole Trip'}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: active ? colors.accent : colors.text3, marginTop: 2 }}>
+                      {scope === 'today' ? `Day ${todayDayNumber} · ${todayLabel}` : `${tripDays} days`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Questions: style + pace + interests */}
             {!itineraryLoading && (
-              <View style={{ gap: 8, marginBottom: 12 }}>
-                {/* Q1: What's your vibe? */}
-                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase' }}>What's your vibe?</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-                  {ITINERARY_STYLES.map((s) => {
-                    const active = style === s.id;
-                    return (
-                      <TouchableOpacity
-                        key={s.id}
-                        onPress={() => setStyle(s.id)}
-                        activeOpacity={0.7}
-                        style={[styles.chip, active && styles.chipActive, { paddingVertical: 5, paddingHorizontal: 10 }]}
-                      >
-                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 11 }]}>{s.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+              <View style={{ gap: 16 }}>
+                {/* Q1: What's your vibe? — eyebrow matches Home/Budget section labels */}
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.text3, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>What's your vibe?</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {ITINERARY_STYLES.map((s) => {
+                      const active = style === s.id;
+                      return (
+                        <TouchableOpacity
+                          key={s.id}
+                          onPress={() => setStyle(s.id)}
+                          activeOpacity={0.7}
+                          style={{
+                            paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999,
+                            backgroundColor: active ? colors.accent : colors.card,
+                            borderWidth: active ? 0 : 1, borderColor: colors.border,
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '500', color: active ? colors.bg : colors.text2 }}>{s.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
 
                 {/* Q2: How packed? */}
-                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 }}>How packed?</Text>
-                <View style={{ flexDirection: 'row', gap: 5 }}>
-                  {PACE_OPTIONS.map((p) => {
-                    const active = pace === p.id;
-                    return (
-                      <TouchableOpacity
-                        key={p.id}
-                        onPress={() => setPace(p.id)}
-                        activeOpacity={0.7}
-                        style={[styles.chip, active && styles.chipActive, { flex: 1, alignItems: 'center', paddingVertical: 6 }]}
-                      >
-                        <Text style={[styles.chipText, active && styles.chipTextActive, { fontSize: 11, fontWeight: '600' }]}>{p.label}</Text>
-                        <Text style={{ fontSize: 8, color: active ? colors.accent : colors.text3, marginTop: 1 }}>{p.desc}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.text3, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>How packed?</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    {PACE_OPTIONS.map((p) => {
+                      const active = pace === p.id;
+                      return (
+                        <TouchableOpacity
+                          key={p.id}
+                          onPress={() => setPace(p.id)}
+                          activeOpacity={0.7}
+                          style={{
+                            flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14,
+                            backgroundColor: active ? colors.accent : colors.card,
+                            borderWidth: active ? 0 : 1, borderColor: colors.border,
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: active ? colors.bg : colors.text }}>{p.label}</Text>
+                          <Text style={{ fontSize: 10, color: active ? `${colors.bg}B3` : colors.text3, marginTop: 2 }}>{p.desc}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 </View>
 
                 {/* Q3: Anything specific? */}
-                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.text3, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 }}>Anything specific?</Text>
-                <TextInput
-                  value={prompt}
-                  onChangeText={setPrompt}
-                  placeholder="e.g. snorkeling, sunset dinner, local food..."
-                  placeholderTextColor={colors.text3}
-                  style={{ fontSize: 12, color: colors.text, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}
-                />
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.text3, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>Anything specific?</Text>
+                  <TextInput
+                    value={prompt}
+                    onChangeText={setPrompt}
+                    placeholder="e.g. snorkeling, sunset dinner, local food..."
+                    placeholderTextColor={colors.text3}
+                    style={{
+                      fontSize: 14, color: colors.text, backgroundColor: colors.bg2,
+                      borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+                      paddingHorizontal: 16, paddingVertical: 12,
+                    }}
+                  />
+                </View>
 
-                {/* Generate button */}
+                {/* Generate button — matches Budget CTA / PlaceDetail save button */}
                 <TouchableOpacity
-                  style={{ backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 2 }}
+                  style={{
+                    backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 14,
+                    alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8,
+                    shadowColor: colors.accent, shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.3, shadowRadius: 16, elevation: 6,
+                  }}
                   activeOpacity={0.7}
                   onPress={handleGenerateItinerary}
                 >
-                  <Sparkles size={14} color={colors.bg} strokeWidth={2} />
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.bg }}>
+                  <Sparkles size={16} color={colors.bg} strokeWidth={2} />
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.bg }}>
                     {itineraryScope === 'today' ? 'Generate today\'s plan' : 'Generate full trip plan'}
                   </Text>
                 </TouchableOpacity>
               </View>
             )}
             {itineraryLoading && (
-              <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+              <View style={{ alignItems: 'center', paddingVertical: 32 }}>
                 <MiniLoader message={itineraryScope === 'today' ? 'Planning your day...' : 'Planning your trip...'} />
               </View>
             )}
             {itineraryError && (
-              <Text style={{ color: colors.danger, fontSize: 12, textAlign: 'center', marginBottom: 8 }}>{itineraryError}</Text>
+              <Text style={{ color: colors.danger, fontSize: 13, textAlign: 'center', marginBottom: 12 }}>{itineraryError}</Text>
             )}
 
             {/* Results timeline */}
             {plannerDayItems.length > 0 && (
-              <View style={{ marginTop: 4 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.accent, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
+              <View style={{ marginTop: 16 }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: colors.accent, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>
                   {itineraryScope === 'today' ? `Day ${todayDayNumber} · ${todayLabel}` : 'Your Plan'}
                 </Text>
-                <View style={{ backgroundColor: colors.card, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border, gap: 10 }}>
+                <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, gap: 12 }}>
                   {plannerDayItems.map((item) => (
-                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: colors.accent, width: 46, marginTop: 2 }}>{item.time}</Text>
                       <View style={{ width: 2, backgroundColor: colors.accentBorder, alignSelf: 'stretch', borderRadius: 1 }} />
-                      <View style={{ flex: 1, backgroundColor: colors.bg, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.border }}>
+                      <View style={{ flex: 1, backgroundColor: colors.bg2, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text, flex: 1 }}>{item.title}</Text>
+                          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, flex: 1 }}>{item.title}</Text>
                           <TouchableOpacity onPress={() => removePlannerItem(item.id)} activeOpacity={0.6} hitSlop={8}>
-                            <Text style={{ color: colors.text3, fontSize: 14 }}>{'\u00D7'}</Text>
+                            <Text style={{ color: colors.text3, fontSize: 16 }}>{'\u00D7'}</Text>
                           </TouchableOpacity>
                         </View>
                         {item.note && (
-                          <Text style={{ fontSize: 11, color: colors.text3, marginTop: 3 }}>{item.note}</Text>
+                          <Text style={{ fontSize: 12, color: colors.text3, marginTop: 4 }}>{item.note}</Text>
                         )}
                       </View>
                     </View>
@@ -1313,8 +1326,8 @@ function DiscoverScreenInner() {
             )}
 
             {plannerDayItems.length === 0 && !itineraryLoading && (
-              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
-                <Text style={{ fontSize: 12, color: colors.text3 }}>Choose your vibe and tap generate</Text>
+              <View style={{ alignItems: 'center', paddingVertical: 28 }}>
+                <Text style={{ fontSize: 13, color: colors.text3 }}>Choose your vibe and tap generate</Text>
               </View>
             )}
           </>
@@ -1524,6 +1537,14 @@ function DiscoverScreenInner() {
                       onRecommend={toggleRecommend}
                       onExplore={handleExplore}
                       onAddToPlanner={handleAddToPlanner}
+                      showRecommend={tripMembers.length >= 2}
+                      voteByMember={savedPlaces.find((sp) => sp.name === p.n)?.voteByMember}
+                      memberNames={memberNames}
+                      totalMembers={tripMembers.length}
+                      onVoteTap={() => {
+                        const sp = savedPlaces.find((s) => s.name === p.n);
+                        if (sp) { setVotingPlace(sp); setShowVotingSheet(true); }
+                      }}
                     />
                   ))}
                   {placesWithDistance.length > visibleCount && (
@@ -1599,6 +1620,7 @@ function DiscoverScreenInner() {
                       onSave={toggleSave}
                       onRecommend={toggleRecommend}
                       onAddToPlanner={handleAddToPlanner}
+                      showRecommend={tripMembers.length >= 2}
                       voteByMember={p.voteByMember}
                       memberNames={memberNames}
                       totalMembers={tripMembers.length}
