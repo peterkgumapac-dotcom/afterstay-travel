@@ -12,7 +12,6 @@ import AfterStayLoader from '@/components/AfterStayLoader';
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { verifyConfig } from '@/lib/config';
-import { migrateMediaCache } from '@/lib/cache/mediaCache';
 import { queryClient } from '@/lib/queryClient';
 
 export { ErrorBoundary } from 'expo-router';
@@ -137,7 +136,6 @@ export default function RootLayout() {
 
   useEffect(() => {
     verifyConfig();
-    migrateMediaCache();
   }, []);
 
   useEffect(() => {

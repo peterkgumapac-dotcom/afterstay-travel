@@ -151,6 +151,8 @@ function mapTrip(row: Record<string, unknown>): Trip {
     customQuickAccess: (row.custom_quick_access as string) ?? undefined,
     transportNotes: (row.transport_notes as string) ?? undefined,
     houseRules: (row.house_rules as string) ?? undefined,
+    hotelLat: num(row.hotel_lat) || undefined,
+    hotelLng: num(row.hotel_lng) || undefined,
     emergencyContacts: (row.emergency_contacts as string) ?? undefined,
     hotelPhotos: (row.hotel_photos as string) ?? undefined,
     budgetLimit: num(row.budget_limit),
@@ -677,6 +679,7 @@ const TRIP_PROPERTY_MAP: Record<string, string> = {
   'Hotel Photos': 'hotel_photos',
   Destination: 'destination',
   'Trip Name': 'name',
+  status: 'status',
 }
 
 export async function updateTripProperty(
@@ -707,6 +710,76 @@ export async function updateTripBudgetLimit(tripId: string, limit: number): Prom
     .update({ budget_limit: limit })
     .eq('id', tripId)
   if (error) throw new Error(`updateTripBudgetLimit: ${error.message}`)
+}
+
+// ── Payment QRs ────────────────────────────────────────────────────────
+
+export interface PaymentQr {
+  label: string;
+  uri: string;
+}
+
+export async function getPaymentQrs(tripId: string): Promise<PaymentQr[]> {
+  const { data, error } = await supabase
+    .from(T.trips)
+    .select('payment_qrs')
+    .eq('id', tripId)
+    .single()
+  if (error || !data) return []
+  return (data.payment_qrs as PaymentQr[]) ?? []
+}
+
+export async function addPaymentQr(
+  tripId: string,
+  label: string,
+  localUri: string
+): Promise<PaymentQr[]> {
+  // Upload image to storage
+  const ext = 'jpeg'
+  const rand = Math.random().toString(36).slice(2, 6)
+  const storagePath = `payment-qr/${tripId}/${label.toLowerCase().replace(/\s+/g, '-')}-${rand}.${ext}`
+
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  })
+  const binaryStr = atob(base64)
+  const bytes = new Uint8Array(binaryStr.length)
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i)
+  }
+
+  const { error: uploadError } = await supabase.storage
+    .from('moments')
+    .upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: false })
+  if (uploadError) throw new Error(`addPaymentQr upload: ${uploadError.message}`)
+
+  const { data: urlData } = supabase.storage.from('moments').getPublicUrl(storagePath)
+  const publicUrl = urlData.publicUrl
+
+  // Get current list, append, save
+  const current = await getPaymentQrs(tripId)
+  const next = [...current, { label, uri: publicUrl }]
+
+  const { error } = await supabase
+    .from(T.trips)
+    .update({ payment_qrs: next })
+    .eq('id', tripId)
+  if (error) throw new Error(`addPaymentQr save: ${error.message}`)
+
+  return next
+}
+
+export async function removePaymentQr(tripId: string, index: number): Promise<PaymentQr[]> {
+  const current = await getPaymentQrs(tripId)
+  const next = current.filter((_, i) => i !== index)
+
+  const { error } = await supabase
+    .from(T.trips)
+    .update({ payment_qrs: next })
+    .eq('id', tripId)
+  if (error) throw new Error(`removePaymentQr: ${error.message}`)
+
+  return next
 }
 
 // ---------- FLIGHTS ----------
@@ -1069,7 +1142,7 @@ export async function addMoment(
 
   const { error } = await supabase.from(T.moments).insert({
     trip_id: tripId,
-    caption: input.caption || 'Untitled',
+    caption: input.caption || '',
     ...(storagePath ? { storage_path: storagePath } : {}),
     ...(publicUrl ? { public_url: publicUrl } : {}),
     ...(input.location ? { location: input.location } : {}),

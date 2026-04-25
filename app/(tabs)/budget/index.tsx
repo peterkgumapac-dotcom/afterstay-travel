@@ -3,7 +3,7 @@
 
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -29,7 +29,6 @@ import Animated, {
 import Svg, { Polyline } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Car, Compass, Package, Pencil, QrCode, ShoppingBag, UtensilsCrossed, Wallet, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -39,14 +38,18 @@ import EmptyState from '@/components/shared/EmptyState';
 import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import SwipeableExpenseRow from '@/components/budget/SwipeableExpenseRow';
 import {
+  addPaymentQr,
   deleteExpense,
   getActiveTrip,
   getExpenses,
   getExpenseSummary,
   getGroupMembers,
+  getPaymentQrs,
+  removePaymentQr as removePaymentQrSupabase,
   updateTripBudgetLimit,
   updateTripBudgetMode,
 } from '@/lib/supabase';
+import type { PaymentQr } from '@/lib/supabase';
 import { formatCurrency, formatDatePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 import type { Expense, GroupMember, Trip } from '@/lib/types';
 
@@ -78,7 +81,7 @@ function smartTitle(e: Expense): string {
     desc = prefix ? `${prefix} at ${e.placeName}` : e.placeName;
   }
   if (desc.length > 0) desc = desc.charAt(0).toUpperCase() + desc.slice(1);
-  if (desc.length > 35) desc = desc.slice(0, 32) + '\u2026';
+  if (desc.length > 45) desc = desc.slice(0, 42) + '\u2026';
   return desc || e.description.slice(0, 35);
 }
 
@@ -90,6 +93,7 @@ export default function BudgetScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
   const [mode, setMode] = useState<BudgetMode>('budget');
+  const modeInit = useRef(false);
   const [tab, setTab] = useState<TabId>('overview');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -101,9 +105,9 @@ export default function BudgetScreen() {
   const [showAllExpenses, setShowAllExpenses] = useState(false);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
-  const [paymentQrs, setPaymentQrs] = useState<{ label: string; uri: string }[]>([]);
+  const [paymentQrs, setPaymentQrs] = useState<PaymentQr[]>([]);
   const [showQrModal, setShowQrModal] = useState(false);
-  const [viewingQr, setViewingQr] = useState<{ label: string; uri: string } | null>(null);
+  const [viewingQr, setViewingQr] = useState<PaymentQr | null>(null);
   const [showQrNameModal, setShowQrNameModal] = useState(false);
   const [pendingQrUri, setPendingQrUri] = useState<string | null>(null);
   const [qrNameInput, setQrNameInput] = useState('');
@@ -122,9 +126,12 @@ export default function BudgetScreen() {
         setExpenses(exps);
         setExpenseSummary(summary);
         setMembers(mems);
-        // Auto-detect mode
-        if (mems.length >= 2) setMode('group');
-        else setMode('budget');
+        // Auto-detect mode only on first load
+        if (!modeInit.current) {
+          modeInit.current = true;
+          if (mems.length >= 2) setMode('group');
+          else setMode('budget');
+        }
       }
     } catch (e) { if (__DEV__) console.warn('[BudgetScreen] load budget data failed:', e); } finally {
       setRefreshing(false);
@@ -133,21 +140,11 @@ export default function BudgetScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Payment QRs (multi-bank) ──
-  const qrKey = trip?.id ? `payment_qrs_${trip.id}` : null;
-
+  // ── Payment QRs (Supabase-synced) ──
   useEffect(() => {
-    if (!qrKey) return;
-    AsyncStorage.getItem(qrKey).then((raw) => {
-      if (!raw) return;
-      try { setPaymentQrs(JSON.parse(raw)); } catch { /* ignore */ }
-    });
-  }, [qrKey]);
-
-  const saveQrs = useCallback(async (next: { label: string; uri: string }[]) => {
-    setPaymentQrs(next);
-    if (qrKey) await AsyncStorage.setItem(qrKey, JSON.stringify(next));
-  }, [qrKey]);
+    if (!trip?.id) return;
+    getPaymentQrs(trip.id).then(setPaymentQrs).catch(() => {});
+  }, [trip?.id]);
 
   const pickPaymentQr = useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -161,25 +158,32 @@ export default function BudgetScreen() {
   }, []);
 
   const confirmAddQr = useCallback(async () => {
-    if (!pendingQrUri) return;
+    if (!pendingQrUri || !trip?.id) return;
     const label = qrNameInput.trim() || 'Payment QR';
-    const next = [...paymentQrs, { label, uri: pendingQrUri }];
-    await saveQrs(next);
+    try {
+      const next = await addPaymentQr(trip.id, label, pendingQrUri);
+      setPaymentQrs(next);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert('Error', 'Failed to upload QR code');
+    }
     setPendingQrUri(null);
     setShowQrNameModal(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [pendingQrUri, qrNameInput, paymentQrs, saveQrs]);
+  }, [pendingQrUri, qrNameInput, trip?.id]);
 
-  const removePaymentQr = useCallback((idx: number) => {
+  const handleRemoveQr = useCallback((idx: number) => {
     const name = paymentQrs[idx]?.label ?? 'this QR';
     Alert.alert('Remove QR', `Remove ${name}?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => {
-        const next = paymentQrs.filter((_, i) => i !== idx);
-        saveQrs(next);
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        if (!trip?.id) return;
+        try {
+          const next = await removePaymentQrSupabase(trip.id, idx);
+          setPaymentQrs(next);
+        } catch { /* ignore */ }
       }},
     ]);
-  }, [paymentQrs, saveQrs]);
+  }, [paymentQrs, trip?.id]);
 
   // ── Derived values ──
   const total = trip?.budgetLimit ?? 0;
@@ -350,7 +354,7 @@ export default function BudgetScreen() {
                         <View style={styles.budgetAmountRow}>
                           <Text style={styles.budgetCurrency}>{'\u20B1'}</Text>
                           <Text style={styles.budgetAmount}>{total.toLocaleString()}</Text>
-                          <TouchableOpacity onPress={() => { setBudgetInput(String(total)); setShowBudgetModal(true); }} hitSlop={8}>
+                          <TouchableOpacity onPress={() => { setBudgetInput(String(total)); setShowBudgetModal(true); }} hitSlop={16}>
                             <Pencil size={13} color={colors.text3} strokeWidth={1.8} />
                           </TouchableOpacity>
                         </View>
@@ -376,7 +380,7 @@ export default function BudgetScreen() {
                     </View>
                     <View style={styles.progressLabels}>
                       <Text style={styles.progressText}>Spent <Text style={styles.progressBold}>{formatCurrency(spent, 'PHP')}</Text></Text>
-                      <Text style={styles.progressText}>Left <Text style={[styles.progressBold, { color: colors.accent }]}>{formatCurrency(remaining, 'PHP')}</Text></Text>
+                      <Text style={styles.progressText}>{remaining < 0 ? 'Over' : 'Left'} <Text style={[styles.progressBold, { color: remaining < 0 ? colors.red : colors.accent }]}>{formatCurrency(Math.abs(remaining), 'PHP')}</Text></Text>
                     </View>
                   </>
                 )}
@@ -389,7 +393,7 @@ export default function BudgetScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.lodgingTitle} numberOfLines={1}>Lodging · {trip.accommodation}</Text>
-                      <Text style={styles.lodgingSub}>Paid in full · {members.length} travelers</Text>
+                      <Text style={styles.lodgingSub}>Paid in full · {members.length} traveler{members.length !== 1 ? 's' : ''}</Text>
                     </View>
                     {trip.cost != null && <Text style={styles.lodgingAmount}>{formatCurrency(trip.cost, trip.costCurrency ?? 'PHP')}</Text>}
                   </View>
@@ -399,14 +403,20 @@ export default function BudgetScreen() {
 
             {/* Payment QR shortcuts */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Payment QR</Text>
+              <View style={styles.qrHeader}>
+                <Image source={require('@/assets/icon/afterstay-icon.png')} style={styles.qrBrandIcon} />
+                <View>
+                  <Text style={styles.sectionTitle}>AfterStay Pay</Text>
+                  <Text style={styles.qrHeaderSub}>Your payment QR codes</Text>
+                </View>
+              </View>
               <View style={{ gap: 8 }}>
                 {paymentQrs.map((qr, idx) => (
                   <TouchableOpacity
                     key={idx}
                     style={styles.qrRow}
                     onPress={() => { setViewingQr(qr); setShowQrModal(true); }}
-                    onLongPress={() => removePaymentQr(idx)}
+                    onLongPress={() => handleRemoveQr(idx)}
                     activeOpacity={0.7}
                   >
                     <View style={[styles.qrThumb, { borderColor: colors.border }]}>
@@ -669,14 +679,21 @@ export default function BudgetScreen() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* QR view modal */}
+      {/* QR view modal — branded */}
       <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setShowQrModal(false)}>
           <View style={styles.qrModalCard}>
+            <View style={styles.qrModalBrand}>
+              <Image source={require('@/assets/icon/afterstay-icon.png')} style={styles.qrModalLogo} />
+              <Text style={styles.qrModalBrandName}>AfterStay</Text>
+            </View>
             <Text style={styles.qrModalTitle}>{viewingQr?.label ?? 'Payment QR'}</Text>
             {viewingQr && (
-              <Image source={{ uri: viewingQr.uri }} style={styles.qrModalImage} resizeMode="contain" />
+              <View style={styles.qrModalImageWrap}>
+                <Image source={{ uri: viewingQr.uri }} style={styles.qrModalImage} resizeMode="contain" />
+              </View>
             )}
+            <Text style={styles.qrModalScan}>Scan to pay</Text>
             <TouchableOpacity onPress={() => setShowQrModal(false)} style={styles.qrModalClose}>
               <Text style={[styles.modalBtn, { color: colors.text3 }]}>Close</Text>
             </TouchableOpacity>
@@ -845,15 +862,23 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   fateButtonText: { fontSize: 15, fontWeight: '600', color: c.accent, letterSpacing: 0.5 },
 
   // Payment QR
+  qrHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  qrBrandIcon: { width: 28, height: 28, borderRadius: 8 },
+  qrHeaderSub: { fontSize: 10, color: c.text3, marginTop: 1 },
   qrRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 16 },
   qrThumb: { width: 48, height: 48, borderRadius: 10, borderWidth: 1, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   qrLabel: { fontSize: 13, fontWeight: '600', color: c.text },
   qrHint: { fontSize: 10, color: c.text3, marginTop: 2 },
-  qrUploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, backgroundColor: c.card, borderWidth: 1, borderColor: c.accentBorder, borderRadius: 16, borderStyle: 'dashed' },
+  qrUploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, backgroundColor: c.card, borderWidth: 1, borderColor: c.accentBorder, borderRadius: 16, borderStyle: 'dashed' as const },
   qrUploadText: { fontSize: 13, fontWeight: '600', color: c.accent },
-  qrModalCard: { width: '85%', backgroundColor: c.bg2, borderRadius: radius.lg, padding: 24, borderWidth: 1, borderColor: c.border, alignItems: 'center' },
-  qrModalTitle: { fontSize: 16, fontWeight: '700', color: c.text, marginBottom: 16 },
-  qrModalImage: { width: 260, height: 260, borderRadius: 12 },
+  qrModalCard: { width: '85%', backgroundColor: c.bg2, borderRadius: radius.xl, padding: 28, borderWidth: 1, borderColor: c.border, alignItems: 'center' },
+  qrModalBrand: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  qrModalLogo: { width: 24, height: 24, borderRadius: 6 },
+  qrModalBrandName: { fontSize: 13, fontWeight: '700', color: c.accent, letterSpacing: 0.5 },
+  qrModalTitle: { fontSize: 18, fontWeight: '700', color: c.text, marginBottom: 16 },
+  qrModalImageWrap: { backgroundColor: '#fff', borderRadius: 16, padding: 12 },
+  qrModalImage: { width: 240, height: 240, borderRadius: 8 },
+  qrModalScan: { fontSize: 11, color: c.text3, marginTop: 12, letterSpacing: 1, textTransform: 'uppercase' as const, fontWeight: '600' },
   qrModalClose: { marginTop: 16 },
 
   // Modal

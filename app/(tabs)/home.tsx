@@ -42,6 +42,7 @@ import {
   getMoments,
 } from '@/lib/supabase';
 import type { Flight, GroupMember, Moment, Trip } from '@/lib/types';
+import { setHotelCoords } from '@/lib/config';
 import { formatDatePHT, formatTimePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 
 type TripPhase = 'planning' | 'upcoming' | 'inflight' | 'arrived' | 'active';
@@ -177,6 +178,7 @@ export default function HomeScreen() {
       if (t) {
         setTrip(t);
         await cacheSet('trip:active', t);
+        if (t.hotelLat && t.hotelLng) setHotelCoords(t.hotelLat, t.hotelLng);
       }
       if (t) {
         const [fs, ms, members] = await Promise.all([
@@ -606,8 +608,8 @@ export default function HomeScreen() {
           <QuickAccessGrid tiles={quickAccessTiles} />
         </CollapsibleSection>
 
-        {/* Bottom spacer — tall enough to scroll past FAB */}
-        <View style={{ height: 100 }} />
+        {/* Bottom spacer for FAB clearance */}
+        <View style={{ height: 80 }} />
       </ScrollView>
       <FloatingActionButton />
     </SafeAreaView>

@@ -207,9 +207,9 @@ export function TripActiveCard({
       return `\u20B1${pastPace.toLocaleString()} past pace`;
     }
     if (budgetStatus === 'low') {
-      return `\u20B1${remaining.toLocaleString()} left for ${daysLeft} days \u00B7 above pace`;
+      return `\u20B1${remaining.toLocaleString()} left for ${daysLeft} day${daysLeft !== 1 ? 's' : ''} \u00B7 above pace`;
     }
-    return `\u20B1${remaining.toLocaleString()} left for ${daysLeft} days`;
+    return `\u20B1${remaining.toLocaleString()} left for ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`;
   }, [budgetStatus, budget, spent, expectedPct, daysLeft]);
 
   return (

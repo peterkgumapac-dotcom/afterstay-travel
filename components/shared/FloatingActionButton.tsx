@@ -4,6 +4,7 @@ import {
   Modal, Pressable, Text,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, Camera, FileText, MessageCircle, Package, Receipt } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
@@ -20,6 +21,7 @@ export const FloatingActionButton: React.FC = () => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const menuAnims = [
@@ -168,7 +170,7 @@ export const FloatingActionButton: React.FC = () => {
       </Modal>
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: Math.max(insets.bottom, 20) + 56 }]}
         onPress={toggle}
         activeOpacity={0.85}
       >
@@ -183,7 +185,6 @@ export const FloatingActionButton: React.FC = () => {
 const getStyles = (colors: ThemeColors) => StyleSheet.create({
   fab: {
     position: 'absolute',
-    bottom: 100,
     right: 20,
     width: 56,
     height: 56,

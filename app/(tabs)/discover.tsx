@@ -514,7 +514,13 @@ const TopPicksSection = React.memo(function TopPicksSection({
             accessibilityRole="button"
             accessibilityLabel={p.n}
           >
-            <Image source={{ uri: p.img }} style={styles.topPickImage} />
+            {p.img ? (
+              <Image source={{ uri: p.img }} style={styles.topPickImage} />
+            ) : (
+              <View style={[styles.topPickImage, { alignItems: 'center', justifyContent: 'center' }]}>
+                <Map size={24} color={colors.text3} />
+              </View>
+            )}
             <Text style={styles.topPickLabel}>{friendlyCategory(p.t).toUpperCase()}</Text>
             <Text style={styles.topPickName} numberOfLines={1}>{p.n}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 10 }}>
@@ -748,6 +754,10 @@ function DiscoverScreenInner() {
       setSavedLoading(false);
     }
   }, [tripId]);
+
+  useEffect(() => {
+    if (tripId) loadSavedPlaces();
+  }, [tripId, loadSavedPlaces]);
 
   useEffect(() => {
     if (tab === 'saved' && tripId) {
@@ -1503,9 +1513,18 @@ function DiscoverScreenInner() {
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
-                      setSaved(new Set());
-                      setRecommended(new Set());
-                      setSavedPlaces([]);
+                      Alert.alert('Clear All', 'Remove all saved places?', [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Clear',
+                          style: 'destructive',
+                          onPress: () => {
+                            setSaved(new Set());
+                            setRecommended(new Set());
+                            setSavedPlaces([]);
+                          },
+                        },
+                      ]);
                     }}
                     activeOpacity={0.7}
                   >

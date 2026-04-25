@@ -1,7 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Image,
   Linking,
   RefreshControl,
@@ -11,27 +10,24 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, {
-  Circle,
-  Defs,
-  Path,
-  Pattern,
-  Polyline,
-  Rect,
-  Line,
-} from 'react-native-svg';
+import Svg, { Circle, Path, Polyline, Rect, Line } from 'react-native-svg';
 
-import { ArrowLeft, Hotel, MapPin, StickyNote } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Hotel,
+  Phone,
+  Mail,
+  Wifi,
+  Key,
+  MapPin,
+  Clock,
+  ExternalLink,
+  Copy,
+} from 'lucide-react-native';
 
 import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 
 import { useTheme } from '@/constants/ThemeContext';
 import EmptyState from '@/components/shared/EmptyState';
@@ -40,169 +36,6 @@ import { formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
-type TabId = 'property' | 'nearby' | 'notes';
-
-// ── Data ────────────────────────────────────────────────────────────────
-
-const PROPERTY = {
-  name: '',
-  desc: '',
-  checkIn: '3:00 PM',
-  checkOut: '11:00 AM',
-  phone: '',
-  email: '',
-} as const;
-
-const AMENITIES: { n: string; iconId: string }[] = [];
-
-const NEARBY: { n: string; d: string; t: string; w: string; pin: string }[] = [];
-
-const NOTES: { title: string; body: string; time: string; by: string }[] = [];
-
-const HOTEL_PHOTO = '';
-
-const MAP_PINS = [
-  { x: '20%', y: '30%' },
-  { x: '75%', y: '25%' },
-  { x: '30%', y: '75%' },
-  { x: '80%', y: '70%' },
-] as const;
-
-// ── Amenity icon renderer ───────────────────────────────────────────────
-
-function AmenityIcon({ id, color }: { id: string; color: string }) {
-  const props = {
-    width: 18,
-    height: 18,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: color,
-    strokeWidth: 1.7,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-  };
-
-  switch (id) {
-    case 'pool':
-      return (
-        <Svg {...props}>
-          <Path d="M2 20c2 0 2-2 5-2s3 2 5 2 3-2 5-2 3 2 5 2" />
-          <Path d="M2 15c2 0 2-2 5-2s3 2 5 2 3-2 5-2 3 2 5 2" />
-          <Path d="M8 11V4a2 2 0 012-2h2a2 2 0 012 2v7" />
-        </Svg>
-      );
-    case 'wifi':
-      return (
-        <Svg {...props}>
-          <Path d="M5 12.5a10 10 0 0114 0" />
-          <Path d="M8.5 15.5a5 5 0 017 0" />
-          <Circle cx={12} cy={19} r={1} fill={color} />
-        </Svg>
-      );
-    case 'breakfast':
-      return (
-        <Svg {...props}>
-          <Path d="M3 12h14a4 4 0 010 8H5a2 2 0 01-2-2z" />
-          <Path d="M8 7a2 2 0 014 0 2 2 0 004 0M17 12v-2a3 3 0 016 0v2" />
-        </Svg>
-      );
-    case 'gym':
-      return (
-        <Svg {...props} strokeLinejoin={undefined}>
-          <Path d="M6 8v8M18 8v8M2 12h4M18 12h4M9 10v4M15 10v4" />
-        </Svg>
-      );
-    case 'shuttle':
-      return (
-        <Svg {...props}>
-          <Rect x={3} y={6} width={18} height={12} rx={2} />
-          <Path d="M3 12h18M7 18v2M17 18v2" />
-          <Circle cx={7} cy={14} r={1} fill={color} />
-          <Circle cx={17} cy={14} r={1} fill={color} />
-        </Svg>
-      );
-    case 'spa':
-      return (
-        <Svg {...props}>
-          <Path d="M12 22c-6 0-10-4-10-10 0-3 2-6 4-6s4 2 4 4M12 22c6 0 10-4 10-10 0-3-2-6-4-6s-4 2-4 4" />
-        </Svg>
-      );
-    default:
-      return null;
-  }
-}
-
-// ── Pulsing dot for map pin ─────────────────────────────────────────────
-
-function PulsingMapPin({ colors, label }: { colors: ThemeColors; label: string }) {
-  const scale = useSharedValue(1);
-
-  useEffect(() => {
-    scale.value = withRepeat(
-      withTiming(1.15, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-    );
-  }, []);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View style={[styles_static.pinContainer, animStyle]}>
-      <View
-        style={[
-          styles_static.pinOuter,
-          {
-            backgroundColor: colors.accent,
-            shadowColor: colors.accent,
-          },
-        ]}
-      >
-        <Svg
-          width={18}
-          height={18}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={colors.onBlack}
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <Path d="M12 22s-8-7.5-8-13a8 8 0 1116 0c0 5.5-8 13-8 13z" />
-          <Circle cx={12} cy={9} r={2.5} />
-        </Svg>
-      </View>
-      <Text style={[styles_static.pinLabel, { color: colors.text }]}>
-        {label}
-      </Text>
-    </Animated.View>
-  );
-}
-
-// Some styles that don't depend on theme
-const styles_static = StyleSheet.create({
-  pinContainer: {
-    alignItems: 'center',
-  },
-  pinOuter: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  pinLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-});
 
 // ── Main screen ─────────────────────────────────────────────────────────
 
@@ -210,39 +43,39 @@ export default function GuideScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
-  const [tab, setTab] = useState<TabId>('property');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadTrip = useCallback((force = false) => {
-    getActiveTrip(force).then((t) => { if (t) setTrip(t); }).catch((e) => { if (__DEV__) console.warn('[GuideScreen] load active trip failed:', e); }).finally(() => setRefreshing(false));
+    getActiveTrip(force)
+      .then((t) => { if (t) setTrip(t); })
+      .catch((err) => { if (__DEV__) console.warn('[Guide] loadTrip failed:', err); })
+      .finally(() => setRefreshing(false));
   }, []);
 
   useEffect(() => { loadTrip(); }, [loadTrip]);
 
-  // Canyon Hotels backward compat — show hardcoded data only for Canyon trips
-  const isCanyon = trip?.accommodation?.toLowerCase().includes('canyon') ?? false;
-  const hasAccommodation = !!(trip?.accommodation);
-
-  const hotelName = hasAccommodation ? trip!.accommodation : (isCanyon ? PROPERTY.name : '');
-  const hotelAddr = trip?.address ?? (isCanyon ? PROPERTY.desc : '');
-  const checkInTime = trip?.checkIn ?? (isCanyon ? PROPERTY.checkIn : '');
-  const checkOutTime = trip?.checkOut ?? (isCanyon ? PROPERTY.checkOut : '');
+  const hotelName = trip?.accommodation ?? '';
+  const hotelAddr = trip?.address ?? '';
+  const checkInTime = trip?.checkIn ?? '';
+  const checkOutTime = trip?.checkOut ?? '';
   const destLabel = trip?.destination ?? '';
   const checkInDate = trip ? formatDatePHT(trip.startDate) : '';
   const checkOutDate = trip ? formatDatePHT(trip.endDate) : '';
 
   const hotelPhotoUrl = (() => {
-    if (!trip?.hotelPhotos) return HOTEL_PHOTO;
+    if (!trip?.hotelPhotos) return '';
     try {
       const parsed = JSON.parse(trip.hotelPhotos);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : HOTEL_PHOTO;
-    } catch {
-      return HOTEL_PHOTO;
-    }
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : '';
+    } catch { return ''; }
   })();
 
-  // No trip at all — show empty state
+  const copyToClipboard = async (text: string, label: string) => {
+    await Clipboard.setStringAsync(text);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
   if (!trip) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -250,14 +83,13 @@ export default function GuideScreen() {
           <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12}>
             <ArrowLeft size={22} color={colors.text} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Guide</Text>
-          </View>
+          <Text style={styles.title}>Guide</Text>
+          <View style={{ width: 22 }} />
         </View>
         <EmptyState
           icon={Hotel}
           title="No trip yet"
-          subtitle="Create a trip to see your property guide, nearby essentials, and group notes."
+          subtitle="Create a trip to see your property guide and stay details."
           actionLabel="Get Started"
           onAction={() => router.push('/onboarding')}
         />
@@ -267,66 +99,16 @@ export default function GuideScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Top bar */}
+      {/* Header */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
           <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Guide</Text>
-          <Text style={styles.subtitle}>{hotelName || destLabel} {hotelName && destLabel ? `\u00B7 ${destLabel}` : ''}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          accessibilityLabel="Search"
-          accessibilityRole="button"
-          onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-          activeOpacity={0.7}
-        >
-          <Svg
-            width={16}
-            height={16}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={colors.text}
-            strokeWidth={1.8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <Circle cx={11} cy={11} r={8} />
-            <Line x1={21} y1={21} x2={16.6} y2={16.6} />
-          </Svg>
-        </TouchableOpacity>
-      </View>
-
-      {/* Segmented control */}
-      <View style={styles.segWrapper}>
-        <View style={styles.seg}>
-          {(['property', 'nearby', 'notes'] as const).map((id) => {
-            const label =
-              id === 'property'
-                ? 'Property'
-                : id === 'nearby'
-                  ? 'Nearby'
-                  : 'Notes';
-            return (
-              <TouchableOpacity
-                key={id}
-                style={[styles.segBtn, tab === id && styles.segBtnActive]}
-                onPress={() => {
-                  setTab(id);
-                  Haptics.selectionAsync();
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[styles.segText, tab === id && styles.segTextActive]}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          <Text style={styles.subtitle}>
+            {hotelName || destLabel}{hotelName && destLabel ? ` · ${destLabel}` : ''}
+          </Text>
         </View>
       </View>
 
@@ -334,321 +116,213 @@ export default function GuideScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadTrip(true); }} tintColor={colors.accent} />}
-      >
-        {/* ═══════ PROPERTY TAB ═══════ */}
-        {tab === 'property' && !hasAccommodation && !isCanyon && (
-          <EmptyState
-            icon={Hotel}
-            title="No accommodation added"
-            subtitle="Add your hotel or stay details to see check-in times, amenities, and contact info."
-            actionLabel="Add Hotel Details"
-            onAction={() => router.push('/(tabs)/trip')}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); loadTrip(true); }}
+            tintColor={colors.accent}
           />
-        )}
-        {tab === 'property' && (hasAccommodation || isCanyon) && (
-          <>
-            {/* Hero image */}
-            <View style={styles.heroWrapper}>
-              <View style={styles.heroCard}>
-                <View style={styles.heroImageBg}>
-                  <Image
-                    source={{ uri: hotelPhotoUrl }}
-                    style={StyleSheet.absoluteFillObject}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.heroGradient} />
-                  <View style={styles.heroTextBlock}>
-                    <Text style={styles.heroName}>{hotelName}</Text>
-                    <Text style={styles.heroDesc}>{hotelAddr}</Text>
-                  </View>
+        }
+      >
+        {/* Hero image */}
+        {hotelPhotoUrl ? (
+          <View style={styles.heroWrapper}>
+            <View style={styles.heroCard}>
+              <View style={styles.heroImageBg}>
+                <Image
+                  source={{ uri: hotelPhotoUrl }}
+                  style={StyleSheet.absoluteFillObject}
+                  resizeMode="cover"
+                />
+                <View style={styles.heroGradient} />
+                <View style={styles.heroTextBlock}>
+                  <Text style={styles.heroName}>{hotelName}</Text>
+                  {hotelAddr ? <Text style={styles.heroDesc}>{hotelAddr}</Text> : null}
                 </View>
               </View>
             </View>
+          </View>
+        ) : hotelName ? (
+          <View style={styles.section}>
+            <View style={styles.infoCard}>
+              <Hotel size={20} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.infoTitle}>{hotelName}</Text>
+                {hotelAddr ? <Text style={styles.infoSub}>{hotelAddr}</Text> : null}
+              </View>
+            </View>
+          </View>
+        ) : null}
 
-            {/* Check-in / Check-out times */}
-            <View style={styles.timesWrapper}>
-              <View style={styles.timesGrid}>
-                <View style={styles.timeCard}>
-                  <Text style={styles.timeEyebrow}>Check-in</Text>
-                  <Text style={styles.timeValue}>{checkInTime}</Text>
+        {/* Check-in / Check-out */}
+        {(checkInTime || checkOutTime) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>CHECK-IN / CHECK-OUT</Text>
+            <View style={styles.timesGrid}>
+              <View style={styles.timeCard}>
+                <Clock size={16} color={colors.accent} />
+                <View>
+                  <Text style={styles.timeLabel}>Check-in</Text>
+                  <Text style={styles.timeValue}>{checkInTime || '—'}</Text>
                   <Text style={styles.timeDate}>{checkInDate}</Text>
                 </View>
-                <View style={styles.timeCard}>
-                  <Text style={styles.timeEyebrow}>Check-out</Text>
-                  <Text style={styles.timeValue}>{checkOutTime}</Text>
+              </View>
+              <View style={styles.timeCard}>
+                <Clock size={16} color={colors.accent} />
+                <View>
+                  <Text style={styles.timeLabel}>Check-out</Text>
+                  <Text style={styles.timeValue}>{checkOutTime || '—'}</Text>
                   <Text style={styles.timeDate}>{checkOutDate}</Text>
                 </View>
               </View>
             </View>
-
-            {/* Amenities */}
-            <View style={styles.groupHeader}>
-              <Text style={styles.eyebrow}>Amenities</Text>
-              <Text style={styles.groupTitle}>What{'\u2019'}s included</Text>
-            </View>
-            <View style={styles.amenityGridWrapper}>
-              <View style={styles.amenityGrid}>
-                {AMENITIES.map((a) => (
-                  <View key={a.n} style={styles.amenityCell}>
-                    <View style={{ marginBottom: 8 }}>
-                      <AmenityIcon id={a.iconId} color={colors.accent} />
-                    </View>
-                    <Text style={styles.amenityLabel}>{a.n}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            {/* Contact */}
-            <View style={styles.groupHeader}>
-              <Text style={styles.eyebrow}>Contact</Text>
-              <Text style={styles.groupTitle}>Reach the property</Text>
-            </View>
-            <View style={styles.contactList}>
-              {/* Phone */}
-              <TouchableOpacity
-                style={styles.contactRow}
-                onPress={async () => {
-                  const phone = trip?.hotelPhone ?? PROPERTY.phone;
-                  const url = `tel:${phone.replace(/[^+\d]/g, '')}`;
-                  try {
-                    await Linking.openURL(url);
-                  } catch {
-                    if (__DEV__) console.warn('Failed to open URL:', url);
-                  }
-                }}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`Call ${trip?.hotelPhone ?? PROPERTY.phone}`}
-              >
-                <View style={styles.contactIcon}>
-                  <Svg
-                    width={16}
-                    height={16}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={colors.accent}
-                    strokeWidth={1.8}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <Path d="M22 16.9v3a2 2 0 01-2.2 2 20 20 0 01-8.6-3.1 19.5 19.5 0 01-6-6A20 20 0 012 4.2 2 2 0 014 2h3a2 2 0 012 1.7c.1 1 .3 1.9.6 2.8a2 2 0 01-.5 2.1L8 9.8a16 16 0 006 6l1.2-1.1a2 2 0 012.1-.5c.9.3 1.8.5 2.8.6a2 2 0 011.7 2z" />
-                  </Svg>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.contactTitle}>{trip?.hotelPhone ?? PROPERTY.phone}</Text>
-                  <Text style={styles.contactMeta}>
-                    Reception {'\u00B7'} 24 hours
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Email */}
-              <TouchableOpacity
-                style={styles.contactRow}
-                onPress={async () => {
-                  const url = `mailto:${PROPERTY.email}`;
-                  try {
-                    await Linking.openURL(url);
-                  } catch {
-                    if (__DEV__) console.warn('Failed to open URL:', url);
-                  }
-                }}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={`Email ${PROPERTY.email}`}
-              >
-                <View style={styles.contactIcon}>
-                  <Svg
-                    width={16}
-                    height={16}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={colors.accent}
-                    strokeWidth={1.8}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <Rect x={3} y={5} width={18} height={14} rx={2} />
-                    <Polyline points="3 7 12 13 21 7" />
-                  </Svg>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.contactTitle}>{PROPERTY.email}</Text>
-                  <Text style={styles.contactMeta}>Reservations</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </>
+          </View>
         )}
 
-        {/* ═══════ NEARBY TAB ═══════ */}
-        {tab === 'nearby' && !isCanyon && (
-          <EmptyState
-            icon={MapPin}
-            title="Nearby places"
-            subtitle="Nearby essentials will appear here once your accommodation is set up."
-          />
-        )}
-        {tab === 'nearby' && isCanyon && (
-          <>
-            {/* Mini map card */}
-            <View style={styles.mapCardWrapper}>
-              <View style={styles.mapCard}>
-                {/* Grid pattern background */}
-                <Svg
-                  width="100%"
-                  height="100%"
-                  style={StyleSheet.absoluteFill}
-                >
-                  <Defs>
-                    <Pattern
-                      id="grid"
-                      width={24}
-                      height={24}
-                      patternUnits="userSpaceOnUse"
-                    >
-                      <Path
-                        d="M 24 0 L 0 0 0 24"
-                        fill="none"
-                        stroke={colors.border}
-                        strokeWidth={0.5}
-                      />
-                    </Pattern>
-                  </Defs>
-                  <Rect width="100%" height="100%" fill="url(#grid)" opacity={0.25} />
-                </Svg>
-
-                {/* Hotel pin (centered) */}
-                <View style={styles.mapPinCenter}>
-                  <PulsingMapPin colors={colors} label={hotelName} />
-                </View>
-
-                {/* Scattered secondary pins */}
-                {MAP_PINS.map((p, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.mapDot,
-                      { left: p.x as unknown as number, top: p.y as unknown as number },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.mapDotInner,
-                        { backgroundColor: colors.text3 },
-                      ]}
-                    />
-                  </View>
-                ))}
-
-                {/* Open map button */}
+        {/* Quick info — WiFi, Door code, Booking ref */}
+        {(trip.wifiSsid || trip.doorCode || trip.bookingRef) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>ESSENTIALS</Text>
+            <View style={{ gap: 8 }}>
+              {trip.wifiSsid && (
                 <TouchableOpacity
-                  style={styles.openMapBtn}
+                  style={styles.infoCard}
+                  onPress={() => copyToClipboard(trip.wifiPassword ?? trip.wifiSsid!, 'WiFi password')}
                   activeOpacity={0.7}
-                  accessibilityRole="button"
-                  accessibilityLabel="Open map"
-                  onPress={async () => {
-                    const query = trip?.accommodation || trip?.destination || '';
-                    if (!query) return;
-                    const url = `https://maps.google.com/?q=${encodeURIComponent(query)}`;
-                    try {
-                      await Linking.openURL(url);
-                    } catch {
-                      if (__DEV__) console.warn('Failed to open URL:', url);
-                    }
-                  }}
                 >
-                  <Text style={styles.openMapBtnText}>Open map {'\u2192'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Essentials header */}
-            <View style={styles.groupHeader}>
-              <Text style={styles.eyebrow}>Essentials</Text>
-              <Text style={styles.groupTitle}>Around the hotel</Text>
-            </View>
-
-            {/* Nearby list */}
-            <View style={styles.nearbyList}>
-              {NEARBY.map((n) => (
-                <View key={n.n} style={styles.nearbyRow}>
-                  <View style={styles.nearbyPin}>
-                    <Text style={styles.nearbyPinText}>{n.pin}</Text>
-                  </View>
+                  <Wifi size={18} color={colors.accent} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.nearbyName}>{n.n}</Text>
-                    <Text style={styles.nearbyMeta}>
-                      {n.t} {'\u00B7'} {n.w}
-                    </Text>
+                    <Text style={styles.infoTitle}>{trip.wifiSsid}</Text>
+                    {trip.wifiPassword && (
+                      <Text style={styles.infoSub}>Password: {trip.wifiPassword}</Text>
+                    )}
                   </View>
-                  <Text style={styles.nearbyDist}>{n.d}</Text>
+                  <Copy size={14} color={colors.text3} />
+                </TouchableOpacity>
+              )}
+              {trip.doorCode && (
+                <TouchableOpacity
+                  style={styles.infoCard}
+                  onPress={() => copyToClipboard(trip.doorCode!, 'Door code')}
+                  activeOpacity={0.7}
+                >
+                  <Key size={18} color={colors.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.infoTitle}>Door Code</Text>
+                    <Text style={styles.infoSub}>{trip.doorCode}</Text>
+                  </View>
+                  <Copy size={14} color={colors.text3} />
+                </TouchableOpacity>
+              )}
+              {trip.bookingRef && (
+                <TouchableOpacity
+                  style={styles.infoCard}
+                  onPress={() => copyToClipboard(trip.bookingRef!, 'Booking reference')}
+                  activeOpacity={0.7}
+                >
+                  <Hotel size={18} color={colors.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.infoTitle}>Booking Reference</Text>
+                    <Text style={styles.infoSub}>{trip.bookingRef}</Text>
+                  </View>
+                  <Copy size={14} color={colors.text3} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Amenities */}
+        {trip.amenities && trip.amenities.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>AMENITIES</Text>
+            <View style={styles.amenityWrap}>
+              {trip.amenities.map((a, i) => (
+                <View key={i} style={styles.amenityChip}>
+                  <Text style={styles.amenityText}>{a}</Text>
                 </View>
               ))}
             </View>
-          </>
+          </View>
         )}
 
-        {/* ═══════ NOTES TAB ═══════ */}
-        {tab === 'notes' && !isCanyon && (
-          <EmptyState
-            icon={StickyNote}
-            title="No notes yet"
-            subtitle="Add tips and reminders for your travel group — check-in tricks, local fares, sunset spots."
-          />
-        )}
-        {tab === 'notes' && isCanyon && (
-          <>
-            {/* Notes header */}
-            <View style={styles.notesHeader}>
-              <Text style={styles.notesCount}>
-                {NOTES.length} notes {'\u00B7'} shared with group
-              </Text>
-              <TouchableOpacity
-                style={styles.newNoteBtn}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel="New note"
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  Alert.prompt(
-                    'New note',
-                    'Add a quick note for the group',
-                    (_text) => {
-                      // Note creation will be wired to Supabase
-                    },
-                    'plain-text',
-                  );
-                }}
-              >
-                <Text style={styles.newNoteBtnText}>+ New note</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Notes list */}
-            <View style={styles.notesList}>
-              {NOTES.map((n, i) => (
-                <View key={i} style={styles.noteCard}>
-                  <View style={styles.noteTopRow}>
-                    <Text style={styles.noteTitle}>{n.title}</Text>
-                    <Text style={styles.noteTime}>{n.time}</Text>
+        {/* Contact */}
+        {(trip.hotelPhone || trip.hotelUrl) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>CONTACT</Text>
+            <View style={{ gap: 8 }}>
+              {trip.hotelPhone && (
+                <TouchableOpacity
+                  style={styles.infoCard}
+                  onPress={() => Linking.openURL(`tel:${trip.hotelPhone!.replace(/[^+\d]/g, '')}`).catch(() => {})}
+                  activeOpacity={0.7}
+                >
+                  <Phone size={18} color={colors.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.infoTitle}>{trip.hotelPhone}</Text>
+                    <Text style={styles.infoSub}>Reception</Text>
                   </View>
-                  <Text style={styles.noteBody}>{n.body}</Text>
-                  <View style={styles.noteFooter}>
-                    <Text style={styles.noteByLabel}>
-                      by{' '}
-                      <Text style={styles.noteByName}>{n.by}</Text>
-                    </Text>
+                  <ExternalLink size={14} color={colors.text3} />
+                </TouchableOpacity>
+              )}
+              {trip.hotelUrl && (
+                <TouchableOpacity
+                  style={styles.infoCard}
+                  onPress={() => Linking.openURL(trip.hotelUrl!).catch(() => {})}
+                  activeOpacity={0.7}
+                >
+                  <ExternalLink size={18} color={colors.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.infoTitle} numberOfLines={1}>Website</Text>
+                    <Text style={styles.infoSub} numberOfLines={1}>{trip.hotelUrl}</Text>
                   </View>
-                </View>
-              ))}
+                </TouchableOpacity>
+              )}
             </View>
-          </>
+          </View>
         )}
 
-        <View style={{ height: 20 }} />
+        {/* Location — open in maps */}
+        {(hotelAddr || hotelName || destLabel) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>LOCATION</Text>
+            <TouchableOpacity
+              style={styles.infoCard}
+              onPress={() => {
+                const q = encodeURIComponent(hotelAddr || hotelName || destLabel);
+                Linking.openURL(`https://maps.google.com/?q=${q}`).catch(() => {});
+              }}
+              activeOpacity={0.7}
+            >
+              <MapPin size={18} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.infoTitle}>{hotelAddr || hotelName || destLabel}</Text>
+                <Text style={styles.infoSub}>Open in Maps</Text>
+              </View>
+              <ExternalLink size={14} color={colors.text3} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* House rules / Notes */}
+        {trip.houseRules && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>HOUSE RULES</Text>
+            <View style={styles.notesCard}>
+              <Text style={styles.notesText}>{trip.houseRules}</Text>
+            </View>
+          </View>
+        )}
+
+        {trip.notes && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>NOTES</Text>
+            <View style={styles.notesCard}>
+              <Text style={styles.notesText}>{trip.notes}</Text>
+            </View>
+          </View>
+        )}
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -656,413 +330,83 @@ export default function GuideScreen() {
 
 // ── Styles ──────────────────────────────────────────────────────────────
 
-const getStyles = (colors: ThemeColors) =>
+const getStyles = (c: ThemeColors) =>
   StyleSheet.create({
-    safe: {
-      flex: 1,
-      backgroundColor: colors.bg,
-    },
-    scroll: {
-      flex: 1,
-    },
-    scrollContent: {
-      paddingBottom: 100,
-    },
+    safe: { flex: 1, backgroundColor: c.bg },
+    scroll: { flex: 1 },
+    scrollContent: { paddingBottom: 100 },
 
-    // Top bar
     topBar: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
+      alignItems: 'center',
+      gap: 12,
       paddingHorizontal: 16,
       paddingTop: 12,
       paddingBottom: 8,
     },
-    title: {
-      fontSize: 22,
-      fontWeight: '600',
-      letterSpacing: -0.66,
-      color: colors.text,
-    },
+    title: { fontSize: 22, fontWeight: '600', letterSpacing: -0.66, color: c.text },
     subtitle: {
-      fontSize: 11,
-      color: colors.text3,
-      letterSpacing: 1.76,
-      textTransform: 'uppercase',
-      fontWeight: '600',
-      marginTop: 2,
-    },
-    iconBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 999,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
+      fontSize: 10, color: c.text3, letterSpacing: 1.5,
+      textTransform: 'uppercase', fontWeight: '600', marginTop: 2,
     },
 
-    // Segmented control
-    segWrapper: {
-      paddingHorizontal: 16,
-      paddingBottom: 16,
-    },
-    seg: {
-      flexDirection: 'row',
-      padding: 3,
-      backgroundColor: colors.card2,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      gap: 2,
-    },
-    segBtn: {
-      flex: 1,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: 9,
-      alignItems: 'center',
-    },
-    segBtnActive: {
-      backgroundColor: colors.card,
-    },
-    segText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text3,
-      letterSpacing: -0.12,
-    },
-    segTextActive: {
-      color: colors.text,
+    section: { paddingHorizontal: 16, marginBottom: 20 },
+    sectionLabel: {
+      fontSize: 10, fontWeight: '700', letterSpacing: 1.6,
+      color: c.text3, marginBottom: 10,
     },
 
     // Hero
-    heroWrapper: {
-      paddingHorizontal: 16,
-      paddingBottom: 14,
-    },
+    heroWrapper: { paddingHorizontal: 16, marginBottom: 20 },
     heroCard: {
-      height: 200,
-      borderRadius: 20,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
+      height: 200, borderRadius: 20, overflow: 'hidden',
+      borderWidth: 1, borderColor: c.border, backgroundColor: c.card,
     },
-    heroImageBg: {
-      flex: 1,
-      backgroundColor: colors.card2,
-    },
-    heroGradient: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.55)',
-    },
-    heroTextBlock: {
-      position: 'absolute',
-      left: 16,
-      right: 16,
-      bottom: 14,
-    },
+    heroImageBg: { flex: 1, backgroundColor: c.card2 },
+    heroGradient: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+    heroTextBlock: { position: 'absolute', left: 16, right: 16, bottom: 14 },
     heroName: {
-      fontSize: 20,
-      fontWeight: '500',
-      letterSpacing: -0.6,
-      color: '#fff',
-      lineHeight: 22,
-      marginBottom: 3,
-      textShadowColor: 'rgba(0,0,0,0.6)',
-      textShadowOffset: { width: 0, height: 1 },
-      textShadowRadius: 4,
+      fontSize: 20, fontWeight: '500', letterSpacing: -0.6, color: '#fff',
+      textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
     },
     heroDesc: {
-      fontSize: 11,
-      color: 'rgba(255,255,255,0.8)',
-      textShadowColor: 'rgba(0,0,0,0.5)',
-      textShadowOffset: { width: 0, height: 1 },
-      textShadowRadius: 3,
+      fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 3,
+      textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
     },
 
     // Times
-    timesWrapper: {
-      paddingHorizontal: 16,
-      paddingBottom: 14,
-    },
-    timesGrid: {
-      flexDirection: 'row',
-      gap: 10,
-    },
+    timesGrid: { flexDirection: 'row', gap: 10 },
     timeCard: {
-      flex: 1,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 22,
-      padding: 14,
+      flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+      backgroundColor: c.card, borderWidth: 1, borderColor: c.border,
+      borderRadius: 16, padding: 14,
     },
-    timeEyebrow: {
-      fontSize: 10,
-      fontWeight: '600',
-      letterSpacing: 1.6,
-      textTransform: 'uppercase',
-      color: colors.text3,
-    },
-    timeValue: {
-      fontSize: 20,
-      fontWeight: '600',
-      color: colors.text,
-      marginTop: 6,
-      letterSpacing: 0.4,
-    },
-    timeDate: {
-      fontSize: 10.5,
-      color: colors.text3,
-      marginTop: 2,
-    },
+    timeLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 1, color: c.text3, textTransform: 'uppercase' },
+    timeValue: { fontSize: 18, fontWeight: '600', color: c.text, marginTop: 2 },
+    timeDate: { fontSize: 10, color: c.text3, marginTop: 1 },
 
-    // Group headers
-    groupHeader: {
-      paddingHorizontal: 20,
-      paddingBottom: 10,
+    // Info cards
+    infoCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      padding: 14, backgroundColor: c.card, borderWidth: 1,
+      borderColor: c.border, borderRadius: 16,
     },
-    eyebrow: {
-      fontSize: 10,
-      fontWeight: '600',
-      letterSpacing: 1.6,
-      textTransform: 'uppercase',
-      color: colors.text3,
-    },
-    groupTitle: {
-      fontSize: 16,
-      fontWeight: '500',
-      letterSpacing: -0.48,
-      color: colors.text,
-      marginTop: 2,
-    },
+    infoTitle: { fontSize: 13, fontWeight: '600', color: c.text },
+    infoSub: { fontSize: 11, color: c.text3, marginTop: 2 },
 
     // Amenities
-    amenityGridWrapper: {
-      paddingHorizontal: 16,
-      paddingBottom: 14,
+    amenityWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    amenityChip: {
+      paddingVertical: 8, paddingHorizontal: 14,
+      backgroundColor: c.card, borderWidth: 1, borderColor: c.border,
+      borderRadius: 12,
     },
-    amenityGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    amenityCell: {
-      width: '31%',
-      paddingVertical: 14,
-      paddingHorizontal: 10,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-      alignItems: 'center',
-    },
-    amenityLabel: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: colors.text,
-      lineHeight: 13.2,
-      textAlign: 'center',
-    },
-
-    // Contact
-    contactList: {
-      paddingHorizontal: 16,
-      gap: 8,
-    },
-    contactRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      padding: 14,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-    },
-    contactIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: 10,
-      backgroundColor: colors.accentBg,
-      borderWidth: 1,
-      borderColor: colors.accentBorder,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    contactTitle: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    contactMeta: {
-      fontSize: 11,
-      color: colors.text3,
-      marginTop: 2,
-    },
-
-    // Map card
-    mapCardWrapper: {
-      paddingHorizontal: 16,
-      paddingBottom: 14,
-    },
-    mapCard: {
-      height: 150,
-      borderRadius: 20,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-    },
-    mapPinCenter: {
-      position: 'absolute',
-      top: '45%',
-      left: '50%',
-      transform: [{ translateX: -19 }, { translateY: -19 }],
-    },
-    mapDot: {
-      position: 'absolute',
-    },
-    mapDotInner: {
-      width: 8,
-      height: 8,
-      borderRadius: 999,
-      opacity: 0.6,
-    },
-    openMapBtn: {
-      position: 'absolute',
-      right: 12,
-      bottom: 12,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: 999,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    openMapBtnText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text,
-    },
-
-    // Nearby list
-    nearbyList: {
-      paddingHorizontal: 16,
-      gap: 8,
-    },
-    nearbyRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingVertical: 14,
-      paddingHorizontal: 14,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-    },
-    nearbyPin: {
-      width: 36,
-      height: 36,
-      borderRadius: 10,
-      backgroundColor: colors.accentBg,
-      borderWidth: 1,
-      borderColor: colors.accentBorder,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    nearbyPinText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.accent,
-    },
-    nearbyName: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    nearbyMeta: {
-      fontSize: 11,
-      color: colors.text3,
-      marginTop: 2,
-    },
-    nearbyDist: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
-      letterSpacing: 0.26,
-    },
+    amenityText: { fontSize: 12, fontWeight: '600', color: c.text },
 
     // Notes
-    notesHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingBottom: 12,
+    notesCard: {
+      padding: 16, backgroundColor: c.card, borderWidth: 1,
+      borderColor: c.border, borderRadius: 16,
     },
-    notesCount: {
-      fontSize: 12,
-      color: colors.text3,
-    },
-    newNoteBtn: {
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: 999,
-      backgroundColor: colors.black,
-    },
-    newNoteBtnText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.onBlack,
-    },
-    notesList: {
-      paddingHorizontal: 16,
-      gap: 10,
-    },
-    noteCard: {
-      padding: 16,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-    },
-    noteTopRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 6,
-    },
-    noteTitle: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    noteTime: {
-      fontSize: 10,
-      color: colors.text3,
-    },
-    noteBody: {
-      fontSize: 12.5,
-      color: colors.text2,
-      lineHeight: 18.125, // 12.5 * 1.45
-    },
-    noteFooter: {
-      marginTop: 10,
-      paddingTop: 10,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    noteByLabel: {
-      fontSize: 10.5,
-      color: colors.text3,
-    },
-    noteByName: {
-      color: colors.accent,
-      fontWeight: '600',
-    },
+    notesText: { fontSize: 13, color: c.text2, lineHeight: 20 },
   });

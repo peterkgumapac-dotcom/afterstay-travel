@@ -54,6 +54,7 @@ import {
   updateMemberEmail,
   updateMemberPhone,
   updateMemberPhoto,
+  updateTripProperty,
 } from '@/lib/supabase';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
@@ -765,12 +766,20 @@ export default function TripScreen() {
     [pastTripsData],
   );
 
-  // Summary computed values
+  // Summary computed values — include active trip in fallback calculations
+  const activeTripNights = useMemo(() => {
+    if (!trip) return 0;
+    const start = new Date(trip.startDate);
+    const end = new Date(trip.endDate);
+    return Math.max(0, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+  }, [trip]);
+  const activeTripCountry = trip?.country || trip?.destination?.split(',').pop()?.trim() || '';
+
   const totalTrips = (lifetimeStats?.totalTrips ?? pastTripsDisplay.length) + 1;
   const totalSpent = lifetimeStats?.totalSpent ?? pastTripsDisplay.reduce((s, t) => s + t.spent, 0);
-  const totalNights = lifetimeStats?.totalNights ?? pastTripsDisplay.reduce((s, t) => s + t.nights, 0);
+  const totalNights = (lifetimeStats?.totalNights ?? pastTripsDisplay.reduce((s, t) => s + t.nights, 0)) + activeTripNights;
   const totalMiles = lifetimeStats?.totalMiles ?? 0;
-  const countriesCount = lifetimeStats?.totalCountries ?? new Set(pastTripsDisplay.map((t) => t.flag)).size;
+  const countriesCount = lifetimeStats?.totalCountries ?? Math.max(1, new Set([...pastTripsDisplay.map((t) => t.flag), activeTripCountry].filter(Boolean)).size);
 
   const highlightsForStrip = useMemo(() => {
     if (highlightsData.length > 0) {
@@ -808,6 +817,44 @@ export default function TripScreen() {
 
   const handleMore = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert(
+      trip?.destination ?? 'Trip Options',
+      undefined,
+      [
+        {
+          text: 'Edit Trip Details',
+          onPress: () => router.push('/onboarding'),
+        },
+        {
+          text: 'Archive Trip',
+          onPress: () => {
+            Alert.alert(
+              'Archive this trip?',
+              'It will move to your past trips. You can start a new one after.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Archive',
+                  style: 'destructive',
+                  onPress: async () => {
+                    if (!trip) return;
+                    try {
+                      const { clearTripCache } = await import('@/lib/supabase');
+                      await updateTripProperty(trip.id, 'status', 'Completed');
+                      clearTripCache();
+                      router.replace('/(tabs)/home');
+                    } catch (e: any) {
+                      Alert.alert('Error', e?.message ?? 'Could not archive trip');
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
   };
 
   const handleInvite = () => {
@@ -957,7 +1004,7 @@ export default function TripScreen() {
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.topBar}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12} accessibilityLabel="Back to Home">
+            <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityLabel="Back to Home">
               <ArrowLeft size={22} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.topBarTitle}>Trips</Text>
@@ -990,7 +1037,7 @@ export default function TripScreen() {
         {/* Top bar */}
         <View style={styles.topBar}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12} accessibilityLabel="Back to Home">
+            <TouchableOpacity onPress={() => router.back()} hitSlop={12} accessibilityLabel="Back to Home">
               <ArrowLeft size={22} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.topBarTitle}>Trips</Text>

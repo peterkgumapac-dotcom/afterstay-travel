@@ -4,6 +4,7 @@ import {
   Modal, Pressable, Text,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Plus, Users, UserPlus, Camera, Package, Plane,
 } from 'lucide-react-native';
@@ -30,6 +31,7 @@ export const TripFloatingActionButton: React.FC<TripFabProps> = ({
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const menuAnims = [
@@ -178,7 +180,7 @@ export const TripFloatingActionButton: React.FC<TripFabProps> = ({
       </Modal>
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: Math.max(insets.bottom, 20) + 56 }]}
         onPress={toggle}
         activeOpacity={0.85}
         accessibilityLabel="Add to trip"
@@ -195,7 +197,6 @@ export const TripFloatingActionButton: React.FC<TripFabProps> = ({
 const getStyles = (colors: ThemeColors) => StyleSheet.create({
   fab: {
     position: 'absolute',
-    bottom: 100,
     right: 20,
     width: 56,
     height: 56,

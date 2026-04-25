@@ -1,3 +1,6 @@
+// Mutable hotel coords — updated at runtime from the active trip
+const _hotelCoords = { lat: 11.9710, lng: 121.9215 };
+
 export const CONFIG = {
   GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY || '',
   SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
@@ -5,11 +8,17 @@ export const CONFIG = {
   WEATHER_KEY: process.env.EXPO_PUBLIC_WEATHER_API_KEY || '',
   ANTHROPIC_KEY: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '',
   TRIP_PAGE_ID: process.env.EXPO_PUBLIC_TRIP_PAGE_ID || '',
-  HOTEL: { lat: 11.9710, lng: 121.9215 },
-  HOTEL_COORDS: { lat: 11.9710, lng: 121.9215 },
+  get HOTEL() { return _hotelCoords; },
+  get HOTEL_COORDS() { return _hotelCoords; },
   GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '',
   TRIP_BUDGET_KEY: 'tripBudget_v1',
 } as const;
+
+/** Call when the active trip changes to update distance calculations */
+export function setHotelCoords(lat: number, lng: number) {
+  _hotelCoords.lat = lat;
+  _hotelCoords.lng = lng;
+}
 
 export const verifyConfig = (): boolean => {
   const missing: string[] = [];

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -41,9 +41,17 @@ function SlideshowImage({
   const opacityA = useSharedValue(1);
   const opacityB = useSharedValue(0);
 
+  const appActive = useRef(true);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => { appActive.current = s === 'active'; });
+    return () => sub.remove();
+  }, []);
+
   useEffect(() => {
     if (photos.length <= 1) return;
     const interval = setInterval(() => {
+      if (!appActive.current) return;
       if (showingA) {
         // Fade B in, A out
         setIdxB((prev) => {

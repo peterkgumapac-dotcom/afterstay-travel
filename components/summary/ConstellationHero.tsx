@@ -253,7 +253,7 @@ export default function ConstellationHero({
       <View style={styles.header}>
         <Text style={styles.eyebrow}>Lifetime · since 2024</Text>
         <View style={styles.milesRow}>
-          <Text style={styles.milesNum}>{miles > 0 ? miles.toLocaleString() : '\u2014'}</Text>
+          <Text style={styles.milesNum}>{miles > 0 ? miles.toLocaleString() : '0'}</Text>
           <Text style={styles.milesLabel}>km traveled</Text>
         </View>
       </View>

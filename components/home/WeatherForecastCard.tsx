@@ -10,7 +10,7 @@ import { ChevronDown, Droplets, Sun, Thermometer, Umbrella, Wind } from 'lucide-
 
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import MiniLoader from '@/components/loader/MiniLoader';
-import { CONFIG } from '../../lib/config';
+import { CONFIG } from '@/lib/config';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -271,8 +271,9 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
       );
 
       if (!cancelled) setDays(forecasts);
-    } catch {
-      // Card won't render
+    } catch (err) {
+      if (__DEV__) console.warn('[Weather] fetch failed:', err);
+      // Card won't render — graceful degradation
     } finally {
       if (!cancelled) setLoading(false);
     }

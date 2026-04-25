@@ -176,7 +176,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         style: 'destructive',
         onPress: async () => {
           const { deletePage } = await import('@/lib/supabase');
-          try { await deletePage(id); } catch { /* skip */ }
+          try { await deletePage(id); } catch (err) { if (__DEV__) console.warn('[Moments] operation failed:', err); }
           setRawMoments((prev) => prev.filter((m) => m.id !== id));
         },
       },
@@ -193,7 +193,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       setRawMoments((prev) =>
         prev.map((m) => m.id === id ? { ...m, caption: updates.caption ?? m.caption, location: updates.location ?? m.location } : m),
       );
-    } catch { /* ignore */ }
+    } catch (err) { if (__DEV__) console.warn('[Moments] edit failed:', err); }
   }, []);
 
   const handleDeleteSelected = useCallback(async () => {
@@ -209,7 +209,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           onPress: async () => {
             const { deletePage } = await import('@/lib/supabase');
             for (const id of selectedIds) {
-              try { await deletePage(id); } catch { /* skip */ }
+              try { await deletePage(id); } catch (err) { if (__DEV__) console.warn('[Moments] operation failed:', err); }
             }
             setRawMoments((prev) => prev.filter((m) => !selectedIds.has(m.id)));
             setSelectedIds(new Set());
@@ -538,8 +538,8 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       gap: 2,
     },
     segBtn: {
-      paddingVertical: 5,
-      paddingHorizontal: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
       borderRadius: 9,
     },
     segBtnActive: {

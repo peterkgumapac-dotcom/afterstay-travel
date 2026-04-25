@@ -177,7 +177,7 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
           </View>
         )}
         {/* Location label */}
-        {moment.place && !selectMode && (
+        {moment.place && moment.place !== 'Untitled' && !selectMode && (
           <View style={styles.locationBadge}>
             <Text style={styles.locationText} numberOfLines={1}>{moment.place}</Text>
           </View>

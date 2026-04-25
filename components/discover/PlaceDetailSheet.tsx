@@ -27,8 +27,8 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-import { fetchPlaceDetails, PlaceDetails, Review } from '../../lib/placeDetails';
-import { formatDistance } from '../../lib/distance';
+import { fetchPlaceDetails, PlaceDetails, Review } from '@/lib/placeDetails';
+import { formatDistance } from '@/lib/distance';
 import { travelTime as calcTravelTime } from '@/lib/utils';
 import { useTheme } from '@/constants/ThemeContext';
 

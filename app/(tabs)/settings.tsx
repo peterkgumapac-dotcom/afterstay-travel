@@ -215,7 +215,7 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <Switch
-              value={mode === 'light'}
+              value={mode === 'dark'}
               onValueChange={toggleTheme}
               trackColor={{ false: colors.border, true: colors.green }}
               thumbColor={colors.white}

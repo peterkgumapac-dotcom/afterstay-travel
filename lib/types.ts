@@ -35,6 +35,8 @@ export interface Trip {
   houseRules?: string;
   emergencyContacts?: string;
   hotelPhotos?: string; // JSON string of URL array
+  hotelLat?: number;
+  hotelLng?: number;
   budgetLimit?: number;
   budgetMode?: 'Limited' | 'Unlimited';
   // Lifetime / past-trip fields
