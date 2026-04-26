@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as Linking from 'expo-linking';
 import { router as expoRouter } from 'expo-router';
-import { setCacheUserId } from './cache';
+import { clearTripLocalData, setCacheUserId } from './cache';
 import { supabase, clearTripCache } from './supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
@@ -75,15 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         if (_event === 'SIGNED_OUT') {
           clearTripCache();
-          try {
-            const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-            const keys = await AsyncStorage.getAllKeys();
-            const tripKeys = keys.filter(k =>
-              k.startsWith('trip:') || k.startsWith('flights:') ||
-              k.startsWith('moments:') || k.startsWith('discover:')
-            );
-            if (tripKeys.length > 0) await AsyncStorage.multiRemove(tripKeys);
-          } catch { /* ignore */ }
+          await clearTripLocalData();
         }
       },
     );

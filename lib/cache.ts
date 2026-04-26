@@ -40,3 +40,39 @@ export async function cacheSet<T>(key: string, value: T): Promise<void> {
     // Best-effort only.
   }
 }
+
+/**
+ * Clear all trip-specific local data on trip transitions.
+ * Profile settings, theme, notification prefs, and onboarding flag are preserved.
+ */
+export async function clearTripLocalData(): Promise<void> {
+  // Scoped cache keys (go through scopedKey)
+  const scopedKeys = [
+    'trip:active',
+    'trip:phase:override',
+    'discover:anchor',
+    'discover:travelMode',
+  ];
+  for (const key of scopedKeys) {
+    try { await AsyncStorage.removeItem(scopedKey(key)); } catch { /* ignore */ }
+  }
+
+  // Also clear any flights:* keys
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const flightKeys = allKeys.filter(k => k.includes(':flights:'));
+    if (flightKeys.length > 0) await AsyncStorage.multiRemove(flightKeys);
+  } catch { /* ignore */ }
+
+  // Global (non-scoped) keys that are trip-specific
+  const globalTripKeys = [
+    'quickAccess_v1',
+    'top_picks_hidden',
+    'top_picks_pool',
+    'fate_names',
+    'fate_decides_history',
+  ];
+  try {
+    await AsyncStorage.multiRemove(globalTripKeys);
+  } catch { /* ignore */ }
+}

@@ -5,6 +5,7 @@
 import { createClient } from '@supabase/supabase-js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as FileSystem from 'expo-file-system/legacy'
+import { clearTripLocalData } from './cache'
 import { compressImage } from './compressImage'
 import { MS_PER_DAY } from './utils'
 
@@ -413,6 +414,9 @@ export async function createTrip(input: {
     .update({ status: 'Completed' })
     .in('status', ['Planning', 'Active'])
     .eq('user_id', userId)
+
+  // Clear all trip-specific local caches for a fresh start
+  await clearTripLocalData()
 
   // Auto-detect status from dates
   const now = new Date();
@@ -1389,6 +1393,36 @@ async function insertNotification(opts: {
   data?: Record<string, any>
 }): Promise<void> {
   try {
+    // Check user's notification preferences before inserting
+    const { shouldNotify } = await import('@/lib/notificationPrefs')
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('notification_prefs')
+      .eq('id', opts.userId)
+      .single()
+    const prefs = (profile?.notification_prefs as Record<string, unknown>) ?? {}
+
+    // Fetch trip dates for phase check
+    let tripStart: string | undefined
+    let tripEnd: string | undefined
+    if (opts.tripId) {
+      const { data: tripRow } = await supabase
+        .from(T.trips)
+        .select('start_date, end_date')
+        .eq('id', opts.tripId)
+        .single()
+      tripStart = tripRow?.start_date as string | undefined
+      tripEnd = tripRow?.end_date as string | undefined
+    }
+
+    if (!shouldNotify(opts.type, prefs, {
+      tripId: opts.tripId,
+      tripStartDate: tripStart,
+      tripEndDate: tripEnd,
+    })) {
+      return // User has suppressed this notification category/phase/trip
+    }
+
     await supabase.from('notifications').insert({
       user_id: opts.userId,
       trip_id: opts.tripId,
@@ -2311,6 +2345,7 @@ export async function finishTrip(tripId: string): Promise<void> {
     .eq('id', tripId)
   if (error) throw new Error(`finishTrip: ${error.message}`)
   clearTripCache()
+  await clearTripLocalData()
 }
 
 /** Archive/cancel a trip without generating a memory. */
@@ -2321,6 +2356,7 @@ export async function archiveTrip(tripId: string): Promise<void> {
     .eq('id', tripId)
   if (error) throw new Error(`archiveTrip: ${error.message}`)
   clearTripCache()
+  await clearTripLocalData()
 }
 
 // ---------- TRIP MEMORIES ----------
