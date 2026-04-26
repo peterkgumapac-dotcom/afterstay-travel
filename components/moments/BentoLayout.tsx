@@ -182,6 +182,12 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
             <Text style={styles.locationText} numberOfLines={1}>{moment.place}</Text>
           </View>
         )}
+        {/* Author avatar badge */}
+        {moment.authorKey && !selectMode && (
+          <View style={[styles.authorBadge, { backgroundColor: moment.authorColor ?? '#a64d1e' }]}>
+            <Text style={styles.authorInitial}>{moment.authorKey}</Text>
+          </View>
+        )}
       </View>
     </Pressable>
   );
@@ -224,5 +230,22 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#fff',
+  },
+  authorBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,0,0,0.3)',
+  },
+  authorInitial: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#0b0f14',
   },
 });

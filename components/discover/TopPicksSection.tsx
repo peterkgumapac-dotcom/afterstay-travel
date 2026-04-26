@@ -205,12 +205,14 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
         </TouchableOpacity>
       </View>
 
-      {/* Hero */}
+      {/* Hero — always shows a visual */}
       <TouchableOpacity style={s.heroCard} activeOpacity={0.8} onPress={() => openMaps(hero)}>
         {hero.photoUrl ? (
           <Image source={{ uri: hero.photoUrl }} style={s.heroImage} resizeMode="cover" />
         ) : (
-          <View style={[s.heroImage, { backgroundColor: colors.card2 }]} />
+          <View style={[s.heroImage, s.heroFallback]}>
+            <MapPin size={32} color="rgba(216,171,122,0.5)" strokeWidth={1.5} />
+          </View>
         )}
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.75)']} locations={[0.3, 1]} style={StyleSheet.absoluteFill} />
         <View style={s.heroBadge}><Text style={s.heroBadgeText}>1</Text></View>
@@ -229,19 +231,14 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
         </View>
       </TouchableOpacity>
 
-      {/* Rest */}
+      {/* Rest — clean text-only cards, no inconsistent thumbnails */}
       {rest.map((item, i) => (
         <TouchableOpacity key={`${item.name}-${i}`} style={s.card} activeOpacity={0.7} onPress={() => openMaps(item)}>
-          {item.photoUrl ? (
-            <Image source={{ uri: item.photoUrl }} style={s.cardThumb} resizeMode="cover" />
-          ) : (
-            <View style={[s.cardThumb, { backgroundColor: colors.card2 }]}>
-              <MapPin size={16} color={colors.text3} />
-            </View>
-          )}
+          <View style={s.rankCircle}>
+            <Text style={s.rankText}>{i + 2}</Text>
+          </View>
           <View style={{ flex: 1 }}>
             <View style={s.cardTop}>
-              <Text style={s.rank}>{i + 2}</Text>
               <Text style={s.cardName} numberOfLines={1}>{item.name}</Text>
               {item.rating != null && (
                 <View style={s.ratingBadge}>
@@ -251,8 +248,14 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
               )}
             </View>
             <Text style={s.cardReason} numberOfLines={2}>{item.reason}</Text>
-            {item.price ? <Text style={s.cardPrice}>{item.price}</Text> : null}
+            {(item.price || item.category) && (
+              <View style={s.cardMetaRow}>
+                {item.price ? <Text style={s.cardPrice}>{item.price}</Text> : null}
+                {item.category ? <Text style={s.cardCategory}>{item.category}</Text> : null}
+              </View>
+            )}
           </View>
+          <MapPin size={14} color={colors.text3} strokeWidth={1.8} />
         </TouchableOpacity>
       ))}
     </View>
@@ -276,6 +279,12 @@ const getStyles = (c: ThemeColors) =>
     actionText: { fontSize: 11, color: c.text3 },
     heroCard: { height: 200, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: c.border },
     heroImage: { ...StyleSheet.absoluteFillObject },
+    heroFallback: {
+      backgroundColor: c.card2,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 0,
+    },
     heroBadge: { position: 'absolute', top: 12, left: 12, width: 28, height: 28, borderRadius: 14, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
     heroBadgeText: { fontSize: 14, fontWeight: '800', color: c.bg },
     heroContent: { position: 'absolute', bottom: 14, left: 14, right: 14 },
@@ -285,13 +294,15 @@ const getStyles = (c: ThemeColors) =>
     heroPrice: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
     heroRating: { flexDirection: 'row', alignItems: 'center', gap: 3 },
     heroRatingText: { fontSize: 11, fontWeight: '700', color: '#fff' },
-    card: { flexDirection: 'row', gap: 12, padding: 10, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 16 },
-    cardThumb: { width: 72, height: 72, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    cardTop: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    rank: { fontSize: 14, fontWeight: '700', color: c.accent, width: 18 },
-    cardName: { fontSize: 13, fontWeight: '600', color: c.text, flex: 1 },
+    card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 16 },
+    rankCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: c.card2, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+    rankText: { fontSize: 13, fontWeight: '700', color: c.accent, fontVariant: ['tabular-nums'] as const },
+    cardTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    cardName: { fontSize: 14, fontWeight: '600', color: c.text, flex: 1, letterSpacing: -0.15 },
     ratingBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 5, paddingVertical: 2, backgroundColor: c.accentBg, borderRadius: 6 },
     ratingText: { fontSize: 10, fontWeight: '700', color: c.accent },
-    cardReason: { fontSize: 11, color: c.text2, marginTop: 3, lineHeight: 15 },
-    cardPrice: { fontSize: 10, color: c.text3, fontWeight: '600', marginTop: 4 },
+    cardReason: { fontSize: 11.5, color: c.text2, marginTop: 3, lineHeight: 16 },
+    cardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+    cardPrice: { fontSize: 10, color: c.text3, fontWeight: '600' },
+    cardCategory: { fontSize: 10, color: c.accent, fontWeight: '600', textTransform: 'capitalize' },
   });

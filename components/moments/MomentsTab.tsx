@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
+import { useIsFocused } from '@react-navigation/native';
 import {
   Alert,
   View,
@@ -14,18 +15,20 @@ import {
 import { Film as FilmIcon } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
-import { getMoments, getGroupMembers } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
+import { getMoments, getGroupMembers, getMomentFavorites, toggleFavorite, toggleMomentVisibility as toggleVisibility, promoteMomentsToGroup, batchFavorite } from '@/lib/supabase';
+import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
-import type { Moment, GroupMember } from '@/lib/types';
+import type { Moment, GroupMember, MomentVisibility } from '@/lib/types';
 import type { MomentDisplay, PeopleMap } from './types';
-import { StatBlock } from './StatBlock';
-import { DayChips } from './DayChips';
+import { PersonChips } from './PersonChips';
+import { ScopeChips } from './ScopeChips';
+import type { ScopeFilter } from './ScopeChips';
+import { DaySectionHeader } from './DaySectionHeader';
+import { DayRail } from './DayRail';
+import { AlbumsGrid } from './AlbumsGrid';
 import { BentoLayout } from './BentoLayout';
-import { MosaicLayout } from './MosaicLayout';
-import { DiaryLayout } from './DiaryLayout';
-import { MapLayout } from './MapLayout';
 import { MomentLightbox } from './MomentLightbox';
 import { PhotoActionSheet } from './PhotoActionSheet';
 import { PhotoEditSheet } from './PhotoEditSheet';
@@ -38,57 +41,53 @@ import { Modal } from 'react-native';
 // Constants
 // ---------------------------------------------------------------------------
 
-const LAYOUT_STORAGE_KEY = 'afterstay_moments_layout';
 const PEOPLE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#7f3712', '#9a7d52'];
 
-type LayoutMode = 'bento' | 'mosaic' | 'diary' | 'map';
-
-const LAYOUT_OPTIONS: { value: LayoutMode; label: string }[] = [
-  { value: 'bento', label: 'Bento' },
-  { value: 'mosaic', label: 'Grid' },
-  { value: 'diary', label: 'Diary' },
-  { value: 'map', label: 'Map' },
-];
+type TabMode = 'trip' | 'public';
 
 // ---------------------------------------------------------------------------
-// Props
+// Helpers
 // ---------------------------------------------------------------------------
 
 interface MomentsTabProps {
   tripId?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function buildPeopleMap(
-  members: GroupMember[],
-): PeopleMap {
+function buildPeopleMap(members: GroupMember[]): PeopleMap {
   const people: PeopleMap = {};
   members.forEach((m, i) => {
     const initial = m.name.charAt(0).toUpperCase();
-    people[initial] = {
+    const entry = {
       name: m.name,
       color: PEOPLE_COLORS[i % PEOPLE_COLORS.length],
+      avatar: m.profilePhoto,
     };
-    people[m.name] = {
-      name: m.name,
-      color: PEOPLE_COLORS[i % PEOPLE_COLORS.length],
-    };
+    people[initial] = entry;
+    people[m.name] = entry;
+    if (m.userId) people[m.userId] = entry;
   });
   return people;
 }
 
-function buildMomentDisplays(moments: Moment[]): MomentDisplay[] {
+function buildMomentDisplays(
+  moments: Moment[],
+  people: PeopleMap,
+  currentUserId: string | undefined,
+  favorites: MomentFavoriteMap,
+): MomentDisplay[] {
   return moments.map((m) => {
-    const authorKey = m.takenBy
-      ? m.takenBy.charAt(0).toUpperCase()
-      : '';
+    const authorKey = m.takenBy ? m.takenBy.charAt(0).toUpperCase() : '';
+    const personEntry = m.userId ? people[m.userId] : people[authorKey];
+    const fav = m.id ? favorites[m.id] : undefined;
     return {
       ...m,
       place: m.location,
       authorKey,
+      authorColor: personEntry?.color,
+      authorAvatar: personEntry?.avatar,
+      isMine: !!(currentUserId && (m.userId === currentUserId || !m.userId)),
+      favoriteCount: fav?.count ?? 0,
+      isFavorited: !!(currentUserId && fav?.userIds.includes(currentUserId)),
     };
   });
 }
@@ -102,12 +101,66 @@ function computeDayCounts(moments: MomentDisplay[]): Record<string, number> {
   return counts;
 }
 
+function computeScopeCounts(moments: MomentDisplay[]): Record<ScopeFilter, number> {
+  const counts: Record<ScopeFilter, number> = { all: 0, group: 0, me: 0, album: 0, favorites: 0 };
+  moments.forEach((m) => {
+    counts.all++;
+    if (m.visibility === 'private') counts.me++;
+    else if (m.visibility === 'album') counts.album++;
+    else counts.group++;
+    if ((m.favoriteCount ?? 0) > 0 || m.isFavorited) counts.favorites++;
+  });
+  return counts;
+}
+
+/** Build day entries for the DayRail from date keys. */
+function buildDayEntries(dayCounts: Record<string, number>): { key: string; dayNum: string; count: number }[] {
+  return Object.keys(dayCounts)
+    .sort((a, b) => b.localeCompare(a))
+    .map((key) => {
+      const d = new Date(key + 'T00:00:00+08:00');
+      return {
+        key,
+        dayNum: String(d.getDate()),
+        count: dayCounts[key],
+      };
+    });
+}
+
+/** Group moments by day for section headers. */
+function groupByDay(moments: MomentDisplay[]): { date: string; label: string; sub: string; moments: MomentDisplay[] }[] {
+  const groups: Record<string, MomentDisplay[]> = {};
+  moments.forEach((m) => {
+    if (!groups[m.date]) groups[m.date] = [];
+    groups[m.date].push(m);
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  return Object.keys(groups)
+    .sort((a, b) => b.localeCompare(a))
+    .map((date) => {
+      let label: string;
+      if (date === today) label = 'Today';
+      else if (date === yesterday) label = 'Yesterday';
+      else label = formatDatePHT(date);
+
+      // Build sub from unique locations
+      const locations = [...new Set(groups[date].map((m) => m.place ?? m.location).filter(Boolean))];
+      const sub = locations.slice(0, 2).join(' · ') || `${groups[date].length} moments`;
+
+      return { date, label, sub, moments: groups[date] };
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function MomentsTab({ tripId }: MomentsTabProps) {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
   const s = useMemo(() => getStyles(colors), [colors]);
 
@@ -116,8 +169,12 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [activeDay, setActiveDay] = useState('all');
-  const [layout, setLayout] = useState<LayoutMode>('bento');
+  const [tabMode, setTabMode] = useState<TabMode>('trip');
+  const [activePerson, setActivePerson] = useState<string | null>(null);
+  const [activeScope, setActiveScope] = useState<ScopeFilter>('all');
+  const [activeDayRail, setActiveDayRail] = useState<string | null>(null);
+  const [favoriteMap, setFavoriteMap] = useState<MomentFavoriteMap>({});
+
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectMode = selectedIds.size > 0;
@@ -129,41 +186,30 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [curationDay, setCurationDay] = useState<{ dateLabel: string; photos: { id: string; uri: string }[] } | null>(null);
   const [curatedDays, setCuratedDays] = useState<Set<string>>(new Set());
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
+
   const actionMoment = actionMomentId ? rawMoments.find((m) => m.id === actionMomentId) ?? null : null;
   const editMoment = editMomentId ? rawMoments.find((m) => m.id === editMomentId) ?? null : null;
 
-  // Load persisted layout preference
-  useEffect(() => {
-    AsyncStorage.getItem(LAYOUT_STORAGE_KEY).then((stored) => {
-      if (stored === 'bento' || stored === 'mosaic' || stored === 'diary' || stored === 'map') {
-        setLayout(stored);
-      }
-    });
-  }, []);
-
-  // Multi-select handlers
+  // Action handlers
   const handleToggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }, []);
 
   const handleLongPress = useCallback((id: string) => {
-    setActionMomentId(id);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedIds(new Set([id]));
   }, []);
 
-  const handleActionShare = useCallback(() => {
-    if (!actionMoment?.photo) return;
-    import('react-native').then(({ Share }) => {
-      Share.share({
-        message: actionMoment.caption
-          ? `${actionMoment.caption} — ${actionMoment.location ?? ''}`
-          : 'Trip moment',
-        url: actionMoment.photo,
-      });
+  const handleActionShare = useCallback(async () => {
+    if (!actionMoment) return;
+    const { Share } = await import('react-native');
+    Share.share({
+      message: [actionMoment.caption, actionMoment.location].filter(Boolean).join(' — '),
+      url: actionMoment.photo,
     });
   }, [actionMoment]);
 
@@ -205,36 +251,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     } catch (err) { if (__DEV__) console.warn('[Moments] edit failed:', err); }
   }, []);
 
-  // Curation: long-press a day chip to curate that day's photos
-  const handleCurationLongPress = useCallback((day: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const source = day === 'all' ? rawMoments : rawMoments.filter((m) => m.date === day);
-    const photosForCuration = source
-      .filter((m) => m.photo)
-      .map((m) => ({ id: m.id, uri: m.photo! }));
-    if (photosForCuration.length === 0) return;
-    const dateLabel = day === 'all' ? 'All Days' : formatDatePHT(day);
-    setCurationDay({ dateLabel, photos: photosForCuration });
-  }, [rawMoments]);
-
-  const handleCurationComplete = useCallback((selectedPhotoIds: string[]) => {
-    setFavoritedIds((prev) => {
-      const next = new Set(prev);
-      selectedPhotoIds.forEach((id) => next.add(id));
-      return next;
-    });
-    // Mark this day as curated
-    if (curationDay) {
-      const dayKey = curationDay.dateLabel === 'All Days' ? 'all' : activeDay;
-      setCuratedDays((prev) => {
-        const next = new Set(prev);
-        next.add(dayKey);
-        return next;
-      });
-    }
-    setCurationDay(null);
-  }, [curationDay, activeDay]);
-
   const handleDeleteSelected = useCallback(async () => {
     const count = selectedIds.size;
     Alert.alert(
@@ -258,57 +274,171 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     );
   }, [selectedIds]);
 
-  // Fetch moments + group members, then prefetch images into HTTP cache
+  const handlePromoteToGroup = useCallback(async () => {
+    const ids = [...selectedIds];
+    try {
+      await promoteMomentsToGroup(ids);
+      setRawMoments((prev) =>
+        prev.map((m) => ids.includes(m.id) ? { ...m, visibility: 'shared' as MomentVisibility } : m),
+      );
+      setSelectedIds(new Set());
+    } catch (err) { if (__DEV__) console.warn('[Moments] promote failed:', err); }
+  }, [selectedIds]);
+
+  const handleBatchFavorite = useCallback(async () => {
+    const ids = [...selectedIds];
+    try {
+      await batchFavorite(ids);
+      const newMap = { ...favoriteMap };
+      ids.forEach((id) => {
+        if (!newMap[id]) newMap[id] = { count: 0, userIds: [] };
+        if (user?.id && !newMap[id].userIds.includes(user.id)) {
+          newMap[id].count++;
+          newMap[id].userIds.push(user.id);
+        }
+      });
+      setFavoriteMap(newMap);
+      setSelectedIds(new Set());
+    } catch (err) { if (__DEV__) console.warn('[Moments] batch fav failed:', err); }
+  }, [selectedIds, favoriteMap, user]);
+
+  const handleFavorite = useCallback(async (momentId: string) => {
+    try {
+      const nowFavorited = await toggleFavorite(momentId);
+      setFavoriteMap((prev) => {
+        const next = { ...prev };
+        if (!next[momentId]) next[momentId] = { count: 0, userIds: [] };
+        if (nowFavorited && user?.id) {
+          next[momentId] = {
+            count: next[momentId].count + 1,
+            userIds: [...next[momentId].userIds, user.id],
+          };
+        } else if (!nowFavorited && user?.id) {
+          next[momentId] = {
+            count: Math.max(0, next[momentId].count - 1),
+            userIds: next[momentId].userIds.filter((uid) => uid !== user.id),
+          };
+        }
+        return next;
+      });
+    } catch (err) { if (__DEV__) console.warn('[Moments] fav failed:', err); }
+  }, [user]);
+
+  const handleToggleVisibility = useCallback(async (momentId: string) => {
+    try {
+      const newVis = await toggleVisibility(momentId);
+      setRawMoments((prev) =>
+        prev.map((m) => m.id === momentId ? { ...m, visibility: newVis } : m),
+      );
+    } catch (err) { if (__DEV__) console.warn('[Moments] visibility toggle failed:', err); }
+  }, []);
+
+  // Curation: long-press a day chip to curate that day's photos
+  const handleCurationLongPress = useCallback((day: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const source = day === 'all' ? rawMoments : rawMoments.filter((m) => m.date === day);
+    const photosForCuration = source
+      .filter((m) => m.photo)
+      .map((m) => ({ id: m.id, uri: m.photo! }));
+    if (photosForCuration.length === 0) return;
+    const dateLabel = day === 'all' ? 'All Days' : formatDatePHT(day);
+    setCurationDay({ dateLabel, photos: photosForCuration });
+  }, [rawMoments]);
+
+  const handleCurationComplete = useCallback((favorites: string[]) => {
+    setFavoritedIds((prev) => new Set([...prev, ...favorites]));
+    if (curationDay) {
+      const dayKey = curationDay.dateLabel === 'All Days' ? 'all' : curationDay.dateLabel;
+      setCuratedDays((prev) => {
+        const next = new Set(prev);
+        next.add(dayKey);
+        return next;
+      });
+    }
+    setCurationDay(null);
+  }, [curationDay]);
+
+  // Fetch moments + group members + favorites
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [moments, groupMembers] = await Promise.all([
+      const [moments, groupMembers, favs] = await Promise.all([
         getMoments(tripId).catch(() => [] as Moment[]),
         getGroupMembers(tripId).catch(() => [] as GroupMember[]),
+        getMomentFavorites(tripId).catch(() => ({} as MomentFavoriteMap)),
       ]);
       setRawMoments(moments);
       setMembers(groupMembers);
+      setFavoriteMap(favs);
 
-      // Prefetch first 20 photos into the native HTTP cache in the background
+      // Prefetch first 20 photos
       const { Image: RNImage } = require('react-native');
-      const photosToCache = moments
-        .filter((m) => m.photo)
-        .slice(0, 20)
-        .map((m) => m.photo!);
-      photosToCache.forEach((uri) => RNImage.prefetch(uri).catch(() => {}));
+      moments.filter((m) => m.photo).slice(0, 20).forEach((m) => RNImage.prefetch(m.photo!).catch(() => {}));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [tripId]);
 
+  useEffect(() => { load(); }, [load]);
+
+  // Refresh when screen comes back into focus (e.g. after add-moment, new-album)
+  const isFocused = useIsFocused();
+  const prevFocused = useRef(false);
   useEffect(() => {
-    load();
-  }, [load]);
+    if (isFocused && !prevFocused.current) {
+      load();
+    }
+    prevFocused.current = isFocused;
+  }, [isFocused, load]);
 
   // Build derived data
+  const currentUserId = user?.id;
   const people = useMemo(() => buildPeopleMap(members), [members]);
-  const allMoments = useMemo(() => buildMomentDisplays(rawMoments), [rawMoments]);
+  const allMoments = useMemo(
+    () => buildMomentDisplays(rawMoments, people, currentUserId, favoriteMap),
+    [rawMoments, people, currentUserId, favoriteMap],
+  );
   const dayCounts = useMemo(() => computeDayCounts(allMoments), [allMoments]);
+  const scopeCounts = useMemo(() => computeScopeCounts(allMoments), [allMoments]);
   const uniquePlaces = useMemo(
     () => new Set(allMoments.map((m) => m.place ?? m.location).filter(Boolean)).size,
     [allMoments],
   );
   const dayCount = useMemo(() => Object.keys(dayCounts).length, [dayCounts]);
-
-  const filtered = useMemo(
-    () =>
-      activeDay === 'all'
-        ? allMoments
-        : allMoments.filter((m) => m.date === activeDay),
-    [allMoments, activeDay],
+  const contributorCount = useMemo(
+    () => new Set(allMoments.map((m) => m.userId).filter(Boolean)).size,
+    [allMoments],
   );
+  const dayEntries = useMemo(() => buildDayEntries(dayCounts), [dayCounts]);
 
-  // Layout persistence
-  const handleLayoutChange = useCallback((newLayout: LayoutMode) => {
-    setLayout(newLayout);
-    AsyncStorage.setItem(LAYOUT_STORAGE_KEY, newLayout);
-  }, []);
+  const personCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allMoments.forEach((m) => {
+      if (m.userId) counts[m.userId] = (counts[m.userId] || 0) + 1;
+    });
+    return counts;
+  }, [allMoments]);
+
+  const filtered = useMemo(() => {
+    let result = allMoments;
+    if (activePerson) result = result.filter((m) => m.userId === activePerson);
+    if (activeScope === 'group') result = result.filter((m) => m.visibility === 'shared');
+    else if (activeScope === 'me') result = result.filter((m) => m.visibility === 'private');
+    else if (activeScope === 'album') result = result.filter((m) => m.visibility === 'album');
+    else if (activeScope === 'favorites') result = result.filter((m) => (m.favoriteCount ?? 0) > 0 || m.isFavorited);
+    if (activeDayRail) result = result.filter((m) => m.date === activeDayRail);
+    return result;
+  }, [allMoments, activePerson, activeScope, activeDayRail]);
+
+  // Guard stale lightbox index when filtered array changes
+  useEffect(() => {
+    if (openIdx !== null && openIdx >= filtered.length) {
+      setOpenIdx(filtered.length > 0 ? filtered.length - 1 : null);
+    }
+  }, [filtered.length, openIdx]);
+
+  const dayGroups = useMemo(() => groupByDay(filtered), [filtered]);
 
   // Lightbox handlers
   const handleOpen = useCallback(
@@ -331,157 +461,150 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   return (
     <>
-      <ScrollView
-        contentContainerStyle={s.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accentLt} />}
-      >
-        {/* ---- Stats strip ---- */}
-        <View style={s.statsRow}>
-          <StatBlock label="Moments" value={allMoments.length} />
-          <StatBlock label="Places" value={uniquePlaces} />
-          <StatBlock label="Days" value={dayCount} />
-        </View>
-
-        {/* ---- Day filter chips ---- */}
-        <DayChips
-          active={activeDay}
-          onChange={setActiveDay}
-          onLongPress={handleCurationLongPress}
-          counts={dayCounts}
-          total={allMoments.length}
-          curatedDays={curatedDays}
-        />
-
-        {/* ---- Layout switcher ---- */}
-        <View style={s.switcherRow}>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => router.push('/moments-slideshow' as never)}
-          >
-            <Text style={s.momentCountText}>
-              {filtered.length} {filtered.length === 1 ? 'moment' : 'moments'}
-              {activeDay !== 'all' ? ` · ${formatDatePHT(activeDay)}` : ''}
-              {' →'}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={s.segmented}>
-            {LAYOUT_OPTIONS.map((opt) => (
-              <Pressable
-                key={opt.value}
-                onPress={() => handleLayoutChange(opt.value)}
-                style={[
-                  s.segBtn,
-                  layout === opt.value && s.segBtnActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    s.segText,
-                    { color: layout === opt.value ? colors.text : colors.text3 },
-                  ]}
-                >
-                  {opt.label}
-                </Text>
-              </Pressable>
-            ))}
-            <Pressable
-              onPress={() => {
-                const photoMoments = filtered.filter((m) => m.photo);
-                if (photoMoments.length > 0) {
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={s.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accentLt} />}
+        >
+          {/* ---- Header ---- */}
+          <View style={s.header}>
+            <View>
+              <View style={s.titleRow}>
+                <Text style={[s.title, { color: colors.text }]}>Moments</Text>
+                <Text style={[s.titleCount, { color: colors.accent }]}>{allMoments.length}</Text>
+              </View>
+              <Text style={[s.subtitle, { color: colors.text3 }]}>
+                {dayCount} days · {uniquePlaces} places · {contributorCount} contributor{contributorCount !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            {!selectMode && (
+              <TouchableOpacity
+                onPress={() => {
                   Haptics.selectionAsync();
-                  setShowPhotoPicker(true);
-                } else {
-                  Alert.alert('No photos', 'Add a moment with a photo to use Film.');
-                }
-              }}
-              style={[s.segBtn, s.filmBtn]}
+                  setSelectedIds(new Set(['__trigger__']));
+                  setSelectedIds(new Set());
+                }}
+                style={[s.selectBtn, { borderColor: colors.border }]}
+              >
+                <Text style={[s.selectBtnText, { color: colors.text2 }]}>Select</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* ---- Trip / Public underline tabs ---- */}
+          <View style={[s.tabRow, { borderBottomColor: colors.border }]}>
+            <Pressable
+              onPress={() => setTabMode('trip')}
+              style={[s.tab, tabMode === 'trip' && s.tabActive]}
             >
-              <FilmIcon size={10} color="#000" strokeWidth={2.4} />
-              <Text style={s.filmText}>Film</Text>
+              <Text style={[s.tabLabel, { color: tabMode === 'trip' ? colors.text : colors.text3 }]}>Your trip</Text>
+              <Text style={[s.tabSub, { color: tabMode === 'trip' ? colors.accent : colors.text3 }]}>{allMoments.length}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setTabMode('public')}
+              style={[s.tab, tabMode === 'public' && s.tabActive]}
+            >
+              <Text style={[s.tabLabel, { color: tabMode === 'public' ? colors.text : colors.text3 }]}>Public</Text>
+              <Text style={[s.tabSub, { color: tabMode === 'public' ? colors.accent : colors.text3 }]}>Coming soon</Text>
             </Pressable>
           </View>
-        </View>
 
-        {/* ---- Select mode toolbar ---- */}
-        {selectMode && (
-          <View style={s.selectBar}>
-            <Pressable onPress={() => setSelectedIds(new Set())}>
-              <Text style={s.selectBarCancel}>Cancel</Text>
-            </Pressable>
-            <Text style={s.selectBarCount}>{selectedIds.size} selected</Text>
-            <Pressable onPress={handleDeleteSelected}>
-              <Text style={s.selectBarDelete}>Delete</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {/* ---- Layout content ---- */}
-        {layout === 'bento' && (
-          <BentoLayout
-            items={filtered}
-            onOpen={handleOpen}
-            selectedIds={selectedIds}
-            onToggleSelect={handleToggleSelect}
-            selectMode={selectMode}
-            onLongPress={handleLongPress}
-          />
-        )}
-
-        {layout === 'mosaic' && (
-          <MosaicLayout
-            items={filtered}
-            onOpen={handleOpen}
-            people={people}
-          />
-        )}
-
-        {layout === 'diary' && (
-          <DiaryLayout
-            items={filtered}
-            onOpen={handleOpen}
-            people={people}
-          />
-        )}
-
-        {layout === 'map' && (
-          <MapLayout
-            items={filtered}
-            onOpen={handleOpen}
-            people={people}
-          />
-        )}
-
-        {/* ---- Upload CTA ---- */}
-        <View style={s.ctaWrapper}>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => router.push('/add-moment' as never)}
-            style={s.addButton}
-          >
-            <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M14.5 4l1.5 2h3a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h3l1.5-2z"
-                stroke={colors.text2}
-                strokeWidth={1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
+          {tabMode === 'public' ? (
+            <View style={s.publicPlaceholder}>
+              <Text style={[s.publicTitle, { color: colors.text }]}>Afterstay Public Feed</Text>
+              <Text style={[s.publicSub, { color: colors.text3 }]}>
+                See moments from travelers across Afterstay.{'\n'}Coming soon.
+              </Text>
+            </View>
+          ) : (
+            <>
+              {/* ---- Person filter ---- */}
+              <PersonChips
+                active={activePerson}
+                onChange={setActivePerson}
+                members={members}
+                counts={personCounts}
+                total={allMoments.length}
               />
-              <SvgCircle
-                cx={12}
-                cy={13}
-                r={3.5}
-                stroke={colors.text2}
-                strokeWidth={1.8}
-                fill="none"
+
+              {/* ---- Scope filter ---- */}
+              <ScopeChips
+                active={activeScope}
+                onChange={setActiveScope}
+                counts={scopeCounts}
               />
-            </Svg>
-            <Text style={s.addButtonText}>Add moment</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+
+              {/* ---- Select mode floating bar ---- */}
+              {selectMode && (
+                <View style={[s.selBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Pressable onPress={() => setSelectedIds(new Set())} style={[s.selBarClose, { backgroundColor: colors.card2 }]}>
+                    <Text style={{ color: colors.text2, fontSize: 16 }}>×</Text>
+                  </Pressable>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.selBarCount, { color: colors.text }]}>{selectedIds.size} selected</Text>
+                    <Text style={[s.selBarSub, { color: colors.text3 }]}>Promote · Album · Save · Delete</Text>
+                  </View>
+                  <Pressable onPress={handleBatchFavorite} style={[s.selBarAct, { borderColor: colors.border }]}>
+                    <Text style={{ color: colors.text2, fontSize: 12 }}>★</Text>
+                  </Pressable>
+                  <Pressable onPress={handleDeleteSelected} style={[s.selBarAct, { borderColor: colors.border }]}>
+                    <Text style={{ color: colors.text2, fontSize: 12 }}>🗑</Text>
+                  </Pressable>
+                  <Pressable onPress={handlePromoteToGroup} style={[s.selBarActPrimary, { backgroundColor: colors.accent }]}>
+                    <Text style={{ color: colors.onBlack, fontSize: 12, fontWeight: '700' }}>→ Group</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {/* ---- Albums grid (when Album scope selected) ---- */}
+              {activeScope === 'album' ? (
+                <AlbumsGrid
+                  tripId={tripId}
+                  totalMoments={allMoments.length}
+                  privateMoments={scopeCounts.me}
+                  onSwitchScope={setActiveScope}
+                />
+              ) : (
+                /* ---- Day-grouped mosaic ---- */
+                <View style={{ paddingRight: dayEntries.length > 1 ? 32 : 0, position: 'relative' }}>
+                  {dayGroups.map((group) => (
+                    <View key={group.date}>
+                      <DaySectionHeader label={group.label} sub={group.sub} />
+                      <BentoLayout
+                        items={group.moments}
+                        onOpen={handleOpen}
+                        selectedIds={selectedIds}
+                        onToggleSelect={handleToggleSelect}
+                        selectMode={selectMode}
+                        onLongPress={handleLongPress}
+                      />
+                    </View>
+                  ))}
+
+                  {/* Day rail (right side) */}
+                  <DayRail
+                    days={dayEntries}
+                    active={activeDayRail}
+                    onChange={setActiveDayRail}
+                  />
+                </View>
+              )}
+
+              {/* ---- Upload CTA ---- */}
+              <View style={s.ctaWrapper}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => router.push('/add-moment' as never)}
+                  style={[s.addButton, { backgroundColor: colors.card, borderColor: colors.border2 }]}
+                >
+                  <Text style={[s.addButtonText, { color: colors.text2 }]}>+ Add moment</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </View>
 
       {/* ---- Lightbox ---- */}
       <MomentLightbox
@@ -491,9 +614,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         onClose={() => setOpenIdx(null)}
         onPrev={() =>
           setOpenIdx((prev) =>
-            prev != null
-              ? (prev - 1 + filtered.length) % filtered.length
-              : 0,
+            prev != null ? (prev - 1 + filtered.length) % filtered.length : 0,
           )
         }
         onNext={() =>
@@ -515,18 +636,17 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           setEditMomentId(id);
         }}
         onFilm={(m) => {
-          // Single photo from lightbox — open editor directly
           setFilmMoments([m]);
           setFilmInitIdx(0);
         }}
+        onFavorite={handleFavorite}
+        onToggleVisibility={handleToggleVisibility}
         onCurate={(id, action) => {
           if (action === 'favorite') {
-            // Mark as favorite — add to curation set for recaps
             setRawMoments((prev) =>
               prev.map((m) => (m.id === id ? { ...m, isFavorite: true } : m)),
             );
           } else {
-            // Skip — remove favorite flag if it was set
             setRawMoments((prev) =>
               prev.map((m) => (m.id === id ? { ...m, isFavorite: false } : m)),
             );
@@ -610,64 +730,143 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     scrollContent: {
       paddingBottom: 100,
     },
-    statsRow: {
+    // Header
+    header: {
+      paddingHorizontal: 18,
+      paddingTop: 6,
+      paddingBottom: 8,
       flexDirection: 'row',
-      paddingHorizontal: 16,
-      paddingBottom: 14,
-      gap: 8,
-    },
-    switcherRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-end',
       justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingBottom: 14,
     },
-    momentCountText: {
-      fontSize: 11,
-      color: colors.text3,
-    },
-    segmented: {
+    titleRow: {
       flexDirection: 'row',
-      padding: 2,
-      backgroundColor: colors.card2,
+      alignItems: 'baseline',
+      gap: 10,
+    },
+    title: {
+      fontSize: 32,
+      fontWeight: '600',
+      letterSpacing: -1.1,
+      lineHeight: 36,
+    },
+    titleCount: {
+      fontSize: 13,
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
+    },
+    subtitle: {
+      fontSize: 11.5,
+      fontWeight: '500',
+      marginTop: 2,
+    },
+    selectBtn: {
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      gap: 2,
-    },
-    segBtn: {
-      paddingVertical: 8,
+      paddingVertical: 6,
       paddingHorizontal: 12,
-      borderRadius: 9,
+      borderRadius: 999,
     },
-    segBtnActive: {
-      backgroundColor: colors.card,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.30,
-      shadowRadius: 6,
-      elevation: 4,
+    selectBtnText: {
+      fontSize: 11,
+      fontWeight: '600',
+      letterSpacing: 0.4,
+      textTransform: 'uppercase',
     },
-    filmBtn: {
-      backgroundColor: colors.accent,
+    // Underline tabs
+    tabRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 18,
+      gap: 22,
+      borderBottomWidth: 1,
+      marginBottom: 12,
+    },
+    tab: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: 7,
+      paddingTop: 8,
+      paddingBottom: 10,
+      borderBottomWidth: 2,
+      borderBottomColor: 'transparent',
+      marginBottom: -1,
+    },
+    tabActive: {
+      borderBottomColor: colors.accent,
+    },
+    tabLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      letterSpacing: -0.15,
+    },
+    tabSub: {
+      fontSize: 10.5,
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
+    },
+    // Public placeholder
+    publicPlaceholder: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: 80,
+      paddingHorizontal: 40,
+    },
+    publicTitle: {
+      fontSize: 20,
+      fontWeight: '600',
+      letterSpacing: -0.3,
+      marginBottom: 8,
+    },
+    publicSub: {
+      fontSize: 13,
+      lineHeight: 20,
+      textAlign: 'center',
+    },
+    // Selection bar
+    selBar: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
+      gap: 10,
+      marginHorizontal: 12,
+      marginBottom: 10,
+      padding: 10,
       paddingHorizontal: 12,
-      marginLeft: 4,
+      borderRadius: 16,
+      borderWidth: 1,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 12,
+      elevation: 8,
     },
-    filmText: {
-      fontSize: 10.5,
+    selBarClose: {
+      width: 32,
+      height: 32,
+      borderRadius: 99,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selBarCount: {
+      fontSize: 13,
       fontWeight: '600',
-      color: '#000',
-      letterSpacing: -0.1,
     },
-    segText: {
+    selBarSub: {
       fontSize: 10.5,
-      fontWeight: '600',
-      letterSpacing: -0.1,
+      marginTop: 1,
     },
+    selBarAct: {
+      width: 36,
+      height: 36,
+      borderRadius: 99,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selBarActPrimary: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 99,
+    },
+    // CTA
     ctaWrapper: {
       paddingHorizontal: 16,
       paddingTop: 20,
@@ -679,43 +878,12 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       gap: 8,
       paddingVertical: 12,
       paddingHorizontal: 14,
-      backgroundColor: colors.card,
       borderWidth: 1,
       borderStyle: 'dashed',
-      borderColor: colors.border2,
       borderRadius: 14,
     },
     addButtonText: {
       fontSize: 13,
       fontWeight: '600',
-      color: colors.text2,
-    },
-    selectBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      marginHorizontal: 16,
-      marginBottom: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    selectBarCancel: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text2,
-    },
-    selectBarCount: {
-      fontSize: 13,
-      fontWeight: '700',
-      color: colors.text,
-    },
-    selectBarDelete: {
-      fontSize: 13,
-      fontWeight: '700',
-      color: colors.danger,
     },
   });

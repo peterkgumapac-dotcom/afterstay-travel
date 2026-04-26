@@ -193,7 +193,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
               const voted = Object.keys(voteByMember).length
               const pending = totalMembers - voted
               return (
-                <Text style={styles.voteSummary}>
+                <Text style={styles.voteSummary} numberOfLines={1}>
                   {yes > 0 ? `${yes}/${totalMembers} yes` : `${voted} voted`}
                   {pending > 0 ? ` · ${pending} pending` : ''}
                 </Text>
@@ -261,21 +261,22 @@ const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     row: {
       flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
+      alignItems: 'flex-start',
+      gap: spacing.sm,
       paddingVertical: spacing.md,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
     thumb: {
-      width: 120,
-      height: 120,
+      width: 90,
+      height: 90,
       borderRadius: radius.md,
       backgroundColor: colors.card2,
     },
     info: {
       flex: 1,
       minWidth: 0,
+      overflow: 'hidden',
     },
     tagRow: {
       flexDirection: 'row',
@@ -319,6 +320,7 @@ const getStyles = (colors: ThemeColors) =>
     metaRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
       gap: 4,
       marginTop: 4,
     },
@@ -390,5 +392,6 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 10,
       fontWeight: '500' as const,
       color: colors.text2,
+      flexShrink: 1,
     },
   });

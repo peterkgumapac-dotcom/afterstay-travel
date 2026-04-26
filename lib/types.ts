@@ -166,14 +166,44 @@ export interface WeatherDay {
 
 export type MomentTag = 'Beach' | 'Food' | 'Sunset' | 'Group' | 'Activity' | 'Hotel' | 'Scenery' | 'Night';
 
+export type MomentVisibility = 'shared' | 'private' | 'album';
+
 export interface Moment {
   id: string;
   caption: string;
   photo?: string;
   location?: string;
   takenBy?: string;
+  userId?: string;
   date: string;
   tags: MomentTag[];
+  visibility?: MomentVisibility;
+}
+
+export type AlbumMemberRole = 'owner' | 'contributor' | 'viewer' | 'surprise';
+
+export interface Album {
+  id: string;
+  tripId: string;
+  name: string;
+  coverMomentId?: string;
+  coverUrl?: string;
+  ownerId: string;
+  hideFromMosaic: boolean;
+  autoRevealAt?: string;
+  memberCount: number;
+  momentCount: number;
+  createdAt: string;
+}
+
+export interface AlbumMember {
+  id: string;
+  userId: string;
+  name: string;
+  avatar?: string;
+  color?: string;
+  role: AlbumMemberRole;
+  momentCount: number;
 }
 
 export interface AIRecommendation {

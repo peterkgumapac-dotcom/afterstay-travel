@@ -17,14 +17,14 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Check, Plus, X, AlertCircle, Loader } from 'lucide-react-native';
+import { Check, ChevronRight, FolderPlus, Lock, Plus, Users, X, AlertCircle, Loader } from 'lucide-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { placeAutocomplete } from '@/lib/google-places';
 import { addMoment } from '@/lib/supabase';
-import type { MomentTag } from '@/lib/types';
+import type { MomentTag, MomentVisibility } from '@/lib/types';
 
 type PhotoStatus = 'pending' | 'uploading' | 'done' | 'error';
 
@@ -52,6 +52,7 @@ export default function AddMomentScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
+  const [scope, setScope] = useState<MomentVisibility>('private');
   const [locationSuggestions, setLocationSuggestions] = useState<{ placeId: string; description: string }[]>([]);
   const locationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -125,6 +126,7 @@ export default function AddMomentScreen() {
             takenBy: takenBy || undefined,
             date,
             tags,
+            visibility: scope,
           });
           return photo.uri;
         }),
@@ -161,7 +163,7 @@ export default function AddMomentScreen() {
         `${successCount} of ${photos.length} uploaded. Tap "Upload" to retry failed ones.`,
       );
     }
-  }, [photos, caption, location, tags, takenBy, date, router]);
+  }, [photos, caption, location, tags, takenBy, date, scope, router]);
 
   const renderPhoto = ({ item }: { item: PhotoItem }) => (
     <Animated.View entering={FadeIn.duration(200)} style={styles.photoThumb}>
@@ -260,6 +262,82 @@ export default function AddMomentScreen() {
                 {errorCount} failed — tap Upload to retry
               </Text>
             )}
+
+            {/* Scope picker — "Share with" */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Share with</Text>
+              <View style={{ gap: 6 }}>
+                {/* Just me */}
+                <Pressable
+                  onPress={() => setScope('private')}
+                  style={[
+                    styles.scopeRow,
+                    {
+                      borderColor: scope === 'private' ? colors.accent : colors.border,
+                      backgroundColor: scope === 'private' ? colors.accentBg : colors.card,
+                    },
+                  ]}
+                >
+                  <View style={[styles.scopeIcon, { backgroundColor: scope === 'private' ? colors.danger : colors.card2 }]}>
+                    <Lock size={16} color={scope === 'private' ? '#fff' : colors.text3} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.scopeTitle, { color: colors.text }]}>Just me</Text>
+                    <Text style={[styles.scopeSub, { color: colors.text3 }]}>Private. Group can{'\u2019'}t see it.</Text>
+                  </View>
+                  <View style={[styles.scopeCheck, scope === 'private' ? { backgroundColor: colors.accent, borderColor: colors.accent } : { borderColor: colors.border2 }]}>
+                    {scope === 'private' && <Check size={11} color={colors.onBlack} strokeWidth={3} />}
+                  </View>
+                </Pressable>
+
+                {/* The trip group */}
+                <Pressable
+                  onPress={() => setScope('shared')}
+                  style={[
+                    styles.scopeRow,
+                    {
+                      borderColor: scope === 'shared' ? colors.accent : colors.border,
+                      backgroundColor: scope === 'shared' ? colors.accentBg : colors.card,
+                    },
+                  ]}
+                >
+                  <View style={[styles.scopeIcon, { backgroundColor: scope === 'shared' ? colors.accent : colors.card2 }]}>
+                    <Users size={16} color={scope === 'shared' ? colors.onBlack : colors.text3} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.scopeTitle, { color: colors.text }]}>The trip group</Text>
+                    <Text style={[styles.scopeSub, { color: colors.text3 }]}>Visible to all trip members.</Text>
+                  </View>
+                  <View style={[styles.scopeCheck, scope === 'shared' ? { backgroundColor: colors.accent, borderColor: colors.accent } : { borderColor: colors.border2 }]}>
+                    {scope === 'shared' && <Check size={11} color={colors.onBlack} strokeWidth={3} />}
+                  </View>
+                </Pressable>
+
+                {/* Custom album — routes to album creator */}
+                <Pressable
+                  onPress={() => {
+                    setScope('album');
+                    router.push('/new-album' as never);
+                  }}
+                  style={[
+                    styles.scopeRow,
+                    {
+                      borderColor: scope === 'album' ? colors.accent : colors.border,
+                      backgroundColor: scope === 'album' ? colors.accentBg : colors.card,
+                    },
+                  ]}
+                >
+                  <View style={[styles.scopeIcon, { backgroundColor: scope === 'album' ? colors.accentLt : colors.card2 }]}>
+                    <FolderPlus size={16} color={scope === 'album' ? colors.onBlack : colors.text3} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.scopeTitle, { color: colors.text }]}>A custom album</Text>
+                    <Text style={[styles.scopeSub, { color: colors.text3 }]}>Pick specific people. Optional.</Text>
+                  </View>
+                  <ChevronRight size={16} color={colors.text3} strokeWidth={2} />
+                </Pressable>
+              </View>
+            </View>
 
             {/* Caption */}
             <View style={styles.field}>
@@ -402,7 +480,7 @@ export default function AddMomentScreen() {
                   ? `Uploading ${uploadProgress.done}/${uploadProgress.total}...`
                   : doneCount > 0
                     ? `Upload ${photos.length - doneCount} remaining`
-                    : `Upload ${photos.length} moment${photos.length !== 1 ? 's' : ''}`}
+                    : `Add ${photos.length} to ${scope === 'private' ? 'private' : scope === 'album' ? 'album' : 'the group'}`}
               </Text>
             </Pressable>
           </>
@@ -568,6 +646,39 @@ const getStyles = (colors: ThemeColors) =>
       paddingVertical: 12,
       borderRadius: 12,
       alignItems: 'center',
+    },
+
+    // Scope picker
+    scopeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 14,
+      borderWidth: 1.5,
+      borderRadius: 14,
+    },
+    scopeIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    scopeTitle: {
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    scopeSub: {
+      fontSize: 11,
+      marginTop: 2,
+    },
+    scopeCheck: {
+      width: 22,
+      height: 22,
+      borderRadius: 99,
+      borderWidth: 1.5,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
 
     // Upload button

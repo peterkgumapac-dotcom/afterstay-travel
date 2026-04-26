@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
-import { Download, Edit3, Film, MapPin, MoreHorizontal, Share2, Trash2, X } from 'lucide-react-native';
-import React, { useCallback, useRef, useState } from 'react';
+import { ArrowUpRight, Bookmark, ChevronLeft, Download, Edit3, Eye, EyeOff, Film, Heart, Lock, MapPin, MoreHorizontal, Share2, Star, Trash2, X } from 'lucide-react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -49,6 +49,10 @@ interface MomentLightboxProps {
   onFilm?: (moment: MomentDisplay) => void;
   /** Called when user swipes up (favorite) or down (skip) on a photo */
   onCurate?: (id: string, action: CurationAction) => void;
+  /** Called when user taps the favorite button */
+  onFavorite?: (id: string) => void;
+  /** Called when user toggles visibility (own photos only) */
+  onToggleVisibility?: (id: string) => void;
 }
 
 export function MomentLightbox({
@@ -64,22 +68,51 @@ export function MomentLightbox({
   onEdit,
   onFilm,
   onCurate,
+  onFavorite,
+  onToggleVisibility,
 }: MomentLightboxProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [currentIdx, setCurrentIdx] = useState(index);
+  const moments = allMoments ?? (moment ? [moment] : []);
+  const safeIndex = moments.length > 0 ? Math.min(index, moments.length - 1) : 0;
+  const [currentIdx, setCurrentIdx] = useState(safeIndex);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [favToast, setFavToast] = useState<string | null>(null);
+  const favToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flatListRef = useRef<FlatList<MomentDisplay>>(null);
 
-  const moments = allMoments ?? (moment ? [moment] : []);
+  // Sync index when moments array changes (e.g. after filter/delete)
+  useEffect(() => {
+    if (moments.length === 0) return;
+    if (currentIdx >= moments.length) {
+      setCurrentIdx(moments.length - 1);
+    }
+  }, [moments.length, currentIdx]);
+
   const current = moments[currentIdx] ?? moment;
 
-  // Swipe-up/down curation gesture
+  const showFavToast = useCallback((msg: string) => {
+    if (favToastTimer.current) clearTimeout(favToastTimer.current);
+    setFavToast(msg);
+    favToastTimer.current = setTimeout(() => setFavToast(null), 1500);
+  }, []);
+
+  // Swipe-up/down curation gesture — swipe up = favorite + toast
   const handleCurationCommit = useCallback(
     (action: CurationAction) => {
       const m = moments[currentIdx];
-      if (!m || !onCurate) return;
-      onCurate(m.id, action);
+      if (!m) return;
+
+      if (action === 'favorite') {
+        // Trigger favorite via onFavorite (persists to DB)
+        if (onFavorite) onFavorite(m.id);
+        showFavToast('Added to favorites');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      // Also fire the curation callback if present
+      if (onCurate) onCurate(m.id, action);
+
       // Advance to next photo or close if last
       if (currentIdx < moments.length - 1) {
         const nextIdx = currentIdx + 1;
@@ -89,7 +122,7 @@ export function MomentLightbox({
         onClose();
       }
     },
-    [moments, currentIdx, onCurate, onClose],
+    [moments, currentIdx, onCurate, onFavorite, onClose, showFavToast],
   );
 
   const { gesture: curationGesture, cardStyle, glowStyle } = useCurationGesture({
@@ -173,7 +206,7 @@ export function MomentLightbox({
   const isVisible = moment !== null;
 
   if (!isVisible) return null;
-  if (!current) return null;
+  if (!current || moments.length === 0) return null;
 
   const authorKey = current.authorKey ?? current.takenBy ?? '';
   const person = people[authorKey] ?? { name: authorKey, color: colors.accent };
@@ -181,18 +214,18 @@ export function MomentLightbox({
   return (
     <Modal visible={isVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
       <GestureHandlerRootView style={styles.overlay}>
-        {/* Top bar */}
+        {/* Top bar — overlaid on photo */}
         <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
           <Pressable onPress={onClose} style={styles.topBtn} accessibilityLabel="Close">
-            <X size={18} color="#fff" strokeWidth={2} />
+            <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
           </Pressable>
-          <Text style={styles.counter}>{currentIdx + 1} / {moments.length}</Text>
+          <Text style={styles.counter}>{currentIdx + 1} of {moments.length}</Text>
           <Pressable onPress={() => { Haptics.selectionAsync(); setMenuVisible(true); }} style={styles.topBtn} accessibilityLabel="More options">
-            <MoreHorizontal size={20} color="#fff" strokeWidth={1.8} />
+            <MoreHorizontal size={18} color="#fff" strokeWidth={1.8} />
           </Pressable>
         </View>
 
-        {/* Photo pager */}
+        {/* Photo pager — takes most of the screen */}
         <Animated.View style={[{ flex: 1 }, onCurate ? cardStyle : undefined]}>
           <FlatList
             ref={flatListRef}
@@ -211,39 +244,144 @@ export function MomentLightbox({
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewabilityConfig}
             decelerationRate="fast"
-            scrollEnabled={!onCurate}
+            scrollEnabled
             style={{ flex: 1 }}
           />
-          {/* Curation gesture overlay — captures vertical swipes above the FlatList */}
-          {onCurate && (
-            <GestureDetector gesture={curationGesture}>
-              <Animated.View style={StyleSheet.absoluteFill} />
-            </GestureDetector>
+          {/* Star (favorite) button overlaid on photo top-right */}
+          {onFavorite && (
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); onFavorite(current.id); }}
+              style={styles.starBtn}
+            >
+              <Star size={18} color={current.isFavorited ? '#d9a441' : 'rgba(255,255,255,0.5)'} fill={current.isFavorited ? '#d9a441' : 'transparent'} strokeWidth={2} />
+            </Pressable>
           )}
           {onCurate && <GlowOverlay glowStyle={glowStyle} />}
         </Animated.View>
 
-        {/* Bottom info bar — tap to open menu */}
-        <Pressable
-          onPress={() => { Haptics.selectionAsync(); setMenuVisible(true); }}
-          style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}
-        >
-          <View style={styles.bottomInfo}>
-            <Avatar authorKey={authorKey} people={people} size={28} />
-            <View style={styles.bottomText}>
-              <Text style={styles.bottomDate}>{formatDatePHT(current.date)}</Text>
-              {(current.place ?? current.location) ? (
-                <View style={styles.locationRow}>
-                  <MapPin size={10} color="rgba(255,255,255,0.5)" strokeWidth={2} />
-                  <Text style={styles.bottomLocation} numberOfLines={1}>
-                    {current.place ?? current.location}
-                  </Text>
-                </View>
-              ) : null}
+        {/* Favorite toast */}
+        {favToast && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(300)}
+            style={styles.favToast}
+          >
+            <Text style={styles.favToastText}>{favToast}</Text>
+          </Animated.View>
+        )}
+
+        {/* Attribution panel */}
+        <View style={[styles.attrPanel, { paddingBottom: insets.bottom + 12 }]}>
+          {/* Author row: avatar + name/meta + scope pill */}
+          <View style={styles.attrAuthorRow}>
+            <Avatar authorKey={authorKey} people={people} size={32} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.attrName}>
+                {person.name || 'Unknown'}
+                <Text style={styles.attrNameSub}> captured this</Text>
+              </Text>
+              <Text style={styles.attrMeta}>
+                {formatDatePHT(current.date)}
+                {current.location ? ` · ${current.location}` : ''}
+              </Text>
             </View>
-            <MoreHorizontal size={20} color="rgba(255,255,255,0.5)" strokeWidth={1.8} />
+            <Pressable
+              onPress={() => {
+                if (!current.isMine || !onToggleVisibility) return;
+                Haptics.selectionAsync();
+                onToggleVisibility(current.id);
+                showFavToast(
+                  current.visibility === 'private'
+                    ? 'Shared with the group'
+                    : 'Moved to Just me',
+                );
+              }}
+              style={[
+                styles.scopePill,
+                current.visibility === 'private' && styles.scopePillPrivate,
+                current.isMine && styles.scopePillTappable,
+              ]}
+            >
+              <Text style={[
+                styles.scopePillText,
+                current.visibility === 'private' && { color: '#ffd6d2' },
+              ]}>
+                {current.visibility === 'private' ? 'JUST ME' : current.visibility === 'album' ? 'ALBUM' : 'GROUP'}
+              </Text>
+              {current.isMine && (
+                <Text style={[styles.scopePillText, { fontSize: 8, opacity: 0.6, marginLeft: 2 }]}>TAP</Text>
+              )}
+            </Pressable>
           </View>
-        </Pressable>
+
+          {/* Caption */}
+          {current.caption ? (
+            <Text style={styles.attrCaption}>"{current.caption}"</Text>
+          ) : null}
+
+          {/* Shared with row */}
+          {current.visibility !== 'private' && (
+            <View style={styles.sharedWithRow}>
+              <Text style={styles.sharedWithLabel}>SHARED WITH</Text>
+              <View style={styles.sharedWithAvatars}>
+                {Object.entries(people)
+                  .filter(([key]) => key.length === 1)
+                  .slice(0, 4)
+                  .map(([key, p], i) => (
+                    <View
+                      key={key}
+                      style={[
+                        styles.sharedAvatar,
+                        { backgroundColor: p.color, marginLeft: i === 0 ? 0 : -6 },
+                      ]}
+                    >
+                      <Text style={styles.sharedAvatarText}>{key}</Text>
+                    </View>
+                  ))}
+                <Text style={styles.sharedWithNames}>
+                  {Object.entries(people)
+                    .filter(([key]) => key.length === 1)
+                    .slice(0, 4)
+                    .map(([, p]) => p.name)
+                    .join(', ')}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Reaction pills */}
+          <View style={styles.reactionRow}>
+            <Pressable
+              onPress={() => { if (onFavorite) { Haptics.selectionAsync(); onFavorite(current.id); } }}
+              style={[styles.reactionBtn, current.isFavorited && styles.reactionBtnActive]}
+            >
+              <Heart size={14} color={current.isFavorited ? '#e55' : '#f1ebe2'} fill={current.isFavorited ? '#e55' : 'transparent'} strokeWidth={2} />
+              <Text style={[styles.reactionText, current.isFavorited && { color: '#e55' }]}>
+                {(current.favoriteCount ?? 0) > 0 ? String(current.favoriteCount) : ''}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); handleDownload(); }}
+              style={styles.reactionBtn}
+            >
+              <Bookmark size={14} color="#f1ebe2" strokeWidth={2} />
+              <Text style={styles.reactionText}>Save</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                Share.share({
+                  message: [current.caption, current.location].filter(Boolean).join(' · '),
+                  url: current.photo,
+                });
+              }}
+              style={styles.reactionBtn}
+            >
+              <ArrowUpRight size={14} color="#f1ebe2" strokeWidth={2} />
+              <Text style={styles.reactionText}>Send</Text>
+            </Pressable>
+          </View>
+        </View>
 
         {/* iOS-style pull-up menu */}
         {menuVisible && (
@@ -278,10 +416,24 @@ export function MomentLightbox({
 
               {/* Actions */}
               <View style={styles.menuActions}>
+                {onFavorite && (
+                  <MenuAction
+                    icon={Heart}
+                    label={current.isFavorited ? 'Unfavorite' : 'Favorite'}
+                    onPress={() => { onFavorite(current.id); setMenuVisible(false); }}
+                  />
+                )}
                 <MenuAction icon={Share2} label="Share" onPress={handleShare} />
                 <MenuAction icon={Download} label="Save to Device" onPress={handleDownload} />
                 {onFilm && current?.photo && <MenuAction icon={Film} label="Film Editor" onPress={handleFilm} />}
                 {onEdit && <MenuAction icon={Edit3} label="Edit Details" onPress={handleEdit} />}
+                {onToggleVisibility && current.isMine && (
+                  <MenuAction
+                    icon={current.visibility === 'private' ? Eye : EyeOff}
+                    label={current.visibility === 'private' ? 'Make Shared' : 'Make Private'}
+                    onPress={() => { onToggleVisibility(current.id); setMenuVisible(false); }}
+                  />
+                )}
                 {onDelete && <MenuAction icon={Trash2} label="Delete" onPress={handleDelete} danger />}
               </View>
 
@@ -344,29 +496,157 @@ const styles = StyleSheet.create({
   },
 
   photo: { width: '100%', height: '100%' },
-
-  // Bottom info bar
-  bottomBar: {
-    paddingTop: 12,
-    paddingHorizontal: 16,
+  starBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
   },
-  bottomInfo: {
+
+  // Attribution panel
+  attrPanel: {
+    paddingTop: 16,
+    paddingHorizontal: 18,
+    backgroundColor: '#16100a',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  attrAuthorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    alignSelf: 'stretch',
+    marginBottom: 12,
   },
-  bottomText: { flex: 1, gap: 2 },
-  bottomDate: { fontSize: 13, fontWeight: '600', color: '#fff' },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  bottomLocation: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
-  pullIndicator: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    marginTop: 10,
+  attrName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#f1ebe2',
+  },
+  attrNameSub: {
+    color: '#857d70',
+    fontWeight: '500',
+  },
+  attrMeta: {
+    fontSize: 11,
+    color: '#857d70',
+    marginTop: 1,
+  },
+  scopePill: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(216,171,122,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(216,171,122,0.32)',
+  },
+  scopePillPrivate: {
+    backgroundColor: 'rgba(196,85,74,0.18)',
+    borderColor: 'rgba(196,85,74,0.32)',
+  },
+  scopePillTappable: {
+    borderStyle: 'dashed',
+  },
+  scopePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    color: '#e6c196',
+  },
+  attrCaption: {
+    fontSize: 14,
+    color: '#f1ebe2',
+    fontWeight: '500',
+    lineHeight: 20,
+    marginBottom: 14,
+    letterSpacing: -0.05,
+  },
+  sharedWithRow: {
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 14,
+  },
+  sharedWithLabel: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: '#857d70',
+    marginBottom: 8,
+  },
+  sharedWithAvatars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sharedAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#16100a',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 0.75,
+  },
+  sharedAvatarText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  sharedWithNames: {
+    fontSize: 12,
+    color: '#b8afa3',
+    marginLeft: 6,
+  },
+  reactionRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  reactionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  reactionBtnActive: {
+    backgroundColor: 'rgba(196,85,74,0.08)',
+  },
+  reactionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#f1ebe2',
+    fontVariant: ['tabular-nums'] as const,
+  },
+
+  // Favorite toast
+  favToast: {
+    position: 'absolute',
+    top: '50%',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(216,171,122,0.92)',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    zIndex: 50,
+  },
+  favToastText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0b0f14',
+    letterSpacing: -0.2,
   },
 
   // Pull-up menu

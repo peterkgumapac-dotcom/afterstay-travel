@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   View,
   Text,
@@ -19,16 +20,43 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Camera, User, Plane, Bell, Info, ChevronRight, ArrowLeft, Sun, Moon, Palette, LogOut, Crown } from 'lucide-react-native';
+import {
+  AtSign,
+  Bell,
+  Camera,
+  Check,
+  ChevronRight,
+  Crown,
+  Info,
+  ArrowLeft,
+  LogOut,
+  Moon,
+  Palette,
+  Plane,
+  Sun,
+  User,
+  X,
+} from 'lucide-react-native';
 import { spacing, radius } from '@/constants/theme';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
-import { getActiveTrip, getProfile, updateProfile } from '@/lib/supabase';
+import {
+  getActiveTrip,
+  getProfile,
+  isHandleAvailable,
+  supabase,
+  updateProfile,
+  uploadProfilePhoto,
+  type ProfileSocials,
+} from '@/lib/supabase';
 import type { Trip } from '@/lib/types';
 
-interface Profile {
+interface ProfileState {
   name: string;
   avatarUri: string;
+  handle: string;
+  phone: string;
+  socials: ProfileSocials;
 }
 
 interface Notifications {
@@ -44,7 +72,7 @@ interface Notifications {
 const STORAGE_PROFILE = 'settings_profile';
 const STORAGE_NOTIFICATIONS = 'settings_notifications';
 
-const DEFAULT_PROFILE: Profile = { name: 'Traveler', avatarUri: '' };
+const DEFAULT_PROFILE: ProfileState = { name: 'Traveler', avatarUri: '', handle: '', phone: '', socials: {} };
 const DEFAULT_NOTIFICATIONS: Notifications = {
   departureReminders: true,
   budgetAlerts: true,
@@ -55,15 +83,23 @@ const DEFAULT_NOTIFICATIONS: Notifications = {
   checkInOut: true,
 };
 
+const HANDLE_REGEX = /^[a-z][a-z0-9_]{2,19}$/;
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { mode, colors, toggle: toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
-  const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE);
+  const [profile, setProfile] = useState<ProfileState>(DEFAULT_PROFILE);
   const [notifications, setNotifications] = useState<Notifications>(DEFAULT_NOTIFICATIONS);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editName, setEditName] = useState('');
+  const [editHandle, setEditHandle] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editSocials, setEditSocials] = useState<ProfileSocials>({});
+  const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [saving, setSaving] = useState(false);
+  const handleCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadProfile();
@@ -75,13 +111,23 @@ export default function SettingsScreen() {
     if (user?.id) {
       const p = await getProfile(user.id);
       if (p) {
-        setProfile({ name: p.fullName || user.email?.split('@')[0] || 'Traveler', avatarUri: p.avatarUrl || '' });
+        const loaded: ProfileState = {
+          name: p.fullName || user.email?.split('@')[0] || 'Traveler',
+          avatarUri: p.avatarUrl || '',
+          handle: p.handle || '',
+          phone: p.phone || '',
+          socials: p.socials || {},
+        };
+        setProfile(loaded);
+        await AsyncStorage.setItem(STORAGE_PROFILE, JSON.stringify(loaded));
         return;
       }
     }
-    // Fallback to AsyncStorage
     const raw = await AsyncStorage.getItem(STORAGE_PROFILE);
-    if (raw) setProfile(JSON.parse(raw));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      setProfile({ ...DEFAULT_PROFILE, ...parsed });
+    }
   };
 
   const loadNotifications = async () => {
@@ -94,11 +140,40 @@ export default function SettingsScreen() {
     setTrip(active);
   };
 
-  const saveProfile = async (updated: Profile) => {
+  const saveProfile = async (updated: ProfileState) => {
     setProfile(updated);
     await AsyncStorage.setItem(STORAGE_PROFILE, JSON.stringify(updated));
     if (user?.id) {
-      await updateProfile(user.id, { fullName: updated.name, avatarUrl: updated.avatarUri || undefined }).catch(() => {});
+      try {
+        let avatarUrl = updated.avatarUri || undefined;
+        if (updated.avatarUri && !updated.avatarUri.startsWith('http')) {
+          const publicUrl = await uploadProfilePhoto(user.id, updated.avatarUri);
+          avatarUrl = publicUrl;
+          const synced = { ...updated, avatarUri: publicUrl };
+          setProfile(synced);
+          await AsyncStorage.setItem(STORAGE_PROFILE, JSON.stringify(synced));
+        }
+        await updateProfile(user.id, {
+          fullName: updated.name,
+          avatarUrl,
+          handle: updated.handle || undefined,
+          phone: updated.phone || undefined,
+          socials: updated.socials,
+        });
+        // Sync avatar + name to group_members so home screen picks it up
+        if (avatarUrl || updated.name) {
+          const memberUpdate: Record<string, unknown> = {};
+          if (avatarUrl) memberUpdate.avatar_url = avatarUrl;
+          if (updated.name) memberUpdate.name = updated.name;
+          await supabase
+            .from('group_members')
+            .update(memberUpdate)
+            .eq('user_id', user.id)
+            .then(() => {});
+        }
+      } catch {
+        // Profile saved locally even if remote sync fails
+      }
     }
   };
 
@@ -107,7 +182,6 @@ export default function SettingsScreen() {
       const updated = { ...notifications, [key]: !notifications[key] };
       setNotifications(updated);
       await AsyncStorage.setItem(STORAGE_NOTIFICATIONS, JSON.stringify(updated));
-      // Sync to Supabase so edge functions can check preferences
       if (user?.id) {
         import('@/lib/supabase').then(({ supabase }) => {
           supabase.from('profiles').update({ notification_prefs: updated }).eq('id', user!.id).then(() => {});
@@ -117,17 +191,52 @@ export default function SettingsScreen() {
     [notifications, user?.id],
   );
 
-  const handleSaveProfile = () => {
-    const trimmed = editName.trim();
-    if (trimmed.length > 0) {
-      saveProfile({ ...profile, name: trimmed });
-    }
+  const handleSaveProfile = async () => {
+    const trimmedName = editName.trim();
+    const trimmedHandle = editHandle.trim().toLowerCase();
+    if (trimmedName.length === 0) return;
+    if (trimmedHandle && handleStatus !== 'available' && trimmedHandle !== profile.handle) return;
+
+    setSaving(true);
+    await saveProfile({ ...profile, name: trimmedName, handle: trimmedHandle, phone: editPhone.trim(), socials: editSocials });
+    setSaving(false);
     setModalVisible(false);
   };
 
   const openEditProfile = () => {
     setEditName(profile.name);
+    setEditHandle(profile.handle);
+    setEditPhone(profile.phone);
+    setEditSocials({ ...profile.socials });
+    setHandleStatus(profile.handle ? 'available' : 'idle');
     setModalVisible(true);
+  };
+
+  const onHandleChange = (raw: string) => {
+    const cleaned = raw.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    setEditHandle(cleaned);
+
+    if (handleCheckTimer.current) clearTimeout(handleCheckTimer.current);
+
+    if (!cleaned) {
+      setHandleStatus('idle');
+      return;
+    }
+    if (cleaned === profile.handle) {
+      setHandleStatus('available');
+      return;
+    }
+    if (!HANDLE_REGEX.test(cleaned)) {
+      setHandleStatus('invalid');
+      return;
+    }
+
+    setHandleStatus('checking');
+    handleCheckTimer.current = setTimeout(async () => {
+      if (!user?.id) return;
+      const available = await isHandleAvailable(cleaned, user.id);
+      setHandleStatus(available ? 'available' : 'taken');
+    }, 500);
   };
 
   const pickAvatar = async () => {
@@ -161,217 +270,319 @@ export default function SettingsScreen() {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const dynamicStyles = getDynamicStyles(colors);
+  const s = getDynamicStyles(colors);
+
+  const handleStatusColor =
+    handleStatus === 'available' ? colors.success
+    : handleStatus === 'taken' || handleStatus === 'invalid' ? colors.danger
+    : colors.text3;
+
+  const handleStatusText =
+    handleStatus === 'checking' ? 'Checking...'
+    : handleStatus === 'available' ? 'Available'
+    : handleStatus === 'taken' ? 'Already taken'
+    : handleStatus === 'invalid' ? '3-20 chars, letters/numbers/underscores'
+    : '';
 
   return (
-    <SafeAreaView style={dynamicStyles.container} edges={['top']}>
+    <SafeAreaView style={s.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12}>
           <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={dynamicStyles.headerTitle}>Settings</Text>
+        <Text style={s.headerTitle}>Settings</Text>
         <View style={{ width: 22 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Profile */}
-        <SectionLabel icon={<User size={14} color={colors.green2} />} label="Profile" textColor={colors.text2} />
-        <TouchableOpacity style={dynamicStyles.card} onPress={openEditProfile} activeOpacity={0.7}>
-          <View style={styles.cardRow}>
-            {profile.avatarUri ? (
-              <Image source={{ uri: profile.avatarUri }} style={styles.avatar} />
-            ) : (
-              <View style={dynamicStyles.avatarFallback}>
-                <User size={20} color={colors.text3} />
+        {/* Profile Hero Card */}
+        <TouchableOpacity style={s.profileCard} onPress={openEditProfile} activeOpacity={0.7}>
+          <View style={styles.profileRow}>
+            <TouchableOpacity onPress={pickAvatar} activeOpacity={0.7} style={styles.avatarContainer}>
+              {profile.avatarUri ? (
+                <Image key={profile.avatarUri} source={{ uri: profile.avatarUri }} style={styles.avatarHero} />
+              ) : (
+                <View style={s.avatarHeroFallback}>
+                  <User size={28} color={colors.text3} />
+                </View>
+              )}
+              <View style={[styles.cameraBadge, { backgroundColor: colors.accent }]}>
+                <Camera size={12} color={colors.bg} strokeWidth={2.5} />
               </View>
-            )}
-            <View style={{ flex: 1, marginLeft: spacing.md }}>
-              <Text style={dynamicStyles.cardTitle}>{profile.name}</Text>
-              <Text style={dynamicStyles.cardSub}>Tap to edit profile</Text>
+            </TouchableOpacity>
+            <View style={styles.profileInfo}>
+              <Text style={s.profileName} numberOfLines={1}>{profile.name}</Text>
+              {profile.handle ? (
+                <Text style={s.profileHandle} numberOfLines={1}>@{profile.handle}</Text>
+              ) : (
+                <Text style={s.profileHandleEmpty}>Set your AS handle</Text>
+              )}
+              <Text style={s.profileEmail} numberOfLines={1}>{user?.email ?? ''}</Text>
             </View>
             <ChevronRight size={18} color={colors.text3} />
           </View>
         </TouchableOpacity>
 
         {/* Trip */}
-        <SectionLabel icon={<Plane size={14} color={colors.green2} />} label="Trip" textColor={colors.text2} />
-        <View style={dynamicStyles.card}>
+        <SectionLabel label="Active Trip" textColor={colors.text3} />
+        <View style={s.card}>
           {trip ? (
-            <>
-              <Text style={dynamicStyles.cardTitle}>{trip.name}</Text>
-              <Text style={dynamicStyles.cardSub}>
-                {formatDate(trip.startDate)} — {formatDate(trip.endDate)}
-              </Text>
-              {trip.budgetLimit != null && (
-                <Text style={[dynamicStyles.cardSub, { marginTop: spacing.xs }]}>
-                  Budget limit: {trip.costCurrency ?? '₱'}{trip.budgetLimit.toLocaleString()}
+            <View style={styles.tripContent}>
+              <View style={s.tripIcon}>
+                <Plane size={16} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardTitle}>{trip.name}</Text>
+                <Text style={s.cardSub}>
+                  {formatDate(trip.startDate)} — {formatDate(trip.endDate)}
                 </Text>
-              )}
-            </>
+                {trip.budgetLimit != null && (
+                  <Text style={s.cardMeta}>
+                    Budget: {trip.costCurrency ?? '₱'}{trip.budgetLimit.toLocaleString()}
+                  </Text>
+                )}
+              </View>
+            </View>
           ) : (
-            <Text style={dynamicStyles.cardSub}>No active trip found</Text>
+            <Text style={s.cardSub}>No active trip</Text>
           )}
         </View>
 
         {/* Appearance */}
-        <SectionLabel icon={<Palette size={14} color={colors.green2} />} label="Appearance" textColor={colors.text2} />
-        <View style={dynamicStyles.card}>
+        <SectionLabel label="Appearance" textColor={colors.text3} />
+        <View style={s.card}>
           <View style={styles.toggleRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <View style={styles.toggleLeft}>
               {mode === 'dark' ? (
                 <Moon size={18} color={colors.accent} />
               ) : (
                 <Sun size={18} color={colors.accent} />
               )}
-              <Text style={dynamicStyles.toggleLabel}>
+              <Text style={s.toggleLabel}>
                 {mode === 'dark' ? 'Dark Mode' : 'Light Mode'}
               </Text>
             </View>
             <Switch
               value={mode === 'dark'}
               onValueChange={toggleTheme}
-              trackColor={{ false: colors.border, true: colors.green }}
-              thumbColor={colors.white}
+              trackColor={{ false: colors.border, true: colors.accent }}
+              thumbColor="#fff"
             />
           </View>
         </View>
 
         {/* Notifications */}
-        <SectionLabel icon={<Bell size={14} color={colors.green2} />} label="Notifications" textColor={colors.text2} />
-        <View style={dynamicStyles.card}>
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={dynamicStyles.toggleLabel}>Trip Lifecycle</Text>
-              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Trip starting, last day, daily recap</Text>
-            </View>
-            <Switch value={notifications.tripLifecycle} onValueChange={() => toggleNotification('tripLifecycle')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
-          </View>
-          <View style={dynamicStyles.divider} />
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={dynamicStyles.toggleLabel}>Departure Reminders</Text>
-              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Flight boarding, departure prep</Text>
-            </View>
-            <Switch value={notifications.departureReminders} onValueChange={() => toggleNotification('departureReminders')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
-          </View>
-          <View style={dynamicStyles.divider} />
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={dynamicStyles.toggleLabel}>Check-in / Check-out</Text>
-              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Accommodation reminders</Text>
-            </View>
-            <Switch value={notifications.checkInOut} onValueChange={() => toggleNotification('checkInOut')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
-          </View>
-          <View style={dynamicStyles.divider} />
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={dynamicStyles.toggleLabel}>Budget Alerts</Text>
-              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Spending pace, over-budget warnings</Text>
-            </View>
-            <Switch value={notifications.budgetAlerts} onValueChange={() => toggleNotification('budgetAlerts')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
-          </View>
-          <View style={dynamicStyles.divider} />
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={dynamicStyles.toggleLabel}>Expense Alerts</Text>
-              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>When group members add expenses</Text>
-            </View>
-            <Switch value={notifications.expenseAlerts} onValueChange={() => toggleNotification('expenseAlerts')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
-          </View>
-          <View style={dynamicStyles.divider} />
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={dynamicStyles.toggleLabel}>Group Activity</Text>
-              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Votes, new members, recommendations</Text>
-            </View>
-            <Switch value={notifications.groupActivity} onValueChange={() => toggleNotification('groupActivity')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
-          </View>
-          <View style={dynamicStyles.divider} />
-          <View style={styles.toggleRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={dynamicStyles.toggleLabel}>Packing Reminders</Text>
-              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Don't forget your essentials</Text>
-            </View>
-            <Switch value={notifications.packingReminders} onValueChange={() => toggleNotification('packingReminders')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
-          </View>
+        <SectionLabel label="Notifications" textColor={colors.text3} />
+        <View style={s.card}>
+          <NotifRow label="Trip Lifecycle" desc="Trip starting, last day, daily recap" value={notifications.tripLifecycle} onToggle={() => toggleNotification('tripLifecycle')} colors={colors} s={s} />
+          <View style={s.divider} />
+          <NotifRow label="Departure Reminders" desc="Flight boarding, departure prep" value={notifications.departureReminders} onToggle={() => toggleNotification('departureReminders')} colors={colors} s={s} />
+          <View style={s.divider} />
+          <NotifRow label="Check-in / Check-out" desc="Accommodation reminders" value={notifications.checkInOut} onToggle={() => toggleNotification('checkInOut')} colors={colors} s={s} />
+          <View style={s.divider} />
+          <NotifRow label="Budget Alerts" desc="Spending pace, over-budget warnings" value={notifications.budgetAlerts} onToggle={() => toggleNotification('budgetAlerts')} colors={colors} s={s} />
+          <View style={s.divider} />
+          <NotifRow label="Expense Alerts" desc="When group members add expenses" value={notifications.expenseAlerts} onToggle={() => toggleNotification('expenseAlerts')} colors={colors} s={s} />
+          <View style={s.divider} />
+          <NotifRow label="Group Activity" desc="Votes, new members, recommendations" value={notifications.groupActivity} onToggle={() => toggleNotification('groupActivity')} colors={colors} s={s} />
+          <View style={s.divider} />
+          <NotifRow label="Packing Reminders" desc="Don't forget your essentials" value={notifications.packingReminders} onToggle={() => toggleNotification('packingReminders')} colors={colors} s={s} />
         </View>
 
         {/* Subscription */}
-        <SectionLabel icon={<Crown size={14} color={colors.accent} />} label="Subscription" textColor={colors.text2} />
-        <View style={dynamicStyles.card}>
-          <Text style={dynamicStyles.cardTitle}>Free Plan</Text>
-          <Text style={dynamicStyles.cardSub}>Upgrade to save Trip Memories and unlock premium features</Text>
+        <SectionLabel label="Subscription" textColor={colors.text3} />
+        <View style={s.card}>
+          <View style={styles.subRow}>
+            <Crown size={18} color={colors.accent} />
+            <View style={{ flex: 1, marginLeft: spacing.md }}>
+              <Text style={s.cardTitle}>Free Plan</Text>
+              <Text style={s.cardSub}>Upgrade for Trip Memories and premium features</Text>
+            </View>
+          </View>
           <TouchableOpacity
             onPress={() => Alert.alert('Premium', 'Premium subscriptions coming soon!')}
-            style={{ marginTop: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, backgroundColor: colors.accentBg, borderRadius: radius.sm, alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.accentBorder }}
+            style={s.upgradeBtn}
+            activeOpacity={0.7}
           >
-            <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>Upgrade</Text>
+            <Text style={s.upgradeBtnText}>Upgrade</Text>
           </TouchableOpacity>
         </View>
 
         {/* Account */}
-        <SectionLabel icon={<LogOut size={14} color={colors.green2} />} label="Account" textColor={colors.text2} />
-        <View style={dynamicStyles.card}>
-          <Text style={dynamicStyles.cardTitle}>{user?.email ?? 'Not signed in'}</Text>
-          <Text style={dynamicStyles.cardSub}>Signed in</Text>
+        <SectionLabel label="Account" textColor={colors.text3} />
+        <View style={s.card}>
+          <Text style={s.cardTitle}>{user?.email ?? 'Not signed in'}</Text>
           <TouchableOpacity
             onPress={async () => { await signOut(); router.replace('/auth/login' as any); }}
-            style={{ marginTop: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, backgroundColor: colors.danger + '22', borderRadius: radius.sm, alignSelf: 'flex-start' }}
+            style={s.signOutBtn}
+            activeOpacity={0.7}
           >
-            <Text style={{ color: colors.danger, fontSize: 13, fontWeight: '600' }}>Sign Out</Text>
+            <LogOut size={14} color={colors.danger} />
+            <Text style={s.signOutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
 
         {/* About */}
-        <SectionLabel icon={<Info size={14} color={colors.green2} />} label="About" textColor={colors.text2} />
-        <View style={dynamicStyles.card}>
-          <Text style={dynamicStyles.cardTitle}>AfterStay Travel</Text>
-          <Text style={dynamicStyles.cardSub}>
+        <SectionLabel label="About" textColor={colors.text3} />
+        <View style={s.card}>
+          <Text style={s.cardTitle}>AfterStay Travel</Text>
+          <Text style={s.cardSub}>
             Version {Constants.expoConfig?.version ?? '?'}
-            {Updates.updateId ? ` (${Updates.updateId.slice(0, 8)})` : ''}
+            {Updates.updateId ? ` · ${Updates.updateId.slice(0, 8)}` : ''}
           </Text>
-          <Text style={dynamicStyles.cardSub}>Expo SDK {Constants.expoConfig?.sdkVersion ?? '?'}</Text>
         </View>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       {/* Edit Profile Modal */}
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={dynamicStyles.modalCard}>
-            <Text style={dynamicStyles.modalTitle}>Edit Profile</Text>
+          <View style={s.modalCard}>
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
+              <Text style={s.modalTitle}>Edit Profile</Text>
 
-            {/* Avatar picker */}
-            <TouchableOpacity onPress={pickAvatar} activeOpacity={0.7} style={styles.avatarPicker}>
-              {profile.avatarUri ? (
-                <Image source={{ uri: profile.avatarUri }} style={styles.avatarLarge} />
-              ) : (
-                <View style={[dynamicStyles.avatarFallbackLarge]}>
-                  <User size={32} color={colors.text3} />
+              {/* Avatar picker */}
+              <TouchableOpacity onPress={pickAvatar} activeOpacity={0.7} style={styles.avatarPickerModal}>
+                {profile.avatarUri ? (
+                  <Image key={profile.avatarUri} source={{ uri: profile.avatarUri }} style={styles.avatarLargeModal} />
+                ) : (
+                  <View style={s.avatarFallbackLarge}>
+                    <User size={32} color={colors.text3} />
+                  </View>
+                )}
+                <View style={[styles.cameraBadgeLarge, { backgroundColor: colors.accent }]}>
+                  <Camera size={14} color={colors.bg} strokeWidth={2.5} />
                 </View>
-              )}
-              <View style={[styles.cameraOverlay, { backgroundColor: colors.accent }]}>
-                <Camera size={14} color={colors.bg} strokeWidth={2.5} />
-              </View>
-            </TouchableOpacity>
-            <Text style={[dynamicStyles.cardSub, { textAlign: 'center', marginBottom: spacing.lg }]}>Tap photo to change</Text>
+              </TouchableOpacity>
+              <Text style={s.avatarHint}>Tap photo to change</Text>
 
-            <TextInput
-              style={dynamicStyles.modalInput}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Your name"
-              placeholderTextColor={colors.text3}
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalBtn}>
-                <Text style={[dynamicStyles.modalBtnText, { color: colors.text3 }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveProfile} style={[styles.modalBtn, dynamicStyles.modalBtnPrimary]}>
-                <Text style={[dynamicStyles.modalBtnText, { color: colors.bg }]}>Save</Text>
-              </TouchableOpacity>
-            </View>
+              {/* Name input */}
+              <Text style={s.inputLabel}>Display Name</Text>
+              <TextInput
+                style={s.modalInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Your name"
+                placeholderTextColor={colors.text3}
+                autoFocus
+              />
+
+              {/* Handle input */}
+              <Text style={[s.inputLabel, { marginTop: spacing.lg }]}>AS Handle</Text>
+              <View style={s.handleInputRow}>
+                <Text style={s.handleAt}>@</Text>
+                <TextInput
+                  style={s.handleInput}
+                  value={editHandle}
+                  onChangeText={onHandleChange}
+                  placeholder="yourhandle"
+                  placeholderTextColor={colors.text3}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={20}
+                />
+                {handleStatus === 'checking' && (
+                  <ActivityIndicator size="small" color={colors.text3} />
+                )}
+                {handleStatus === 'available' && (
+                  <Check size={16} color={colors.success} />
+                )}
+                {(handleStatus === 'taken' || handleStatus === 'invalid') && (
+                  <X size={16} color={colors.danger} />
+                )}
+              </View>
+              {handleStatusText ? (
+                <Text style={[s.handleHint, { color: handleStatusColor }]}>{handleStatusText}</Text>
+              ) : (
+                <Text style={s.handleHint}>Unique username others can find you by</Text>
+              )}
+
+              {/* Email (read-only) */}
+              <Text style={[s.inputLabel, { marginTop: spacing.lg }]}>Email</Text>
+              <View style={s.readOnlyField}>
+                <Text style={s.readOnlyText} numberOfLines={1}>{user?.email ?? 'Not set'}</Text>
+              </View>
+              <Text style={s.fieldHint}>Managed by your sign-in provider</Text>
+
+              {/* Phone */}
+              <Text style={[s.inputLabel, { marginTop: spacing.lg }]}>Phone Number</Text>
+              <TextInput
+                style={s.modalInput}
+                value={editPhone}
+                onChangeText={setEditPhone}
+                placeholder="+63 917 123 4567"
+                placeholderTextColor={colors.text3}
+                keyboardType="phone-pad"
+                autoCorrect={false}
+              />
+              <Text style={s.fieldHint}>Visible to your trip group members</Text>
+
+              {/* Socials */}
+              <Text style={[s.inputLabel, { marginTop: spacing.xl }]}>Connected Socials</Text>
+              <Text style={[s.fieldHint, { marginBottom: spacing.md }]}>
+                Let your travel group find you on social media
+              </Text>
+
+              <SocialInput
+                label="Instagram"
+                placeholder="username"
+                prefix="@"
+                value={editSocials.instagram ?? ''}
+                onChangeText={(v) => setEditSocials({ ...editSocials, instagram: v || undefined })}
+                colors={colors}
+                s={s}
+              />
+              <SocialInput
+                label="TikTok"
+                placeholder="username"
+                prefix="@"
+                value={editSocials.tiktok ?? ''}
+                onChangeText={(v) => setEditSocials({ ...editSocials, tiktok: v || undefined })}
+                colors={colors}
+                s={s}
+              />
+              <SocialInput
+                label="X (Twitter)"
+                placeholder="username"
+                prefix="@"
+                value={editSocials.x ?? ''}
+                onChangeText={(v) => setEditSocials({ ...editSocials, x: v || undefined })}
+                colors={colors}
+                s={s}
+              />
+              <SocialInput
+                label="Facebook"
+                placeholder="profile name or URL"
+                value={editSocials.facebook ?? ''}
+                onChangeText={(v) => setEditSocials({ ...editSocials, facebook: v || undefined })}
+                colors={colors}
+                s={s}
+              />
+
+              {/* Actions */}
+              <View style={styles.modalActions}>
+                <TouchableOpacity onPress={() => setModalVisible(false)} style={s.cancelBtn}>
+                  <Text style={s.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveProfile}
+                  style={[
+                    s.saveBtn,
+                    (saving || (editHandle && handleStatus !== 'available' && editHandle !== profile.handle))
+                      && { opacity: 0.5 },
+                  ]}
+                  disabled={saving || (!!editHandle && handleStatus !== 'available' && editHandle !== profile.handle)}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color={colors.bg} />
+                  ) : (
+                    <Text style={s.saveBtnText}>Save</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -381,11 +592,67 @@ export default function SettingsScreen() {
 
 /* ---------- Sub-components ---------- */
 
-function SectionLabel({ icon, label, textColor }: { icon: React.ReactNode; label: string; textColor: string }) {
+function SectionLabel({ label, textColor }: { label: string; textColor: string }) {
   return (
     <View style={styles.sectionRow}>
-      {icon}
       <Text style={[styles.sectionLabel, { color: textColor }]}>{label}</Text>
+    </View>
+  );
+}
+
+function SocialInput({ label, placeholder, prefix, value, onChangeText, colors, s }: {
+  label: string;
+  placeholder: string;
+  prefix?: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  colors: Record<string, string>;
+  s: ReturnType<typeof getDynamicStyles>;
+}) {
+  return (
+    <View style={styles.socialRow}>
+      <Text style={s.socialLabel}>{label}</Text>
+      <View style={s.socialInputRow}>
+        {prefix && <Text style={s.socialPrefix}>{prefix}</Text>}
+        <TextInput
+          style={s.socialInput}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={colors.text3}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {value ? (
+          <TouchableOpacity onPress={() => onChangeText('')} hitSlop={8}>
+            <X size={14} color={colors.text3} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function NotifRow({ label, desc, value, onToggle, colors, s }: {
+  label: string;
+  desc: string;
+  value: boolean;
+  onToggle: () => void;
+  colors: Record<string, string>;
+  s: ReturnType<typeof getDynamicStyles>;
+}) {
+  return (
+    <View style={styles.toggleRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={s.toggleLabel}>{label}</Text>
+        <Text style={s.toggleDesc}>{desc}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        trackColor={{ false: colors.border, true: colors.accent }}
+        thumbColor="#fff"
+      />
     </View>
   );
 }
@@ -396,19 +663,236 @@ const getDynamicStyles = (c: Record<string, string>) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: c.bg },
     headerTitle: { fontSize: 18, fontWeight: '700', color: c.text },
-    sectionLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.7, color: c.text2, marginLeft: spacing.xs },
-    card: { backgroundColor: c.bg2, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.lg },
+
+    // Profile hero
+    profileCard: {
+      backgroundColor: c.bg2,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: spacing.lg,
+      marginTop: spacing.md,
+    },
+    avatarHeroFallback: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: c.card2,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    profileName: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: c.text,
+    },
+    profileHandle: {
+      fontSize: 13,
+      fontWeight: '500',
+      color: c.accent,
+      marginTop: 2,
+    },
+    profileHandleEmpty: {
+      fontSize: 13,
+      fontWeight: '500',
+      color: c.text3,
+      fontStyle: 'italic',
+      marginTop: 2,
+    },
+    profileEmail: {
+      fontSize: 12,
+      color: c.text3,
+      marginTop: 2,
+    },
+
+    // Cards
+    card: {
+      backgroundColor: c.bg2,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: c.border,
+      padding: spacing.lg,
+    },
     cardTitle: { fontSize: 15, fontWeight: '600', color: c.text },
     cardSub: { fontSize: 13, color: c.text2, marginTop: 2 },
-    avatarFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.border, alignItems: 'center', justifyContent: 'center' },
-    avatarFallbackLarge: { width: 80, height: 80, borderRadius: 40, backgroundColor: c.border, alignItems: 'center', justifyContent: 'center' },
-    divider: { height: 1, backgroundColor: c.border, marginVertical: spacing.md },
-    toggleLabel: { fontSize: 14, color: c.text },
-    modalCard: { width: '85%', backgroundColor: c.bg2, borderRadius: radius.lg, padding: spacing.xxl, borderWidth: 1, borderColor: c.border },
-    modalTitle: { fontSize: 18, fontWeight: '700', color: c.text, marginBottom: spacing.lg },
-    modalInput: { backgroundColor: c.bg, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, color: c.text, fontSize: 15, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-    modalBtnPrimary: { backgroundColor: c.green2 },
-    modalBtnText: { fontSize: 14, fontWeight: '600', color: c.text },
+    cardMeta: { fontSize: 12, color: c.text3, marginTop: 4 },
+
+    // Trip
+    tripIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: c.accentBg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: spacing.md,
+    },
+
+    // Toggles
+    toggleLabel: { fontSize: 14, fontWeight: '500', color: c.text },
+    toggleDesc: { fontSize: 11, color: c.text3, marginTop: 1 },
+    divider: { height: StyleSheet.hairlineWidth, backgroundColor: c.border, marginVertical: spacing.md },
+
+    // Subscription
+    upgradeBtn: {
+      marginTop: spacing.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      backgroundColor: c.accentBg,
+      borderRadius: radius.sm,
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: c.accentBorder,
+    },
+    upgradeBtnText: { color: c.accent, fontSize: 13, fontWeight: '600' },
+
+    // Account
+    signOutBtn: {
+      marginTop: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      backgroundColor: c.danger + '18',
+      borderRadius: radius.sm,
+      alignSelf: 'flex-start',
+    },
+    signOutText: { color: c.danger, fontSize: 13, fontWeight: '600' },
+
+    // Modal
+    modalCard: {
+      width: '90%',
+      maxHeight: '85%',
+      backgroundColor: c.bg2,
+      borderRadius: radius.xl,
+      padding: spacing.xxl,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    modalTitle: { fontSize: 20, fontWeight: '700', color: c.text, marginBottom: spacing.lg, textAlign: 'center' },
+    avatarFallbackLarge: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      backgroundColor: c.card2,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarHint: {
+      fontSize: 12,
+      color: c.text3,
+      textAlign: 'center',
+      marginBottom: spacing.xl,
+    },
+    inputLabel: {
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+      color: c.text3,
+      marginBottom: 6,
+    },
+    modalInput: {
+      backgroundColor: c.bg,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: c.border,
+      color: c.text,
+      fontSize: 15,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
+    },
+    readOnlyField: {
+      backgroundColor: c.bg,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
+      opacity: 0.6,
+    },
+    readOnlyText: {
+      fontSize: 15,
+      color: c.text2,
+    },
+    fieldHint: {
+      fontSize: 11,
+      color: c.text3,
+      marginTop: 4,
+    },
+    handleInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.bg,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingHorizontal: spacing.md,
+    },
+    handleAt: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: c.text3,
+      marginRight: 2,
+    },
+    handleInput: {
+      flex: 1,
+      fontSize: 15,
+      color: c.text,
+      paddingVertical: 10,
+    },
+    handleHint: {
+      fontSize: 11,
+      color: c.text3,
+      marginTop: 4,
+    },
+
+    // Socials
+    socialLabel: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.text2,
+      width: 90,
+    },
+    socialInputRow: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.bg,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingHorizontal: spacing.sm,
+    },
+    socialPrefix: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: c.text3,
+      marginRight: 1,
+    },
+    socialInput: {
+      flex: 1,
+      fontSize: 14,
+      color: c.text,
+      paddingVertical: 8,
+    },
+
+    cancelBtn: {
+      paddingHorizontal: spacing.xl,
+      paddingVertical: 10,
+      borderRadius: radius.sm,
+    },
+    cancelBtnText: { fontSize: 14, fontWeight: '600', color: c.text3 },
+    saveBtn: {
+      paddingHorizontal: spacing.xxl,
+      paddingVertical: 10,
+      borderRadius: radius.sm,
+      backgroundColor: c.accent,
+      minWidth: 80,
+      alignItems: 'center',
+    },
+    saveBtnText: { fontSize: 14, fontWeight: '700', color: c.bg },
   });
 
 const styles = StyleSheet.create({
@@ -420,15 +904,98 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: 120 },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.sm },
-  sectionLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.7, marginLeft: spacing.xs },
-  cardRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 42, height: 42, borderRadius: 21 },
-  avatarLarge: { width: 80, height: 80, borderRadius: 40 },
-  avatarPicker: { alignSelf: 'center', marginBottom: spacing.sm },
-  cameraOverlay: { position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
-  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: spacing.xl, gap: spacing.sm },
-  modalBtn: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.sm },
+  sectionRow: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatarHero: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#1b1814',
+  },
+  profileInfo: {
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  tripContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  subRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  toggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPickerModal: {
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+  },
+  avatarLargeModal: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+  },
+  cameraBadgeLarge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  socialRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: spacing.xxl,
+    gap: spacing.sm,
+  },
 });

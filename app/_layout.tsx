@@ -125,6 +125,14 @@ function RootLayoutInner() {
           name="trip-memory"
           options={{ presentation: 'modal', title: 'Trip Memory', headerShown: false }}
         />
+        <Stack.Screen
+          name="new-album"
+          options={{ presentation: 'modal', title: 'New Album', headerShown: false }}
+        />
+        <Stack.Screen
+          name="album-detail"
+          options={{ presentation: 'modal', title: 'Album', headerShown: false }}
+        />
       </Stack>
     </NavThemeProvider>
   );

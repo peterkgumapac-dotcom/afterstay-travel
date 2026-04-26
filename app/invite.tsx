@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Share,
@@ -12,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { Copy, Send, Users } from 'lucide-react-native';
+import { Copy, Mail, MessageCircle, Send, Share2, Users } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -60,6 +61,40 @@ export default function InviteScreen() {
   const handleShare = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await Share.share({ message: shareMessage });
+  };
+
+  const handleMessenger = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const encoded = encodeURIComponent(inviteLink);
+    // Try Facebook Messenger deep link first, fallback to web
+    const messengerUrl = `fb-messenger://share?link=${encoded}`;
+    const canOpen = await Linking.canOpenURL(messengerUrl);
+    if (canOpen) {
+      await Linking.openURL(messengerUrl);
+    } else {
+      // Fallback: use m.me share dialog or generic share
+      const webFallback = `https://www.facebook.com/dialog/send?link=${encoded}&app_id=afterstay&redirect_uri=${encoded}`;
+      const canOpenWeb = await Linking.canOpenURL(webFallback);
+      if (canOpenWeb) {
+        await Linking.openURL(webFallback);
+      } else {
+        // Final fallback: system share sheet
+        await Share.share({ message: shareMessage });
+      }
+    }
+  };
+
+  const handleEmail = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const subject = encodeURIComponent(`Join my trip to ${tripName} on AfterStay`);
+    const body = encodeURIComponent(
+      `Hey!\n\nI'd love for you to join my trip to ${tripName} on AfterStay.\n\n` +
+      `Use this invite code: ${code}\n\n` +
+      `Or tap this link to join: ${inviteLink}\n\n` +
+      `See you there!`
+    );
+    const mailUrl = `mailto:?subject=${subject}&body=${body}`;
+    await Linking.openURL(mailUrl);
   };
 
   const handleCopy = async () => {
@@ -118,12 +153,22 @@ export default function InviteScreen() {
             <View style={styles.actions}>
               <Pressable style={styles.actionBtn} onPress={handleShare}>
                 <Send size={18} color={colors.accent} strokeWidth={1.8} />
-                <Text style={styles.actionText}>Share via WhatsApp / SMS</Text>
+                <Text style={styles.actionText}>Share via SMS / WhatsApp</Text>
+              </Pressable>
+
+              <Pressable style={styles.actionBtn} onPress={handleMessenger}>
+                <MessageCircle size={18} color={colors.accent} strokeWidth={1.8} />
+                <Text style={styles.actionText}>Share via Messenger</Text>
+              </Pressable>
+
+              <Pressable style={styles.actionBtn} onPress={handleEmail}>
+                <Mail size={18} color={colors.accent} strokeWidth={1.8} />
+                <Text style={styles.actionText}>Share via Email</Text>
               </Pressable>
 
               <Pressable style={styles.actionBtn} onPress={handleCopy}>
                 <Copy size={18} color={colors.accent} strokeWidth={1.8} />
-                <Text style={styles.actionText}>Copy code</Text>
+                <Text style={styles.actionText}>Copy invite code</Text>
               </Pressable>
             </View>
 

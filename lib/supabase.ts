@@ -9,6 +9,9 @@ import { compressImage } from './compressImage'
 import { MS_PER_DAY } from './utils'
 
 import type {
+  Album,
+  AlbumMember,
+  AlbumMemberRole,
   ChecklistItem,
   Expense,
   Flight,
@@ -18,6 +21,7 @@ import type {
   LifetimeStats,
   Moment,
   MomentTag,
+  MomentVisibility,
   PackingItem,
   Place,
   PlaceCategory,
@@ -312,8 +316,10 @@ function mapMoment(row: Record<string, unknown>): Moment {
     photo: momentPhotoUrl(row),
     location: (row.location as string) ?? undefined,
     takenBy: (row.uploaded_by as string) ?? undefined,
+    userId: (row.user_id as string) ?? undefined,
     date: (row.taken_at as string) ?? new Date().toISOString().slice(0, 10),
     tags: ((row.tags as string[]) ?? []) as MomentTag[],
+    visibility: ((row.visibility as string) ?? 'shared') as Moment['visibility'],
   }
 }
 
@@ -1502,6 +1508,9 @@ export async function getChecklist(tripId?: string): Promise<ChecklistItem[]> {
 
 export async function getMoments(tripId?: string): Promise<Moment[]> {
   const id = await resolveTripId(tripId)
+
+  // Fetch all moments for the trip — RLS enforces trip membership.
+  // Filter client-side for visibility so we don't break on PostgREST syntax edge cases.
   const { data, error } = await supabase
     .from(T.moments)
     .select('*')
@@ -1509,7 +1518,19 @@ export async function getMoments(tripId?: string): Promise<Moment[]> {
     .order('taken_at', { ascending: false })
 
   if (error) throw new Error(`getMoments: ${error.message}`)
-  return (data ?? []).map(mapMoment)
+
+  // Client-side visibility filter: show shared + legacy (null user_id) + own private/album
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  const uid = authUser?.id
+  const filtered = (data ?? []).filter((row) => {
+    const vis = (row.visibility as string) ?? 'shared'
+    if (vis === 'shared') return true
+    if (row.user_id == null) return true  // Legacy moments without user_id
+    if (uid && row.user_id === uid) return true  // Own private/album moments
+    return false
+  })
+
+  return filtered.map(mapMoment)
 }
 
 // Build a human-readable filename for moment photos.
@@ -1603,6 +1624,9 @@ export async function addMoment(
     publicUrl = input.photo
   }
 
+  // Get current user for proper attribution
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+
   const { error } = await supabase.from(T.moments).insert({
     trip_id: tripId,
     caption: input.caption || '',
@@ -1610,8 +1634,10 @@ export async function addMoment(
     ...(publicUrl ? { public_url: publicUrl } : {}),
     ...(input.location ? { location: input.location } : {}),
     ...(input.takenBy ? { uploaded_by: input.takenBy } : {}),
+    ...(authUser?.id ? { user_id: authUser.id } : {}),
     taken_at: input.date,
     ...(input.tags.length > 0 ? { tags: input.tags } : {}),
+    ...(input.visibility ? { visibility: input.visibility } : {}),
   })
   if (error) throw new Error(`addMoment insert: ${error.message}`)
 }
@@ -1634,6 +1660,384 @@ function guessMimeType(filename: string): string {
     default:
       return 'image/jpeg'
   }
+}
+
+// ---------- MOMENT FAVORITES ----------
+
+export interface MomentFavoriteMap {
+  [momentId: string]: { count: number; userIds: string[] }
+}
+
+/** Fetch all favorites for moments in a trip, keyed by moment ID. */
+export async function getMomentFavorites(tripId?: string): Promise<MomentFavoriteMap> {
+  const id = await resolveTripId(tripId)
+  // Get all moment IDs for this trip, then their favorites
+  const { data: moments } = await supabase
+    .from(T.moments)
+    .select('id')
+    .eq('trip_id', id)
+  if (!moments || moments.length === 0) return {}
+
+  const momentIds = moments.map((m) => m.id as string)
+  const { data: favs } = await supabase
+    .from('moment_favorites')
+    .select('moment_id, user_id')
+    .in('moment_id', momentIds)
+
+  const result: MomentFavoriteMap = {}
+  for (const f of favs ?? []) {
+    const mid = f.moment_id as string
+    if (!result[mid]) result[mid] = { count: 0, userIds: [] }
+    result[mid].count++
+    result[mid].userIds.push(f.user_id as string)
+  }
+  return result
+}
+
+/** Toggle favorite on a moment. Returns true if now favorited, false if unfavorited. */
+export async function toggleFavorite(momentId: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('toggleFavorite: not authenticated')
+
+  // Check if already favorited
+  const { data: existing } = await supabase
+    .from('moment_favorites')
+    .select('id')
+    .eq('moment_id', momentId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (existing) {
+    await supabase.from('moment_favorites').delete().eq('id', existing.id)
+    return false
+  }
+
+  const { error } = await supabase.from('moment_favorites').insert({
+    moment_id: momentId,
+    user_id: user.id,
+  })
+  if (error) throw new Error(`toggleFavorite: ${error.message}`)
+  return true
+}
+
+/** Batch-favorite multiple moments. */
+export async function batchFavorite(momentIds: string[]): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || momentIds.length === 0) return
+
+  // Get existing favorites to avoid duplicates
+  const { data: existing } = await supabase
+    .from('moment_favorites')
+    .select('moment_id')
+    .eq('user_id', user.id)
+    .in('moment_id', momentIds)
+
+  const alreadyFaved = new Set((existing ?? []).map((e) => e.moment_id as string))
+  const toInsert = momentIds
+    .filter((id) => !alreadyFaved.has(id))
+    .map((id) => ({ moment_id: id, user_id: user.id }))
+
+  if (toInsert.length > 0) {
+    await supabase.from('moment_favorites').insert(toInsert)
+  }
+}
+
+/** Toggle moment visibility between shared and private. Only works on own moments. */
+export async function toggleMomentVisibility(momentId: string): Promise<'shared' | 'private'> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('toggleMomentVisibility: not authenticated')
+
+  const { data: moment } = await supabase
+    .from(T.moments)
+    .select('visibility, user_id')
+    .eq('id', momentId)
+    .single()
+
+  if (!moment) throw new Error('toggleMomentVisibility: moment not found')
+  // Allow toggle if: own moment OR legacy moment (no user_id — pre-migration)
+  const momentUserId = moment.user_id as string | null
+  if (momentUserId && momentUserId !== user.id) {
+    throw new Error('toggleMomentVisibility: can only toggle own moments')
+  }
+
+  const newVisibility = (moment.visibility as string) === 'shared' ? 'private' : 'shared'
+  const { error } = await supabase
+    .from(T.moments)
+    .update({ visibility: newVisibility })
+    .eq('id', momentId)
+
+  if (error) throw new Error(`toggleMomentVisibility: ${error.message}`)
+  return newVisibility as 'shared' | 'private'
+}
+
+/** Get moments favorited by 2+ group members (group highlights). */
+export async function getGroupHighlights(tripId?: string): Promise<Moment[]> {
+  const id = await resolveTripId(tripId)
+  const favorites = await getMomentFavorites(id)
+
+  // Filter to moments with 2+ favorites
+  const highlightIds = Object.entries(favorites)
+    .filter(([, v]) => v.count >= 2)
+    .map(([momentId]) => momentId)
+
+  if (highlightIds.length === 0) return []
+
+  const { data, error } = await supabase
+    .from(T.moments)
+    .select('*')
+    .in('id', highlightIds)
+    .eq('visibility', 'shared')
+    .order('taken_at', { ascending: false })
+
+  if (error) throw new Error(`getGroupHighlights: ${error.message}`)
+  return (data ?? []).map(mapMoment)
+}
+
+/** Notify trip members that new moments were added. */
+export async function notifyMomentsAdded(
+  tripId: string,
+  uploaderName: string,
+  uploaderUserId: string,
+  count: number,
+  dayLabel?: string,
+): Promise<void> {
+  const title = `${uploaderName} added ${count} photo${count > 1 ? 's' : ''}`
+  const body = dayLabel
+    ? `New moments from ${dayLabel}`
+    : 'New moments added to the trip album'
+  await notifyAllMembers(tripId, 'moments_added', title, body, { count }, uploaderUserId)
+}
+
+// ---------- ALBUMS ----------
+
+/** Create a custom album for a trip. */
+export async function createAlbum(opts: {
+  tripId?: string;
+  name: string;
+  members: { userId: string; role: AlbumMemberRole }[];
+  hideFromMosaic?: boolean;
+  autoRevealAt?: string;
+}): Promise<Album> {
+  const tripId = await resolveTripId(opts.tripId)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('createAlbum: not authenticated')
+
+  const { data, error } = await supabase.from('albums').insert({
+    trip_id: tripId,
+    name: opts.name,
+    owner_id: user.id,
+    hide_from_mosaic: opts.hideFromMosaic ?? false,
+    auto_reveal_at: opts.autoRevealAt ?? null,
+  }).select('*').single()
+
+  if (error || !data) throw new Error(`createAlbum: ${error?.message}`)
+
+  // Add owner as member
+  const memberRows = [
+    { album_id: data.id, user_id: user.id, role: 'owner' as const },
+    ...opts.members
+      .filter((m) => m.userId !== user.id)
+      .map((m) => ({ album_id: data.id, user_id: m.userId, role: m.role })),
+  ]
+  if (memberRows.length > 0) {
+    await supabase.from('album_members').insert(memberRows)
+  }
+
+  return {
+    id: data.id as string,
+    tripId,
+    name: data.name as string,
+    ownerId: user.id,
+    hideFromMosaic: !!data.hide_from_mosaic,
+    autoRevealAt: (data.auto_reveal_at as string) ?? undefined,
+    memberCount: memberRows.length,
+    momentCount: 0,
+    createdAt: data.created_at as string,
+  }
+}
+
+/** List all albums for a trip. */
+export async function getAlbums(tripId?: string): Promise<Album[]> {
+  const id = await resolveTripId(tripId)
+  const { data, error } = await supabase
+    .from('albums')
+    .select('*')
+    .eq('trip_id', id)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(`getAlbums: ${error.message}`)
+
+  const albums: Album[] = []
+  for (const row of data ?? []) {
+    // Get member + moment counts
+    const { count: memberCount } = await supabase
+      .from('album_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('album_id', row.id)
+
+    const { count: momentCount } = await supabase
+      .from('album_moments')
+      .select('*', { count: 'exact', head: true })
+      .eq('album_id', row.id)
+
+    // Get cover URL if set
+    let coverUrl: string | undefined
+    if (row.cover_moment_id) {
+      const { data: coverRow } = await supabase
+        .from(T.moments).select('public_url, storage_path')
+        .eq('id', row.cover_moment_id).single()
+      if (coverRow) coverUrl = momentPhotoUrl(coverRow)
+    }
+
+    albums.push({
+      id: row.id as string,
+      tripId: id,
+      name: row.name as string,
+      coverMomentId: (row.cover_moment_id as string) ?? undefined,
+      coverUrl,
+      ownerId: row.owner_id as string,
+      hideFromMosaic: !!row.hide_from_mosaic,
+      autoRevealAt: (row.auto_reveal_at as string) ?? undefined,
+      memberCount: memberCount ?? 0,
+      momentCount: momentCount ?? 0,
+      createdAt: row.created_at as string,
+    })
+  }
+  return albums
+}
+
+/** Get album detail with members. */
+export async function getAlbumMembers(albumId: string): Promise<AlbumMember[]> {
+  const { data, error } = await supabase
+    .from('album_members')
+    .select('*')
+    .eq('album_id', albumId)
+
+  if (error) throw new Error(`getAlbumMembers: ${error.message}`)
+
+  const members: AlbumMember[] = []
+  for (const row of data ?? []) {
+    // Resolve member name/avatar from group_members or profiles
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, avatar_url')
+      .eq('id', row.user_id)
+      .single()
+
+    const { count } = await supabase
+      .from('album_moments')
+      .select('*', { count: 'exact', head: true })
+      .eq('album_id', albumId)
+      .eq('added_by', row.user_id)
+
+    members.push({
+      id: row.id as string,
+      userId: row.user_id as string,
+      name: (profile?.full_name as string) ?? 'Unknown',
+      avatar: (profile?.avatar_url as string) ?? undefined,
+      role: (row.role as string) as AlbumMemberRole,
+      momentCount: count ?? 0,
+    })
+  }
+  return members
+}
+
+/** Add moments to an album. */
+export async function addMomentsToAlbum(albumId: string, momentIds: string[]): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || momentIds.length === 0) return
+
+  const rows = momentIds.map((mid) => ({
+    album_id: albumId,
+    moment_id: mid,
+    added_by: user.id,
+  }))
+  const { error } = await supabase.from('album_moments').upsert(rows, { onConflict: 'album_id,moment_id' })
+  if (error) throw new Error(`addMomentsToAlbum: ${error.message}`)
+}
+
+/** Get moments in an album. */
+export async function getAlbumMoments(albumId: string): Promise<Moment[]> {
+  const { data, error } = await supabase
+    .from('album_moments')
+    .select('moment_id')
+    .eq('album_id', albumId)
+
+  if (error || !data || data.length === 0) return []
+
+  const momentIds = data.map((r) => r.moment_id as string)
+  const { data: moments, error: mError } = await supabase
+    .from(T.moments)
+    .select('*')
+    .in('id', momentIds)
+    .order('taken_at', { ascending: false })
+
+  if (mError) throw new Error(`getAlbumMoments: ${mError.message}`)
+  return (moments ?? []).map(mapMoment)
+}
+
+/** Get moments added since user's last view (for pending intake). */
+export async function getPendingMoments(tripId?: string): Promise<{ moments: Moment[]; count: number }> {
+  const id = await resolveTripId(tripId)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { moments: [], count: 0 }
+
+  // Get last viewed timestamp
+  const { data: viewRow } = await supabase
+    .from('moment_views')
+    .select('last_viewed_at')
+    .eq('user_id', user.id)
+    .eq('trip_id', id)
+    .single()
+
+  const lastViewed = viewRow?.last_viewed_at as string | undefined
+
+  let query = supabase
+    .from(T.moments)
+    .select('*')
+    .eq('trip_id', id)
+    .eq('visibility', 'shared')
+    .neq('user_id', user.id)
+    .order('taken_at', { ascending: false })
+
+  if (lastViewed) {
+    query = query.gt('created_at', lastViewed)
+  }
+
+  const { data, error } = await query
+  if (error) return { moments: [], count: 0 }
+
+  return {
+    moments: (data ?? []).map(mapMoment),
+    count: (data ?? []).length,
+  }
+}
+
+/** Mark moments as viewed (updates last_viewed_at). */
+export async function markMomentsViewed(tripId?: string): Promise<void> {
+  const id = await resolveTripId(tripId)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase.from('moment_views').upsert({
+    user_id: user.id,
+    trip_id: id,
+    last_viewed_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,trip_id' })
+}
+
+/** Batch promote moments from private to shared (group). */
+export async function promoteMomentsToGroup(momentIds: string[]): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || momentIds.length === 0) return
+
+  const { error } = await supabase
+    .from(T.moments)
+    .update({ visibility: 'shared' })
+    .in('id', momentIds)
+    .eq('user_id', user.id) // Can only promote own moments
+
+  if (error) throw new Error(`promoteMomentsToGroup: ${error.message}`)
 }
 
 // ---------- TRIP FILES ----------
@@ -1709,11 +2113,20 @@ export async function deletePage(
 
 // ---------- PROFILES ----------
 
+export interface ProfileSocials {
+  instagram?: string;
+  tiktok?: string;
+  x?: string;
+  facebook?: string;
+}
+
 export interface Profile {
   id: string;
   fullName: string;
   avatarUrl?: string;
   phone?: string;
+  handle?: string;
+  socials?: ProfileSocials;
   tier: UserTier;
 }
 
@@ -1729,6 +2142,8 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     fullName: data.full_name ?? '',
     avatarUrl: data.avatar_url ?? undefined,
     phone: data.phone ?? undefined,
+    handle: data.handle ?? undefined,
+    socials: (data.socials as ProfileSocials) ?? undefined,
     tier: (data.tier as UserTier) ?? 'free',
   }
 }
@@ -1741,8 +2156,49 @@ export async function updateProfile(
   if (updates.fullName !== undefined) row.full_name = updates.fullName
   if (updates.avatarUrl !== undefined) row.avatar_url = updates.avatarUrl
   if (updates.phone !== undefined) row.phone = updates.phone
+  if (updates.handle !== undefined) row.handle = updates.handle
+  if (updates.socials !== undefined) row.socials = updates.socials
   const { error } = await supabase.from('profiles').update(row).eq('id', userId)
   if (error) throw new Error(`updateProfile: ${error.message}`)
+}
+
+export async function isHandleAvailable(handle: string, currentUserId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('id')
+    .ilike('handle', handle)
+    .neq('id', currentUserId)
+    .limit(1)
+  return !data || data.length === 0
+}
+
+export async function uploadProfilePhoto(userId: string, localUri: string): Promise<string> {
+  const compressed = await compressImage(localUri, 400, 0.5)
+  const timestamp = Date.now()
+  const filename = localUri.split('/').pop() ?? 'avatar.jpg'
+  const storagePath = `profiles/${userId}-${timestamp}-${filename}`
+
+  const response = await fetch(compressed)
+  const blob = await response.blob()
+  const contentType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg'
+
+  const buckets = ['avatars', 'moments'] as const
+  for (const bucket of buckets) {
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(storagePath, blob, { contentType, upsert: true })
+
+    if (!uploadError) {
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath)
+      const publicUrl = urlData.publicUrl
+      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userId)
+      return publicUrl
+    }
+    if (bucket === buckets[buckets.length - 1]) {
+      throw new Error(`uploadProfilePhoto: ${uploadError.message}`)
+    }
+  }
+  throw new Error('uploadProfilePhoto: no bucket available')
 }
 
 export async function ensureProfile(userId: string, name: string): Promise<void> {

@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bookmark, CalendarDays, ChevronDown, ChevronRight, Filter, Map, Search, SlidersHorizontal, Sparkles, ThumbsUp, Users, Vote } from 'lucide-react-native';
 
 import EmptyState from '@/components/shared/EmptyState';
+import { SwipeToDelete } from '@/components/shared/SwipeToDelete';
 
 import { type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
@@ -1718,25 +1719,29 @@ function DiscoverScreenInner() {
                 {savedPlaces.map((p) => {
                   const dp = mapSavedPlaceToDiscoverPlace(p);
                   return (
-                    <DiscoverPlaceCard
+                    <SwipeToDelete
                       key={p.id}
-                      place={dp}
-                      distanceKm={getDistanceKm(dp.lat, dp.lng)}
-                      travelMode={travelMode}
-                      isSaved={true}
-                      isRecommended={recommended.has(p.name)}
-                      onSave={toggleSave}
-                      onRecommend={toggleRecommend}
-                      onAddToPlanner={handleAddToPlanner}
-                      showRecommend={tripMembers.length >= 2}
-                      voteByMember={p.voteByMember}
-                      memberNames={memberNames}
-                      totalMembers={tripMembers.length}
-                      onVoteTap={() => {
-                        setVotingPlace(p);
-                        setShowVotingSheet(true);
-                      }}
-                    />
+                      onDelete={() => toggleSave(p.name)}
+                    >
+                      <DiscoverPlaceCard
+                        place={dp}
+                        distanceKm={getDistanceKm(dp.lat, dp.lng)}
+                        travelMode={travelMode}
+                        isSaved={true}
+                        isRecommended={recommended.has(p.name)}
+                        onSave={toggleSave}
+                        onRecommend={toggleRecommend}
+                        onAddToPlanner={handleAddToPlanner}
+                        showRecommend={tripMembers.length >= 2}
+                        voteByMember={p.voteByMember}
+                        memberNames={memberNames}
+                        totalMembers={tripMembers.length}
+                        onVoteTap={() => {
+                          setVotingPlace(p);
+                          setShowVotingSheet(true);
+                        }}
+                      />
+                    </SwipeToDelete>
                   );
                 })}
               </>
@@ -2362,6 +2367,8 @@ const getStyles = (colors: ThemeColors) =>
     savedCount: {
       fontSize: 12,
       color: colors.text3,
+      flex: 1,
+      marginRight: 8,
     },
     clearAllText: {
       fontSize: 12,
