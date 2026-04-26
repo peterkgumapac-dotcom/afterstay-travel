@@ -42,6 +42,7 @@ import { colors as themeColors } from '@/constants/theme';
 import {
   addPackingItem,
   getActiveTrip,
+  getExpenseSummary,
   getFlights,
   getGroupMembers,
   getPackingList,
@@ -671,6 +672,7 @@ export default function TripScreen() {
   const [flightsData, setFlightsData] = useState<Flight[]>([]);
   const [packingItems, setPackingItems] = useState<PackingItem[]>([]);
   const [filesData, setFilesData] = useState<TripFile[]>([]);
+  const [activeTripSpent, setActiveTripSpent] = useState(0);
   const [pastTripsData, setPastTripsData] = useState<Trip[]>([]);
   const [highlightsData, setHighlightsData] = useState<Highlight[]>([]);
   const [lifetimeStats, setLifetimeStats] = useState<{
@@ -697,15 +699,17 @@ export default function TripScreen() {
         setPackingItems(pk);
         setFilesData(tf);
       }
-      // Load lifetime data (userId not required for now — loads all)
-      const [stats, highlights, past] = await Promise.all([
+      // Load lifetime data + expense summary for active trip
+      const [stats, highlights, past, expSummary] = await Promise.all([
         getLifetimeStats('').catch(() => null),
         getHighlights('').catch(() => [] as Highlight[]),
         getAllUserTrips('').catch(() => [] as Trip[]),
+        getExpenseSummary().catch(() => ({ total: 0, byCategory: {}, count: 0 })),
       ]);
       if (stats) setLifetimeStats(stats);
       setHighlightsData(highlights);
       setPastTripsData(past);
+      setActiveTripSpent(expSummary.total);
     } catch (e) {
       if (__DEV__) console.warn('[TripScreen] load trip data failed:', e);
     } finally {
@@ -790,8 +794,12 @@ export default function TripScreen() {
   }, [trip]);
   const activeTripCountry = trip?.country || trip?.destination?.split(',').pop()?.trim() || '';
 
-  const totalTrips = (lifetimeStats?.totalTrips ?? pastTripsDisplay.length) + 1;
-  const totalSpent = lifetimeStats?.totalSpent ?? pastTripsDisplay.reduce((s, t) => s + t.spent, 0);
+  // Compute real stats from trip data + expenses
+  const pastSpentTotal = pastTripsDisplay.reduce((s, t) => s + t.spent, 0);
+  const allTripsCount = activeTripsDisplay.length + incomingTripsDisplay.length + pastTripsDisplay.length;
+
+  const totalTrips = lifetimeStats?.totalTrips ?? Math.max(1, allTripsCount);
+  const totalSpent = lifetimeStats?.totalSpent ?? (activeTripSpent + pastSpentTotal);
   const totalNights = (lifetimeStats?.totalNights ?? pastTripsDisplay.reduce((s, t) => s + t.nights, 0)) + activeTripNights;
   const totalMiles = lifetimeStats?.totalMiles ?? 0;
   const countriesCount = lifetimeStats?.totalCountries ?? Math.max(1, new Set([...pastTripsDisplay.map((t) => t.flag), activeTripCountry].filter(Boolean)).size);
