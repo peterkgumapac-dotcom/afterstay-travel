@@ -2291,6 +2291,16 @@ export async function getPastTrips(userId: string): Promise<Trip[]> {
   return data.map(mapTrip)
 }
 
+export async function getAllUserTrips(userId: string): Promise<Trip[]> {
+  const { data } = await supabase
+    .from(T.trips)
+    .select('*')
+    .eq('user_id', userId)
+    .order('start_date', { ascending: false })
+  if (!data) return []
+  return data.map(mapTrip)
+}
+
 // ---------- TRIP LIFECYCLE ----------
 
 /** Mark a trip as Completed (finish early or natural end). */

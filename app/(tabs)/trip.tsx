@@ -48,6 +48,7 @@ import {
   getTripFiles,
   getLifetimeStats,
   getHighlights,
+  getAllUserTrips,
   getPastTrips,
   togglePacked,
   updateMemberEmail,
@@ -142,6 +143,7 @@ function groupPackingItems(items: PackingItem[]): PackingGroup {
 }
 
 interface PastTripDisplay {
+  tripId?: string;
   flag: string;
   dest: string;
   country: string;
@@ -150,6 +152,7 @@ interface PastTripDisplay {
   spent: number;
   miles: number;
   rating: number;
+  hasMemory?: boolean;
 }
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -165,6 +168,7 @@ const COUNTRY_FLAGS: Record<string, string> = {
 
 function mapTripToPastDisplay(t: Trip): PastTripDisplay {
   return {
+    tripId: t.id,
     flag: COUNTRY_FLAGS[t.countryCode ?? ''] ?? '\u{1F30D}',
     dest: t.destination ?? t.name,
     country: t.country ?? '',
@@ -697,7 +701,7 @@ export default function TripScreen() {
       const [stats, highlights, past] = await Promise.all([
         getLifetimeStats('').catch(() => null),
         getHighlights('').catch(() => [] as Highlight[]),
-        getPastTrips('').catch(() => [] as Trip[]),
+        getAllUserTrips('').catch(() => [] as Trip[]),
       ]);
       if (stats) setLifetimeStats(stats);
       setHighlightsData(highlights);
@@ -763,7 +767,17 @@ export default function TripScreen() {
   };
 
   const pastTripsDisplay = useMemo(
-    () => pastTripsData.map(mapTripToPastDisplay),
+    () => pastTripsData.filter(t => t.status === 'Completed').map(mapTripToPastDisplay),
+    [pastTripsData],
+  );
+
+  const activeTripsDisplay = useMemo(
+    () => pastTripsData.filter(t => t.status === 'Active').map(mapTripToPastDisplay),
+    [pastTripsData],
+  );
+
+  const incomingTripsDisplay = useMemo(
+    () => pastTripsData.filter(t => t.status === 'Planning').map(mapTripToPastDisplay),
     [pastTripsData],
   );
 
@@ -1106,7 +1120,7 @@ export default function TripScreen() {
                     activeTab === t && styles.segTextActive,
                   ]}
                 >
-                  {t[0].toUpperCase() + t.slice(1)}
+                  {t === 'summary' ? 'My Trips' : t[0].toUpperCase() + t.slice(1)}
                 </Text>
               </Pressable>
             ))}
@@ -1138,10 +1152,12 @@ export default function TripScreen() {
             totalNights={totalNights}
             totalSpent={totalSpent}
             highlights={highlightsForStrip}
+            activeTrips={activeTripsDisplay}
+            incomingTrips={incomingTripsDisplay}
             pastTrips={pastTripsDisplay}
             colors={colors}
             onAddTrip={() => setAddOpen(true)}
-            onTripPress={(tripId) => router.push({ pathname: '/trip-memory', params: { tripId } } as never)}
+            onTripPress={(tripId) => router.push({ pathname: '/trip-summary', params: { tripId } } as never)}
           />
         )}
 

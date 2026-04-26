@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ChevronRight, Plus } from 'lucide-react-native';
+import { ChevronRight, CircleDot, Clock, MapPin, Plus } from 'lucide-react-native';
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
 import PastTripRow from '@/components/summary/PastTripRow';
@@ -14,6 +14,8 @@ interface SummaryTabProps {
   totalNights: number;
   totalSpent: number;
   highlights: { icon: string; label: string; sub: string; tint: string }[];
+  activeTrips: PastTripDisplay[];
+  incomingTrips: PastTripDisplay[];
   pastTrips: PastTripDisplay[];
   colors: ThemeColors;
   onAddTrip: () => void;
@@ -27,6 +29,8 @@ export function SummaryTab({
   totalNights,
   totalSpent,
   highlights,
+  activeTrips,
+  incomingTrips,
   pastTrips,
   colors,
   onAddTrip,
@@ -52,18 +56,73 @@ export function SummaryTab({
       />
       <HighlightsStrip highlights={highlights} />
 
-      {/* Past trips */}
+      {/* Active Trips */}
+      {activeTrips.length > 0 && (
+        <>
+          <GroupHeader
+            kicker={`Active \u00B7 ${activeTrips.length}`}
+            title="Happening now"
+            colors={colors}
+          />
+          <View style={styles.listContainer}>
+            {activeTrips.map((t, i) => (
+              <View key={i} style={styles.tripCardWrapper}>
+                <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
+                <View style={{ flex: 1 }}>
+                  <PastTripRow
+                    trip={t}
+                    hasMemory={t.hasMemory}
+                    onPress={t.tripId && onTripPress ? () => onTripPress(t.tripId!) : undefined}
+                  />
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
+      {/* Incoming Trips */}
+      {incomingTrips.length > 0 && (
+        <>
+          <GroupHeader
+            kicker={`Incoming \u00B7 ${incomingTrips.length}`}
+            title="Coming up"
+            colors={colors}
+          />
+          <View style={styles.listContainer}>
+            {incomingTrips.map((t, i) => (
+              <View key={i} style={styles.tripCardWrapper}>
+                <View style={[styles.statusDot, { backgroundColor: colors.accent }]} />
+                <View style={{ flex: 1 }}>
+                  <PastTripRow
+                    trip={t}
+                    hasMemory={t.hasMemory}
+                    onPress={t.tripId && onTripPress ? () => onTripPress(t.tripId!) : undefined}
+                  />
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
+      {/* Past Trips */}
       <GroupHeader
         kicker={`Past trips \u00B7 ${pastTrips.length}`}
         title="Where you've been"
         action={
-          <TouchableOpacity>
-            <Text style={styles.ghostAction}>View all</Text>
-          </TouchableOpacity>
+          pastTrips.length > 3 ? (
+            <TouchableOpacity>
+              <Text style={styles.ghostAction}>View all</Text>
+            </TouchableOpacity>
+          ) : undefined
         }
         colors={colors}
       />
       <View style={styles.listContainer}>
+        {pastTrips.length === 0 && (
+          <Text style={styles.emptyText}>No past trips yet</Text>
+        )}
         {pastTrips.map((t, i) => (
           <PastTripRow
             key={i}
@@ -107,6 +166,22 @@ const getStyles = (colors: ThemeColors) =>
     listContainer: {
       paddingHorizontal: 16,
       gap: 8,
+    },
+    tripCardWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    emptyText: {
+      fontSize: 13,
+      color: colors.text3,
+      textAlign: 'center',
+      paddingVertical: 16,
     },
     addPastTripRow: {
       flexDirection: 'row',
