@@ -1636,7 +1636,7 @@ export async function addMoment(
   // Get current user for proper attribution
   const { data: { user: authUser } } = await supabase.auth.getUser()
 
-  const { error } = await supabase.from(T.moments).insert({
+  const row: Record<string, unknown> = {
     trip_id: tripId,
     caption: input.caption || '',
     ...(storagePath ? { storage_path: storagePath } : {}),
@@ -1648,8 +1648,19 @@ export async function addMoment(
     taken_at: input.date,
     ...(input.tags.length > 0 ? { tags: input.tags } : {}),
     ...(input.visibility ? { visibility: input.visibility } : {}),
-  })
-  if (error) throw new Error(`addMoment insert: ${error.message}`)
+  }
+
+  const { error } = await supabase.from(T.moments).insert(row)
+  if (error) {
+    // Retry without hd_url in case column doesn't exist yet
+    if (hdUrl && error.message.includes('hd_url')) {
+      delete row.hd_url
+      const { error: retryError } = await supabase.from(T.moments).insert(row)
+      if (retryError) throw new Error(`addMoment insert: ${retryError.message}`)
+    } else {
+      throw new Error(`addMoment insert: ${error.message}`)
+    }
+  }
 }
 
 function guessMimeType(filename: string): string {
