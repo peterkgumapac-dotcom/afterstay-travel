@@ -34,7 +34,7 @@
       "package": "com.afterstay.travel",
       "googleServicesFile": "./google-services.json",
       "notification": {
-        "icon": "./assets/icon/afterstay-monochrome.png",
+        "icon": "./assets/icon/afterstay-notification.png",
         "color": "#d8ab7a"
       }
     },
