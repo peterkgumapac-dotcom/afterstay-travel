@@ -145,6 +145,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Clear Google Sign-In cached account so picker shows on next login
+    try {
+      const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
+      await GoogleSignin.signOut();
+    } catch { /* not signed in via Google or module unavailable */ }
     await supabase.auth.signOut();
     setSession(null);
   };

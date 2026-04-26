@@ -1,4 +1,4 @@
-Unused files (41)
+Unused files (40)
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
@@ -31,7 +31,6 @@ design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
 design-reference/screens/login.jsx: design-reference/screens/login.jsx
 design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
-lib/cache/mediaCache.ts: lib/cache/mediaCache.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 lib/imageUrl.ts: lib/imageUrl.ts
 lib/qrph.ts: lib/qrph.ts
@@ -46,7 +45,7 @@ Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (12)
+Unused exports (14)
 components/discover/CategoryGrid.tsx: CategoryGrid
 components/discover/ExploreMap.tsx: MAP_AVAILABLE
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
@@ -56,8 +55,10 @@ constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
 hooks/useFilmFilters.ts: getFilter
 lib/anthropic.ts: generateRecommendations
+lib/cache/mediaCache.ts: migrateMediaCache, evictCachedImage
 lib/distance.ts: haversine
 lib/google-places.ts: findPlacePhoto, enrichRecommendations
+lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, shouldSendPush, getCategoryForType
 lib/utils.ts: tripStatusLabel
 Unused exported types (8)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
