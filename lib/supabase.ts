@@ -2325,11 +2325,17 @@ export async function getPastTrips(userId: string): Promise<Trip[]> {
   return data.map(mapTrip)
 }
 
-export async function getAllUserTrips(userId: string): Promise<Trip[]> {
+export async function getAllUserTrips(userId?: string): Promise<Trip[]> {
+  let uid = userId
+  if (!uid) {
+    const { data: authData } = await supabase.auth.getUser()
+    uid = authData?.user?.id
+  }
+  if (!uid) return []
   const { data } = await supabase
     .from(T.trips)
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', uid)
     .order('start_date', { ascending: false })
   if (!data) return []
   return data.map(mapTrip)
