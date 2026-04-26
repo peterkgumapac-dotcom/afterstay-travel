@@ -32,7 +32,11 @@
         "monochromeImage": "./assets/icon/afterstay-monochrome.png"
       },
       "package": "com.afterstay.travel",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "notification": {
+        "icon": "./assets/icon/afterstay-monochrome.png",
+        "color": "#d8ab7a"
+      }
     },
     "web": {
       "bundler": "metro",
