@@ -23,6 +23,7 @@ import AfterStayLoader from '@/components/AfterStayLoader';
 import { AnticipationHero } from '@/components/home/AnticipationHero';
 import { TopPicksSection as HomeTopPicks } from '@/components/discover/TopPicksSection';
 import NotificationsSheet, { useNotificationCount } from '@/components/home/NotificationsSheet';
+import { useNotifications } from '@/hooks/useNotifications';
 import { HomeMomentsPreview } from '@/components/home/HomeMomentsPreview';
 import { ArrivedCard } from '@/components/home/ArrivedCard';
 import { CountdownCard } from '@/components/home/CountdownCard';
@@ -435,7 +436,9 @@ export default function HomeScreen() {
     members,
     destination: trip?.destination ?? '',
   }), [countdown, totalSpent, trip?.budgetLimit, trip?.destination, savedPlaces, members]);
-  const notifCount = useNotificationCount(notifProps);
+  // Single notification state — shared with both badge count and sheet
+  const { notifications: dbNotifications, unreadCount: dbUnread, markRead, markAllRead } = useNotifications();
+  const notifCount = useNotificationCount(notifProps, dbUnread);
 
   // Room info
   const roomInfo = useMemo(
@@ -705,6 +708,9 @@ export default function HomeScreen() {
         visible={showNotifications}
         onClose={() => setShowNotifications(false)}
         onGroupVoteTap={handleGroupVoteTap}
+        dbNotifications={dbNotifications}
+        onMarkRead={markRead}
+        onMarkAllRead={markAllRead}
         {...notifProps}
       />
       <GroupVotingSheet

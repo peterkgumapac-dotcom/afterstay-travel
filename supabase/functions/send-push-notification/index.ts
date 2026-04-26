@@ -13,12 +13,27 @@ serve(async (req) => {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('expo_push_token, push_enabled')
+      .select('expo_push_token, push_enabled, notification_prefs')
       .eq('id', record.user_id)
       .single();
 
     if (!profile?.expo_push_token || !profile.push_enabled) {
       return new Response('No token', { status: 200 });
+    }
+
+    // Quiet hours check — suppress push but keep DB notification for in-app display
+    const prefs = (profile.notification_prefs as Record<string, unknown>) ?? {};
+    const quietHours = prefs.quietHours as { enabled?: boolean; startHour?: number; endHour?: number } | undefined;
+    if (quietHours?.enabled) {
+      const phtHour = (new Date().getUTCHours() + 8) % 24;
+      const start = quietHours.startHour ?? 22;
+      const end = quietHours.endHour ?? 7;
+      const inQuietWindow = start > end
+        ? (phtHour >= start || phtHour < end)
+        : (phtHour >= start && phtHour < end);
+      if (inQuietWindow) {
+        return new Response('Quiet hours', { status: 200 });
+      }
     }
 
     await fetch('https://exp.host/--/api/v2/push/send', {

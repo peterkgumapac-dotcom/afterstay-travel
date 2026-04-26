@@ -18,6 +18,8 @@ import {
 import { useTheme } from '@/constants/ThemeContext';
 import { formatCurrency } from '@/lib/utils';
 import { useNotifications, type AppNotification } from '@/hooks/useNotifications';
+import { shouldNotify, getLocalNotificationPrefs } from '@/lib/notificationPrefs';
+import type { NotificationPrefs } from '@/lib/notificationPrefs';
 import type { Place, GroupMember } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
@@ -69,6 +71,10 @@ interface NotificationsSheetProps {
   destination: string;
   /** Called when user taps a group-votes or vote_needed notification */
   onGroupVoteTap?: () => void;
+  /** Shared notification state from parent — avoids duplicate useNotifications() */
+  dbNotifications?: AppNotification[];
+  onMarkRead?: (id: string) => void;
+  onMarkAllRead?: () => void;
 }
 
 // ── Local alerts engine ───────────────────────────────────────────────
@@ -150,6 +156,14 @@ function generateLocalAlerts(
   return items;
 }
 
+/** Filter local alerts through user's notification preferences. */
+function filterLocalAlertsByPrefs(
+  alerts: LocalNotification[],
+  prefs: Partial<NotificationPrefs>,
+): LocalNotification[] {
+  return alerts.filter((a) => shouldNotify(a.id, prefs));
+}
+
 // ── Icon mapping for DB notifications ─────────────────────────────────
 
 function dbNotifIcon(type: string): React.ComponentType<any> {
@@ -200,16 +214,27 @@ function useDismissedCount(): number {
 
 export function useNotificationCount(
   props: Omit<NotificationsSheetProps, 'visible' | 'onClose'>,
+  /** Pass dbUnread from the shared useNotifications() in the parent to avoid a second instance */
+  dbUnread?: number,
 ): number {
   const { colors } = useTheme();
-  const { unreadCount: dbUnread } = useNotifications();
+  // Only call useNotifications() as fallback if parent doesn't provide dbUnread
+  const fallback = useNotifications();
+  const resolvedDbUnread = dbUnread ?? fallback.unreadCount;
   const dismissed = useDismissedCount();
+  const [prefs, setPrefs] = useState<Partial<NotificationPrefs>>({});
+
+  // Load prefs once
+  useState(() => {
+    getLocalNotificationPrefs().then(setPrefs).catch(() => {});
+  });
+
   const localAlerts = useMemo(
-    () => generateLocalAlerts(props, colors),
-    [props.dayOfTrip, props.totalDays, props.daysLeft, props.spent, props.budget, props.savedPlaces, props.members, props.destination, colors],
+    () => filterLocalAlertsByPrefs(generateLocalAlerts(props, colors), prefs),
+    [props.dayOfTrip, props.totalDays, props.daysLeft, props.spent, props.budget, props.savedPlaces, props.members, props.destination, colors, prefs],
   );
   const localCount = localAlerts.filter((a) => !dismissedLocalIds.has(a.id)).length;
-  return localCount + dbUnread;
+  return localCount + resolvedDbUnread;
 }
 
 // ── Main Sheet ────────────────────────────────────────────────────────
@@ -218,16 +243,28 @@ export default function NotificationsSheet({
   visible,
   onClose,
   onGroupVoteTap,
+  dbNotifications: sharedNotifs,
+  onMarkRead: sharedMarkRead,
+  onMarkAllRead: sharedMarkAllRead,
   ...dataProps
 }: NotificationsSheetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
-  const { notifications: dbNotifs, markRead, markAllRead } = useNotifications();
+  // Use shared state from parent when available; fall back to own instance otherwise
+  const fallback = useNotifications();
+  const dbNotifs = sharedNotifs ?? fallback.notifications;
+  const markRead = sharedMarkRead ?? fallback.markRead;
+  const markAllRead = sharedMarkAllRead ?? fallback.markAllRead;
+
+  const [prefs, setPrefs] = useState<Partial<NotificationPrefs>>({});
+  useState(() => {
+    getLocalNotificationPrefs().then(setPrefs).catch(() => {});
+  });
 
   const localAlerts = useMemo(
-    () => generateLocalAlerts(dataProps, colors),
-    [dataProps.dayOfTrip, dataProps.totalDays, dataProps.daysLeft, dataProps.spent, dataProps.budget, dataProps.savedPlaces, dataProps.members, dataProps.destination, colors],
+    () => filterLocalAlertsByPrefs(generateLocalAlerts(dataProps, colors), prefs),
+    [dataProps.dayOfTrip, dataProps.totalDays, dataProps.daysLeft, dataProps.spent, dataProps.budget, dataProps.savedPlaces, dataProps.members, dataProps.destination, colors, prefs],
   );
 
   // Convert DB notifications to display format

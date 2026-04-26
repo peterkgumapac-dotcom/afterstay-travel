@@ -50,6 +50,7 @@ import {
   type ProfileSocials,
 } from '@/lib/supabase';
 import type { Trip } from '@/lib/types';
+import { clearPrefsCache } from '@/lib/notificationPrefs';
 
 interface ProfileState {
   name: string;
@@ -67,6 +68,14 @@ interface Notifications {
   expenseAlerts: boolean;
   tripLifecycle: boolean;
   checkInOut: boolean;
+  // Phase controls
+  preTripAlerts: boolean;
+  activeTripAlerts: boolean;
+  postTripAlerts: boolean;
+  // Quiet hours
+  quietHours: { enabled: boolean; startHour: number; endHour: number };
+  // Muted trips
+  mutedTrips: string[];
 }
 
 const STORAGE_PROFILE = 'settings_profile';
@@ -81,6 +90,11 @@ const DEFAULT_NOTIFICATIONS: Notifications = {
   expenseAlerts: true,
   tripLifecycle: true,
   checkInOut: true,
+  preTripAlerts: true,
+  activeTripAlerts: true,
+  postTripAlerts: true,
+  quietHours: { enabled: false, startHour: 22, endHour: 7 },
+  mutedTrips: [],
 };
 
 const HANDLE_REGEX = /^[a-z][a-z0-9_]{2,19}$/;
@@ -178,9 +192,10 @@ export default function SettingsScreen() {
   };
 
   const toggleNotification = useCallback(
-    async (key: keyof Notifications) => {
+    async (key: keyof Omit<Notifications, 'quietHours' | 'mutedTrips'>) => {
       const updated = { ...notifications, [key]: !notifications[key] };
       setNotifications(updated);
+      clearPrefsCache();
       await AsyncStorage.setItem(STORAGE_NOTIFICATIONS, JSON.stringify(updated));
       if (user?.id) {
         import('@/lib/supabase').then(({ supabase }) => {
@@ -190,6 +205,21 @@ export default function SettingsScreen() {
     },
     [notifications, user?.id],
   );
+
+  const toggleQuietHours = useCallback(async () => {
+    const updated = {
+      ...notifications,
+      quietHours: { ...notifications.quietHours, enabled: !notifications.quietHours.enabled },
+    };
+    setNotifications(updated);
+    clearPrefsCache();
+    await AsyncStorage.setItem(STORAGE_NOTIFICATIONS, JSON.stringify(updated));
+    if (user?.id) {
+      import('@/lib/supabase').then(({ supabase }) => {
+        supabase.from('profiles').update({ notification_prefs: updated }).eq('id', user!.id).then(() => {});
+      }).catch(() => {});
+    }
+  }, [notifications, user?.id]);
 
   const handleSaveProfile = async () => {
     const trimmedName = editName.trim();
@@ -388,6 +418,22 @@ export default function SettingsScreen() {
           <NotifRow label="Group Activity" desc="Votes, new members, recommendations" value={notifications.groupActivity} onToggle={() => toggleNotification('groupActivity')} colors={colors} s={s} />
           <View style={s.divider} />
           <NotifRow label="Packing Reminders" desc="Don't forget your essentials" value={notifications.packingReminders} onToggle={() => toggleNotification('packingReminders')} colors={colors} s={s} />
+        </View>
+
+        {/* When to Notify */}
+        <SectionLabel label="When to Notify" textColor={colors.text3} />
+        <View style={s.card}>
+          <NotifRow label="Pre-trip" desc="Reminders before your trip starts" value={notifications.preTripAlerts} onToggle={() => toggleNotification('preTripAlerts')} colors={colors} s={s} />
+          <View style={s.divider} />
+          <NotifRow label="During trip" desc="All alerts while you're traveling" value={notifications.activeTripAlerts} onToggle={() => toggleNotification('activeTripAlerts')} colors={colors} s={s} />
+          <View style={s.divider} />
+          <NotifRow label="Post-trip" desc="Recaps and memory prompts" value={notifications.postTripAlerts} onToggle={() => toggleNotification('postTripAlerts')} colors={colors} s={s} />
+        </View>
+
+        {/* Quiet Hours */}
+        <SectionLabel label="Quiet Hours" textColor={colors.text3} />
+        <View style={s.card}>
+          <NotifRow label="Quiet Hours" desc={notifications.quietHours.enabled ? `${notifications.quietHours.startHour}:00 – ${notifications.quietHours.endHour}:00 PHT` : 'Push notifications paused overnight'} value={notifications.quietHours.enabled} onToggle={toggleQuietHours} colors={colors} s={s} />
         </View>
 
         {/* Subscription */}
