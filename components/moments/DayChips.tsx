@@ -12,11 +12,14 @@ import { formatDatePHT } from '@/lib/utils';
 interface DayChipsProps {
   active: string;
   onChange: (day: string) => void;
+  onLongPress?: (day: string) => void;
   counts: Record<string, number>;
   total: number;
+  /** Set of days that have been curated (shows dot indicator). */
+  curatedDays?: Set<string>;
 }
 
-export function DayChips({ active, onChange, counts, total }: DayChipsProps) {
+export function DayChips({ active, onChange, onLongPress, counts, total, curatedDays }: DayChipsProps) {
   const { colors } = useTheme();
   const days = useMemo(() => Object.keys(counts).sort((a, b) => b.localeCompare(a)), [counts]);
 
@@ -32,6 +35,8 @@ export function DayChips({ active, onChange, counts, total }: DayChipsProps) {
         count={total}
         isActive={active === 'all'}
         onPress={() => onChange('all')}
+        onLongPress={onLongPress ? () => onLongPress('all') : undefined}
+        showDot={curatedDays ? !curatedDays.has('all') : false}
         colors={colors}
       />
       {days.map((d) => (
@@ -41,6 +46,8 @@ export function DayChips({ active, onChange, counts, total }: DayChipsProps) {
           count={counts[d]}
           isActive={active === d}
           onPress={() => onChange(d)}
+          onLongPress={onLongPress ? () => onLongPress(d) : undefined}
+          showDot={curatedDays ? !curatedDays.has(d) : false}
           colors={colors}
         />
       ))}
@@ -53,13 +60,16 @@ interface ChipProps {
   count: number;
   isActive: boolean;
   onPress: () => void;
+  onLongPress?: () => void;
+  showDot?: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
 }
 
-const Chip = React.memo(function Chip({ label, count, isActive, onPress, colors }: ChipProps) {
+const Chip = React.memo(function Chip({ label, count, isActive, onPress, onLongPress, showDot, colors }: ChipProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
+      onLongPress={onLongPress}
       activeOpacity={0.7}
       style={[
         styles.chip,
@@ -69,6 +79,9 @@ const Chip = React.memo(function Chip({ label, count, isActive, onPress, colors 
         },
       ]}
     >
+      {showDot && (
+        <View style={[styles.uncuratedDot, { backgroundColor: colors.accent }]} />
+      )}
       <Text
         style={[
           styles.chipLabel,
@@ -136,5 +149,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontVariant: ['tabular-nums'],
     textAlign: 'center',
+  },
+  uncuratedDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
   },
 });

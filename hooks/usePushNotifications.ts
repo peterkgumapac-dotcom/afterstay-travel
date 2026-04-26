@@ -59,13 +59,20 @@ export function usePushNotifications() {
           });
         }
 
-        // Get push token
+        // Get push token — try multiple config paths for projectId
         let projectId: string | undefined;
         try {
           const Constants = require('expo-constants').default;
-          projectId = Constants.expoConfig?.extra?.eas?.projectId;
+          projectId =
+            Constants.expoConfig?.extra?.eas?.projectId ??
+            Constants.easConfig?.projectId ??
+            Constants.manifest?.extra?.eas?.projectId ??
+            Constants.manifest2?.extra?.expoClient?.extra?.eas?.projectId;
         } catch { /* ignore */ }
-        if (!projectId) return;
+        if (!projectId) {
+          if (__DEV__) console.warn('[Push] No EAS projectId found — push registration skipped');
+          return;
+        }
 
         const pushToken = await Notifs.getExpoPushTokenAsync({ projectId });
         setToken(pushToken.data);
@@ -109,8 +116,8 @@ export function usePushNotifications() {
           },
         );
         listenersRef.current.push(sub2);
-      } catch {
-        // Push notifications not available — silently ignore
+      } catch (err) {
+        if (__DEV__) console.warn('[Push] setup failed:', err);
         return;
       }
     }
