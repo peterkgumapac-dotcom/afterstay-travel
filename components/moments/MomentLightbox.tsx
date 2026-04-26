@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { ArrowUpRight, Bookmark, ChevronLeft, Download, Edit3, Eye, EyeOff, Film, Heart, MapPin, MoreHorizontal, Share2, Trash2 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   FlatList,
   Modal,
@@ -151,16 +152,28 @@ export function MomentLightbox({
   ), []);
 
 
+  const doShare = useCallback((url: string) => {
+    Share.share({
+      message: [current?.caption, current?.location, current ? formatDatePHT(current.date) : '']
+        .filter(Boolean)
+        .join(' — '),
+      url,
+    });
+  }, [current]);
+
   const handleShare = useCallback(() => {
     if (!current?.photo) return;
     setMenuVisible(false);
-    Share.share({
-      message: [current.caption, current.location, formatDatePHT(current.date)]
-        .filter(Boolean)
-        .join(' — '),
-      url: current.photo,
-    });
-  }, [current]);
+    if (current.hdPhoto) {
+      Alert.alert('Share Quality', 'Choose photo quality to share', [
+        { text: 'Standard', onPress: () => doShare(current.photo!) },
+        { text: 'HD', style: 'default', onPress: () => doShare(current.hdPhoto!) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      doShare(current.photo);
+    }
+  }, [current, doShare]);
 
   const handleDelete = useCallback(() => {
     setMenuVisible(false);
@@ -171,9 +184,7 @@ export function MomentLightbox({
     }
   }, [current, onDelete, onClose]);
 
-  const handleDownload = useCallback(async () => {
-    if (!current?.photo) return;
-    setMenuVisible(false);
+  const doDownload = useCallback(async (url: string) => {
     try {
       const FileSystem = require('expo-file-system');
       const MediaLibrary = require('expo-media-library');
@@ -181,13 +192,27 @@ export function MomentLightbox({
       if (status !== 'granted') return;
       const filename = `afterstay_${Date.now()}.jpg`;
       const fileUri = (FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? '') + filename;
-      const result = await FileSystem.downloadAsync(current.photo, fileUri);
+      const result = await FileSystem.downloadAsync(url, fileUri);
       await MediaLibrary.saveToLibraryAsync(result.uri);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       // ignore
     }
-  }, [current]);
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    if (!current?.photo) return;
+    setMenuVisible(false);
+    if (current.hdPhoto) {
+      Alert.alert('Save Quality', 'Choose photo quality to save', [
+        { text: 'Standard', onPress: () => doDownload(current.photo!) },
+        { text: 'HD', style: 'default', onPress: () => doDownload(current.hdPhoto!) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      doDownload(current.photo);
+    }
+  }, [current, doDownload]);
 
   const handleEdit = useCallback(() => {
     setMenuVisible(false);

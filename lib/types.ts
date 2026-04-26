@@ -172,6 +172,7 @@ export interface Moment {
   id: string;
   caption: string;
   photo?: string;
+  hdPhoto?: string;
   location?: string;
   takenBy?: string;
   userId?: string;

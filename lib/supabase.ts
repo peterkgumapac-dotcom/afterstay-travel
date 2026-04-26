@@ -314,6 +314,7 @@ function mapMoment(row: Record<string, unknown>): Moment {
     id: row.id as string,
     caption: (row.caption as string) ?? '',
     photo: momentPhotoUrl(row),
+    hdPhoto: (row.hd_url as string) ?? undefined,
     location: (row.location as string) ?? undefined,
     takenBy: (row.uploaded_by as string) ?? undefined,
     userId: (row.user_id as string) ?? undefined,
@@ -1584,41 +1585,49 @@ export async function addMoment(
 
   let storagePath: string | undefined
   let publicUrl: string | undefined
+  let hdUrl: string | undefined
 
-  // If a local file URI is provided, compress (images) and upload to Supabase Storage.
+  // If a local file URI is provided, compress and upload to Supabase Storage.
   if (input.localUri) {
     const rawExt = (input.localUri.split('.').pop() ?? 'jpg').toLowerCase()
     const isVideo = ['mp4', 'mov', 'avi', 'webm', 'm4v'].includes(rawExt)
-
-    // Videos: upload as-is. Images: compress to JPEG.
-    const fileToUpload = isVideo ? input.localUri : await compressImage(input.localUri, 600, 0.6)
     const ext = isVideo ? rawExt : 'jpeg'
     const friendlyName = buildMomentFilename(input, ext)
-    storagePath = `trips/${tripId}/${friendlyName}`
+    const contentType = guessMimeType(friendlyName)
 
-    // Read as base64 — more reliable than fetch→blob on RN Android
-    const base64 = await FileSystem.readAsStringAsync(fileToUpload, {
-      encoding: FileSystem.EncodingType.Base64,
-    })
-    const binaryStr = atob(base64)
-    const bytes = new Uint8Array(binaryStr.length)
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i)
+    // Helper: compress → read base64 → upload
+    const uploadFile = async (uri: string, path: string) => {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      })
+      const binaryStr = atob(base64)
+      const bytes = new Uint8Array(binaryStr.length)
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i)
+      }
+      const { error: uploadError } = await supabase.storage
+        .from('moments')
+        .upload(path, bytes, { contentType, upsert: false })
+      if (uploadError) throw new Error(`addMoment upload: ${uploadError.message}`)
+      const { data: urlData } = supabase.storage.from('moments').getPublicUrl(path)
+      return urlData.publicUrl
     }
 
-    const { error: uploadError } = await supabase.storage
-      .from('moments')
-      .upload(storagePath, bytes, {
-        contentType: guessMimeType(friendlyName),
-        upsert: false,
-      })
+    // Standard version (800px, 70% quality) — used for thumbnails + lightbox
+    const standardFile = isVideo ? input.localUri : await compressImage(input.localUri, 800, 0.7)
+    storagePath = `trips/${tripId}/${friendlyName}`
+    publicUrl = await uploadFile(standardFile, storagePath)
 
-    if (uploadError) throw new Error(`addMoment upload: ${uploadError.message}`)
-
-    const { data: urlData } = supabase.storage
-      .from('moments')
-      .getPublicUrl(storagePath)
-    publicUrl = urlData.publicUrl
+    // HD version (1920px, 85% quality) — for download/share
+    if (!isVideo) {
+      try {
+        const hdFile = await compressImage(input.localUri, 1920, 0.85)
+        const hdPath = `trips/${tripId}/hd/${friendlyName}`
+        hdUrl = await uploadFile(hdFile, hdPath)
+      } catch {
+        // HD upload failed — standard version still works
+      }
+    }
   } else if (input.photo) {
     // Photo is already a remote URL (e.g. from Notion migration).
     publicUrl = input.photo
@@ -1632,6 +1641,7 @@ export async function addMoment(
     caption: input.caption || '',
     ...(storagePath ? { storage_path: storagePath } : {}),
     ...(publicUrl ? { public_url: publicUrl } : {}),
+    ...(hdUrl ? { hd_url: hdUrl } : {}),
     ...(input.location ? { location: input.location } : {}),
     ...(input.takenBy ? { uploaded_by: input.takenBy } : {}),
     ...(authUser?.id ? { user_id: authUser.id } : {}),
