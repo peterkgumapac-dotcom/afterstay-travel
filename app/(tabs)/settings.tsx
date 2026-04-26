@@ -35,6 +35,10 @@ interface Notifications {
   departureReminders: boolean;
   budgetAlerts: boolean;
   packingReminders: boolean;
+  groupActivity: boolean;
+  expenseAlerts: boolean;
+  tripLifecycle: boolean;
+  checkInOut: boolean;
 }
 
 const STORAGE_PROFILE = 'settings_profile';
@@ -45,6 +49,10 @@ const DEFAULT_NOTIFICATIONS: Notifications = {
   departureReminders: true,
   budgetAlerts: true,
   packingReminders: true,
+  groupActivity: true,
+  expenseAlerts: true,
+  tripLifecycle: true,
+  checkInOut: true,
 };
 
 export default function SettingsScreen() {
@@ -99,8 +107,14 @@ export default function SettingsScreen() {
       const updated = { ...notifications, [key]: !notifications[key] };
       setNotifications(updated);
       await AsyncStorage.setItem(STORAGE_NOTIFICATIONS, JSON.stringify(updated));
+      // Sync to Supabase so edge functions can check preferences
+      if (user?.id) {
+        import('@/lib/supabase').then(({ supabase }) => {
+          supabase.from('profiles').update({ notification_prefs: updated }).eq('id', user!.id).then(() => {});
+        }).catch(() => {});
+      }
     },
-    [notifications],
+    [notifications, user?.id],
   );
 
   const handleSaveProfile = () => {
@@ -227,17 +241,58 @@ export default function SettingsScreen() {
         <SectionLabel icon={<Bell size={14} color={colors.green2} />} label="Notifications" textColor={colors.text2} />
         <View style={dynamicStyles.card}>
           <View style={styles.toggleRow}>
-            <Text style={dynamicStyles.toggleLabel}>Departure Reminders</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={dynamicStyles.toggleLabel}>Trip Lifecycle</Text>
+              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Trip starting, last day, daily recap</Text>
+            </View>
+            <Switch value={notifications.tripLifecycle} onValueChange={() => toggleNotification('tripLifecycle')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
+          </View>
+          <View style={dynamicStyles.divider} />
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={dynamicStyles.toggleLabel}>Departure Reminders</Text>
+              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Flight boarding, departure prep</Text>
+            </View>
             <Switch value={notifications.departureReminders} onValueChange={() => toggleNotification('departureReminders')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
           </View>
           <View style={dynamicStyles.divider} />
           <View style={styles.toggleRow}>
-            <Text style={dynamicStyles.toggleLabel}>Budget Alerts</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={dynamicStyles.toggleLabel}>Check-in / Check-out</Text>
+              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Accommodation reminders</Text>
+            </View>
+            <Switch value={notifications.checkInOut} onValueChange={() => toggleNotification('checkInOut')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
+          </View>
+          <View style={dynamicStyles.divider} />
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={dynamicStyles.toggleLabel}>Budget Alerts</Text>
+              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Spending pace, over-budget warnings</Text>
+            </View>
             <Switch value={notifications.budgetAlerts} onValueChange={() => toggleNotification('budgetAlerts')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
           </View>
           <View style={dynamicStyles.divider} />
           <View style={styles.toggleRow}>
-            <Text style={dynamicStyles.toggleLabel}>Packing Reminders</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={dynamicStyles.toggleLabel}>Expense Alerts</Text>
+              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>When group members add expenses</Text>
+            </View>
+            <Switch value={notifications.expenseAlerts} onValueChange={() => toggleNotification('expenseAlerts')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
+          </View>
+          <View style={dynamicStyles.divider} />
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={dynamicStyles.toggleLabel}>Group Activity</Text>
+              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Votes, new members, recommendations</Text>
+            </View>
+            <Switch value={notifications.groupActivity} onValueChange={() => toggleNotification('groupActivity')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
+          </View>
+          <View style={dynamicStyles.divider} />
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={dynamicStyles.toggleLabel}>Packing Reminders</Text>
+              <Text style={[dynamicStyles.toggleLabel, { fontSize: 11, color: colors.text3, marginTop: 1 }]}>Don't forget your essentials</Text>
+            </View>
             <Switch value={notifications.packingReminders} onValueChange={() => toggleNotification('packingReminders')} trackColor={{ false: colors.border, true: colors.green }} thumbColor={colors.white} />
           </View>
         </View>

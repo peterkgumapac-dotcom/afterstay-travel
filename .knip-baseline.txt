@@ -1,4 +1,4 @@
-Unused files (35)
+Unused files (41)
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
@@ -8,6 +8,12 @@ components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
 components/home/QuickAccessGrid.tsx: components/home/QuickAccessGrid.tsx
 components/home/SmartNudges.tsx: components/home/SmartNudges.tsx
+components/moments/DayChips.tsx: components/moments/DayChips.tsx
+components/moments/DiaryLayout.tsx: components/moments/DiaryLayout.tsx
+components/moments/MapLayout.tsx: components/moments/MapLayout.tsx
+components/moments/MosaicLayout.tsx: components/moments/MosaicLayout.tsx
+components/moments/MosaicTile.tsx: components/moments/MosaicTile.tsx
+components/moments/StatBlock.tsx: components/moments/StatBlock.tsx
 components/moments/TripRecapModal.tsx: components/moments/TripRecapModal.tsx
 components/moments/recaps/MinimalTemplate.tsx: components/moments/recaps/MinimalTemplate.tsx
 components/moments/recaps/PolaroidTemplate.tsx: components/moments/recaps/PolaroidTemplate.tsx

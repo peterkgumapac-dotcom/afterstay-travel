@@ -60,6 +60,7 @@ export function usePushNotifications() {
         }
 
         // Get push token — try multiple config paths for projectId
+        const HARDCODED_PROJECT_ID = 'a804380e-5c0d-425e-ac2b-7c07b8b81fd4';
         let projectId: string | undefined;
         try {
           const Constants = require('expo-constants').default;
@@ -69,10 +70,8 @@ export function usePushNotifications() {
             Constants.manifest?.extra?.eas?.projectId ??
             Constants.manifest2?.extra?.expoClient?.extra?.eas?.projectId;
         } catch { /* ignore */ }
-        if (!projectId) {
-          if (__DEV__) console.warn('[Push] No EAS projectId found — push registration skipped');
-          return;
-        }
+        // Fallback to hardcoded projectId from app.json
+        if (!projectId) projectId = HARDCODED_PROJECT_ID;
 
         const pushToken = await Notifs.getExpoPushTokenAsync({ projectId });
         setToken(pushToken.data);
