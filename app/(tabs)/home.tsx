@@ -473,14 +473,14 @@ export default function HomeScreen() {
     }
     // No trip — welcoming empty state with settings access
     return (
-      <SafeAreaView style={styles.fullCenter}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <ProfileRow
-          userName={userName}
+          userName={userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || ''}
           avatarUrl={userAvatar}
           notificationCount={0}
           onBellPress={() => {}}
         />
-        <View style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}>
           <EmptyState
             icon={Compass}
             title="Your next adventure starts here"
