@@ -78,6 +78,7 @@ export function MomentLightbox({
   const safeIndex = moments.length > 0 ? Math.min(index, moments.length - 1) : 0;
   const [currentIdx, setCurrentIdx] = useState(safeIndex);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [viewingHd, setViewingHd] = useState(false);
   const [favToast, setFavToast] = useState<string | null>(null);
   const favToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flatListRef = useRef<FlatList<MomentDisplay>>(null);
@@ -141,15 +142,18 @@ export function MomentLightbox({
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
-  const renderPhoto = useCallback(({ item }: { item: MomentDisplay }) => (
-    <View style={{ width: SCREEN_W, flex: 1, justifyContent: 'center' }}>
-      {item.photo ? (
-        <CachedImage remoteUrl={item.photo} style={styles.photo} resizeMode="contain" />
-      ) : (
-        <View style={styles.photo} />
-      )}
-    </View>
-  ), []);
+  const renderPhoto = useCallback(({ item }: { item: MomentDisplay }) => {
+    const photoUrl = viewingHd && item.hdPhoto ? item.hdPhoto : item.photo;
+    return (
+      <View style={{ width: SCREEN_W, flex: 1, justifyContent: 'center' }}>
+        {photoUrl ? (
+          <CachedImage remoteUrl={photoUrl} style={styles.photo} resizeMode="contain" />
+        ) : (
+          <View style={styles.photo} />
+        )}
+      </View>
+    );
+  }, [viewingHd]);
 
 
   const doShare = useCallback((url: string) => {
@@ -244,7 +248,18 @@ export function MomentLightbox({
           <Pressable onPress={onClose} style={styles.topBtn} accessibilityLabel="Close">
             <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
           </Pressable>
-          <Text style={styles.counter}>{moments.length > 0 ? `${currentIdx + 1} of ${moments.length}` : ''}</Text>
+          <View style={styles.topCenter}>
+            <Text style={styles.counter}>{moments.length > 0 ? `${currentIdx + 1} of ${moments.length}` : ''}</Text>
+            {current?.hdPhoto && (
+              <Pressable
+                onPress={() => { Haptics.selectionAsync(); setViewingHd((v) => !v); }}
+                style={[styles.hdPill, viewingHd && styles.hdPillActive]}
+                accessibilityLabel={viewingHd ? 'Viewing HD' : 'View HD'}
+              >
+                <Text style={[styles.hdPillText, viewingHd && styles.hdPillTextActive]}>HD</Text>
+              </Pressable>
+            )}
+          </View>
           <Pressable onPress={() => { Haptics.selectionAsync(); setMenuVisible(true); }} style={styles.topBtn} accessibilityLabel="More options">
             <MoreHorizontal size={18} color="#fff" strokeWidth={1.8} />
           </Pressable>
@@ -505,10 +520,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  topCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   counter: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.6)',
     fontWeight: '600',
+  },
+  hdPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  hdPillActive: {
+    backgroundColor: '#d9a441',
+    borderColor: '#d9a441',
+  },
+  hdPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 0.5,
+  },
+  hdPillTextActive: {
+    color: '#000',
   },
 
   photo: { width: '100%', height: '100%' },
