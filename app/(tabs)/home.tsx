@@ -471,18 +471,26 @@ export default function HomeScreen() {
         </SafeAreaView>
       );
     }
-    // No trip — welcoming empty state
+    // No trip — welcoming empty state with settings access
     return (
       <SafeAreaView style={styles.fullCenter}>
-        <EmptyState
-          icon={Compass}
-          title="Your next adventure starts here"
-          subtitle="Create a trip to unlock your dashboard — add flights, budget, places, and more."
-          actionLabel="Get Started"
-          onAction={() => router.push('/onboarding')}
-          secondaryLabel="Join a friend's trip"
-          onSecondary={() => router.push('/onboarding')}
+        <ProfileRow
+          userName={userName}
+          avatarUrl={userAvatar}
+          notificationCount={0}
+          onBellPress={() => {}}
         />
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <EmptyState
+            icon={Compass}
+            title="Your next adventure starts here"
+            subtitle="Create a trip to unlock your dashboard — add flights, budget, places, and more."
+            actionLabel="Get Started"
+            onAction={() => router.push('/onboarding')}
+            secondaryLabel="Join a friend's trip"
+            onSecondary={() => router.push('/onboarding')}
+          />
+        </View>
       </SafeAreaView>
     );
   }
