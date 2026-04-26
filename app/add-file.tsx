@@ -3,6 +3,7 @@ import { documentDirectory, copyAsync, makeDirectoryAsync, getInfoAsync } from '
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { Check } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -200,7 +201,7 @@ export default function AddFileScreen() {
           ]}
         >
           <View style={[styles.checkbox, printRequired && styles.checkboxActive]}>
-            {printRequired && <Text style={styles.checkmark}>✓</Text>}
+            {printRequired && <Check size={14} color="#fff" strokeWidth={3} />}
           </View>
           <Text style={styles.toggleLabel}>Print required</Text>
         </Pressable>

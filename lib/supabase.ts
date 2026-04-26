@@ -373,6 +373,17 @@ export function clearTripCache() {
   cachedTrip = undefined
 }
 
+/** Fetch a single trip by ID (works for any status including Completed). */
+export async function getTripById(tripId: string): Promise<Trip | null> {
+  const { data, error } = await supabase
+    .from(T.trips)
+    .select('*')
+    .eq('id', tripId)
+    .single()
+  if (error || !data) return null
+  return mapTrip(data as Record<string, unknown>)
+}
+
 // ---------- CREATE TRIP ----------
 
 export async function createTrip(input: {
@@ -391,18 +402,17 @@ export async function createTrip(input: {
   costCurrency?: string;
   transport?: string;
 }): Promise<string> {
-  // Get authenticated user ID for trip ownership
+  // Get authenticated user ID for trip ownership — required by RLS
   const { data: authData } = await supabase.auth.getUser();
   const userId = authData?.user?.id;
+  if (!userId) throw new Error('createTrip: not authenticated')
 
   // Archive only THIS user's active trips (not everyone's)
-  if (userId) {
-    await supabase
-      .from(T.trips)
-      .update({ status: 'Completed' })
-      .in('status', ['Planning', 'Active'])
-      .eq('user_id', userId)
-  }
+  await supabase
+    .from(T.trips)
+    .update({ status: 'Completed' })
+    .in('status', ['Planning', 'Active'])
+    .eq('user_id', userId)
 
   // Auto-detect status from dates
   const now = new Date();
@@ -418,7 +428,7 @@ export async function createTrip(input: {
       start_date: input.startDate,
       end_date: input.endDate,
       status,
-      ...(userId ? { user_id: userId } : {}),
+      user_id: userId,
       ...(input.accommodation ? { accommodation_name: input.accommodation } : {}),
       ...(input.address ? { accommodation_address: input.address } : {}),
       ...(input.checkIn ? { check_in: input.checkIn } : {}),
@@ -445,7 +455,7 @@ export async function createTrip(input: {
     trip_id: tripId,
     name: userName,
     role: 'Primary',
-    ...(userId ? { user_id: userId } : {}),
+    user_id: userId,
   }).then(() => {}) // don't block on failure
 
   // Add additional members if provided

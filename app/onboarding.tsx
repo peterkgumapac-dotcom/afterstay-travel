@@ -18,8 +18,9 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
-  ArrowRight, Camera, CheckCircle, ChevronLeft, FileText,
-  Hotel, MapPin, Plane, Users, Wifi,
+  ArrowRight, Bus, Camera, Car, CheckCircle, ChevronLeft, CircleHelp,
+  FileText, Flame, Hotel, Landmark, Leaf, MapPin, Moon, Music,
+  Plane, Ship, UtensilsCrossed, Users, Waves, Wifi,
 } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -206,21 +207,21 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
   const [when, setWhen] = useState('');
   const [travelers, setTravelers] = useState(2);
 
-  const TRANSPORT = [
-    { id: 'plane', label: 'Flying', icon: '✈️', sub: 'Taking a flight' },
-    { id: 'car', label: 'Driving', icon: '🚗', sub: 'Road trip or rental' },
-    { id: 'bus', label: 'Bus / Coach', icon: '🚌', sub: 'Bus or coach' },
-    { id: 'ferry', label: 'Ferry / Boat', icon: '⛴️', sub: 'By sea' },
-    { id: '', label: 'Not sure yet', icon: '🤷', sub: 'I\'ll figure it out later' },
+  const TRANSPORT: { id: string; label: string; Icon: typeof Plane; sub: string }[] = [
+    { id: 'plane', label: 'Flying', Icon: Plane, sub: 'Taking a flight' },
+    { id: 'car', label: 'Driving', Icon: Car, sub: 'Road trip or rental' },
+    { id: 'bus', label: 'Bus / Coach', Icon: Bus, sub: 'Bus or coach' },
+    { id: 'ferry', label: 'Ferry / Boat', Icon: Ship, sub: 'By sea' },
+    { id: '', label: 'Not sure yet', Icon: CircleHelp, sub: 'I\'ll figure it out later' },
   ];
 
-  const VIBES = [
-    { id: 'beach', label: 'Beach & water', icon: '🌊' },
-    { id: 'food', label: 'Food-first', icon: '🍜' },
-    { id: 'culture', label: 'Culture & arts', icon: '🏛' },
-    { id: 'nature', label: 'Nature & hikes', icon: '🌿' },
-    { id: 'chill', label: 'Slow & restful', icon: '🕯' },
-    { id: 'party', label: 'Nightlife', icon: '🎶' },
+  const VIBES: { id: string; label: string; Icon: typeof Plane }[] = [
+    { id: 'beach', label: 'Beach & water', Icon: Waves },
+    { id: 'food', label: 'Food-first', Icon: UtensilsCrossed },
+    { id: 'culture', label: 'Culture & arts', Icon: Landmark },
+    { id: 'nature', label: 'Nature & hikes', Icon: Leaf },
+    { id: 'chill', label: 'Slow & restful', Icon: Flame },
+    { id: 'party', label: 'Nightlife', Icon: Music },
   ];
   const WHEN = ['This month', 'Next month', 'In 2–3 months', 'Later this year', 'Flexible'];
   const DESTS = ['Boracay', 'Tokyo', 'Bali', 'Lisbon', 'Hoi An'];
@@ -268,7 +269,7 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
                   onPress={() => setVibes(vs => vs.includes(v.id) ? vs.filter(x => x !== v.id) : [...vs, v.id])}
                   style={[shared.vibeCard, { backgroundColor: on ? colors.accentBg : colors.card, borderColor: on ? colors.accent : colors.border }]}
                 >
-                  <Text style={shared.vibeEmoji}>{v.icon}</Text>
+                  <v.Icon size={22} color={on ? colors.accent : colors.text2} strokeWidth={1.8} />
                   <Text style={[shared.vibeLabel, { color: on ? colors.accent : colors.text }]}>{v.label}</Text>
                 </TouchableOpacity>
               );
@@ -298,7 +299,7 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
                 onPress={() => setTransport(t.id)}
                 style={[shared.optionBtn, { backgroundColor: on ? colors.accentBg : colors.card, borderColor: on ? colors.accent : colors.border, flexDirection: 'row', gap: 12 }]}
               >
-                <Text style={{ fontSize: 20 }}>{t.icon}</Text>
+                <t.Icon size={20} color={on ? colors.accent : colors.text2} strokeWidth={1.8} />
                 <View style={{ flex: 1 }}>
                   <Text style={[shared.optionText, { color: on ? colors.accent : colors.text }]}>{t.label}</Text>
                   <Text style={{ fontSize: 12, color: colors.text3, marginTop: 1 }}>{t.sub}</Text>
@@ -652,7 +653,7 @@ function InvitedFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (
             </TouchableOpacity>
           ))}
         </View>
-        <Input value={flightNum} onChange={setFlightNum} placeholder="5J 891" prefix="✈" colors={colors} />
+        <Input value={flightNum} onChange={setFlightNum} placeholder="5J 891" prefix="#" colors={colors} />
 
         <FieldLabel label="Checked baggage" colors={colors} />
         <View style={shared.bagRow}>
