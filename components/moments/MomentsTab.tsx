@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Film as FilmIcon } from 'lucide-react-native';
+import { Film as FilmIcon, Star, Trash2, X as XIcon } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/constants/ThemeContext';
@@ -539,17 +539,17 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
               {selectMode && (
                 <View style={[s.selBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Pressable onPress={() => setSelectedIds(new Set())} style={[s.selBarClose, { backgroundColor: colors.card2 }]}>
-                    <Text style={{ color: colors.text2, fontSize: 16 }}>×</Text>
+                    <XIcon size={14} color={colors.text2} strokeWidth={2} />
                   </Pressable>
                   <View style={{ flex: 1 }}>
                     <Text style={[s.selBarCount, { color: colors.text }]}>{selectedIds.size} selected</Text>
                     <Text style={[s.selBarSub, { color: colors.text3 }]}>Promote · Album · Save · Delete</Text>
                   </View>
                   <Pressable onPress={handleBatchFavorite} style={[s.selBarAct, { borderColor: colors.border }]}>
-                    <Text style={{ color: colors.text2, fontSize: 12 }}>★</Text>
+                    <Star size={16} color={colors.accent} strokeWidth={2} />
                   </Pressable>
                   <Pressable onPress={handleDeleteSelected} style={[s.selBarAct, { borderColor: colors.border }]}>
-                    <Text style={{ color: colors.text2, fontSize: 12 }}>🗑</Text>
+                    <Trash2 size={16} color={colors.danger} strokeWidth={2} />
                   </Pressable>
                   <Pressable onPress={handlePromoteToGroup} style={[s.selBarActPrimary, { backgroundColor: colors.accent }]}>
                     <Text style={{ color: colors.onBlack, fontSize: 12, fontWeight: '700' }}>→ Group</Text>

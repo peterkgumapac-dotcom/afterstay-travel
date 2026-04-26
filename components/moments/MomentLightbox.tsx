@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { ArrowUpRight, Bookmark, ChevronLeft, Download, Edit3, Eye, EyeOff, Film, Heart, Lock, MapPin, MoreHorizontal, Share2, Star, Trash2, X } from 'lucide-react-native';
+import { ArrowUpRight, Bookmark, ChevronLeft, Download, Edit3, Eye, EyeOff, Film, Heart, MapPin, MoreHorizontal, Share2, Trash2 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -219,7 +219,7 @@ export function MomentLightbox({
           <Pressable onPress={onClose} style={styles.topBtn} accessibilityLabel="Close">
             <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
           </Pressable>
-          <Text style={styles.counter}>{currentIdx + 1} of {moments.length}</Text>
+          <Text style={styles.counter}>{moments.length > 0 ? `${currentIdx + 1} of ${moments.length}` : ''}</Text>
           <Pressable onPress={() => { Haptics.selectionAsync(); setMenuVisible(true); }} style={styles.topBtn} accessibilityLabel="More options">
             <MoreHorizontal size={18} color="#fff" strokeWidth={1.8} />
           </Pressable>
@@ -247,15 +247,6 @@ export function MomentLightbox({
             scrollEnabled
             style={{ flex: 1 }}
           />
-          {/* Star (favorite) button overlaid on photo top-right */}
-          {onFavorite && (
-            <Pressable
-              onPress={() => { Haptics.selectionAsync(); onFavorite(current.id); }}
-              style={styles.starBtn}
-            >
-              <Star size={18} color={current.isFavorited ? '#d9a441' : 'rgba(255,255,255,0.5)'} fill={current.isFavorited ? '#d9a441' : 'transparent'} strokeWidth={2} />
-            </Pressable>
-          )}
           {onCurate && <GlowOverlay glowStyle={glowStyle} />}
         </Animated.View>
 
@@ -496,7 +487,7 @@ const styles = StyleSheet.create({
   },
 
   photo: { width: '100%', height: '100%' },
-  starBtn: {
+  _unused_starBtn: {
     position: 'absolute',
     top: 16,
     right: 18,
