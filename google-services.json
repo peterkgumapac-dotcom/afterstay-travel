@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "704335704962",
+    "project_id": "afterstay-travel",
+    "storage_bucket": "afterstay-travel.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:704335704962:android:2b8f8cdbf0177d8f0dd59b",
+        "android_client_info": {
+          "package_name": "com.afterstay.travel"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAlm8j6hiXvmzq-yrHiolUKxhAOrugo7zw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

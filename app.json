@@ -31,7 +31,8 @@
         "backgroundImage": "./assets/icon/afterstay-adaptive-background.png",
         "monochromeImage": "./assets/icon/afterstay-monochrome.png"
       },
-      "package": "com.afterstay.travel"
+      "package": "com.afterstay.travel",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
