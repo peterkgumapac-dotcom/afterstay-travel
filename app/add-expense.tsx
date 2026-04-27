@@ -24,6 +24,7 @@ import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { getPlaceLocation, placeAutocomplete } from '@/lib/google-places';
 import { addExpense, getGroupMembers, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
+import { addQuickTripExpense } from '@/lib/quickTrips';
 import { useAuth } from '@/lib/auth';
 import type { Expense } from '@/lib/types';
 
@@ -55,6 +56,8 @@ export default function AddExpenseScreen() {
   const { user } = useAuth();
   const params = useLocalSearchParams<{
     editId?: string;
+    target?: 'trip' | 'quick-trip' | 'standalone';
+    quickTripId?: string;
     description?: string;
     amount?: string;
     currency?: string;
@@ -178,6 +181,17 @@ export default function AddExpenseScreen() {
       };
       if (isEditing) {
         await updateExpense(params.editId!, expenseData);
+      } else if (params.target === 'quick-trip' && params.quickTripId) {
+        await addQuickTripExpense({
+          quickTripId: params.quickTripId,
+          amount: n,
+          currency,
+          description: description.trim(),
+          occurredAt: expenseDate,
+          receiptPhotoUrl: photoUri || undefined,
+        });
+      } else if (params.target === 'standalone') {
+        await addExpense({ ...expenseData, standalone: true });
       } else {
         await addExpense(expenseData);
         // Notify group members about new expense (best-effort, non-blocking)
@@ -250,7 +264,7 @@ export default function AddExpenseScreen() {
           </ScrollView>
         </View>
 
-        {members.length > 0 ? (
+        {members.length > 0 && params.target !== 'standalone' && params.target !== 'quick-trip' ? (
           <Select
             label="Paid by"
             options={members}
@@ -299,12 +313,14 @@ export default function AddExpenseScreen() {
           )}
         </View>
 
-        <Select<NonNullable<Expense['splitType']>>
-          label="Split Type"
-          options={SPLIT_TYPES}
-          value={splitType}
-          onChange={setSplitType}
-        />
+        {params.target !== 'standalone' && params.target !== 'quick-trip' && (
+          <Select<NonNullable<Expense['splitType']>>
+            label="Split Type"
+            options={SPLIT_TYPES}
+            value={splitType}
+            onChange={setSplitType}
+          />
+        )}
 
         <View>
           <Text style={[styles.sectionLabel, { color: colors.text3 }]}>NOTES</Text>

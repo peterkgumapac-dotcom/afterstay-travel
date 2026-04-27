@@ -50,9 +50,13 @@ import {
   updateTripBudgetMode,
 } from '@/lib/supabase';
 import type { PaymentQr } from '@/lib/supabase';
+import { getUnifiedExpenseHistory } from '@/lib/expenseHistory';
+import { getQuickTrips } from '@/lib/quickTrips';
+import type { QuickTrip } from '@/lib/quickTripTypes';
+import ExpenseTargetSheet from '@/components/budget/ExpenseTargetSheet';
 import { useAuth } from '@/lib/auth';
 import { formatCurrency, formatDatePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
-import type { Expense, GroupMember, Trip } from '@/lib/types';
+import type { Expense, ExpenseTarget, GroupMember, Trip, UnifiedExpenseHistoryItem } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type BudgetState = 'cruising' | 'low' | 'over';
@@ -258,20 +262,125 @@ export default function BudgetScreen() {
   const displayExpenses = showAllExpenses ? filteredExpenses : filteredExpenses.slice(0, 5);
   const maxDaySpend = Math.max(...spendingByDay.map(d => d[1]), 1);
 
+  // History expenses for users without active trip (unified: trip + standalone + quick-trip)
+  const [historyExpenses, setHistoryExpenses] = useState<UnifiedExpenseHistoryItem[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [quickTrips, setQuickTrips] = useState<QuickTrip[]>([]);
+  const [targetSheetVisible, setTargetSheetVisible] = useState(false);
+
+  useEffect(() => {
+    if (!trip && !historyLoaded) {
+      Promise.all([
+        getUnifiedExpenseHistory(30).catch(() => [] as UnifiedExpenseHistoryItem[]),
+        getQuickTrips().catch(() => [] as QuickTrip[]),
+      ]).then(([exps, qts]) => {
+        setHistoryExpenses(exps);
+        setQuickTrips(qts);
+        setHistoryLoaded(true);
+      });
+    }
+  }, [trip, historyLoaded]);
+
+  const historyTotal = useMemo(
+    () => historyExpenses.reduce((sum, e) => sum + e.amount, 0),
+    [historyExpenses],
+  );
+
+  const handleSelectTarget = (target: ExpenseTarget) => {
+    setTargetSheetVisible(false);
+    switch (target.type) {
+      case 'trip':
+        router.push('/add-expense' as never);
+        break;
+      case 'quick-trip':
+        if (target.quickTripId === '__new__') {
+          router.push('/quick-trip-create?returnTo=add-expense' as never);
+        } else {
+          router.push(`/add-expense?target=quick-trip&quickTripId=${target.quickTripId}` as never);
+        }
+        break;
+      case 'standalone':
+        router.push('/add-expense?target=standalone' as never);
+        break;
+    }
+  };
+
   if (!trip) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>Budget</Text>
+            <Text style={styles.subtitle}>Spending history</Text>
           </View>
+          <TouchableOpacity
+            style={styles.addExpBtn}
+            onPress={() => setTargetSheetVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.addExpBtnText}>+ Add Expense</Text>
+          </TouchableOpacity>
         </View>
-        <EmptyState
-          icon={Wallet}
-          title="No trip yet"
-          subtitle="Create a trip to start tracking expenses, set budgets, and split costs with your group."
-          actionLabel="Get Started"
-          onAction={() => router.push('/onboarding' as never)}
+
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* Total summary */}
+          {historyExpenses.length > 0 && (
+            <View style={styles.historyTotal}>
+              <Text style={styles.historyTotalAmount}>
+                {formatCurrency(historyTotal, 'PHP')}
+              </Text>
+              <Text style={styles.historyTotalLabel}>
+                total across all trips &amp; expenses
+              </Text>
+            </View>
+          )}
+
+          {/* Recent purchases */}
+          {historyExpenses.length > 0 ? (
+            <View style={styles.historyList}>
+              <Text style={styles.historyLabel}>RECENT PURCHASES</Text>
+              {historyExpenses.map((e) => {
+                const badge =
+                  e.source === 'standalone'
+                    ? 'Personal'
+                    : e.sourceLabel ?? (e.source === 'quick-trip' ? 'Quick Trip' : 'Trip');
+                return (
+                  <View key={e.id} style={styles.historyRow}>
+                    <View style={styles.historyInfo}>
+                      <Text style={styles.historyDesc} numberOfLines={1}>{e.description || 'Expense'}</Text>
+                      <Text style={styles.historyMeta}>
+                        {formatDatePHT(e.date)} {'\u00B7'} {badge}
+                      </Text>
+                    </View>
+                    <Text style={styles.historyAmount}>{formatCurrency(e.amount, e.currency)}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.historyEmpty}>
+              <Wallet size={32} color={colors.text3} strokeWidth={1.5} />
+              <Text style={styles.historyEmptyTitle}>No expenses yet</Text>
+              <Text style={styles.historyEmptySub}>Add expenses to any trip or start a new one</Text>
+              <TouchableOpacity
+                style={styles.historyCtaBtn}
+                onPress={() => router.push('/onboarding' as never)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.historyCtaText}>Plan a Trip</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={{ height: 100 }} />
+        </ScrollView>
+
+        <ExpenseTargetSheet
+          visible={targetSheetVisible}
+          onClose={() => setTargetSheetVisible(false)}
+          hasActiveTrip={false}
+          quickTrips={quickTrips}
+          onSelectTarget={handleSelectTarget}
         />
       </SafeAreaView>
     );
@@ -888,4 +997,28 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   modalInput: { backgroundColor: c.bg, borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, color: c.text, fontSize: 18, letterSpacing: -0.3, paddingHorizontal: 14, paddingVertical: 12 },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16, marginTop: 16 },
   modalBtn: { fontSize: 14, fontWeight: '600' },
+
+  // History (no active trip)
+  addExpBtn: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: c.accent, borderRadius: 12 },
+  addExpBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  historyTotal: { alignItems: 'center', paddingVertical: 24, marginHorizontal: 16, marginBottom: 8 },
+  historyTotalAmount: { fontSize: 32, fontWeight: '700', color: c.text, letterSpacing: -0.8 },
+  historyTotalLabel: { fontSize: 12, color: c.text3, marginTop: 4 },
+  historyList: { paddingHorizontal: 16 },
+  historyLabel: { fontSize: 10, fontWeight: '700', color: c.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 10 },
+  historyRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 14, paddingHorizontal: 14,
+    backgroundColor: c.card, borderRadius: 14, borderWidth: 1, borderColor: c.border,
+    marginBottom: 6,
+  },
+  historyInfo: { flex: 1, marginRight: 12 },
+  historyDesc: { fontSize: 14, fontWeight: '600', color: c.text },
+  historyMeta: { fontSize: 11, color: c.text3, marginTop: 2 },
+  historyAmount: { fontSize: 15, fontWeight: '700', color: c.text },
+  historyEmpty: { alignItems: 'center', paddingVertical: 60, gap: 8 },
+  historyEmptyTitle: { fontSize: 16, fontWeight: '700', color: c.text },
+  historyEmptySub: { fontSize: 13, color: c.text3, textAlign: 'center' },
+  historyCtaBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, backgroundColor: c.accent, marginTop: 12 },
+  historyCtaText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 });

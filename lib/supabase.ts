@@ -40,6 +40,7 @@ import type {
   TripMemoryStatus,
   TripMemoryVibe,
   TripStatus,
+  UserSegment,
   UserTier,
 } from './types'
 
@@ -84,6 +85,31 @@ function num(v: unknown): number | undefined {
 
 function numRequired(v: unknown, fallback = 0): number {
   return num(v) ?? fallback
+}
+
+/**
+ * Read a local file URI as a Uint8Array for Supabase Storage upload.
+ * Uses fetch→arrayBuffer (memory-efficient, no base64 intermediate) with
+ * a FileSystem base64 fallback for content:// URIs on Android.
+ */
+async function readFileAsBytes(uri: string): Promise<Uint8Array> {
+  // file:// URIs work with fetch natively in React Native
+  if (uri.startsWith('file://') || uri.startsWith('/')) {
+    const fetchUri = uri.startsWith('/') ? `file://${uri}` : uri
+    const response = await fetch(fetchUri)
+    const buffer = await response.arrayBuffer()
+    return new Uint8Array(buffer)
+  }
+  // content:// URIs (Android picker) — must use FileSystem
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  })
+  const binaryStr = atob(base64)
+  const bytes = new Uint8Array(binaryStr.length)
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i)
+  }
+  return bytes
 }
 
 /** Android-safe date parser: date-only strings get PHT suffix to avoid UTC shift. */
@@ -255,8 +281,11 @@ function mapExpense(row: Record<string, unknown>): Expense {
     paidBy: (row.paid_by as string) ?? undefined,
     photo: (row.photo_url as string) ?? undefined,
     placeName: (row.place_name as string) ?? undefined,
+    placeLatitude: num(row.place_latitude),
+    placeLongitude: num(row.place_longitude),
     splitType: (row.split_type as Expense['splitType']) ?? undefined,
     notes: (row.notes as string) ?? undefined,
+    userId: (row.user_id as string) ?? undefined,
   }
 }
 
@@ -293,9 +322,30 @@ function mapChecklist(row: Record<string, unknown>): ChecklistItem {
   }
 }
 
+/** Resolve a moment photo string to a full public URL.
+ *  Handles: full HTTP URLs, bare storage paths, and HEIC → render conversion. */
+export function resolvePhotoUrl(photo: string | undefined): string | undefined {
+  if (!photo) return undefined;
+  let url = photo;
+  // If it's a bare storage path (not a full URL), prepend the Supabase storage base
+  if (!url.startsWith('http')) {
+    if (!SUPABASE_URL) return undefined;
+    url = `${SUPABASE_URL}/storage/v1/object/public/moments/${url}`;
+  }
+  // HEIC → render endpoint for Android compatibility
+  if (url.match(/\.heic$/i)) {
+    return url.replace('/object/public/', '/render/image/public/') + '?format=origin';
+  }
+  return url;
+}
+
 function momentPhotoUrl(row: Record<string, unknown>): string | undefined {
   let url = row.public_url as string | undefined
-  // Fallback: reconstruct from storage_path if public_url wasn't saved
+  // Detect truncated public_url (ends with "/" or "/trips/" instead of a filename)
+  if (url && (url.endsWith('/') || !url.match(/\.\w{2,5}$/))) {
+    url = undefined // force fallback to storage_path
+  }
+  // Fallback: reconstruct from storage_path if public_url wasn't saved or was truncated
   if (!url) {
     const storagePath = row.storage_path as string | undefined
     if (storagePath && SUPABASE_URL) {
@@ -367,6 +417,49 @@ export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> 
   cachedTripId = trip.id
   cachedTrip = trip
   return trip
+}
+
+/** Fetch recent expenses across all user's trips (budget history without active trip). */
+export async function getAllUserExpenses(limit = 20): Promise<(Expense & { tripName?: string })[]> {
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+  if (!userId) return []
+
+  const allTrips = await getAllUserTrips(userId)
+  if (allTrips.length === 0) return []
+
+  const tripIds = allTrips.map((t) => t.id)
+  const tripNameMap = new Map(allTrips.map((t) => [t.id, t.destination ?? t.name]))
+
+  const { data: exps } = await supabase
+    .from(T.expenses)
+    .select('*')
+    .in('trip_id', tripIds)
+    .order('expense_date', { ascending: false })
+    .limit(limit)
+
+  if (!exps) return []
+  return exps.map((r) => ({
+    ...mapExpense(r as Record<string, unknown>),
+    tripName: tripNameMap.get(r.trip_id as string),
+  }))
+}
+
+export async function getStandaloneExpenses(limit = 30): Promise<Expense[]> {
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+  if (!userId) return []
+
+  const { data } = await supabase
+    .from(T.expenses)
+    .select('*')
+    .is('trip_id', null)
+    .eq('user_id', userId)
+    .order('expense_date', { ascending: false })
+    .limit(limit)
+
+  if (!data) return []
+  return data.map((r) => mapExpense(r as Record<string, unknown>))
 }
 
 export function clearTripCache() {
@@ -783,14 +876,7 @@ export async function addPaymentQr(
   const rand = Math.random().toString(36).slice(2, 6)
   const storagePath = `payment-qr/${tripId}/${label.toLowerCase().replace(/\s+/g, '-')}-${rand}.${ext}`
 
-  const base64 = await FileSystem.readAsStringAsync(localUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  })
-  const binaryStr = atob(base64)
-  const bytes = new Uint8Array(binaryStr.length)
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i)
-  }
+  const bytes = await readFileAsBytes(localUri)
 
   const { error: uploadError } = await supabase.storage
     .from('moments')
@@ -997,11 +1083,18 @@ export async function getExpenses(tripId?: string): Promise<Expense[]> {
 }
 
 export async function addExpense(
-  input: Omit<Expense, 'id'> & { tripId?: string }
+  input: Omit<Expense, 'id'> & { tripId?: string; standalone?: boolean }
 ): Promise<void> {
-  const id = await resolveTripId(input.tripId)
+  let tripId: string | null = null
+  if (!input.standalone) {
+    tripId = await resolveTripId(input.tripId)
+  }
+
+  const { data: authData } = await supabase.auth.getUser()
+
   const { error } = await supabase.from(T.expenses).insert({
-    trip_id: id,
+    ...(tripId ? { trip_id: tripId } : {}),
+    ...(input.standalone ? { user_id: authData?.user?.id } : {}),
     title: input.description,
     amount: input.amount,
     currency: input.currency,
@@ -1010,6 +1103,8 @@ export async function addExpense(
     ...(input.paidBy ? { paid_by: input.paidBy } : {}),
     ...(input.photo ? { photo_url: input.photo } : {}),
     ...(input.placeName ? { place_name: input.placeName } : {}),
+    ...(input.placeLatitude != null ? { place_latitude: input.placeLatitude } : {}),
+    ...(input.placeLongitude != null ? { place_longitude: input.placeLongitude } : {}),
     ...(input.splitType ? { split_type: input.splitType } : {}),
     ...(input.notes ? { notes: input.notes } : {}),
   })
@@ -1029,6 +1124,8 @@ export async function updateExpense(
   if (input.paidBy != null) updates.paid_by = input.paidBy
   if (input.photo != null) updates.photo_url = input.photo
   if (input.placeName != null) updates.place_name = input.placeName
+  if (input.placeLatitude != null) updates.place_latitude = input.placeLatitude
+  if (input.placeLongitude != null) updates.place_longitude = input.placeLongitude
   if (input.splitType != null) updates.split_type = input.splitType
   if (input.notes != null) updates.notes = input.notes
 
@@ -1423,7 +1520,7 @@ async function insertNotification(opts: {
       return // User has suppressed this notification category/phase/trip
     }
 
-    await supabase.from('notifications').insert({
+    const { error: insertErr } = await supabase.from('notifications').insert({
       user_id: opts.userId,
       trip_id: opts.tripId,
       type: opts.type,
@@ -1432,8 +1529,15 @@ async function insertNotification(opts: {
       data: { ...opts.data, type: opts.type },
       read: false,
     })
-  } catch {
-    // Silently ignore — notifications are best-effort
+    if (insertErr && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[insertNotification] failed:', insertErr.message)
+    }
+  } catch (err) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[insertNotification] error:', err)
+    }
   }
 }
 
@@ -1639,16 +1743,9 @@ export async function addMoment(
     const friendlyName = buildMomentFilename(input, ext)
     const contentType = guessMimeType(friendlyName)
 
-    // Helper: compress → read base64 → upload
+    // Helper: compress → read bytes → upload
     const uploadFile = async (uri: string, path: string) => {
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      })
-      const binaryStr = atob(base64)
-      const bytes = new Uint8Array(binaryStr.length)
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i)
-      }
+      const bytes = await readFileAsBytes(uri)
       const { error: uploadError } = await supabase.storage
         .from('moments')
         .upload(path, bytes, { contentType, upsert: false })
@@ -2193,6 +2290,11 @@ export interface Profile {
   handle?: string;
   socials?: ProfileSocials;
   tier: UserTier;
+  tripCount: number;
+  completedTripCount: number;
+  lastTripId?: string;
+  onboardedAt?: string;
+  userSegment: UserSegment;
 }
 
 export async function getProfile(userId: string): Promise<Profile | null> {
@@ -2210,6 +2312,11 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     handle: data.handle ?? undefined,
     socials: (data.socials as ProfileSocials) ?? undefined,
     tier: (data.tier as UserTier) ?? 'free',
+    tripCount: (data.trip_count as number) ?? 0,
+    completedTripCount: (data.completed_trip_count as number) ?? 0,
+    lastTripId: (data.last_trip_id as string) ?? undefined,
+    onboardedAt: (data.onboarded_at as string) ?? undefined,
+    userSegment: (data.user_segment as UserSegment) ?? 'new',
   }
 }
 
@@ -2217,13 +2324,15 @@ export async function updateProfile(
   userId: string,
   updates: Partial<Omit<Profile, 'id'>>
 ): Promise<void> {
-  const row: Record<string, unknown> = {}
+  const row: Record<string, unknown> = { id: userId }
+  // Always include fields that are passed — even empty strings — so they persist
   if (updates.fullName !== undefined) row.full_name = updates.fullName
-  if (updates.avatarUrl !== undefined) row.avatar_url = updates.avatarUrl
-  if (updates.phone !== undefined) row.phone = updates.phone
-  if (updates.handle !== undefined) row.handle = updates.handle
+  if (updates.avatarUrl !== undefined) row.avatar_url = updates.avatarUrl || null
+  if (updates.phone !== undefined) row.phone = updates.phone || null
+  if (updates.handle !== undefined) row.handle = updates.handle || null
   if (updates.socials !== undefined) row.socials = updates.socials
-  const { error } = await supabase.from('profiles').update(row).eq('id', userId)
+  if (updates.onboardedAt !== undefined) row.onboarded_at = updates.onboardedAt
+  const { error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' })
   if (error) throw new Error(`updateProfile: ${error.message}`)
 }
 
@@ -2243,15 +2352,14 @@ export async function uploadProfilePhoto(userId: string, localUri: string): Prom
   const filename = localUri.split('/').pop() ?? 'avatar.jpg'
   const storagePath = `profiles/${userId}-${timestamp}-${filename}`
 
-  const response = await fetch(compressed)
-  const blob = await response.blob()
+  const bytes = await readFileAsBytes(compressed)
   const contentType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg'
 
   const buckets = ['avatars', 'moments'] as const
   for (const bucket of buckets) {
     const { error: uploadError } = await supabase.storage
       .from(bucket)
-      .upload(storagePath, blob, { contentType, upsert: true })
+      .upload(storagePath, bytes, { contentType, upsert: true })
 
     if (!uploadError) {
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath)
@@ -2315,14 +2423,39 @@ export async function getHighlights(userId: string): Promise<Highlight[]> {
 }
 
 export async function getPastTrips(userId: string): Promise<Trip[]> {
-  const { data } = await supabase
+  let uid = userId
+  if (!uid) {
+    const { data: authData } = await supabase.auth.getUser()
+    uid = authData?.user?.id ?? ''
+  }
+  if (!uid) return []
+
+  // Owned trips
+  const { data: owned } = await supabase
     .from(T.trips)
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', uid)
     .or('is_past_import.eq.true,status.eq.Completed')
     .order('start_date', { ascending: false })
-  if (!data) return []
-  return data.map(mapTrip)
+
+  // Member trips (covers legacy NULL user_id)
+  const { data: memberTrips } = await supabase
+    .from(T.trips)
+    .select('*, group_members!inner(user_id)')
+    .eq('group_members.user_id', uid)
+    .or('is_past_import.eq.true,status.eq.Completed')
+    .order('start_date', { ascending: false })
+
+  const allRows = [...(owned ?? []), ...(memberTrips ?? [])]
+  const seen = new Set<string>()
+  const data = allRows.filter((r) => {
+    const id = r.id as string
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+  if (!data.length) return []
+  return data.map((r) => mapTrip(r as Record<string, unknown>))
 }
 
 export async function getAllUserTrips(userId?: string): Promise<Trip[]> {
@@ -2332,35 +2465,76 @@ export async function getAllUserTrips(userId?: string): Promise<Trip[]> {
     uid = authData?.user?.id
   }
   if (!uid) return []
-  const { data } = await supabase
+
+  // Fetch trips owned by user OR where user is a trip member (covers legacy NULL user_id trips)
+  const { data: ownedTrips } = await supabase
     .from(T.trips)
     .select('*')
     .eq('user_id', uid)
     .order('start_date', { ascending: false })
-  if (!data) return []
-  return data.map(mapTrip)
+
+  const { data: memberTrips } = await supabase
+    .from(T.trips)
+    .select('*, group_members!inner(user_id)')
+    .eq('group_members.user_id', uid)
+    .order('start_date', { ascending: false })
+
+  // Merge and deduplicate by id
+  const allRows = [...(ownedTrips ?? []), ...(memberTrips ?? [])]
+  const seen = new Set<string>()
+  const unique = allRows.filter((r) => {
+    const id = r.id as string
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+
+  return unique.map((r) => mapTrip(r as Record<string, unknown>))
 }
 
 // ---------- TRIP LIFECYCLE ----------
 
 /** Mark a trip as Completed (finish early or natural end). */
 export async function finishTrip(tripId: string): Promise<void> {
-  const { error } = await supabase
-    .from(T.trips)
-    .update({ status: 'Completed' })
-    .eq('id', tripId)
-  if (error) throw new Error(`finishTrip: ${error.message}`)
+  // Snapshot expense total and nights onto the trip row before completing
+  try {
+    const { total } = await getExpenseSummary(tripId)
+    const trip = await getTripById(tripId)
+    const nights = trip?.nights ?? 0
+    await supabase
+      .from(T.trips)
+      .update({ status: 'Completed', total_spent: total, total_nights: nights })
+      .eq('id', tripId)
+  } catch {
+    // Fallback: just mark completed without stats
+    const { error } = await supabase
+      .from(T.trips)
+      .update({ status: 'Completed' })
+      .eq('id', tripId)
+    if (error) throw new Error(`finishTrip: ${error.message}`)
+  }
   clearTripCache()
   await clearTripLocalData()
 }
 
 /** Archive/cancel a trip without generating a memory. */
 export async function archiveTrip(tripId: string): Promise<void> {
-  const { error } = await supabase
-    .from(T.trips)
-    .update({ status: 'Completed' })
-    .eq('id', tripId)
-  if (error) throw new Error(`archiveTrip: ${error.message}`)
+  // Snapshot stats before archiving (same as finishTrip)
+  try {
+    const { total } = await getExpenseSummary(tripId)
+    const trip = await getTripById(tripId)
+    const nights = trip?.nights ?? 0
+    await supabase
+      .from(T.trips)
+      .update({ status: 'Completed', total_spent: total, total_nights: nights })
+      .eq('id', tripId)
+  } catch {
+    const { error } = await supabase
+      .from(T.trips)
+      .update({ status: 'Completed' })
+      .eq('id', tripId)
+    if (error) throw new Error(`archiveTrip: ${error.message}`)
+  }
   clearTripCache()
   await clearTripLocalData()
 }
@@ -2453,4 +2627,67 @@ export async function finalizeTripMemory(memoryId: string): Promise<void> {
     .eq('id', memoryId)
     .eq('status', 'draft')
   if (error) throw new Error(`finalizeTripMemory: ${error.message}`)
+}
+
+// ── Personal Photos ──
+
+export async function addPersonalPhoto(input: {
+  userId: string;
+  localUri: string;
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  caption?: string;
+  takenAt?: string;
+  tags?: string[];
+}): Promise<string> {
+  const compressed = await compressImage(input.localUri, 1200, 0.8)
+  const timestamp = Date.now()
+  const ext = 'jpg'
+  const storagePath = `personal/${input.userId}/${timestamp}.${ext}`
+
+  const bytes = await readFileAsBytes(compressed)
+
+  const { error: uploadError } = await supabase.storage
+    .from('moments')
+    .upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: false })
+  if (uploadError) throw new Error(`addPersonalPhoto upload: ${uploadError.message}`)
+
+  const { data: urlData } = supabase.storage.from('moments').getPublicUrl(storagePath)
+  const publicUrl = urlData?.publicUrl
+
+  const { data, error } = await supabase.from('personal_photos').insert({
+    user_id: input.userId,
+    photo_url: publicUrl,
+    storage_path: storagePath,
+    location: input.location,
+    latitude: input.latitude,
+    longitude: input.longitude,
+    caption: input.caption,
+    taken_at: input.takenAt ?? new Date().toISOString().slice(0, 10),
+    tags: input.tags ?? [],
+  }).select('id').single()
+  if (error) throw new Error(`addPersonalPhoto insert: ${error.message}`)
+  return data.id as string
+}
+
+export async function getPersonalPhotos(userId: string): Promise<import('./types').PersonalPhoto[]> {
+  const { data, error } = await supabase
+    .from('personal_photos')
+    .select('*')
+    .eq('user_id', userId)
+    .order('taken_at', { ascending: false })
+  if (error) throw new Error(`getPersonalPhotos: ${error.message}`)
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    userId: row.user_id as string,
+    photoUrl: row.photo_url as string | undefined,
+    storagePath: row.storage_path as string | undefined,
+    location: row.location as string | undefined,
+    latitude: row.latitude as number | undefined,
+    longitude: row.longitude as number | undefined,
+    caption: row.caption as string | undefined,
+    takenAt: (row.taken_at as string) ?? new Date().toISOString().slice(0, 10),
+    tags: (row.tags as string[]) ?? [],
+  }))
 }

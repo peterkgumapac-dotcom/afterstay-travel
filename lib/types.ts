@@ -111,6 +111,7 @@ export interface Expense {
   placeLongitude?: number;
   splitType?: 'Equal' | 'Custom' | 'Individual';
   notes?: string;
+  userId?: string;
 }
 
 export type PlaceCategory =
@@ -122,7 +123,8 @@ export type PlaceCategory =
   | 'Nightlife'
   | 'Wellness'
   | 'Culture'
-  | 'Coffee';
+  | 'Coffee'
+  | 'Stay';
 
 export type PlaceSource = 'Suggested' | 'Manual' | 'Friend Rec';
 export type PlaceVote = '👍 Yes' | '👎 No' | 'Pending';
@@ -207,6 +209,19 @@ export interface AlbumMember {
   momentCount: number;
 }
 
+export interface PersonalPhoto {
+  id: string;
+  userId: string;
+  photoUrl?: string;
+  storagePath?: string;
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  caption?: string;
+  takenAt: string;
+  tags?: string[];
+}
+
 export interface AIRecommendation {
   name: string;
   category: PlaceCategory;
@@ -247,6 +262,7 @@ export interface Highlight {
 // ---------- Premium + Trip Memories ----------
 
 export type UserTier = 'free' | 'premium';
+export type UserSegment = 'new' | 'planning' | 'active' | 'returning';
 
 export interface TripMemoryStats {
   mostPhotographedSpot?: string;
@@ -318,4 +334,23 @@ export interface TripMemory {
   status: TripMemoryStatus;
   createdAt: string;
   savedAt?: string;
+}
+
+// ── Expense targeting (budget screen) ──────────────────────────────
+
+export type ExpenseTarget =
+  | { type: 'trip'; tripId?: string }
+  | { type: 'quick-trip'; quickTripId: string }
+  | { type: 'standalone' };
+
+export interface UnifiedExpenseHistoryItem {
+  id: string;
+  description: string;
+  amount: number;
+  currency: string;
+  category: string;
+  date: string;
+  source: 'trip' | 'quick-trip' | 'standalone';
+  sourceLabel?: string;
+  sourceId?: string;
 }

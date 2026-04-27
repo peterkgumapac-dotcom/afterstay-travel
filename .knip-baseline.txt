@@ -46,11 +46,12 @@ Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (15)
+Unused exports (16)
 components/discover/CategoryGrid.tsx: CategoryGrid
 components/discover/ExploreMap.tsx: MAP_AVAILABLE
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/discover/TrendingCard.tsx: TrendingCard
+components/discover/shared.tsx: resolveTypeLabel, resolveCategory, formatReviewCount, mapSavedToDiscoverPlace
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
@@ -70,7 +71,7 @@ lib/anthropic.ts: ItineraryDayLegacy, GeneratedMemoryContent
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
 lib/quickTripTypes.ts: QuickTripExpenseSplit
 lib/tripMemoryBuilder.ts: TripMemoryData
-lib/types.ts: WeatherDay
+lib/types.ts: WeatherDay, PersonalPhoto
 utils/fate/generateSpinPlan.ts: SpinStep, SpinPlan
 Duplicate exports (1)
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet, default
