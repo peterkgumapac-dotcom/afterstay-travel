@@ -3,8 +3,6 @@
 import { CONFIG } from './config';
 
 const API_KEY = CONFIG.GOOGLE_MAPS_KEY;
-const HOTEL_LAT = CONFIG.HOTEL_COORDS.lat;
-const HOTEL_LNG = CONFIG.HOTEL_COORDS.lng;
 
 export interface PlaceSearchResult {
   place_id: string;
@@ -140,9 +138,9 @@ export async function searchNearby(
   coords?: { lat: number; lng: number },
   radius = 1500,
 ): Promise<NearbyPlace[]> {
-  if (!API_KEY) return [];
-  const lat = coords?.lat ?? HOTEL_LAT;
-  const lng = coords?.lng ?? HOTEL_LNG;
+  if (!API_KEY || !coords) return [];
+  const lat = coords.lat;
+  const lng = coords.lng;
   const params = new URLSearchParams({
     location: `${lat},${lng}`,
     radius: String(radius),
@@ -254,9 +252,6 @@ export async function placeAutocomplete(
   if (locationBias) {
     params.append('location', `${locationBias.lat},${locationBias.lng}`);
     params.append('radius', '5000');
-  } else {
-    params.append('location', `${HOTEL_LAT},${HOTEL_LNG}`);
-    params.append('radius', '50000');
   }
   try {
     const res: Response = await fetch(

@@ -3,8 +3,7 @@
  * Extracted from discover.tsx to avoid duplication across tab components.
  */
 
-import { distanceFromHotel } from '@/lib/distance';
-import { formatDistance } from '@/lib/distance';
+import { distanceFromPoint, formatDistance } from '@/lib/distance';
 import type { NearbyPlace } from '@/lib/google-places';
 import type { Place, PlaceCategory } from '@/lib/types';
 import type { DiscoverPlace } from './DiscoverPlaceCard';
@@ -71,14 +70,22 @@ export function formatReviewCount(count: number): string {
 
 const FALLBACK_IMG = 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80';
 
-export function mapNearbyToDiscoverPlace(place: NearbyPlace): DiscoverPlace {
-  const km = distanceFromHotel(place.lat, place.lng);
+/** Map a Google Places result to a DiscoverPlace card model.
+ *  Pass `refCoords` to compute distance from a specific point (trip hotel, user location, etc.).
+ *  When omitted, distance fields default to 0. */
+export function mapNearbyToDiscoverPlace(
+  place: NearbyPlace,
+  refCoords?: { lat: number; lng: number },
+): DiscoverPlace {
+  const km = refCoords
+    ? distanceFromPoint(refCoords.lat, refCoords.lng, place.lat, place.lng)
+    : 0;
   return {
     n: place.name,
     t: resolveTypeLabel(place.types),
     r: place.rating,
     rv: formatReviewCount(place.total_ratings),
-    d: formatDistance(km),
+    d: km > 0 ? formatDistance(km) : '',
     dn: km,
     price: place.price_level ?? 0,
     openNow: place.open_now ?? false,
@@ -87,20 +94,23 @@ export function mapNearbyToDiscoverPlace(place: NearbyPlace): DiscoverPlace {
     lat: place.lat,
     lng: place.lng,
     totalRatings: place.total_ratings,
-    types: place.types,
+    types: place.types ?? [],
   };
 }
 
-export function mapSavedToDiscoverPlace(place: Place): DiscoverPlace {
-  const km = place.latitude && place.longitude
-    ? distanceFromHotel(place.latitude, place.longitude)
+export function mapSavedToDiscoverPlace(
+  place: Place,
+  refCoords?: { lat: number; lng: number },
+): DiscoverPlace {
+  const km = refCoords && place.latitude != null && place.longitude != null
+    ? distanceFromPoint(refCoords.lat, refCoords.lng, place.latitude, place.longitude)
     : 0;
   return {
     n: place.name,
     t: place.category,
     r: place.rating ?? 0,
     rv: formatReviewCount(place.totalRatings ?? 0),
-    d: formatDistance(km),
+    d: km > 0 ? formatDistance(km) : '',
     dn: km,
     price: 0,
     openNow: false,

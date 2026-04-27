@@ -33,7 +33,8 @@ import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
 import StaysTab from '@/components/discover/StaysTab';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay, type PlannerScope, type PlannerPace } from '@/lib/anthropic';
-import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
+import { distanceFromPoint, formatDistance } from '@/lib/distance';
+import { mapNearbyToDiscoverPlace, mapSavedToDiscoverPlace } from '@/components/discover/shared';
 import { MS_PER_DAY } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
 import ExploreMap from '@/components/discover/ExploreMap';
@@ -131,43 +132,6 @@ function formatReviewCount(count: number): string {
   if (count >= 1000) return `${(count / 1000).toFixed(1)}k reviews`;
   if (count === 0) return 'No reviews';
   return `${count} reviews`;
-}
-
-function mapNearbyToDiscoverPlace(place: NearbyPlace): DiscoverPlace {
-  const km = distanceFromHotel(place.lat, place.lng);
-  return {
-    n: place.name,
-    t: resolveTypeLabel(place.types),
-    r: place.rating,
-    rv: formatReviewCount(place.total_ratings),
-    d: formatDistance(km),
-    dn: km,
-    price: place.price_level ?? 0,
-    openNow: place.open_now ?? false,
-    img: place.photo_url ?? 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80',
-    placeId: place.place_id,
-    lat: place.lat,
-    lng: place.lng,
-    totalRatings: place.total_ratings,
-    types: place.types,
-  };
-}
-
-function mapSavedPlaceToDiscoverPlace(place: Place): DiscoverPlace {
-  const km = place.latitude && place.longitude
-    ? distanceFromHotel(place.latitude, place.longitude)
-    : 0;
-  return {
-    n: place.name,
-    t: place.category,
-    r: place.rating ?? 0,
-    rv: formatReviewCount(place.totalRatings ?? 0),
-    d: place.distance ?? formatDistance(km),
-    dn: km,
-    price: 0,
-    openNow: true,
-    img: place.photoUrl ?? 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80',
-  };
 }
 
 // Itinerary style ID → interests for the Anthropic API
@@ -599,12 +563,15 @@ function DiscoverScreenInner() {
 
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
-    if (!placeLat || !placeLng) return 0;
+    if (placeLat == null || placeLng == null) return 0;
     if (distanceOrigin === 'me' && userLocation) {
       return distanceFromPoint(userLocation.lat, userLocation.lng, placeLat, placeLng);
     }
-    return distanceFromHotel(placeLat, placeLng);
-  }, [distanceOrigin, userLocation]);
+    if (tripCoords) {
+      return distanceFromPoint(tripCoords.lat, tripCoords.lng, placeLat, placeLng);
+    }
+    return 0;
+  }, [distanceOrigin, userLocation, tripCoords]);
 
   // Fetch GPS when user switches to "me"
   const switchToMyLocation = useCallback(async () => {
@@ -666,8 +633,11 @@ function DiscoverScreenInner() {
           setTripStartDate(trip.startDate);
           setTripEndDate(trip.endDate);
           setTripHotel(trip.accommodation ?? '');
-          if (trip.latitude && trip.longitude) {
-            setTripCoords({ lat: trip.latitude, lng: trip.longitude });
+          // Prefer hotel coords (active trip), fall back to general lat/lng (past trip)
+          const lat = trip.hotelLat ?? trip.latitude;
+          const lng = trip.hotelLng ?? trip.longitude;
+          if (lat != null && lng != null) {
+            setTripCoords({ lat, lng });
           }
           setTripBudget(trip.budgetLimit ?? 0);
           setTripBudgetCurrency(trip.costCurrency ?? 'PHP');
@@ -738,9 +708,9 @@ function DiscoverScreenInner() {
     setPlacesLoading(true);
     setPlacesError(null);
     try {
-      const results = await searchNearby(type, keyword, tripCoords);
+      const results = await searchNearby(type, keyword, tripCoords) ?? [];
       if (results.length > 0) {
-        const mapped = results.map(mapNearbyToDiscoverPlace);
+        const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, tripCoords ?? undefined));
         placesCache.current[cacheKey] = mapped;
         setPlaces(mapped);
       } else {
@@ -1629,7 +1599,7 @@ function DiscoverScreenInner() {
                   </TouchableOpacity>
                 </View>
                 {savedPlaces.map((p) => {
-                  const dp = mapSavedPlaceToDiscoverPlace(p);
+                  const dp = mapSavedToDiscoverPlace(p, tripCoords ?? undefined);
                   return (
                     <SwipeToDelete
                       key={p.id}

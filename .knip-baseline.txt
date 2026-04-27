@@ -51,14 +51,14 @@ components/discover/CategoryGrid.tsx: CategoryGrid
 components/discover/ExploreMap.tsx: MAP_AVAILABLE
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/discover/TrendingCard.tsx: TrendingCard
-components/discover/shared.tsx: resolveTypeLabel, resolveCategory, formatReviewCount, mapSavedToDiscoverPlace
+components/discover/shared.tsx: resolveTypeLabel, resolveCategory, formatReviewCount
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
 constants/fateTheme.ts: personColors, fateTiming
 hooks/useFilmFilters.ts: getFilter
 lib/anthropic.ts: generateRecommendations
 lib/cache/mediaCache.ts: migrateMediaCache, evictCachedImage
-lib/distance.ts: haversine
+lib/distance.ts: haversine, distanceFromHotel
 lib/google-places.ts: findPlacePhoto, enrichRecommendations
 lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, shouldSendPush, getCategoryForType
 lib/quickTrips.ts: getQuickTripExpenseSummary
