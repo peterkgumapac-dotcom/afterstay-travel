@@ -188,57 +188,15 @@ const CATEGORIES: readonly CategoryItem[] = [
   { id: 'coffee', label: 'Coffee', emoji: '\u2615', color: '#a0845c' },
 ] as const;
 
-// Boracay-specific sample suggestions — TODO: make dynamic based on trip destination
+// Category suggestion labels — generic, works for any destination
 const CATEGORY_SUGGESTIONS: Record<string, readonly string[]> = {
-  beach: [
-    'Puka Shell Beach',
-    'White Beach Station 1',
-    'Diniwid cove',
-    'Ilig-Iligan',
-    'Bulabog wind beach',
-  ],
-  food: [
-    'Best local eats',
-    'Fresh seafood grills',
-    'Late-night ihaw-ihaw',
-    'Coffee & brunch',
-    'Must-try halo-halo',
-  ],
-  activity: [
-    'Island hopping',
-    'Parasailing',
-    'Snorkeling reefs',
-    'Helmet diving',
-    'Kite-surfing Bulabog',
-  ],
-  nightlife: [
-    'Beachfront sundowners',
-    'Live music bars',
-    'Fire dancers',
-    'Sky bar rooftop',
-    'Late-night clubs',
-  ],
-  photo: [
-    "Willy's Rock at sunset",
-    'Drone-friendly viewpoints',
-    'Puka sunset',
-    'Mt Luho overlook',
-    'Pastel caf\u00E9s',
-  ],
-  wellness: [
-    'Beachside massage',
-    'Yoga at sunrise',
-    'Spa day',
-    'Wellness retreats',
-    'Juice & smoothie bars',
-  ],
-  coffee: [
-    'Best espresso spots',
-    'Beachfront cafes',
-    'Pour-over & specialty',
-    'Iced coffee stops',
-    'Brunch & coffee',
-  ],
+  beach: ['Top beaches', 'Hidden coves', 'Snorkeling spots', 'Sunset views', 'Tidal pools'],
+  food: ['Best local eats', 'Seafood restaurants', 'Street food', 'Coffee & brunch', 'Fine dining'],
+  activity: ['Water sports', 'Hiking trails', 'Tours', 'Day trips', 'Cultural experiences'],
+  nightlife: ['Rooftop bars', 'Live music', 'Cocktail lounges', 'Night markets', 'Late-night spots'],
+  photo: ['Scenic viewpoints', 'Golden hour spots', 'Iconic landmarks', 'Hidden gems', 'Architecture'],
+  wellness: ['Spa & massage', 'Yoga studios', 'Wellness retreats', 'Hot springs', 'Juice bars'],
+  coffee: ['Best espresso', 'Specialty coffee', 'Cafés with views', 'Pour-over spots', 'Brunch & coffee'],
 };
 
 const ITINERARY_STYLES = [
@@ -260,71 +218,6 @@ const ACTIVITY_CATEGORY_EMOJI: Record<string, string> = {
   Nightlife: '🌙', Wellness: '🧘', Shopping: '🛍', Transport: '🚗',
 };
 
-// Sample fallback places shown when the API returns no results
-const PLACES: readonly DiscoverPlace[] = [
-  {
-    n: 'Puka Shell Beach',
-    t: 'Beach',
-    r: 4.7,
-    rv: '3.2k reviews',
-    d: '4.2 km',
-    dn: 4.2,
-    price: 0,
-    openNow: true,
-    img: 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80',
-  },
-  {
-    n: "D'Mall",
-    t: 'Shopping',
-    r: 4.3,
-    rv: '1.8k reviews',
-    d: '1.6 km',
-    dn: 1.6,
-    price: 2,
-    openNow: true,
-    img: 'https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?w=800&q=80',
-  },
-  {
-    n: "Willy's Rock",
-    t: 'Landmark',
-    r: 4.5,
-    rv: '2.1k reviews',
-    d: '900 m',
-    dn: 0.9,
-    price: 0,
-    openNow: true,
-    img: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80',
-  },
-  {
-    n: "Jonah's Fruit Shake",
-    t: 'Restaurant',
-    r: 4.6,
-    rv: '890 reviews',
-    d: '1.2 km',
-    dn: 1.2,
-    price: 1,
-    openNow: false,
-    img: 'https://images.unsplash.com/photo-1546039907-7fa05f864c02?w=800&q=80',
-  },
-];
-
-const TRENDING: readonly TrendingItem[] = [
-  {
-    n: 'Island hopping tour',
-    pr: '\u20B11,800',
-    img: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=80',
-  },
-  {
-    n: 'Parasailing',
-    pr: '\u20B11,200',
-    img: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=400&q=80',
-  },
-  {
-    n: 'Sunset sail',
-    pr: '\u20B11,500',
-    img: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=400&q=80',
-  },
-];
 
 const PLACE_CATEGORY_CHIPS = [
   'All',
@@ -592,7 +485,8 @@ function DiscoverScreenInner() {
 
   // API-wired state
   const [tripId, setTripId] = useState<string | null>(null);
-  const [places, setPlaces] = useState<readonly DiscoverPlace[]>(PLACES);
+  const [tripCoords, setTripCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [places, setPlaces] = useState<readonly DiscoverPlace[]>([]);
   const [placesLoading, setPlacesLoading] = useState(false);
   const [placesError, setPlacesError] = useState<string | null>(null);
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
@@ -768,6 +662,9 @@ function DiscoverScreenInner() {
           setTripStartDate(trip.startDate);
           setTripEndDate(trip.endDate);
           setTripHotel(trip.accommodation ?? '');
+          if (trip.latitude && trip.longitude) {
+            setTripCoords({ lat: trip.latitude, lng: trip.longitude });
+          }
           setTripBudget(trip.budgetLimit ?? 0);
           setTripBudgetCurrency(trip.costCurrency ?? 'PHP');
           const members = await getGroupMembers(trip.id).catch(() => []);
@@ -819,7 +716,14 @@ function DiscoverScreenInner() {
 
   // Search places via Google Places API
   const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false) => {
-    const cacheKey = `${type ?? ''}_${keyword ?? ''}`;
+    // Don't search if no destination is set
+    if (!tripCoords) {
+      setPlaces([]);
+      setPlacesLoading(false);
+      return;
+    }
+
+    const cacheKey = `${type ?? ''}_${keyword ?? ''}_${tripCoords.lat}_${tripCoords.lng}`;
 
     // Use cache if available and not forced refresh
     if (!skipCache && placesCache.current[cacheKey]) {
@@ -830,23 +734,23 @@ function DiscoverScreenInner() {
     setPlacesLoading(true);
     setPlacesError(null);
     try {
-      const results = await searchNearby(type, keyword);
+      const results = await searchNearby(type, keyword, tripCoords);
       if (results.length > 0) {
         const mapped = results.map(mapNearbyToDiscoverPlace);
         placesCache.current[cacheKey] = mapped;
         setPlaces(mapped);
       } else {
-        setPlaces(PLACES);
-        setPlacesError('No results found. Showing curated places.');
+        setPlaces([]);
+        setPlacesError('No results found nearby.');
       }
     } catch {
-      setPlaces(PLACES);
-      setPlacesError('Could not load places. Showing curated places.');
+      setPlaces([]);
+      setPlacesError('Could not load places.');
     } finally {
       setPlacesLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [tripCoords]);
 
   // Load places when category chip changes
   useEffect(() => {
@@ -1120,7 +1024,7 @@ function DiscoverScreenInner() {
       <View style={styles.topBar}>
         <View>
           <Text style={styles.title}>Discover</Text>
-          <Text style={styles.subtitle}>{tripDest || 'Discover'}</Text>
+          {tripDest ? <Text style={styles.subtitle}>{tripDest}</Text> : null}
         </View>
         <TouchableOpacity
           style={styles.iconBtn}

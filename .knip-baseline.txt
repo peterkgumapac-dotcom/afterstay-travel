@@ -1,4 +1,4 @@
-Unused files (40)
+Unused files (41)
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
@@ -21,6 +21,7 @@ components/moments/recaps/RecapsLayout.tsx: components/moments/recaps/RecapsLayo
 components/moments/recaps/generateRecap.ts: components/moments/recaps/generateRecap.ts
 components/shared/PremiumGate.tsx: components/shared/PremiumGate.tsx
 components/shared/TripFloatingActionButton.tsx: components/shared/TripFloatingActionButton.tsx
+components/trip/FileViewerSheet.tsx: components/trip/FileViewerSheet.tsx
 design-reference/components/icons.jsx: design-reference/components/icons.jsx
 design-reference/components/shell.jsx: design-reference/components/shell.jsx
 design-reference/screens/budget.jsx: design-reference/screens/budget.jsx
@@ -40,12 +41,12 @@ supabase/functions/send-push-notification/index.ts: supabase/functions/send-push
 supabase/functions/trip-lifecycle-notifications/index.ts: supabase/functions/trip-lifecycle-notifications/index.ts
 utils/fate/randomWinner.ts: utils/fate/randomWinner.ts
 Unused dependencies (1)
-package.json: @expo/vector-icons, base64-arraybuffer, buffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-camera, expo-device, expo-secure-store, react-native-maps, react-native-view-shot
+package.json: @expo/vector-icons, base64-arraybuffer, buffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-camera, expo-device, expo-secure-store, react-native-maps
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
 Unlisted dependencies (1)
 app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (14)
+Unused exports (15)
 components/discover/CategoryGrid.tsx: CategoryGrid
 components/discover/ExploreMap.tsx: MAP_AVAILABLE
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
@@ -59,13 +60,15 @@ lib/cache/mediaCache.ts: migrateMediaCache, evictCachedImage
 lib/distance.ts: haversine
 lib/google-places.ts: findPlacePhoto, enrichRecommendations
 lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, shouldSendPush, getCategoryForType
+lib/quickTrips.ts: getQuickTripExpenseSummary
 lib/utils.ts: tripStatusLabel
-Unused exported types (8)
+Unused exported types (9)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
 lib/anthropic.ts: ItineraryDayLegacy, GeneratedMemoryContent
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
+lib/quickTripTypes.ts: QuickTripExpenseSplit
 lib/tripMemoryBuilder.ts: TripMemoryData
 lib/types.ts: WeatherDay
 utils/fate/generateSpinPlan.ts: SpinStep, SpinPlan

@@ -17,7 +17,7 @@ export default function StatPill({ icon, value, label, colors }: StatPillProps) 
   return (
     <View style={styles.pill}>
       <View style={styles.iconWrap}>{icon}</View>
-      <Text style={styles.value}>{value}</Text>
+      <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{value}</Text>
       <Text style={styles.label}>{label}</Text>
     </View>
   );
