@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.1] — 2026-04-27
+
+### Bug Fixes
+- Fixed photo upload failures — replaced fragile base64 pipeline with memory-efficient fetch+ArrayBuffer approach
+- Fixed compression fallback returning unreadable content:// URIs on Android
+- Upload errors now surface actual error messages instead of generic "0 of N uploaded"
+- Fixed notifications not working — created missing `notifications` table, indexes, and RLS policies
+- Added missing `notification_prefs`, `expo_push_token`, `push_enabled` columns to profiles
+- Fixed "Clear all" not clearing notifications — read notifications now hidden from list
+- Fixed local alert dismissals not persisting across screen navigation
+- Fixed location autocomplete dropdown rendering behind other form fields (z-index)
+
+### Infrastructure
+- `readFileAsBytes()` shared helper for all Supabase Storage uploads
+- `notifications` table migration with full RLS policy set
+- Dev-mode diagnostic logging for notification insert/fetch failures
+
+---
+
 ## [1.3.0] — 2026-04-26
 
 ### Group Voting

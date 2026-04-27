@@ -52,6 +52,13 @@ import {
 import type { Trip } from '@/lib/types';
 import { clearPrefsCache } from '@/lib/notificationPrefs';
 
+const WHATS_NEW = [
+  'Fixed photo uploads failing on Android',
+  'Notifications now work — bell badge, in-app alerts, and clear all',
+  'Location autocomplete no longer hidden behind form fields',
+  'Upload errors now show the actual reason instead of a generic message',
+];
+
 interface ProfileState {
   name: string;
   avatarUri: string;
@@ -460,6 +467,18 @@ export default function SettingsScreen() {
             Version {Constants.expoConfig?.version ?? '?'}
             {Updates.updateId ? ` · ${Updates.updateId.slice(0, 8)}` : ''}
           </Text>
+        </View>
+
+        {/* What's New */}
+        <SectionLabel label="What's New" textColor={colors.text3} />
+        <View style={s.card}>
+          <Text style={[s.cardTitle, { marginBottom: 6 }]}>v{Constants.expoConfig?.version ?? '?'}</Text>
+          {WHATS_NEW.map((item, i) => (
+            <View key={i} style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
+              <Text style={[s.cardSub, { fontSize: 12 }]}>{'\u2022'}</Text>
+              <Text style={[s.cardSub, { fontSize: 12, flex: 1 }]}>{item}</Text>
+            </View>
+          ))}
         </View>
 
         <View style={{ height: 40 }} />

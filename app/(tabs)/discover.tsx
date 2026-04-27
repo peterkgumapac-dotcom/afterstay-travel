@@ -30,6 +30,7 @@ import {
 import { type TrendingItem } from '@/components/discover/TrendingCard';
 import MiniLoader from '@/components/loader/MiniLoader';
 import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
+import AIConcierge from '@/components/discover/AIConcierge';
 import StaysTab from '@/components/discover/StaysTab';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay, type PlannerScope, type PlannerPace } from '@/lib/anthropic';
@@ -58,7 +59,7 @@ import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
 
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
-type TabId = 'places' | 'stays' | 'planner' | 'saved';
+type TabId = 'places' | 'stays' | 'concierge' | 'saved';
 type TravelMode = 'walk' | 'car';
 type DistanceOrigin = 'hotel' | 'me';
 type FilterState = {
@@ -134,15 +135,6 @@ function formatReviewCount(count: number): string {
   return `${count} reviews`;
 }
 
-// Itinerary style ID → interests for the Anthropic API
-const STYLE_TO_INTERESTS: Record<string, string[]> = {
-  relaxed: ['spa', 'beach', 'sunset viewing', 'cafes'],
-  adventure: ['water sports', 'island hopping', 'snorkeling', 'hiking'],
-  foodie: ['local restaurants', 'street food', 'seafood', 'markets'],
-  family: ['kid-friendly beaches', 'easy activities', 'family dining'],
-  culture: ['history', 'local markets', 'cultural sites', 'community'],
-};
-
 // ── Data ────────────────────────────────────────────────────────────────
 
 const CATEGORIES: readonly CategoryItem[] = [
@@ -166,19 +158,6 @@ const CATEGORY_SUGGESTIONS: Record<string, readonly string[]> = {
   coffee: ['Best espresso', 'Specialty coffee', 'Cafés with views', 'Pour-over spots', 'Brunch & coffee'],
 };
 
-const ITINERARY_STYLES = [
-  { id: 'relaxed', label: 'Relaxed', sub: 'Slow mornings, spa, sunsets' },
-  { id: 'adventure', label: 'Adventure', sub: 'Water sports, trails, reefs' },
-  { id: 'foodie', label: 'Foodie', sub: 'Local eats, markets, bars' },
-  { id: 'family', label: 'Family', sub: 'Kid-safe, easy access' },
-  { id: 'culture', label: 'Culture', sub: 'History, markets, locals' },
-] as const;
-
-const PACE_OPTIONS: { id: PlannerPace; label: string; desc: string }[] = [
-  { id: 'relaxed', label: 'Relaxed', desc: '2-3 activities/day' },
-  { id: 'moderate', label: 'Moderate', desc: '3-4 activities/day' },
-  { id: 'packed', label: 'Packed', desc: '5-6 activities/day' },
-];
 
 const ACTIVITY_CATEGORY_EMOJI: Record<string, string> = {
   Food: '🍽', Beach: '🏖', Activity: '🌊', Culture: '🏛',
@@ -442,8 +421,6 @@ function DiscoverScreenInner() {
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
   const [distanceOrigin, setDistanceOrigin] = useState<DistanceOrigin>('hotel');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [prompt, setPrompt] = useState('');
-  const [style, setStyle] = useState('relaxed');
   const [saved, setSaved] = useState<Set<string>>(() => new Set());
   const [recommended, setRecommended] = useState<Set<string>>(() => new Set());
   const [showFilters, setShowFilters] = useState(false);
@@ -459,11 +436,6 @@ function DiscoverScreenInner() {
   const [placesError, setPlacesError] = useState<string | null>(null);
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
-  const [itinerary, setItinerary] = useState<ItineraryDay[]>([]);
-  const [itineraryLoading, setItineraryLoading] = useState(false);
-  const [itineraryError, setItineraryError] = useState<string | null>(null);
-  const [itineraryScope, setItineraryScope] = useState<PlannerScope>('today');
-  const [pace, setPace] = useState<PlannerPace>('relaxed');
   const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
   const [visibleCount, setVisibleCount] = useState(20);
   const [showMapModal, setShowMapModal] = useState(false);
@@ -521,45 +493,6 @@ function DiscoverScreenInner() {
   const [tripBudget, setTripBudget] = useState(0);
   const [tripBudgetCurrency, setTripBudgetCurrency] = useState('PHP');
 
-  // Manual day planner state
-  const [plannerActiveDay, setPlannerActiveDay] = useState(1);
-  const [plannerItems, setPlannerItems] = useState<Record<number, { id: string; time: string; title: string; note: string | null }[]>>({});
-
-  // Auto-detect current day of trip
-  const todayDayNumber = useMemo(() => {
-    if (!tripStartDate) return 1;
-    const startMs = new Date(tripStartDate + 'T00:00:00+08:00').getTime();
-    const nowMs = Date.now();
-    if (nowMs < startMs) return 1; // pre-trip
-    return Math.floor((nowMs - startMs) / MS_PER_DAY) + 1;
-  }, [tripStartDate]);
-
-  const todayLabel = useMemo(() => {
-    if (!tripStartDate) return 'Today';
-    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const d = new Date(tripStartDate + 'T00:00:00+08:00');
-    d.setDate(d.getDate() + todayDayNumber - 1);
-    return `${DAY_NAMES[d.getDay()]} · ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-  }, [tripStartDate, todayDayNumber]);
-
-  const hasTripDates = !!(tripStartDate && tripEndDate);
-
-  const plannerDayItems = useMemo(() =>
-    (plannerItems[todayDayNumber] ?? []).slice().sort((a, b) => a.time.localeCompare(b.time)),
-    [plannerItems, todayDayNumber],
-  );
-
-  const plannerTotalCount = useMemo(() =>
-    Object.values(plannerItems).reduce((n, arr) => n + arr.length, 0),
-    [plannerItems],
-  );
-
-  const removePlannerItem = useCallback((id: string) => {
-    setPlannerItems((prev) => ({
-      ...prev,
-      [todayDayNumber]: (prev[todayDayNumber] ?? []).filter(x => x.id !== id),
-    }));
-  }, [todayDayNumber]);
 
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
@@ -883,75 +816,6 @@ function DiscoverScreenInner() {
   }, [tripId, savedPlaces, places]);
 
   // Generate itinerary via Anthropic
-  const handleGenerateItinerary = useCallback(async () => {
-    setItineraryLoading(true);
-    setItineraryError(null);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      const chosenStyle = style;
-      const interests = STYLE_TO_INTERESTS[chosenStyle] ?? ['beach', 'food', 'activities'];
-      const promptInterests = prompt.trim()
-        ? [...interests, prompt.trim()]
-        : interests;
-      const result = await generateItinerary({
-        scope: itineraryScope,
-        pace,
-        interests: promptInterests,
-        tripDays,
-        startDate: tripStartDate,
-        destination: tripDest || undefined,
-        hotelName: tripHotel || undefined,
-        groupSize: tripGroupSize || undefined,
-        budget: tripBudget || undefined,
-        budgetCurrency: tripBudgetCurrency,
-      });
-      setItinerary(result);
-      // Populate planner items — map AI days to actual trip days
-      const newItems: Record<number, { id: string; time: string; title: string; note: string | null }[]> = {};
-      for (const day of result) {
-        // For "today" scope, day 1 maps to todayDayNumber
-        // For "whole" scope, day N maps directly
-        const dayKey = itineraryScope === 'today' ? todayDayNumber : day.day;
-        newItems[dayKey] = (day.activities ?? []).map((act, i) => ({
-          id: `ai-${dayKey}-${i}`,
-          time: act.timeSlot?.replace(/[^\d:]/g, '').slice(0, 5) || `${9 + i}:00`,
-          title: act.name,
-          note: act.duration ? `${act.duration}${act.cost ? ` · ${act.cost}` : ''}` : null,
-        }));
-      }
-      setPlannerItems((prev) => ({ ...prev, ...newItems }));
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to generate itinerary';
-      setItineraryError(message);
-    } finally {
-      setItineraryLoading(false);
-    }
-  }, [style, prompt, itineraryScope, pace, tripDays, tripStartDate, todayDayNumber]);
-
-  const handleAddToPlanner = useCallback((place: DiscoverPlace) => {
-    if (!hasTripDates) {
-      Alert.alert('No Trip', 'No trip dates set. Create a trip first.');
-      return;
-    }
-    // Add directly to today's plan
-    const now = new Date();
-    const nextHour = `${String(Math.min(now.getHours() + 1, 23)).padStart(2, '0')}:00`;
-    setPlannerItems((prev) => {
-      const existing = prev[todayDayNumber] ?? [];
-      const newItem = {
-        id: `${place.placeId ?? place.n}-${Date.now()}`,
-        time: nextHour,
-        title: place.n,
-        note: `${friendlyCategory(place.t)} · ${place.d}`,
-      };
-      return {
-        ...prev,
-        [todayDayNumber]: [...existing, newItem].sort((a, b) => a.time.localeCompare(b.time)),
-      };
-    });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert('Added', `${place.n} added to today's plan`);
-  }, [hasTripDates, todayDayNumber]);
 
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
@@ -1018,11 +882,11 @@ function DiscoverScreenInner() {
       {/* Segmented control */}
       <View style={styles.segWrapper}>
         <View style={styles.seg}>
-          {(['places', 'stays', 'planner', 'saved'] as const).map((id) => {
+          {(['places', 'stays', ...(tripId ? ['concierge' as const] : []), 'saved'] as TabId[]).map((id) => {
             const label =
               id === 'places' ? 'Places'
               : id === 'stays' ? 'Stays'
-              : id === 'planner' ? 'Planner'
+              : id === 'concierge' ? '\u2728 AI'
               : `Saved${saved.size ? ` \u00B7 ${saved.size}` : ''}`;
             return (
               <TouchableOpacity
@@ -1059,175 +923,24 @@ function DiscoverScreenInner() {
           />
         }
       >
-        {/* ═══════ PLANNER TAB — manual day-by-day timeline ═══════ */}
-        {tab === 'planner' && !hasTripDates && (
-          <EmptyState
-            icon={CalendarDays}
-            title={tripId ? 'No trip dates set' : 'No trip yet'}
-            subtitle={tripId
-              ? 'Set your trip dates to start planning.'
-              : 'Create a trip to start planning your days.'}
-            actionLabel={tripId ? undefined : 'Get Started'}
-            onAction={tripId ? undefined : () => router.push('/onboarding')}
+        {/* ═══════ AI CONCIERGE TAB ═══════ */}
+        {tab === 'concierge' && (
+          <AIConcierge
+            tripId={tripId}
+            tripDest={tripDest}
+            tripCoords={tripCoords}
+            tripHotel={tripHotel}
+            tripGroupSize={tripGroupSize}
+            tripMembers={tripMembers}
+            tripBudget={tripBudget}
+            tripBudgetCurrency={tripBudgetCurrency}
+            savedNames={saved}
+            travelMode={travelMode}
+            onSavePlace={(name) => {
+              setSaved((s) => { const next = new Set(s); next.add(name); return next; });
+            }}
+            onOpenDetail={handleExplore}
           />
-        )}
-        {tab === 'planner' && hasTripDates && (
-          <>
-            {/* Scope toggle: Today vs Whole Trip — matches Budget segmented control */}
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-              {(['today', 'whole'] as const).map((scope) => {
-                const active = itineraryScope === scope;
-                return (
-                  <TouchableOpacity
-                    key={scope}
-                    onPress={() => setItineraryScope(scope)}
-                    activeOpacity={0.7}
-                    style={{
-                      flex: 1, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, alignItems: 'center',
-                      backgroundColor: active ? colors.accentBg : colors.card,
-                      borderWidth: 1, borderColor: active ? colors.accentBorder : colors.border,
-                    }}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: active ? colors.accent : colors.text }}>
-                      {scope === 'today' ? 'Plan Today' : 'Whole Trip'}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: active ? colors.accent : colors.text3, marginTop: 2 }}>
-                      {scope === 'today' ? `Day ${todayDayNumber} · ${todayLabel}` : `${tripDays} days`}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Questions: style + pace + interests */}
-            {!itineraryLoading && (
-              <View style={{ gap: 16 }}>
-                {/* Q1: What's your vibe? — eyebrow matches Home/Budget section labels */}
-                <View>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.text3, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>What's your vibe?</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {ITINERARY_STYLES.map((s) => {
-                      const active = style === s.id;
-                      return (
-                        <TouchableOpacity
-                          key={s.id}
-                          onPress={() => setStyle(s.id)}
-                          activeOpacity={0.7}
-                          style={{
-                            paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999,
-                            backgroundColor: active ? colors.accent : colors.card,
-                            borderWidth: active ? 0 : 1, borderColor: colors.border,
-                          }}
-                        >
-                          <Text style={{ fontSize: 13, fontWeight: '500', color: active ? colors.bg : colors.text2 }}>{s.label}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                {/* Q2: How packed? */}
-                <View>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.text3, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>How packed?</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {PACE_OPTIONS.map((p) => {
-                      const active = pace === p.id;
-                      return (
-                        <TouchableOpacity
-                          key={p.id}
-                          onPress={() => setPace(p.id)}
-                          activeOpacity={0.7}
-                          style={{
-                            flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14,
-                            backgroundColor: active ? colors.accent : colors.card,
-                            borderWidth: active ? 0 : 1, borderColor: colors.border,
-                          }}
-                        >
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: active ? colors.bg : colors.text }}>{p.label}</Text>
-                          <Text style={{ fontSize: 10, color: active ? `${colors.bg}B3` : colors.text3, marginTop: 2 }}>{p.desc}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                {/* Q3: Anything specific? */}
-                <View>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: colors.text3, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>Anything specific?</Text>
-                  <TextInput
-                    value={prompt}
-                    onChangeText={setPrompt}
-                    placeholder="e.g. snorkeling, sunset dinner, local food..."
-                    placeholderTextColor={colors.text3}
-                    style={{
-                      fontSize: 14, color: colors.text, backgroundColor: colors.bg2,
-                      borderWidth: 1, borderColor: colors.border, borderRadius: 12,
-                      paddingHorizontal: 16, paddingVertical: 12,
-                    }}
-                  />
-                </View>
-
-                {/* Generate button — matches Budget CTA / PlaceDetail save button */}
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 14,
-                    alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8,
-                    shadowColor: colors.accent, shadowOffset: { width: 0, height: 6 },
-                    shadowOpacity: 0.3, shadowRadius: 16, elevation: 6,
-                  }}
-                  activeOpacity={0.7}
-                  onPress={handleGenerateItinerary}
-                >
-                  <Sparkles size={16} color={colors.bg} strokeWidth={2} />
-                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.bg }}>
-                    {itineraryScope === 'today' ? 'Generate today\'s plan' : 'Generate full trip plan'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            {itineraryLoading && (
-              <View style={{ alignItems: 'center', paddingVertical: 32 }}>
-                <MiniLoader message={itineraryScope === 'today' ? 'Planning your day...' : 'Planning your trip...'} />
-              </View>
-            )}
-            {itineraryError && (
-              <Text style={{ color: colors.danger, fontSize: 13, textAlign: 'center', marginBottom: 12 }}>{itineraryError}</Text>
-            )}
-
-            {/* Results timeline */}
-            {plannerDayItems.length > 0 && (
-              <View style={{ marginTop: 16 }}>
-                <Text style={{ fontSize: 10, fontWeight: '600', color: colors.accent, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 10 }}>
-                  {itineraryScope === 'today' ? `Day ${todayDayNumber} · ${todayLabel}` : 'Your Plan'}
-                </Text>
-                <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, gap: 12 }}>
-                  {plannerDayItems.map((item) => (
-                    <View key={item.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.accent, width: 46, marginTop: 2 }}>{item.time}</Text>
-                      <View style={{ width: 2, backgroundColor: colors.accentBorder, alignSelf: 'stretch', borderRadius: 1 }} />
-                      <View style={{ flex: 1, backgroundColor: colors.bg2, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, flex: 1 }}>{item.title}</Text>
-                          <TouchableOpacity onPress={() => removePlannerItem(item.id)} activeOpacity={0.6} hitSlop={8}>
-                            <Text style={{ color: colors.text3, fontSize: 16 }}>{'\u00D7'}</Text>
-                          </TouchableOpacity>
-                        </View>
-                        {item.note && (
-                          <Text style={{ fontSize: 12, color: colors.text3, marginTop: 4 }}>{item.note}</Text>
-                        )}
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {plannerDayItems.length === 0 && !itineraryLoading && (
-              <View style={{ alignItems: 'center', paddingVertical: 28 }}>
-                <Text style={{ fontSize: 13, color: colors.text3 }}>Choose your vibe and tap generate</Text>
-              </View>
-            )}
-          </>
         )}
 
         {/* ═══════ PLACES TAB ═══════ */}
@@ -1433,7 +1146,7 @@ function DiscoverScreenInner() {
                       onSave={toggleSave}
                       onRecommend={toggleRecommend}
                       onExplore={handleExplore}
-                      onAddToPlanner={handleAddToPlanner}
+                      onAddToPlanner={undefined}
                       showRecommend={tripMembers.length >= 2}
                       voteByMember={savedPlaces.find((sp) => sp.name === p.n)?.voteByMember}
                       memberNames={memberNames}
@@ -1613,7 +1326,7 @@ function DiscoverScreenInner() {
                         isRecommended={recommended.has(p.name)}
                         onSave={toggleSave}
                         onRecommend={toggleRecommend}
-                        onAddToPlanner={handleAddToPlanner}
+                        onAddToPlanner={undefined}
                         showRecommend={tripMembers.length >= 2}
                         voteByMember={p.voteByMember}
                         memberNames={memberNames}

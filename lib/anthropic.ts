@@ -593,3 +593,94 @@ Rules:
     vibeAnalysis: (json.vibeAnalysis as TripMemoryVibe) ?? { dominantMood: '', topTags: [], vibeDescription: '' },
   };
 }
+
+// ── AI Concierge ────────────────────────────────────────────────────
+
+export interface ConciergeSuggestion {
+  name: string;
+  category: string;
+  reason: string;
+  isQuickMoment: boolean;
+  estimatedDuration: string;
+  priceRange: string;
+  bestTimeToGo: string;
+}
+
+export async function generateConciergeSuggestions(args: {
+  what: string;
+  when: string;
+  whoCount: number;
+  destination: string;
+  hotelName?: string;
+  currentTimeOfDay: string;
+  budget?: number;
+  budgetCurrency?: string;
+}): Promise<ConciergeSuggestion[]> {
+  const apiKey = CONFIG.ANTHROPIC_KEY;
+  if (!apiKey) throw new Error('Anthropic API key not configured');
+
+  const hotel = args.hotelName ? ` staying at ${args.hotelName}` : '';
+  const budgetNote = args.budget
+    ? ` Their trip budget is ${args.budgetCurrency ?? 'PHP'} ${args.budget.toLocaleString()} total.`
+    : '';
+  const groupNote = args.whoCount > 1 ? ` They are a group of ${args.whoCount}.` : ' They are solo.';
+
+  const systemPrompt = `You are a friendly local concierge for ${args.destination}. The traveler is${hotel}.${groupNote}${budgetNote}
+
+It is currently ${args.currentTimeOfDay}. They want: "${args.what}" — timing: "${args.when}".
+
+Return exactly 3-5 real, specific place suggestions as a JSON array. For each place:
+- "name": the real establishment name (must actually exist in ${args.destination})
+- "category": one of Food, Coffee, Activity, Nightlife, Wellness, Explore
+- "reason": one compelling sentence why this place (mention what makes it special)
+- "isQuickMoment": true if typically under 2 hours (coffee, quick meal), false for longer activities
+- "estimatedDuration": e.g. "30-45 min", "2-3 hours", "half day"
+- "priceRange": e.g. "₱200-500", "Free", "$$$"
+- "bestTimeToGo": e.g. "Now — before the lunch rush", "Sunset", "Any time"
+
+Prioritize places that are:
+1. Actually open or appropriate for the requested timing
+2. Walkable or nearby the hotel when possible
+3. Well-reviewed by locals and travelers
+4. Varied (don't suggest 5 of the same type)
+
+Return ONLY the JSON array, no other text.`;
+
+  const res = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': ANTHROPIC_VERSION,
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: `Find me ${args.what} options for ${args.when}. What do you recommend?` }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    if (body.includes('credit balance is too low')) {
+      throw new Error('AI credits exhausted. Please try again later.');
+    }
+    throw new Error(`AI error: ${res.status}`);
+  }
+
+  const data = await res.json();
+  const text: string = data?.content?.[0]?.text ?? '';
+  const parsed = extractJson(text) as ConciergeSuggestion[];
+
+  return parsed.map((s) => ({
+    name: s.name ?? 'Unknown',
+    category: s.category ?? 'Explore',
+    reason: s.reason ?? '',
+    isQuickMoment: s.isQuickMoment ?? false,
+    estimatedDuration: s.estimatedDuration ?? '',
+    priceRange: s.priceRange ?? '',
+    bestTimeToGo: s.bestTimeToGo ?? '',
+  }));
+}

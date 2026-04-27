@@ -338,6 +338,31 @@ export interface TripMemory {
 
 // ── Expense targeting (budget screen) ──────────────────────────────
 
+// ── AI Concierge ───────────────────────────────────────────────────
+
+export type ConciergeWhat = 'food' | 'coffee' | 'activity' | 'nightlife' | 'wellness' | 'explore';
+export type ConciergeWhen = 'now' | 'later_today' | 'tomorrow' | string;
+export type ConciergeWho = 'just_me' | 'everyone' | string[];
+
+export interface ConciergeResultPlace {
+  name: string;
+  reason: string;
+  isQuickMoment: boolean;
+  estimatedDuration: string;
+  priceRange: string;
+  placeId?: string;
+  photoUrl?: string;
+  rating?: number;
+  totalRatings?: number;
+  lat?: number;
+  lng?: number;
+  openNow?: boolean;
+  types?: string[];
+  address?: string;
+}
+
+// ── Expense targeting (budget screen) ──────────────────────────────
+
 export type ExpenseTarget =
   | { type: 'trip'; tripId?: string }
   | { type: 'quick-trip'; quickTripId: string }

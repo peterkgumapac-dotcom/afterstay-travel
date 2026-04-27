@@ -115,7 +115,7 @@ export default function StaysTab({
     try {
       const results = await searchNearby(type, keyword, coords, 5000);
       if (results.length > 0) {
-        const mapped = results.map(mapNearbyToDiscoverPlace);
+        const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, coords));
         cache.current[cacheKey] = mapped;
         setStays(mapped);
       } else {
@@ -145,8 +145,12 @@ export default function StaysTab({
       return;
     }
     destTimer.current = setTimeout(async () => {
-      const results = await placeAutocomplete(text);
-      setDestSuggestions(results.slice(0, 5));
+      try {
+        const results = await placeAutocomplete(text);
+        setDestSuggestions(results.slice(0, 5));
+      } catch {
+        setDestSuggestions([]);
+      }
     }, 400);
   }, []);
 
@@ -154,9 +158,13 @@ export default function StaysTab({
     setDestSuggestions([]);
     setDestQuery(label.split(',')[0]);
     setSearchLabel(label.split(',')[0]);
-    const loc = await getPlaceLocation(placeId);
-    if (loc) {
-      setSearchCoords({ lat: loc.lat, lng: loc.lng });
+    try {
+      const loc = await getPlaceLocation(placeId);
+      if (loc) {
+        setSearchCoords({ lat: loc.lat, lng: loc.lng });
+      }
+    } catch {
+      setError('Could not find that destination. Try another search.');
     }
   }, []);
 
@@ -178,7 +186,7 @@ export default function StaysTab({
   // ── Distance helper ──────────────────────────────────────────────
 
   const getDistKm = useCallback((lat?: number, lng?: number) => {
-    if (!lat || !lng || !effectiveCoords) return 0;
+    if (lat == null || lng == null || !effectiveCoords) return 0;
     return distanceFromPoint(effectiveCoords.lat, effectiveCoords.lng, lat, lng);
   }, [effectiveCoords]);
 
