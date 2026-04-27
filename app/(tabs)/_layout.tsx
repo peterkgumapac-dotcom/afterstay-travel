@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { useTheme } from '@/constants/ThemeContext';
+import { UserSegmentProvider } from '@/contexts/UserSegmentContext';
 
 /* ---------- Tab bar visibility context ---------- */
 
@@ -164,6 +165,7 @@ export default function TabLayout() {
   );
 
   return (
+    <UserSegmentProvider>
     <TabBarVisibilityContext.Provider value={visibilityValue}>
       <Tabs
         tabBar={(props) => <TabBarOverlay {...props} />}
@@ -189,5 +191,6 @@ export default function TabLayout() {
       {/* Global FAB — shared across all tabs */}
       {tabBarVisible && <FloatingActionButton />}
     </TabBarVisibilityContext.Provider>
+    </UserSegmentProvider>
   );
 }

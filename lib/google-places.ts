@@ -42,11 +42,11 @@ function pickBestPhoto(photos: any[] | undefined): string | null {
 
 export async function searchPlace(
   query: string,
-  location: string = 'Boracay, Philippines',
+  location?: string,
 ): Promise<PlaceSearchResult | null> {
   if (!API_KEY) return null;
 
-  const encodedQuery = encodeURIComponent(`${query} ${location}`);
+  const encodedQuery = encodeURIComponent(location ? `${query} ${location}` : query);
   const fields = 'place_id,name,formatted_address,rating,user_ratings_total,photos,geometry';
   const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodedQuery}&inputtype=textquery&fields=${fields}&key=${API_KEY}`;
 
@@ -74,6 +74,36 @@ export async function searchPlace(
 export async function findPlacePhoto(name: string, location?: string): Promise<string | null> {
   const result = await searchPlace(name, location);
   return result?.photo_url ?? null;
+}
+
+/** Fetch multiple destination photos for the hero slideshow.
+ *  Returns up to `count` photo URLs for a destination query (e.g. "Boracay, Philippines").
+ *  Falls back to an empty array if the API returns nothing. */
+export async function fetchDestinationPhotos(
+  destination: string,
+  count: number = 6,
+): Promise<string[]> {
+  if (!API_KEY || !destination) return [];
+
+  const encodedQuery = encodeURIComponent(destination);
+  const fields = 'photos';
+  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodedQuery}&inputtype=textquery&fields=${fields}&key=${API_KEY}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const photos: any[] = data?.candidates?.[0]?.photos ?? [];
+    if (photos.length === 0) return [];
+
+    return photos
+      .slice(0, count)
+      .map((p: any) => p.photo_reference ? getPhotoUrl(p.photo_reference, 1200) : null)
+      .filter((url): url is string => url !== null);
+  } catch {
+    return [];
+  }
 }
 
 export interface NearbyPlace {
@@ -104,11 +134,18 @@ export interface PlaceDetails {
   editorial_summary?: string;
 }
 
-export async function searchNearby(type?: string, keyword?: string): Promise<NearbyPlace[]> {
+export async function searchNearby(
+  type?: string,
+  keyword?: string,
+  coords?: { lat: number; lng: number },
+  radius = 1500,
+): Promise<NearbyPlace[]> {
   if (!API_KEY) return [];
+  const lat = coords?.lat ?? HOTEL_LAT;
+  const lng = coords?.lng ?? HOTEL_LNG;
   const params = new URLSearchParams({
-    location: `${HOTEL_LAT},${HOTEL_LNG}`,
-    radius: '1500',
+    location: `${lat},${lng}`,
+    radius: String(radius),
     key: API_KEY,
   });
   if (type) params.append('type', type);
@@ -207,14 +244,20 @@ export interface AutocompleteResult {
 
 export async function placeAutocomplete(
   input: string,
+  locationBias?: { lat: number; lng: number },
 ): Promise<AutocompleteResult[]> {
   if (!API_KEY || !input.trim()) return [];
   const params = new URLSearchParams({
     input: input.trim(),
-    location: `${HOTEL_LAT},${HOTEL_LNG}`,
-    radius: '5000',
     key: API_KEY,
   });
+  if (locationBias) {
+    params.append('location', `${locationBias.lat},${locationBias.lng}`);
+    params.append('radius', '5000');
+  } else {
+    params.append('location', `${HOTEL_LAT},${HOTEL_LNG}`);
+    params.append('radius', '50000');
+  }
   try {
     const res: Response = await fetch(
       `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,

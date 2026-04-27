@@ -30,6 +30,7 @@ import {
 import { type TrendingItem } from '@/components/discover/TrendingCard';
 import MiniLoader from '@/components/loader/MiniLoader';
 import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
+import StaysTab from '@/components/discover/StaysTab';
 import { useTheme } from '@/constants/ThemeContext';
 import { generateItinerary, type ItineraryDay, type PlannerScope, type PlannerPace } from '@/lib/anthropic';
 import { distanceFromHotel, distanceFromPoint, formatDistance } from '@/lib/distance';
@@ -50,12 +51,13 @@ import {
 } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
+import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
 
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
-type TabId = 'places' | 'planner' | 'saved';
+type TabId = 'places' | 'stays' | 'planner' | 'saved';
 type TravelMode = 'walk' | 'car';
 type DistanceOrigin = 'hotel' | 'me';
 type FilterState = {
@@ -117,6 +119,7 @@ function resolveCategory(types: string[]): PlaceCategory {
     shopping_mall: 'Essentials',
     store: 'Essentials',
     church: 'Culture',
+    lodging: 'Stay',
   };
   for (const t of types) {
     if (mapping[t]) return mapping[t];
@@ -469,8 +472,9 @@ function DiscoverScreenInner() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const { segment } = useUserSegment();
 
-  const [tab, setTab] = useState<TabId>('places');
+  const [tab, setTab] = useState<TabId>(segment === 'returning' || segment === 'new' ? 'stays' : 'places');
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
   const [distanceOrigin, setDistanceOrigin] = useState<DistanceOrigin>('hotel');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -1044,22 +1048,25 @@ function DiscoverScreenInner() {
       {/* Segmented control */}
       <View style={styles.segWrapper}>
         <View style={styles.seg}>
-          {(['places', 'planner', 'saved'] as const).map((id) => (
-            <TouchableOpacity
-              key={id}
-              style={[styles.segBtn, tab === id && styles.segBtnActive]}
-              onPress={() => setTab(id)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.segText, tab === id && styles.segTextActive]}>
-                {id === 'planner'
-                  ? 'Planner'
-                  : id === 'places'
-                    ? 'Places'
-                    : `Saved${saved.size ? ` \u00B7 ${saved.size}` : ''}`}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {(['places', 'stays', 'planner', 'saved'] as const).map((id) => {
+            const label =
+              id === 'places' ? 'Places'
+              : id === 'stays' ? 'Stays'
+              : id === 'planner' ? 'Planner'
+              : `Saved${saved.size ? ` \u00B7 ${saved.size}` : ''}`;
+            return (
+              <TouchableOpacity
+                key={id}
+                style={[styles.segBtn, tab === id && styles.segBtnActive]}
+                onPress={() => setTab(id)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.segText, tab === id && styles.segTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
@@ -1483,6 +1490,21 @@ function DiscoverScreenInner() {
             </View>
 
           </>
+        )}
+
+        {/* ═══════ STAYS TAB ═══════ */}
+        {tab === 'stays' && (
+          <StaysTab
+            tripCoords={tripCoords}
+            tripId={tripId}
+            tripDest={tripDest}
+            travelMode={travelMode}
+            tripMembers={tripMembers}
+            memberNames={memberNames}
+            savedPlaces={savedPlaces}
+            onSave={toggleSave}
+            onExplore={handleExplore}
+          />
         )}
 
         {/* ═══════ SAVED TAB ═══════ */}

@@ -1,0 +1,114 @@
+/**
+ * Shared utilities for Discover tab components (Places, Stays, etc.)
+ * Extracted from discover.tsx to avoid duplication across tab components.
+ */
+
+import { distanceFromHotel } from '@/lib/distance';
+import { formatDistance } from '@/lib/distance';
+import type { NearbyPlace } from '@/lib/google-places';
+import type { Place, PlaceCategory } from '@/lib/types';
+import type { DiscoverPlace } from './DiscoverPlaceCard';
+
+// ── Type label resolution ────────────────────────────────────────────
+
+const TYPE_LABELS: Record<string, string> = {
+  restaurant: 'Restaurant',
+  bar: 'Bar',
+  cafe: 'Cafe',
+  spa: 'Spa',
+  beach: 'Beach',
+  park: 'Park',
+  shopping_mall: 'Shopping',
+  store: 'Shopping',
+  tourist_attraction: 'Attraction',
+  point_of_interest: 'Landmark',
+  natural_feature: 'Nature',
+  gym: 'Wellness',
+  lodging: 'Hotel',
+  church: 'Culture',
+};
+
+export function resolveTypeLabel(types: string[]): string {
+  for (const t of types) {
+    if (TYPE_LABELS[t]) return TYPE_LABELS[t];
+  }
+  return 'Place';
+}
+
+// ── Category resolution (Google type → PlaceCategory) ────────────────
+
+const CATEGORY_MAP: Record<string, PlaceCategory> = {
+  restaurant: 'Eat',
+  bar: 'Nightlife',
+  cafe: 'Coffee',
+  spa: 'Wellness',
+  gym: 'Wellness',
+  tourist_attraction: 'Do',
+  natural_feature: 'Nature',
+  park: 'Nature',
+  shopping_mall: 'Essentials',
+  store: 'Essentials',
+  church: 'Culture',
+  lodging: 'Stay',
+};
+
+export function resolveCategory(types: string[]): PlaceCategory {
+  for (const t of types) {
+    if (CATEGORY_MAP[t]) return CATEGORY_MAP[t];
+  }
+  return 'Do';
+}
+
+// ── Review count formatting ──────────────────────────────────────────
+
+export function formatReviewCount(count: number): string {
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k reviews`;
+  if (count === 0) return 'No reviews';
+  return `${count} reviews`;
+}
+
+// ── NearbyPlace → DiscoverPlace mapper ───────────────────────────────
+
+const FALLBACK_IMG = 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80';
+
+export function mapNearbyToDiscoverPlace(place: NearbyPlace): DiscoverPlace {
+  const km = distanceFromHotel(place.lat, place.lng);
+  return {
+    n: place.name,
+    t: resolveTypeLabel(place.types),
+    r: place.rating,
+    rv: formatReviewCount(place.total_ratings),
+    d: formatDistance(km),
+    dn: km,
+    price: place.price_level ?? 0,
+    openNow: place.open_now ?? false,
+    img: place.photo_url ?? FALLBACK_IMG,
+    placeId: place.place_id,
+    lat: place.lat,
+    lng: place.lng,
+    totalRatings: place.total_ratings,
+    types: place.types,
+  };
+}
+
+export function mapSavedToDiscoverPlace(place: Place): DiscoverPlace {
+  const km = place.latitude && place.longitude
+    ? distanceFromHotel(place.latitude, place.longitude)
+    : 0;
+  return {
+    n: place.name,
+    t: place.category,
+    r: place.rating ?? 0,
+    rv: formatReviewCount(place.totalRatings ?? 0),
+    d: formatDistance(km),
+    dn: km,
+    price: 0,
+    openNow: false,
+    img: place.photoUrl ?? FALLBACK_IMG,
+    placeId: place.googlePlaceId,
+    lat: place.latitude,
+    lng: place.longitude,
+    totalRatings: place.totalRatings ?? 0,
+    types: [],
+  };
+}
