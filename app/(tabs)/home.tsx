@@ -32,6 +32,7 @@ import { FlightProgressCard } from '@/components/home/FlightProgressCard';
 import { TripActiveCard } from '@/components/home/TripActiveCard';
 import { TripCompletedCard } from '@/components/home/TripCompletedCard';
 import EmptyState from '@/components/shared/EmptyState';
+import ReturningUserHome from '@/components/home/ReturningUserHome';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import ProfileRow from '@/components/home/ProfileRow';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
@@ -40,21 +41,25 @@ import { spacing } from '@/constants/theme';
 import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
+  getAllUserTrips,
   getActiveTrip,
   getExpenses,
   getFlights,
   getGroupMembers,
+  getLifetimeStats,
   getMoments,
   getSavedPlaces,
 } from '@/lib/supabase';
-import type { Flight, GroupMember, Moment, Place, Trip } from '@/lib/types';
+import { getQuickTrips } from '@/lib/quickTrips';
+import { fetchDestinationPhotos } from '@/lib/google-places';
+import type { Flight, GroupMember, LifetimeStats, Moment, Place, Trip } from '@/lib/types';
+import type { QuickTrip } from '@/lib/quickTripTypes';
 import { setHotelCoords } from '@/lib/config';
 import { formatDatePHT, formatTimePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
 
 type TripPhase = 'planning' | 'upcoming' | 'inflight' | 'arrived' | 'active' | 'completed';
 
-// No fallback photos — hero shows gradient when trip has no hotel photos
-const FALLBACK_PHOTOS: string[] = [];
+const DEST_PHOTO_CACHE_KEY = 'hero:destination-photos';
 
 /* ── Section header matching prototype's GroupHeader ── */
 function SectionHeader({
@@ -169,6 +174,12 @@ export default function HomeScreen() {
   const [userAvatar, setUserAvatar] = useState<string>();
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [showVotingSheet, setShowVotingSheet] = useState(false);
+  const [returningPastTrips, setReturningPastTrips] = useState<Trip[]>([]);
+  const [returningDraftTrips, setReturningDraftTrips] = useState<Trip[]>([]);
+  const [returningQuickTrips, setReturningQuickTrips] = useState<QuickTrip[]>([]);
+  const [returningMoments, setReturningMoments] = useState<Moment[]>([]);
+  const [returningSavedPlaces, setReturningSavedPlaces] = useState<Place[]>([]);
+  const [returningStats, setReturningStats] = useState<LifetimeStats | null>(null);
   const { user } = useAuth();
 
   // Resolve current user's group member ID
@@ -311,6 +322,33 @@ export default function HomeScreen() {
       } else {
         setFlights([]);
         setMoments([]);
+        // No active trip — fetch returning-user data in parallel
+        const [allTrips, quick, stats] = await Promise.all([
+          getAllUserTrips('').catch(() => [] as Trip[]),
+          getQuickTrips().catch(() => [] as QuickTrip[]),
+          getLifetimeStats('').catch(() => null),
+        ]);
+        const completed = allTrips.filter(t => t.status === 'Completed');
+        setReturningPastTrips(completed);
+        setReturningDraftTrips(allTrips.filter(t => t.status === 'Planning'));
+        setReturningQuickTrips(quick);
+        setReturningStats(stats);
+
+        // Fetch recent moments + saved places from most recent completed trip
+        if (completed.length > 0) {
+          const recentTripId = completed[0].id;
+          const [recentMoments, recentSaved] = await Promise.all([
+            getMoments(recentTripId).catch(() => [] as Moment[]),
+            getSavedPlaces(recentTripId).catch(() => [] as Place[]),
+          ]);
+          setReturningMoments(recentMoments.filter(m => m.photo?.startsWith('http')).slice(0, 10));
+          setReturningSavedPlaces(recentSaved.filter(p => p.saved));
+        }
+        // Resolve user name from auth if no trip member data
+        if (user) {
+          setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? '');
+          if (user.user_metadata?.avatar_url) setUserAvatar(user.user_metadata.avatar_url);
+        }
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unable to load trip');
@@ -385,17 +423,42 @@ export default function HomeScreen() {
   }, []);
 
   // Hero gallery photos — must be above early returns (hooks order)
-  const hotelPhotos = useMemo<string[]>(() => {
-    if (!trip?.hotelPhotos) return FALLBACK_PHOTOS;
+  // Priority: hotel photos from DB → destination photos from Google Places (cached)
+  const parsedHotelPhotos = useMemo<string[]>(() => {
+    if (!trip?.hotelPhotos) return [];
     try {
       const parsed = JSON.parse(trip.hotelPhotos);
-      return Array.isArray(parsed) && parsed.length > 0
-        ? parsed
-        : FALLBACK_PHOTOS;
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [];
     } catch {
-      return FALLBACK_PHOTOS;
+      return [];
     }
   }, [trip?.hotelPhotos]);
+
+  const [destinationPhotos, setDestinationPhotos] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (parsedHotelPhotos.length > 0 || !trip?.destination) return;
+
+    let cancelled = false;
+    const loadDestPhotos = async () => {
+      // Check cache first
+      const cached = await cacheGet<string[]>(DEST_PHOTO_CACHE_KEY);
+      if (cached && cached.length > 0 && !cancelled) {
+        setDestinationPhotos(cached);
+        return;
+      }
+      // Fetch from Google Places
+      const photos = await fetchDestinationPhotos(trip.destination);
+      if (!cancelled && photos.length > 0) {
+        setDestinationPhotos(photos);
+        await cacheSet(DEST_PHOTO_CACHE_KEY, photos);
+      }
+    };
+    loadDestPhotos();
+    return () => { cancelled = true; };
+  }, [parsedHotelPhotos.length, trip?.destination]);
+
+  const hotelPhotos = parsedHotelPhotos.length > 0 ? parsedHotelPhotos : destinationPhotos;
 
   // Date range label
   const dateRange = useMemo(
@@ -474,7 +537,49 @@ export default function HomeScreen() {
         </SafeAreaView>
       );
     }
-    // No trip — welcoming empty state with settings access
+    // Returning user — has past trips or quick trips
+    const hasHistory = returningPastTrips.length > 0 || returningQuickTrips.length > 0 || returningDraftTrips.length > 0;
+    if (hasHistory) {
+      const displayName = userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || '';
+      const handle = user?.email?.split('@')[0] || (displayName.length > 0 ? displayName.toLowerCase().replace(/\s+/g, '') : 'traveler');
+      return (
+        <View style={{ flex: 1 }}>
+          <ReturningUserHome
+            userName={displayName}
+            userHandle={handle}
+            avatarUrl={userAvatar}
+            notificationCount={notifCount}
+            pastTrips={returningPastTrips}
+            draftTrips={returningDraftTrips}
+            quickTrips={returningQuickTrips}
+            lifetimeStats={returningStats}
+            recentMoments={returningMoments}
+            savedPlaces={returningSavedPlaces}
+            onPlanTrip={() => router.push('/onboarding')}
+            onTripPress={(id) => router.push(`/trip-recap?tripId=${id}`)}
+            onDraftTripPress={(id) => router.push({ pathname: '/(tabs)/trip', params: { tripId: id } })}
+            onQuickTripPress={(id) => router.push(`/quick-trip-detail?quickTripId=${id}`)}
+            onAddQuickTrip={() => router.push('/quick-trip-create')}
+            onAddMoment={() => router.push(`/add-moment?tripId=${returningPastTrips[0]?.id ?? ''}`)}
+            onBellPress={() => setShowNotifications(true)}
+            onSeeAllTrips={() => router.push('/(tabs)/trip')}
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); load(true); }}
+          />
+          <NotificationsSheet
+            visible={showNotifications}
+            onClose={() => setShowNotifications(false)}
+            onGroupVoteTap={handleGroupVoteTap}
+            dbNotifications={dbNotifications}
+            onMarkRead={markRead}
+            onMarkAllRead={markAllRead}
+            {...notifProps}
+          />
+        </View>
+      );
+    }
+
+    // First-time user — welcoming empty state
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <ProfileRow

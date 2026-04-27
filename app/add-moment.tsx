@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -22,6 +22,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
+import { CONFIG } from '@/lib/config';
 import { placeAutocomplete } from '@/lib/google-places';
 import { addMoment } from '@/lib/supabase';
 import type { MomentTag, MomentVisibility } from '@/lib/types';
@@ -39,6 +40,7 @@ const ALL_TAGS: readonly MomentTag[] = [
 
 export default function AddMomentScreen() {
   const router = useRouter();
+  const { tripId: paramTripId } = useLocalSearchParams<{ tripId?: string }>();
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -75,7 +77,7 @@ export default function AddMomentScreen() {
       quality: 0.8,
       allowsMultipleSelection: true,
       selectionLimit: 20,
-      exif: false,
+      exif: true,
     });
 
     if (result.canceled || result.assets.length === 0) {
@@ -88,6 +90,27 @@ export default function AddMomentScreen() {
       status: 'pending' as const,
     }));
     setPhotos((prev) => [...prev, ...newPhotos]);
+
+    // Auto-populate location from first photo's EXIF GPS if location is empty
+    if (!location) {
+      const firstWithGps = result.assets.find(
+        (a) => a.exif?.GPSLatitude && a.exif?.GPSLongitude,
+      );
+      if (firstWithGps?.exif) {
+        const lat = firstWithGps.exif.GPSLatitude as number;
+        const lng = firstWithGps.exif.GPSLongitude as number;
+        try {
+          const res = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${CONFIG.GOOGLE_MAPS_KEY}&result_type=point_of_interest|establishment|locality`,
+          );
+          const json = await res.json();
+          const name = json.results?.[0]?.formatted_address?.split(',')[0];
+          if (name) setLocation(name);
+        } catch {
+          // Silently fail — user can still type location manually
+        }
+      }
+    }
   };
 
   const removePhoto = (uri: string) => {
@@ -127,20 +150,21 @@ export default function AddMomentScreen() {
             date,
             tags,
             visibility: scope,
+            ...(paramTripId ? { tripId: paramTripId } : {}),
           });
           return photo.uri;
         }),
       );
 
-      for (const result of results) {
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
         if (result.status === 'fulfilled') {
           setPhotos((prev) =>
             prev.map((p) => p.uri === result.value ? { ...p, status: 'done' } : p),
           );
           successCount++;
         } else {
-          // Find which photo failed
-          const failedUri = batch[results.indexOf(result)]?.uri;
+          const failedUri = batch[j]?.uri;
           if (failedUri) {
             setPhotos((prev) =>
               prev.map((p) => p.uri === failedUri ? { ...p, status: 'error' } : p),
@@ -163,7 +187,7 @@ export default function AddMomentScreen() {
         `${successCount} of ${photos.length} uploaded. Tap "Upload" to retry failed ones.`,
       );
     }
-  }, [photos, caption, location, tags, takenBy, date, scope, router]);
+  }, [photos, caption, location, tags, takenBy, date, scope, paramTripId, router]);
 
   const renderPhoto = ({ item }: { item: PhotoItem }) => (
     <Animated.View entering={FadeIn.duration(200)} style={styles.photoThumb}>
