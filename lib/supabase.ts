@@ -572,6 +572,82 @@ export async function createTrip(input: {
   return tripId
 }
 
+/** Save a partial/draft trip without archiving existing trips.
+ *  Used when a user backs out of onboarding mid-flow. */
+export async function saveDraftTrip(input: {
+  destination: string;
+  transport?: string;
+  vibes?: string[];
+  when?: string;
+  travelers?: number;
+}): Promise<string> {
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+  if (!userId) throw new Error('saveDraftTrip: not authenticated')
+
+  // Compute placeholder dates from "when" hint
+  const today = new Date()
+  let startDate: string
+  let endDate: string
+  switch (input.when) {
+    case 'This month': {
+      const s = new Date(today.getTime() + 14 * MS_PER_DAY)
+      startDate = s.toISOString().slice(0, 10)
+      endDate = new Date(s.getTime() + 7 * MS_PER_DAY).toISOString().slice(0, 10)
+      break
+    }
+    case 'Next month': {
+      const s = new Date(today.getFullYear(), today.getMonth() + 1, 15)
+      startDate = s.toISOString().slice(0, 10)
+      endDate = new Date(s.getTime() + 7 * MS_PER_DAY).toISOString().slice(0, 10)
+      break
+    }
+    default: {
+      const s = new Date(today.getTime() + 60 * MS_PER_DAY)
+      startDate = s.toISOString().slice(0, 10)
+      endDate = new Date(s.getTime() + 7 * MS_PER_DAY).toISOString().slice(0, 10)
+    }
+  }
+
+  const { data, error } = await supabase
+    .from(T.trips)
+    .insert({
+      name: `Trip to ${input.destination}`,
+      destination: input.destination,
+      start_date: startDate,
+      end_date: endDate,
+      status: 'Planning',
+      user_id: userId,
+      is_draft: true,
+      ...(input.transport ? { transport_mode: input.transport } : {}),
+      ...(input.vibes?.length ? { vibes: input.vibes } : {}),
+    })
+    .select('id')
+    .single()
+
+  if (error) throw new Error(`saveDraftTrip: ${error.message}`)
+  const tripId = data.id as string
+
+  // Add organizer as Primary member
+  const userName = authData?.user?.user_metadata?.full_name
+    ?? authData?.user?.email?.split('@')[0]
+    ?? 'Organizer'
+  await supabase.from(T.groupMembers).insert({
+    trip_id: tripId,
+    name: userName,
+    role: 'Primary',
+    user_id: userId,
+  }).then(() => {})
+
+  return tripId
+}
+
+/** Delete a draft trip (used when user taps "Discard" on resume nudge) */
+export async function discardDraftTrip(tripId: string): Promise<void> {
+  await supabase.from(T.groupMembers).delete().eq('trip_id', tripId)
+  await supabase.from(T.trips).delete().eq('id', tripId).eq('is_draft', true)
+}
+
 // ---------- ADD GROUP MEMBER ----------
 
 // ---------- TRIP INVITES ----------

@@ -30,6 +30,7 @@ import ProfileRow from './ProfileRow';
 import QuickTripRow from '@/components/quick-trips/QuickTripRow';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
+import { discardDraftTrip } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Moment, Place, Trip } from '@/lib/types';
 import type { QuickTrip } from '@/lib/quickTripTypes';
@@ -116,6 +117,42 @@ export default function ReturningUserHome({
           <Text style={s.welcomeKicker}>WELCOME BACK</Text>
           <Text style={s.welcomeTitle}>What are you up to?</Text>
         </Animated.View>
+
+        {/* ── 1b. RESUME DRAFT NUDGE ── */}
+        {draftTrips.length > 0 && (() => {
+          const draft = draftTrips[0];
+          return (
+            <Animated.View entering={FadeInDown.delay(60).duration(400)} style={s.resumeCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.resumeTitle}>Continue planning?</Text>
+                <Text style={s.resumeDest} numberOfLines={1}>
+                  {draft.destination ?? draft.name}
+                </Text>
+              </View>
+              <View style={s.resumeBtns}>
+                <TouchableOpacity
+                  style={s.resumeBtn}
+                  onPress={() => onDraftTripPress(draft.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.resumeBtnText}>Resume</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.discardBtn}
+                  onPress={async () => {
+                    try {
+                      await discardDraftTrip(draft.id);
+                      onRefresh?.();
+                    } catch {}
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.discardBtnText}>Discard</Text>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          );
+        })()}
 
         {/* ── 2. QUICK ACTIONS ── */}
         <Animated.View entering={FadeInDown.delay(80).duration(400)} style={s.actionsRow}>
@@ -304,6 +341,39 @@ const getStyles = (colors: ThemeColors) =>
     welcomeTitle: {
       fontSize: 26, fontWeight: '700', color: colors.text, letterSpacing: -0.5,
     },
+
+    // Resume draft nudge
+    resumeCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 16,
+      marginBottom: 16,
+      backgroundColor: colors.accentBg,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    resumeTitle: {
+      fontSize: 14, fontWeight: '700', color: colors.accent, marginBottom: 2,
+    },
+    resumeDest: {
+      fontSize: 13, color: colors.text2,
+    },
+    resumeBtns: {
+      flexDirection: 'row', gap: 8,
+    },
+    resumeBtn: {
+      paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12,
+      backgroundColor: colors.accent,
+    },
+    resumeBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+    discardBtn: {
+      paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12,
+      backgroundColor: colors.card,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    discardBtnText: { fontSize: 13, fontWeight: '600', color: colors.text3 },
 
     // Quick actions
     actionsRow: {

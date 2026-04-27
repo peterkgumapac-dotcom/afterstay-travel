@@ -33,6 +33,7 @@ import {
   addFlight,
   createTrip,
   joinTripByCode,
+  saveDraftTrip,
 } from '@/lib/supabase';
 import { scanTripDocuments } from '@/lib/anthropic';
 import { formatDatePHT, MS_PER_DAY } from '@/lib/utils';
@@ -148,7 +149,7 @@ function Input({
 
 // ── Path Picker (root) ───────────────────────────────────────────────
 
-function PathPicker({ onPick, onSkip, name, colors }: { onPick: (p: Path) => void; onSkip: () => void; name: string; colors: ThemeColors }) {
+function PathPicker({ onPick, onBack, onSkip, name, colors }: { onPick: (p: Path) => void; onBack?: () => void; onSkip: () => void; name: string; colors: ThemeColors }) {
   const paths = [
     { id: 'upload' as const, kicker: 'A', label: "I've already booked", sub: 'Drop in your confirmation screenshots — we\'ll read them and set up your trip.', icon: FileText },
     { id: 'invited' as const, kicker: 'B', label: 'Someone invited me', sub: 'Trip details are already waiting. Just enter your invite code.', icon: Users },
@@ -159,6 +160,7 @@ function PathPicker({ onPick, onSkip, name, colors }: { onPick: (p: Path) => voi
     <ScrollView contentContainerStyle={shared.scrollContent}>
       <BrandRow colors={colors} />
       <Header
+        onBack={onBack}
         kicker={`Welcome, ${name}`}
         title="How do you want to start?"
         sub="You can always add another trip later. This is just how you'd like to begin."
@@ -200,12 +202,35 @@ function PathPicker({ onPick, onSkip, name, colors }: { onPick: (p: Path) => voi
 // ── Branch A: Plan a trip ────────────────────────────────────────────
 
 function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (data: any) => void; colors: ThemeColors }) {
+  const router = useRouter();
   const [step, setStep] = useState(0);
   const [dest, setDest] = useState('');
   const [vibes, setVibes] = useState<string[]>([]);
   const [transport, setTransport] = useState('');
   const [when, setWhen] = useState('');
   const [travelers, setTravelers] = useState(2);
+
+  const handleBackOut = useCallback(async () => {
+    if (dest.trim()) {
+      try {
+        const draftId = await saveDraftTrip({
+          destination: dest.trim(),
+          transport: transport || undefined,
+          vibes: vibes.length > 0 ? vibes : undefined,
+          when: when || undefined,
+          travelers,
+        });
+        await cacheSet('draft:trip_id', draftId);
+        await cacheSet('onboarding_complete', true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace('/(tabs)/home' as never);
+        return;
+      } catch {
+        // Draft save failed — fall back to normal back
+      }
+    }
+    onBack();
+  }, [dest, vibes, transport, when, travelers, onBack, router]);
 
   const TRANSPORT: { id: string; label: string; Icon: typeof Plane; sub: string }[] = [
     { id: 'plane', label: 'Flying', Icon: Plane, sub: 'Taking a flight' },
@@ -230,7 +255,7 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
     return (
       <ScrollView contentContainerStyle={shared.scrollContent}>
         <BrandRow step={1} of={4} colors={colors} />
-        <Header onBack={onBack} kicker="Plan — 1 of 4" title="Where are you dreaming of?" sub="A city, country, or just a feeling." colors={colors} />
+        <Header onBack={handleBackOut} kicker="Plan — 1 of 4" title="Where are you dreaming of?" sub="A city, country, or just a feeling." colors={colors} />
         <View style={shared.section}>
           <FieldLabel label="Destination" colors={colors} />
           <Input value={dest} onChange={setDest} placeholder="Lisbon, Kyoto, somewhere warm…" colors={colors} autoFocus />
@@ -765,7 +790,7 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
-      {!path && <PathPicker onPick={setPath} onSkip={() => { cacheSet('onboarding_complete', true); router.replace('/(tabs)/home' as never); }} name={firstName} colors={colors} />}
+      {!path && <PathPicker onPick={setPath} onBack={() => router.back()} onSkip={() => { cacheSet('onboarding_complete', true); router.replace('/(tabs)/home' as never); }} name={firstName} colors={colors} />}
       {path === 'plan' && <PlanFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
       {path === 'upload' && <UploadFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
       {path === 'invited' && <InvitedFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
