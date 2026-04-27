@@ -54,13 +54,17 @@ export default function PastTripRow({ trip, hasMemory, onPress }: PastTripRowPro
       </View>
 
       <View style={styles.meta}>
-        <Text style={styles.spent}>
-          {'\u20B1'}{trip.spent.toLocaleString()}
-        </Text>
-        <Text style={styles.rating}>
-          {fullStars}
-          <Text style={styles.ratingEmpty}>{emptyStars}</Text>
-        </Text>
+        {trip.spent > 0 && (
+          <Text style={styles.spent}>
+            {'\u20B1'}{trip.spent.toLocaleString()}
+          </Text>
+        )}
+        {trip.rating > 0 && (
+          <Text style={styles.rating}>
+            {fullStars}
+            <Text style={styles.ratingEmpty}>{emptyStars}</Text>
+          </Text>
+        )}
       </View>
     </Wrapper>
   );

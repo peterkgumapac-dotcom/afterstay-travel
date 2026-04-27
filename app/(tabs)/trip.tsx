@@ -60,6 +60,8 @@ import {
   archiveTrip,
 } from '@/lib/supabase';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
+import { getQuickTrips } from '@/lib/quickTrips';
+import type { QuickTrip } from '@/lib/quickTripTypes';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 import type {
   Flight,
@@ -168,13 +170,15 @@ const COUNTRY_FLAGS: Record<string, string> = {
 };
 
 function mapTripToPastDisplay(t: Trip): PastTripDisplay {
+  // Prefer computed nights from dates over denormalized totalNights (which may be NULL/0)
+  const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
   return {
     tripId: t.id,
     flag: COUNTRY_FLAGS[t.countryCode ?? ''] ?? '\u{1F30D}',
     dest: t.destination ?? t.name,
     country: t.country ?? '',
     dates: `${formatDatePHT(t.startDate)} \u2013 ${formatDatePHT(t.endDate)}`,
-    nights: t.totalNights ?? t.nights ?? 0,
+    nights,
     spent: t.totalSpent ?? 0,
     miles: 0,
     rating: 0,
@@ -674,6 +678,7 @@ export default function TripScreen() {
   const [filesData, setFilesData] = useState<TripFile[]>([]);
   const [activeTripSpent, setActiveTripSpent] = useState(0);
   const [pastTripsData, setPastTripsData] = useState<Trip[]>([]);
+  const [quickTripsData, setQuickTripsData] = useState<QuickTrip[]>([]);
   const [highlightsData, setHighlightsData] = useState<Highlight[]>([]);
   const [lifetimeStats, setLifetimeStats] = useState<{
     totalTrips: number;
@@ -700,16 +705,31 @@ export default function TripScreen() {
         setFilesData(tf);
       }
       // Load lifetime data + expense summary for active trip
-      const [stats, highlights, past, expSummary] = await Promise.all([
+      const [stats, highlights, past, expSummary, qTrips] = await Promise.all([
         getLifetimeStats('').catch(() => null),
         getHighlights('').catch(() => [] as Highlight[]),
         getAllUserTrips('').catch(() => [] as Trip[]),
         getExpenseSummary().catch(() => ({ total: 0, byCategory: {}, count: 0 })),
+        getQuickTrips().catch(() => [] as QuickTrip[]),
       ]);
       if (stats) setLifetimeStats(stats);
       setHighlightsData(highlights);
-      setPastTripsData(past);
       setActiveTripSpent(expSummary.total);
+      setQuickTripsData(qTrips);
+
+      // Backfill spent for trips missing total_spent (legacy data)
+      const enriched = await Promise.all(
+        past.map(async (t) => {
+          if ((t.totalSpent ?? 0) > 0) return t;
+          try {
+            const s = await getExpenseSummary(t.id);
+            return { ...t, totalSpent: s.total } as Trip;
+          } catch {
+            return t;
+          }
+        }),
+      );
+      setPastTripsData(enriched);
     } catch (e) {
       if (__DEV__) console.warn('[TripScreen] load trip data failed:', e);
     } finally {
@@ -854,16 +874,19 @@ export default function TripScreen() {
     setShowMoreMenu(false);
     Alert.alert(
       'Finish this trip?',
-      'Your trip will be marked as completed and a Trip Memory will be generated.',
+      'Your trip will be marked as completed and you can view your trip summary.',
       [
         { text: 'Not yet', style: 'cancel' },
         {
-          text: 'Finish & Generate Memory',
+          text: 'Finish Trip',
           onPress: async () => {
             if (!trip) return;
             try {
-              await finishTrip(trip.id);
-              router.push({ pathname: '/trip-memory', params: { tripId: trip.id } } as never);
+              const tripId = trip.id;
+              await finishTrip(tripId);
+              // Refresh the trip list then navigate to summary
+              load(true);
+              router.push({ pathname: '/trip-recap', params: { tripId } } as never);
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not finish trip');
             }
@@ -1039,7 +1062,9 @@ export default function TripScreen() {
     }
   };
 
-  if (!trip && !loading) {
+  // Show full empty state only when there are truly no trips at all
+  const hasAnyTrips = pastTripsData.length > 0 || quickTripsData.length > 0;
+  if (!trip && !loading && !hasAnyTrips) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.topBar}>
@@ -1060,6 +1085,9 @@ export default function TripScreen() {
       </SafeAreaView>
     );
   }
+
+  // No active trip but has past/quick trips — force summary tab
+  const effectiveTab = (!trip && hasAnyTrips) ? 'summary' : activeTab;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -1093,7 +1121,7 @@ export default function TripScreen() {
         </View>
 
         {/* Active trip pill (overview only) */}
-        {activeTab === 'overview' && (
+        {trip && effectiveTab === 'overview' && (
           <View style={styles.pillWrapper}>
             <View style={styles.activePill}>
               <PulsingDot color={colors.accent} />
@@ -1104,39 +1132,41 @@ export default function TripScreen() {
           </View>
         )}
 
-        {/* Segmented control */}
-        <View style={styles.segWrapper}>
-          <View style={styles.segmented}>
-            {TAB_KEYS.map((t) => (
-              <Pressable
-                key={t}
-                style={[
-                  styles.segBtn,
-                  activeTab === t && styles.segBtnActive,
-                ]}
-                onPress={() => {
-                  if (t === 'guide') {
-                    router.push('/(tabs)/guide' as never);
-                  } else {
-                    setActiveTab(t);
-                  }
-                }}
-              >
-                <Text
+        {/* Segmented control — only show when there's an active trip */}
+        {trip && (
+          <View style={styles.segWrapper}>
+            <View style={styles.segmented}>
+              {TAB_KEYS.map((t) => (
+                <Pressable
+                  key={t}
                   style={[
-                    styles.segText,
-                    activeTab === t && styles.segTextActive,
+                    styles.segBtn,
+                    effectiveTab === t && styles.segBtnActive,
                   ]}
+                  onPress={() => {
+                    if (t === 'guide') {
+                      router.push('/(tabs)/guide' as never);
+                    } else {
+                      setActiveTab(t);
+                    }
+                  }}
                 >
-                  {t === 'summary' ? 'My Trips' : t[0].toUpperCase() + t.slice(1)}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={[
+                      styles.segText,
+                      effectiveTab === t && styles.segTextActive,
+                    ]}
+                  >
+                    {t === 'summary' ? 'My Trips' : t[0].toUpperCase() + t.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* ===================== OVERVIEW ===================== */}
-        {activeTab === 'overview' && (
+        {trip && effectiveTab === 'overview' && (
           <OverviewTab
             trip={trip}
             members={membersData}
@@ -1152,7 +1182,7 @@ export default function TripScreen() {
         )}
 
         {/* ===================== SUMMARY ===================== */}
-        {activeTab === 'summary' && (
+        {effectiveTab === 'summary' && (
           <SummaryTab
             totalMiles={totalMiles}
             totalTrips={totalTrips}
@@ -1163,16 +1193,19 @@ export default function TripScreen() {
             activeTrips={activeTripsDisplay}
             incomingTrips={incomingTripsDisplay}
             pastTrips={pastTripsDisplay}
+            quickTrips={quickTripsData}
             colors={colors}
             onAddTrip={() => setAddOpen(true)}
-            onTripPress={(tripId) => router.push({ pathname: '/trip-summary', params: { tripId } } as never)}
+            onTripPress={(tripId) => router.push({ pathname: '/trip-recap', params: { tripId } } as never)}
+            onQuickTripPress={(id) => router.push({ pathname: '/quick-trip-detail', params: { quickTripId: id } } as never)}
+            onAddQuickTrip={() => router.push('/quick-trip-create' as never)}
           />
         )}
 
         {/* ===================== MOMENTS ===================== */}
 
         {/* ===================== ESSENTIALS ===================== */}
-        {activeTab === 'essentials' && (
+        {trip && effectiveTab === 'essentials' && (
           <EssentialsTab
             packingState={packingState}
             packingStats={packingStats}

@@ -1,0 +1,42 @@
+appId: com.afterstay.travel
+name: "Discover Tab Audit"
+---
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Navigate to Discover
+- tapOn:
+    text: "Discover"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: screenshots/05_discover_top
+
+# Scroll to see content
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: screenshots/05_discover_scrolled
+
+# Scroll more
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: screenshots/05_discover_bottom
+
+# Pull to refresh
+- scroll:
+    direction: UP
+- scroll:
+    direction: UP
+- swipe:
+    direction: DOWN
+    duration: 500
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: screenshots/05_discover_refreshed
+
+# Back to Home
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 3000

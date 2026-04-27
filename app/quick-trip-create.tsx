@@ -38,7 +38,7 @@ export default function QuickTripCreateScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
-  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const { returnTo, photoUris } = useLocalSearchParams<{ returnTo?: string; photoUris?: string }>();
 
   // Phase
   const [phase, setPhase] = useState<Phase>('photos');
@@ -61,8 +61,18 @@ export default function QuickTripCreateScreen() {
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-open picker on mount
-  useEffect(() => { pickPhotos(); }, []);
+  // Pre-populate from passed photoUris or open picker
+  useEffect(() => {
+    if (photoUris) {
+      const uris = photoUris.split(',').filter(Boolean);
+      if (uris.length > 0) {
+        setPhotos(uris.map((uri) => ({ uri })));
+        setPhase('review');
+        return;
+      }
+    }
+    pickPhotos();
+  }, []);
 
   const pickPhotos = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({

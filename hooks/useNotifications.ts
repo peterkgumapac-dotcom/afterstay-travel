@@ -45,8 +45,11 @@ export function useNotifications() {
           })),
         );
       }
-    } catch {
-      // Table might not exist yet or RLS issue — silently ignore
+    } catch (err) {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[useNotifications] fetch failed:', err);
+      }
     } finally {
       setLoading(false);
     }

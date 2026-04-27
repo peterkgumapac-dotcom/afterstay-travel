@@ -1070,6 +1070,7 @@ function DiscoverScreenInner() {
         </View>
       </View>
 
+      {tab !== 'stays' && (
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -1492,21 +1493,6 @@ function DiscoverScreenInner() {
           </>
         )}
 
-        {/* ═══════ STAYS TAB ═══════ */}
-        {tab === 'stays' && (
-          <StaysTab
-            tripCoords={tripCoords}
-            tripId={tripId}
-            tripDest={tripDest}
-            travelMode={travelMode}
-            tripMembers={tripMembers}
-            memberNames={memberNames}
-            savedPlaces={savedPlaces}
-            onSave={toggleSave}
-            onExplore={handleExplore}
-          />
-        )}
-
         {/* ═══════ SAVED TAB ═══════ */}
         {tab === 'saved' && (
           <View style={styles.placeList}>
@@ -1677,6 +1663,22 @@ function DiscoverScreenInner() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+      )}
+
+      {/* ═══════ STAYS TAB (own ScrollView — outside parent) ═══════ */}
+      {tab === 'stays' && (
+        <StaysTab
+          tripCoords={tripCoords}
+          tripId={tripId}
+          tripDest={tripDest}
+          travelMode={travelMode}
+          tripMembers={tripMembers}
+          memberNames={memberNames}
+          savedPlaces={savedPlaces}
+          onSave={toggleSave}
+          onExplore={handleExplore}
+        />
+      )}
 
       {/* Full-screen map */}
       <ExploreMap

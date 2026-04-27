@@ -1,11 +1,13 @@
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const MAX_WIDTH = 800;
 const JPEG_QUALITY = 0.7;
 
 /**
  * Compress an image by resizing to a max width and saving as JPEG.
- * Falls back to the original URI if manipulation fails.
+ * Always returns a file:// URI — if manipulation fails, copies the
+ * original to a temp file so downstream readers never get a content:// URI.
  */
 export async function compressImage(
   uri: string,
@@ -20,7 +22,12 @@ export async function compressImage(
     );
     return result.uri;
   } catch {
-    // Manipulation failed — return original URI as graceful fallback
-    return uri;
+    // Manipulation failed — ensure we return a file:// URI
+    if (uri.startsWith('file://') || uri.startsWith('/')) return uri;
+    // Android content:// URI — copy to a temp file
+    const ext = (uri.split('.').pop() ?? 'jpg').split('?')[0];
+    const tempPath = `${FileSystem.cacheDirectory}compress-fallback-${Date.now()}.${ext}`;
+    await FileSystem.copyAsync({ from: uri, to: tempPath });
+    return tempPath;
   }
 }

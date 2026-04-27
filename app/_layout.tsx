@@ -126,6 +126,22 @@ function RootLayoutInner() {
           options={{ presentation: 'modal', title: 'Trip Summary', headerShown: false }}
         />
         <Stack.Screen
+          name="trip-recap"
+          options={{ presentation: 'fullScreenModal', title: 'Trip Recap', headerShown: false, animation: 'fade' }}
+        />
+        <Stack.Screen
+          name="quick-trip-create"
+          options={{ presentation: 'modal', title: 'Quick Trip', headerShown: false }}
+        />
+        <Stack.Screen
+          name="quick-trip-detail"
+          options={{ presentation: 'modal', title: 'Quick Trip', headerShown: false }}
+        />
+        <Stack.Screen
+          name="notification-settings"
+          options={{ presentation: 'modal', title: 'Notifications', headerShown: false }}
+        />
+        <Stack.Screen
           name="trip-memory"
           options={{ presentation: 'modal', title: 'Trip Memory', headerShown: false }}
         />

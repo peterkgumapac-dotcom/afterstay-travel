@@ -1,0 +1,52 @@
+appId: com.afterstay.travel
+name: "Home Screen Audit"
+---
+# Wait for app to be loaded (loader should finish)
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Take screenshot of initial state
+- takeScreenshot: screenshots/01_home_initial
+
+# Check if we see either active trip dashboard OR returning user home OR empty state
+- assertVisible:
+    text: "afterStay"
+    optional: true
+
+# Scroll down to see full content
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+
+- takeScreenshot: screenshots/01_home_scrolled
+
+# Try pull-to-refresh
+- scroll:
+    direction: UP
+- scroll:
+    direction: UP
+
+- swipe:
+    direction: DOWN
+    duration: 500
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- takeScreenshot: screenshots/01_home_after_refresh
+
+# Check bottom tab bar is visible
+- assertVisible:
+    text: "Home"
+    optional: true
+- assertVisible:
+    text: "Moments"
+    optional: true
+- assertVisible:
+    text: "Discover"
+    optional: true
+- assertVisible:
+    text: "Budget"
+    optional: true
+- assertVisible:
+    text: "My Trips"
+    optional: true

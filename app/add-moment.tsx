@@ -24,8 +24,10 @@ import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { CONFIG } from '@/lib/config';
 import { placeAutocomplete } from '@/lib/google-places';
-import { addMoment } from '@/lib/supabase';
+import { addMoment, addPersonalPhoto, getActiveTrip } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
 import type { MomentTag, MomentVisibility } from '@/lib/types';
+import CaptureDestinationSheet, { type CaptureDestination } from '@/components/shared/CaptureDestinationSheet';
 
 type PhotoStatus = 'pending' | 'uploading' | 'done' | 'error';
 
@@ -58,8 +60,27 @@ export default function AddMomentScreen() {
   const [locationSuggestions, setLocationSuggestions] = useState<{ placeId: string; description: string }[]>([]);
   const locationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Capture routing state
+  const { user } = useAuth();
+  const [destination, setDestination] = useState<CaptureDestination | null>(
+    paramTripId ? { type: 'trip', tripId: paramTripId, tripName: '' } : null,
+  );
+  const [showDestSheet, setShowDestSheet] = useState(false);
+  const [activeTripName, setActiveTripName] = useState('');
+
+  // On mount: detect active trip, then pick images
   useEffect(() => {
-    pickImages();
+    (async () => {
+      if (!paramTripId) {
+        const active = await getActiveTrip().catch(() => null);
+        if (active) {
+          setDestination({ type: 'trip', tripId: active.id, tripName: active.name });
+          setActiveTripName(active.name);
+        }
+        // If no active trip and no param, we'll show the sheet after picking photos
+      }
+      pickImages();
+    })();
   }, []);
 
   const pickImages = async () => {
@@ -90,6 +111,11 @@ export default function AddMomentScreen() {
       status: 'pending' as const,
     }));
     setPhotos((prev) => [...prev, ...newPhotos]);
+
+    // If no destination set (no active trip, no param), show the routing sheet
+    if (!destination && !paramTripId) {
+      setShowDestSheet(true);
+    }
 
     // Auto-populate location from first photo's EXIF GPS if location is empty
     if (!location) {
@@ -135,6 +161,7 @@ export default function AddMomentScreen() {
     );
 
     let successCount = photos.filter((p) => p.status === 'done').length;
+    let lastErrors: string[] = [];
     const BATCH_SIZE = 3;
 
     // Upload in parallel batches of 3
@@ -142,20 +169,37 @@ export default function AddMomentScreen() {
       const batch = pending.slice(i, i + BATCH_SIZE);
       const results = await Promise.allSettled(
         batch.map(async (photo) => {
-          await addMoment({
-            caption: caption || '',
-            localUri: photo.uri,
-            location: location || undefined,
-            takenBy: takenBy || undefined,
-            date,
-            tags,
-            visibility: scope,
-            ...(paramTripId ? { tripId: paramTripId } : {}),
-          });
+          if (destination?.type === 'personal' && user?.id) {
+            await addPersonalPhoto({
+              userId: user.id,
+              localUri: photo.uri,
+              location: location || undefined,
+              caption: caption || undefined,
+              takenAt: date,
+              tags,
+            });
+          } else if (destination?.type === 'quick-trip') {
+            // Navigate to quick-trip-create with photos — handled in onSelect
+            // This path shouldn't reach here; it redirects before upload
+            return photo.uri;
+          } else {
+            const tripId = destination?.type === 'trip' ? destination.tripId : paramTripId;
+            await addMoment({
+              caption: caption || '',
+              localUri: photo.uri,
+              location: location || undefined,
+              takenBy: takenBy || undefined,
+              date,
+              tags,
+              visibility: scope,
+              ...(tripId ? { tripId } : {}),
+            });
+          }
           return photo.uri;
         }),
       );
 
+      const errors: string[] = [];
       for (let j = 0; j < results.length; j++) {
         const result = results[j];
         if (result.status === 'fulfilled') {
@@ -170,8 +214,13 @@ export default function AddMomentScreen() {
               prev.map((p) => p.uri === failedUri ? { ...p, status: 'error' } : p),
             );
           }
+          const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+          errors.push(reason);
+          // eslint-disable-next-line no-console
+          console.error('[add-moment] upload failed:', reason);
         }
       }
+      lastErrors = errors;
       setUploadProgress({ done: successCount - (photos.length - pending.length), total: pending.length });
     }
 
@@ -182,9 +231,10 @@ export default function AddMomentScreen() {
       router.back();
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      const errDetail = lastErrors.length > 0 ? `\n\nError: ${lastErrors[0]}` : '';
       Alert.alert(
         'Partial upload',
-        `${successCount} of ${photos.length} uploaded. Tap "Upload" to retry failed ones.`,
+        `${successCount} of ${photos.length} uploaded. Tap "Upload" to retry failed ones.${errDetail}`,
       );
     }
   }, [photos, caption, location, tags, takenBy, date, scope, paramTripId, router]);
@@ -252,6 +302,25 @@ export default function AddMomentScreen() {
               </Text>
               <View style={{ width: 50 }} />
             </View>
+
+            {/* Destination chip — shows where photos will be saved */}
+            {destination && (
+              <TouchableOpacity
+                style={styles.destChip}
+                activeOpacity={0.7}
+                onPress={() => setShowDestSheet(true)}
+              >
+                <Text style={styles.destChipLabel}>Saving to: </Text>
+                <Text style={styles.destChipValue} numberOfLines={1}>
+                  {destination.type === 'trip'
+                    ? destination.tripName || activeTripName || 'Trip'
+                    : destination.type === 'personal'
+                    ? 'Personal Album'
+                    : 'Quick Trip'}
+                </Text>
+                <ChevronRight size={12} color={colors.text3} />
+              </TouchableOpacity>
+            )}
 
             {/* Photo grid */}
             <View style={styles.photoGrid}>
@@ -377,7 +446,7 @@ export default function AddMomentScreen() {
             </View>
 
             {/* Location with autocomplete */}
-            <View style={styles.field}>
+            <View style={[styles.field, { zIndex: 5 }]}>
               <Text style={styles.label}>Location</Text>
               <TextInput
                 style={styles.input}
@@ -510,6 +579,27 @@ export default function AddMomentScreen() {
           </>
         }
       />
+
+      <CaptureDestinationSheet
+        visible={showDestSheet}
+        onClose={() => {
+          setShowDestSheet(false);
+          // If still no destination after closing, go back
+          if (!destination) router.back();
+        }}
+        onSelect={(dest) => {
+          setShowDestSheet(false);
+          if (dest.type === 'quick-trip') {
+            // Redirect to quick-trip-create with the selected photos
+            router.replace({
+              pathname: '/quick-trip-create',
+              params: { photoUris: photos.map((p) => p.uri).join(',') },
+            } as never);
+          } else {
+            setDestination(dest);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -531,6 +621,21 @@ const getStyles = (colors: ThemeColors) =>
     },
     headerCancel: { color: colors.accent, fontSize: 14, fontWeight: '600' },
     headerTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
+    destChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      backgroundColor: colors.card,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginBottom: 12,
+      gap: 2,
+    },
+    destChipLabel: { fontSize: 12, color: colors.text3 },
+    destChipValue: { fontSize: 12, fontWeight: '600', color: colors.accent, maxWidth: 180 },
 
     // Photo grid
     photoGrid: {
@@ -605,7 +710,7 @@ const getStyles = (colors: ThemeColors) =>
     },
 
     // Form
-    field: { gap: spacing.sm },
+    field: { gap: spacing.sm, zIndex: 1 },
     label: {
       color: colors.text3,
       fontSize: 11,
@@ -643,12 +748,15 @@ const getStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       borderRadius: radius.sm,
       marginTop: 4,
+      zIndex: 10,
+      elevation: 10,
     },
     suggestionItem: {
-      paddingVertical: 10,
+      paddingVertical: 12,
       paddingHorizontal: spacing.md,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
+      minHeight: 44,
     },
     suggestionText: { fontSize: 13, color: colors.text },
 

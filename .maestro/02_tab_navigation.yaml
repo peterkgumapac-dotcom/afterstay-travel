@@ -1,0 +1,48 @@
+appId: com.afterstay.travel
+name: "Tab Navigation Audit"
+---
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Navigate to each tab and screenshot
+
+# Moments tab
+- tapOn:
+    text: "Moments"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: screenshots/02_moments_tab
+
+# Discover tab
+- tapOn:
+    text: "Discover"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: screenshots/02_discover_tab
+
+# Budget tab
+- tapOn:
+    text: "Budget"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: screenshots/02_budget_tab
+
+# My Trips tab
+- tapOn:
+    text: "My Trips"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: screenshots/02_mytrips_tab
+
+# Scroll My Trips to see past trips
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: screenshots/02_mytrips_scrolled
+
+# Back to Home
+- tapOn:
+    text: "Home"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: screenshots/02_back_to_home

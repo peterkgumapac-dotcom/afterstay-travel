@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
+  Image,
   ScrollView,
   Share,
   StyleSheet,
@@ -8,12 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+
+const SCREEN_W = Dimensions.get('window').width;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  ArrowLeft,
-  Calendar,
   Camera,
+  ChevronRight,
   FolderOpen,
   Heart,
   ImagePlus,
@@ -23,8 +26,6 @@ import {
   Share2,
   Star,
   Tag,
-  Upload,
-  Users,
   Wallet,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -33,6 +34,8 @@ import StatPill from '@/components/summary/StatPill';
 import CategoryBar from '@/components/summary/CategoryBar';
 import PlaceRow from '@/components/summary/PlaceRow';
 import type { PlaceSource } from '@/components/summary/PlaceRow';
+import HeroSection from '@/components/summary/HeroSection';
+import SuperlativeCard from '@/components/summary/SuperlativeCard';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import {
   getTripById,
@@ -43,6 +46,7 @@ import {
   getGroupMembers,
   getMomentFavorites,
   getAlbums,
+  resolvePhotoUrl,
 } from '@/lib/supabase';
 import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatCurrency, formatDatePHT } from '@/lib/utils';
@@ -86,6 +90,8 @@ export default function TripSummaryScreen() {
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [favorites, setFavorites] = useState<MomentFavoriteMap>({});
   const [albums, setAlbums] = useState<Album[]>([]);
+  const [placesExpanded, setPlacesExpanded] = useState(false);
+  const [savedExpanded, setSavedExpanded] = useState(false);
 
   const load = useCallback(async () => {
     if (!tripId) return;
@@ -158,6 +164,7 @@ export default function TripSummaryScreen() {
   const dedupedPlaces = useMemo(() => {
     const seen = new Map<string, DerivedPlace>();
 
+    // Only count places from photos and receipts — real visited locations
     for (const m of moments) {
       const loc = m.location?.trim();
       if (loc) {
@@ -172,14 +179,19 @@ export default function TripSummaryScreen() {
         if (!seen.has(key)) seen.set(key, { name: loc, source: 'expense' });
       }
     }
-    for (const p of places) {
-      const key = p.name.toLowerCase();
-      if (!seen.has(key)) seen.set(key, { name: p.name, category: p.category, source: 'discover' });
-    }
     return Array.from(seen.values());
-  }, [moments, expenses, places]);
+  }, [moments, expenses]);
 
-  const savedPlaces = useMemo(() => places.filter((p) => p.saved), [places]);
+  const savedPlaces = useMemo(() => {
+    const seen = new Set<string>();
+    return places.filter((p) => {
+      if (!p.saved) return false;
+      const key = p.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [places]);
 
   const topExpenses = useMemo(
     () =>
@@ -190,14 +202,74 @@ export default function TripSummaryScreen() {
   );
 
   const receiptPlaces = useMemo(() => {
+    // Filter out OCR noise that isn't a real place name
+    const NOISE_WORDS = ['cash voucher', 'receipt', 'invoice', 'total', 'change', 'vat', 'tax', 'subtotal', 'discount'];
     const set = new Set<string>();
     for (const e of expenses) {
-      if (e.placeName) set.add(e.placeName);
+      if (!e.placeName) continue;
+      const lower = e.placeName.toLowerCase().trim();
+      if (lower.length < 3) continue;
+      if (NOISE_WORDS.some((w) => lower === w || lower.includes(w))) continue;
+      set.add(e.placeName);
     }
     return Array.from(set);
   }, [expenses]);
 
   const currency = trip?.costCurrency ?? 'PHP';
+
+  // ---------- SUPERLATIVES (derived from existing data) ----------
+
+  const heroPhoto = useMemo(() => {
+    // Pick most-favorited moment with a photo, or fall back to first photo
+    const withPhotos = moments.filter((m) => resolvePhotoUrl(m.photo));
+    const favIds = Object.entries(favorites)
+      .filter(([, f]) => f.count > 0)
+      .sort(([, a], [, b]) => b.count - a.count)
+      .map(([id]) => id);
+    const topFav = favIds.find((id) => withPhotos.some((m) => m.id === id));
+    if (topFav) return resolvePhotoUrl(withPhotos.find((m) => m.id === topFav)?.photo);
+    return resolvePhotoUrl(withPhotos[0]?.photo);
+  }, [moments, favorites]);
+
+  const topCategory = useMemo(() => {
+    const entries = Object.entries(summary.byCategory);
+    if (entries.length === 0) return undefined;
+    return entries.sort(([, a], [, b]) => b - a)[0][0];
+  }, [summary.byCategory]);
+
+  const tripPersonality = useMemo(() => {
+    if (!topCategory) return undefined;
+    const map: Record<string, string> = {
+      Food: 'Foodie Escape',
+      Activity: 'Adventure Mode',
+      Shopping: 'Retail Therapy',
+      Transport: 'Road Trip',
+      Accommodation: 'Luxury Stay',
+    };
+    return map[topCategory] ?? 'The Getaway';
+  }, [topCategory]);
+
+  const peakDay = useMemo(() => {
+    if (momentsByDay.length === 0) return undefined;
+    return momentsByDay.reduce((best, d) => (d.count > best.count ? d : best), momentsByDay[0]);
+  }, [momentsByDay]);
+
+  const biggestExpense = useMemo(() => {
+    if (expenses.length === 0) return undefined;
+    return [...expenses].sort((a, b) => b.amount - a.amount)[0];
+  }, [expenses]);
+
+  const topLocation = useMemo(() => {
+    const freq: Record<string, number> = {};
+    for (const m of moments) {
+      const loc = m.location?.trim();
+      if (loc) freq[loc] = (freq[loc] ?? 0) + 1;
+    }
+    const entries = Object.entries(freq);
+    if (entries.length === 0) return undefined;
+    const [name, count] = entries.sort(([, a], [, b]) => b - a)[0];
+    return { name, count };
+  }, [moments]);
 
   // ---------- ACTIONS ----------
 
@@ -255,57 +327,31 @@ export default function TripSummaryScreen() {
   const dateLabel = `${formatDatePHT(trip.startDate)} – ${formatDatePHT(trip.endDate)}`;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Back */}
-        <TouchableOpacity onPress={() => router.back()} style={styles.backRow} activeOpacity={0.7}>
-          <ArrowLeft size={20} color={colors.text} />
-        </TouchableOpacity>
 
-        {/* ==================== HERO ==================== */}
-        <View style={styles.heroSection}>
-          <Text style={styles.heroName}>{trip.name}</Text>
-          <View style={styles.heroDateRow}>
-            <Calendar size={13} color={colors.text3} />
-            <Text style={styles.heroDate}>{dateLabel} · {trip.nights} nights</Text>
-          </View>
-          {members.length > 0 && (
-            <View style={styles.heroDateRow}>
-              <Users size={13} color={colors.text3} />
-              <Text style={styles.heroDate}>{members.length} travelers</Text>
-            </View>
-          )}
-        </View>
+        {/* ==================== 1. HERO ==================== */}
+        <HeroSection
+          photoUrl={heroPhoto}
+          tripName={trip.name}
+          destination={trip.destination ?? ''}
+          dateLabel={dateLabel}
+          nights={trip.nights}
+          members={members}
+          personality={tripPersonality}
+          colors={colors}
+          onBack={() => router.back()}
+        />
 
-        {/* Stats grid */}
+        {/* ==================== 2. STATS STRIP ==================== */}
         <View style={styles.statsGrid}>
-          <StatPill
-            icon={<Camera size={18} color={colors.accent} />}
-            value={totalMoments}
-            label="Moments"
-            colors={colors}
-          />
-          <StatPill
-            icon={<MapPin size={18} color={colors.coral} />}
-            value={dedupedPlaces.length}
-            label="Places"
-            colors={colors}
-          />
-          <StatPill
-            icon={<Heart size={18} color={colors.danger} />}
-            value={favoriteCount}
-            label="Favorites"
-            colors={colors}
-          />
-          <StatPill
-            icon={<Wallet size={18} color={colors.gold} />}
-            value={formatCurrency(summary.total, currency)}
-            label="Spent"
-            colors={colors}
-          />
+          <StatPill icon={<Camera size={18} color={colors.accent} />} value={totalMoments} label="Moments" colors={colors} />
+          <StatPill icon={<MapPin size={18} color={colors.coral} />} value={dedupedPlaces.length} label="Places" colors={colors} />
+          <StatPill icon={<Heart size={18} color={colors.danger} />} value={favoriteCount} label="Favorites" colors={colors} />
+          <StatPill icon={<Wallet size={18} color={colors.gold} />} value={formatCurrency(summary.total, currency)} label="Spent" colors={colors} />
         </View>
 
-        {/* ==================== ACTION ROW ==================== */}
+        {/* ==================== 3. ACTION ROW ==================== */}
         <View style={styles.actionRow}>
           <TouchableOpacity style={styles.actionBtn} onPress={handlePlayReel} activeOpacity={0.7}>
             <Play size={16} color={colors.text} fill={colors.text} />
@@ -313,7 +359,7 @@ export default function TripSummaryScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={handleAddMoment} activeOpacity={0.7}>
             <ImagePlus size={16} color={colors.text} />
-            <Text style={styles.actionLabel}>Share Photo</Text>
+            <Text style={styles.actionLabel}>Add Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={handleShare} activeOpacity={0.7}>
             <Share2 size={16} color={colors.text} />
@@ -321,7 +367,189 @@ export default function TripSummaryScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ==================== GROUP ALBUMS ==================== */}
+        {/* ==================== 4. MOMENTS ==================== */}
+        {moments.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Moments</Text>
+              <TouchableOpacity onPress={handlePlayReel} style={styles.viewAllBtn} activeOpacity={0.7}>
+                <Text style={styles.viewAllText}>View All</Text>
+                <ChevronRight size={14} color={colors.accent} />
+              </TouchableOpacity>
+            </View>
+
+            {(() => {
+              const photosWithUrl = moments.filter((m) => resolvePhotoUrl(m.photo));
+              const step = Math.max(1, Math.floor(photosWithUrl.length / 11));
+              const gridPhotos: Moment[] = [];
+              for (let idx = 0; idx < photosWithUrl.length && gridPhotos.length < 11; idx += step) {
+                gridPhotos.push(photosWithUrl[idx]);
+              }
+              const remaining = Math.max(0, photosWithUrl.length - gridPhotos.length);
+              return (
+                <View style={styles.photoGrid}>
+                  {gridPhotos.map((m) => (
+                    <Image key={m.id} source={{ uri: resolvePhotoUrl(m.photo)! }} style={styles.gridThumb} resizeMode="cover" />
+                  ))}
+                  {remaining > 0 && (
+                    <TouchableOpacity style={styles.gridMore} onPress={handlePlayReel} activeOpacity={0.7}>
+                      <Text style={styles.gridMoreText}>+{remaining}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })()}
+
+            {topTags.length > 0 && (
+              <View style={styles.tagsRow}>
+                {topTags.map(({ tag, count }) => (
+                  <View key={tag} style={styles.tagPill}>
+                    <Text style={styles.tagText}>{tag} ({count})</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ==================== 5. SUPERLATIVES ==================== */}
+        {(peakDay || biggestExpense || topLocation) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your trip in numbers</Text>
+            <View style={styles.superlativeGrid}>
+              {peakDay && (
+                <SuperlativeCard
+                  icon={<Camera size={16} color={colors.accent} />}
+                  label="Peak Day"
+                  value={`${peakDay.count} moments`}
+                  subtitle={formatDatePHT(peakDay.date)}
+                  colors={colors}
+                />
+              )}
+              {topLocation && (
+                <SuperlativeCard
+                  icon={<MapPin size={16} color={colors.coral} />}
+                  label="Top Spot"
+                  value={topLocation.name}
+                  subtitle={`${topLocation.count} photo${topLocation.count !== 1 ? 's' : ''}`}
+                  colors={colors}
+                />
+              )}
+            </View>
+            {biggestExpense && (
+              <View style={styles.superlativeGrid}>
+                <SuperlativeCard
+                  icon={<Wallet size={16} color={colors.gold} />}
+                  label="Biggest Splurge"
+                  value={formatCurrency(biggestExpense.amount, currency)}
+                  subtitle={biggestExpense.placeName ?? biggestExpense.description}
+                  colors={colors}
+                />
+                {topCategory && (
+                  <SuperlativeCard
+                    icon={<Tag size={16} color={colors.accent} />}
+                    label="Top Category"
+                    value={topCategory}
+                    subtitle={`${Math.round(((summary.byCategory[topCategory] ?? 0) / summary.total) * 100)}% of spending`}
+                    colors={colors}
+                  />
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ==================== 6. SPENDING ==================== */}
+        {summary.total > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Spending</Text>
+            <View style={styles.spendCard}>
+              <View style={styles.spendingHeader}>
+                <View>
+                  <Text style={styles.spendTotal}>{formatCurrency(summary.total, currency)}</Text>
+                  <Text style={styles.spendSub}>total spent</Text>
+                </View>
+                <View style={styles.spendAvgWrap}>
+                  <Text style={styles.spendAvg}>{formatCurrency(dailyAvg, currency)}</Text>
+                  <Text style={styles.spendSub}>per day</Text>
+                </View>
+              </View>
+
+              <View style={styles.categoryBars}>
+                {Object.entries(summary.byCategory)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([cat, amount]) => (
+                    <CategoryBar
+                      key={cat}
+                      label={cat}
+                      amount={amount}
+                      total={summary.total}
+                      color={CATEGORY_COLORS[cat] ?? colors.text3}
+                      currency={currency}
+                      colors={colors}
+                    />
+                  ))}
+              </View>
+
+              {receiptCount > 0 && (
+                <View style={styles.receiptPill}>
+                  <Receipt size={13} color={colors.accent} />
+                  <Text style={styles.receiptText}>
+                    {receiptCount} receipt{receiptCount !== 1 ? 's' : ''} scanned
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* ==================== 7. PLACES VISITED ==================== */}
+        {dedupedPlaces.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Places visited · {dedupedPlaces.length}</Text>
+              {dedupedPlaces.length > 5 && (
+                <TouchableOpacity onPress={() => setPlacesExpanded(!placesExpanded)} style={styles.viewAllBtn}>
+                  <Text style={styles.viewAllText}>{placesExpanded ? 'Show less' : 'Show all'}</Text>
+                  <ChevronRight size={14} color={colors.accent} style={placesExpanded ? { transform: [{ rotate: '90deg' }] } : undefined} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.placesList}>
+              {(placesExpanded ? dedupedPlaces : dedupedPlaces.slice(0, 5)).map((p) => (
+                <PlaceRow key={p.name} name={p.name} category={p.category} source={p.source} colors={colors} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ==================== 8. SAVED FOR NEXT TIME ==================== */}
+        {savedPlaces.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Saved for next time · {savedPlaces.length}</Text>
+              {savedPlaces.length > 5 && (
+                <TouchableOpacity onPress={() => setSavedExpanded(!savedExpanded)} style={styles.viewAllBtn}>
+                  <Text style={styles.viewAllText}>{savedExpanded ? 'Show less' : 'Show all'}</Text>
+                  <ChevronRight size={14} color={colors.accent} style={savedExpanded ? { transform: [{ rotate: '90deg' }] } : undefined} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.placesList}>
+              {(savedExpanded ? savedPlaces : savedPlaces.slice(0, 5)).map((p) => (
+                <View key={p.id} style={styles.savedRow}>
+                  <Star size={14} color={colors.accent} fill={colors.accent} />
+                  <Text style={styles.savedName} numberOfLines={1}>{p.name}</Text>
+                  <View style={styles.savedCatPill}>
+                    <Text style={styles.savedCatText}>{p.category}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ==================== 9. GROUP ALBUMS ==================== */}
         {albums.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Group Albums</Text>
@@ -350,127 +578,7 @@ export default function TripSummaryScreen() {
           </View>
         )}
 
-        {/* ==================== SPENDING ==================== */}
-        {summary.total > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Spending</Text>
-            <View style={styles.spendingHeader}>
-              <View>
-                <Text style={styles.spendTotal}>{formatCurrency(summary.total, currency)}</Text>
-                <Text style={styles.spendSub}>total spent</Text>
-              </View>
-              <View style={styles.spendAvgWrap}>
-                <Text style={styles.spendAvg}>{formatCurrency(dailyAvg, currency)}</Text>
-                <Text style={styles.spendSub}>per day</Text>
-              </View>
-            </View>
-
-            <View style={styles.categoryBars}>
-              {Object.entries(summary.byCategory)
-                .sort(([, a], [, b]) => b - a)
-                .map(([cat, amount]) => (
-                  <CategoryBar
-                    key={cat}
-                    label={cat}
-                    amount={amount}
-                    total={summary.total}
-                    color={CATEGORY_COLORS[cat] ?? colors.text3}
-                    currency={currency}
-                    colors={colors}
-                  />
-                ))}
-            </View>
-
-            {receiptCount > 0 && (
-              <View style={styles.receiptPill}>
-                <Receipt size={13} color={colors.accent} />
-                <Text style={styles.receiptText}>
-                  {receiptCount} receipt{receiptCount !== 1 ? 's' : ''} scanned
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ==================== MOMENTS ==================== */}
-        {moments.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Moments</Text>
-
-            {/* By-day bar chart */}
-            <View style={styles.dayChart}>
-              {momentsByDay.map(({ date, count }) => (
-                <View key={date} style={styles.dayCol}>
-                  <View style={styles.dayBarTrack}>
-                    <View
-                      style={[
-                        styles.dayBarFill,
-                        { height: `${(count / maxDayCount) * 100}%` },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.dayLabel}>{formatDatePHT(date)}</Text>
-                  <Text style={styles.dayCount}>{count}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Top tags */}
-            {topTags.length > 0 && (
-              <View style={styles.tagsRow}>
-                <Tag size={13} color={colors.text3} />
-                {topTags.map(({ tag, count }) => (
-                  <View key={tag} style={styles.tagPill}>
-                    <Text style={styles.tagText}>{tag} ({count})</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* ==================== PLACES ==================== */}
-        {dedupedPlaces.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Places visited</Text>
-            <View style={styles.placesList}>
-              {dedupedPlaces.slice(0, 15).map((p) => (
-                <PlaceRow
-                  key={p.name}
-                  name={p.name}
-                  category={p.category}
-                  source={p.source}
-                  colors={colors}
-                />
-              ))}
-              {dedupedPlaces.length > 15 && (
-                <Text style={styles.moreText}>
-                  +{dedupedPlaces.length - 15} more places
-                </Text>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* ==================== DISCOVER SAVED ==================== */}
-        {savedPlaces.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Saved for next time</Text>
-            <View style={styles.placesList}>
-              {savedPlaces.slice(0, 10).map((p) => (
-                <View key={p.id} style={styles.savedRow}>
-                  <Star size={14} color={colors.accent} fill={colors.accent} />
-                  <Text style={styles.savedName} numberOfLines={1}>{p.name}</Text>
-                  <View style={styles.savedCatPill}>
-                    <Text style={styles.savedCatText}>{p.category}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* ==================== OCR INSIGHTS ==================== */}
+        {/* ==================== 10. RECEIPT INSIGHTS ==================== */}
         {(receiptCount > 0 || receiptPlaces.length > 0) && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Receipt insights</Text>
@@ -501,6 +609,12 @@ export default function TripSummaryScreen() {
             )}
           </View>
         )}
+
+        {/* ==================== 11. SHARE CTA ==================== */}
+        <TouchableOpacity style={styles.shareCta} onPress={handleShare} activeOpacity={0.7}>
+          <Share2 size={18} color={colors.bg} />
+          <Text style={styles.shareCtaText}>Share Your Trip</Text>
+        </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -539,46 +653,13 @@ const getStyles = (colors: ThemeColors) =>
     },
     scroll: {
       paddingHorizontal: 20,
-      paddingTop: 8,
-    },
-    backRow: {
-      width: 36,
-      height: 36,
-      borderRadius: 12,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 16,
-    },
-
-    // Hero
-    heroSection: {
-      marginBottom: 20,
-    },
-    heroName: {
-      fontSize: 28,
-      fontWeight: '700',
-      color: colors.text,
-      letterSpacing: -0.8,
-      marginBottom: 8,
-    },
-    heroDateRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      marginTop: 4,
-    },
-    heroDate: {
-      fontSize: 13,
-      color: colors.text3,
+      paddingTop: 0,
     },
 
     // Stats grid
     statsGrid: {
       flexDirection: 'row',
-      gap: 10,
+      gap: 8,
       marginBottom: 20,
     },
 
@@ -621,8 +702,67 @@ const getStyles = (colors: ThemeColors) =>
       letterSpacing: 1.6,
       marginBottom: 14,
     },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    viewAllBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
+    viewAllText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.accent,
+    },
+
+    // Photo grid — 3 columns
+    photoGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 3,
+      marginBottom: 16,
+    },
+    gridThumb: {
+      width: (SCREEN_W - 40 - 6) / 3,
+      aspectRatio: 1,
+      borderRadius: 10,
+      backgroundColor: colors.card2,
+    },
+    gridMore: {
+      width: (SCREEN_W - 40 - 6) / 3,
+      aspectRatio: 1,
+      borderRadius: 10,
+      backgroundColor: colors.card2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    gridMoreText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text2,
+    },
+
+    // Superlatives
+    superlativeGrid: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 10,
+    },
 
     // Spending
+    spendCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 18,
+    },
     spendingHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -820,6 +960,23 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 13,
       fontWeight: '700',
       color: colors.text,
+    },
+
+    // Share CTA
+    shareCta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: colors.accent,
+      paddingVertical: 16,
+      borderRadius: 16,
+      marginBottom: 8,
+    },
+    shareCtaText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.bg,
     },
 
     // Albums

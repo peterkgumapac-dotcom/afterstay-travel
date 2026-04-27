@@ -48,7 +48,7 @@ export default function PlaceDetailsScreen() {
             setDetails(result);
           } else {
             // No details from API — open Google Maps directly and go back
-            const query = placeName ? encodeURIComponent(placeName + ' Boracay') : '';
+            const query = placeName ? encodeURIComponent(placeName) : '';
             const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${placeId}`;
             try {
               await Linking.openURL(fallbackUrl);
@@ -61,7 +61,7 @@ export default function PlaceDetailsScreen() {
       } catch {
         if (!cancelled) {
           // On error, open Google Maps as fallback
-          const query = placeName ? encodeURIComponent(placeName + ' Boracay') : '';
+          const query = placeName ? encodeURIComponent(placeName) : '';
           const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${placeId}`;
           try {
             await Linking.openURL(fallbackUrl);

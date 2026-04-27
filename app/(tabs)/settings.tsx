@@ -170,9 +170,9 @@ export default function SettingsScreen() {
         await updateProfile(user.id, {
           fullName: updated.name,
           avatarUrl,
-          handle: updated.handle || undefined,
-          phone: updated.phone || undefined,
-          socials: updated.socials,
+          handle: updated.handle ?? '',
+          phone: updated.phone ?? '',
+          socials: updated.socials ?? {},
         });
         // Sync avatar + name to group_members so home screen picks it up
         if (avatarUrl || updated.name) {
@@ -185,8 +185,8 @@ export default function SettingsScreen() {
             .eq('user_id', user.id)
             .then(() => {});
         }
-      } catch {
-        // Profile saved locally even if remote sync fails
+      } catch (err) {
+        if (__DEV__) console.warn('[settings] saveProfile remote failed:', err);
       }
     }
   };
@@ -318,7 +318,7 @@ export default function SettingsScreen() {
     <SafeAreaView style={s.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12}>
+        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
           <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Settings</Text>
@@ -404,37 +404,20 @@ export default function SettingsScreen() {
 
         {/* Notifications */}
         <SectionLabel label="Notifications" textColor={colors.text3} />
-        <View style={s.card}>
-          <NotifRow label="Trip Lifecycle" desc="Trip starting, last day, daily recap" value={notifications.tripLifecycle} onToggle={() => toggleNotification('tripLifecycle')} colors={colors} s={s} />
-          <View style={s.divider} />
-          <NotifRow label="Departure Reminders" desc="Flight boarding, departure prep" value={notifications.departureReminders} onToggle={() => toggleNotification('departureReminders')} colors={colors} s={s} />
-          <View style={s.divider} />
-          <NotifRow label="Check-in / Check-out" desc="Accommodation reminders" value={notifications.checkInOut} onToggle={() => toggleNotification('checkInOut')} colors={colors} s={s} />
-          <View style={s.divider} />
-          <NotifRow label="Budget Alerts" desc="Spending pace, over-budget warnings" value={notifications.budgetAlerts} onToggle={() => toggleNotification('budgetAlerts')} colors={colors} s={s} />
-          <View style={s.divider} />
-          <NotifRow label="Expense Alerts" desc="When group members add expenses" value={notifications.expenseAlerts} onToggle={() => toggleNotification('expenseAlerts')} colors={colors} s={s} />
-          <View style={s.divider} />
-          <NotifRow label="Group Activity" desc="Votes, new members, recommendations" value={notifications.groupActivity} onToggle={() => toggleNotification('groupActivity')} colors={colors} s={s} />
-          <View style={s.divider} />
-          <NotifRow label="Packing Reminders" desc="Don't forget your essentials" value={notifications.packingReminders} onToggle={() => toggleNotification('packingReminders')} colors={colors} s={s} />
-        </View>
-
-        {/* When to Notify */}
-        <SectionLabel label="When to Notify" textColor={colors.text3} />
-        <View style={s.card}>
-          <NotifRow label="Pre-trip" desc="Reminders before your trip starts" value={notifications.preTripAlerts} onToggle={() => toggleNotification('preTripAlerts')} colors={colors} s={s} />
-          <View style={s.divider} />
-          <NotifRow label="During trip" desc="All alerts while you're traveling" value={notifications.activeTripAlerts} onToggle={() => toggleNotification('activeTripAlerts')} colors={colors} s={s} />
-          <View style={s.divider} />
-          <NotifRow label="Post-trip" desc="Recaps and memory prompts" value={notifications.postTripAlerts} onToggle={() => toggleNotification('postTripAlerts')} colors={colors} s={s} />
-        </View>
-
-        {/* Quiet Hours */}
-        <SectionLabel label="Quiet Hours" textColor={colors.text3} />
-        <View style={s.card}>
-          <NotifRow label="Quiet Hours" desc={notifications.quietHours.enabled ? `${notifications.quietHours.startHour}:00 – ${notifications.quietHours.endHour}:00 PHT` : 'Push notifications paused overnight'} value={notifications.quietHours.enabled} onToggle={toggleQuietHours} colors={colors} s={s} />
-        </View>
+        <TouchableOpacity
+          style={s.card}
+          onPress={() => router.push('/notification-settings' as never)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.notifNavRow}>
+            <Bell size={18} color={colors.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Notification Preferences</Text>
+              <Text style={s.cardSub}>Categories, quiet hours, trip phases</Text>
+            </View>
+            <ChevronRight size={16} color={colors.text3} />
+          </View>
+        </TouchableOpacity>
 
         {/* Subscription */}
         <SectionLabel label="Subscription" textColor={colors.text3} />
@@ -948,6 +931,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  notifNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
   },
   scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: 120 },
   sectionRow: {

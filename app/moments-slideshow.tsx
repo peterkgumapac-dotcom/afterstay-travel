@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Grid3X3, LayoutList, Share2, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { formatDatePHT } from '@/lib/utils';
-import { deletePage, getActiveTrip, getMoments } from '@/lib/supabase';
+import { deletePage, getActiveTrip, getMoments, getTripById } from '@/lib/supabase';
 import type { Moment } from '@/lib/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -47,6 +47,7 @@ export default function PhotoGallery() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { tripId: paramTripId } = useLocalSearchParams<{ tripId?: string }>();
   const insets = useSafeAreaInsets();
 
   const [moments, setMoments] = useState<Moment[]>([]);
@@ -60,9 +61,14 @@ export default function PhotoGallery() {
     mountedRef.current = true;
     (async () => {
       try {
-        const trip = await getActiveTrip();
-        if (!mountedRef.current || !trip) return;
-        const ms = await getMoments(trip.id);
+        // Use param tripId if provided (past trips), otherwise fall back to active trip
+        let resolvedTripId = paramTripId;
+        if (!resolvedTripId) {
+          const trip = await getActiveTrip();
+          if (!mountedRef.current || !trip) return;
+          resolvedTripId = trip.id;
+        }
+        const ms = await getMoments(resolvedTripId);
         if (!mountedRef.current) return;
         setMoments(ms.filter((m) => m.photo));
       } catch {
@@ -72,7 +78,7 @@ export default function PhotoGallery() {
       }
     })();
     return () => { mountedRef.current = false; };
-  }, []);
+  }, [paramTripId]);
 
   const days = useMemo(() => groupByDay(moments), [moments]);
   const filteredMoments = useMemo(

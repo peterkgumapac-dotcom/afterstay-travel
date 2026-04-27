@@ -344,10 +344,17 @@ export default function HomeScreen() {
           setReturningMoments(recentMoments.filter(m => m.photo?.startsWith('http')).slice(0, 10));
           setReturningSavedPlaces(recentSaved.filter(p => p.saved));
         }
-        // Resolve user name from auth if no trip member data
+        // Resolve user name from profiles table first, then auth metadata fallback
         if (user) {
-          setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? '');
-          if (user.user_metadata?.avatar_url) setUserAvatar(user.user_metadata.avatar_url);
+          const { getProfile } = await import('@/lib/supabase');
+          const profile = await getProfile(user.id).catch(() => null);
+          if (profile?.fullName) {
+            setUserName(profile.fullName.split(' ')[0]);
+            if (profile.avatarUrl) setUserAvatar(profile.avatarUrl);
+          } else {
+            setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? '');
+            if (user.user_metadata?.avatar_url) setUserAvatar(user.user_metadata.avatar_url);
+          }
         }
       }
     } catch (e: unknown) {

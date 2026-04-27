@@ -6,11 +6,11 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Plus, Camera, Receipt, Plane, UserPlus, Package,
+  Plus, Camera, Receipt, Plane, Package, Zap,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
-import { getActiveTrip, getGroupMembers } from '@/lib/supabase';
+import { getActiveTrip } from '@/lib/supabase';
 
 interface FabAction {
   id: string;
@@ -28,15 +28,11 @@ export const FloatingActionButton: React.FC = () => {
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const [transport, setTransport] = useState<string | undefined>();
-  const [memberCount, setMemberCount] = useState(0);
 
   // Load trip context for conditional actions
   useEffect(() => {
     getActiveTrip().then((trip) => {
-      if (trip) {
-        setTransport(trip.transport);
-        getGroupMembers(trip.id).then((m) => setMemberCount(m.length)).catch(() => {});
-      }
+      if (trip) setTransport(trip.transport);
     }).catch(() => {});
   }, []);
 
@@ -45,24 +41,22 @@ export const FloatingActionButton: React.FC = () => {
   const actions: FabAction[] = useMemo(() => {
     const items: FabAction[] = [
       { id: 'moment', icon: Camera, label: 'Capture Moment', onPress: () => router.push('/add-moment') },
+      { id: 'quick-trip', icon: Zap, label: 'Quick Trip', onPress: () => router.push('/quick-trip-create' as never) },
       { id: 'expense', icon: Receipt, label: 'Quick Expense', onPress: () => router.push('/scan-receipt') },
     ];
-    // Show invite action — always available so users can grow their group
-    items.push({ id: 'invite', icon: UserPlus, label: memberCount >= 2 ? 'Invite Members' : 'Invite Companions', onPress: () => router.push('/invite' as never) });
-    // Show Plan Trip only for plane transport or unset
     if (isPlane) {
       items.push({ id: 'trip', icon: Plane, label: 'Plan Trip', onPress: () => router.push('/trip-planner') });
     }
     items.push({ id: 'pack', icon: Package, label: 'Packing List', onPress: () => router.push('/(tabs)/trip') });
     return items;
-  }, [isPlane, memberCount, router]);
+  }, [isPlane, router]);
 
   // Allocate max possible anims (5) so ref is stable across action count changes
   const menuAnims = useRef(Array.from({ length: 5 }, () => new Animated.Value(0))).current;
 
   const bottomOffset = Platform.OS === 'ios' ? Math.max(insets.bottom, 20) : 16;
-  // Position FAB just above the tab bar (tab bar height ~56 + padding)
-  const fabBottom = bottomOffset + 68;
+  // Position FAB above the tab bar (tab bar height ~56 + extra clearance)
+  const fabBottom = bottomOffset + 80;
 
   // Pulse ring animation
   useEffect(() => {

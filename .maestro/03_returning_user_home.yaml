@@ -1,0 +1,48 @@
+appId: com.afterstay.travel
+name: "Returning User Home Audit"
+---
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Check returning user home elements
+- takeScreenshot: screenshots/03_returning_home_top
+
+# Check welcome section
+- assertVisible:
+    text: "WELCOME BACK"
+    optional: true
+
+# Check quick actions
+- assertVisible:
+    text: "Plan a"
+    optional: true
+
+# Scroll to see trips section
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: screenshots/03_returning_home_trips
+
+# Check YOUR TRIPS section
+- assertVisible:
+    text: "YOUR TRIPS"
+    optional: true
+
+# Scroll more for quick trips
+- scroll:
+    direction: DOWN
+- waitForAnimationToEnd
+- takeScreenshot: screenshots/03_returning_home_bottom
+
+# Try tapping a past trip if visible
+- tapOn:
+    text: "Boracay"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: screenshots/03_trip_tapped
+
+# Go back
+- pressKey: back
+- waitForAnimationToEnd:
+    timeout: 3000

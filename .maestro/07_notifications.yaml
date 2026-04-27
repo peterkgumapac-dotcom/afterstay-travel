@@ -1,0 +1,19 @@
+appId: com.afterstay.travel
+name: "Notifications Audit"
+---
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Tap notification bell (top right area of home screen)
+- tapOn:
+    point: "82%,7%"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: screenshots/07_notifications_sheet
+
+# Close notifications if opened (tap outside or X)
+- pressKey: back
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: screenshots/07_after_notif_close

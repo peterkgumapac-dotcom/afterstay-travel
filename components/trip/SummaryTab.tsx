@@ -1,11 +1,13 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ChevronRight, CircleDot, Clock, MapPin, Plus } from 'lucide-react-native';
+import { ChevronRight, CircleDot, Clock, MapPin, Plus, Zap } from 'lucide-react-native';
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
 import PastTripRow from '@/components/summary/PastTripRow';
+import QuickTripRow from '@/components/quick-trips/QuickTripRow';
 import { GroupHeader } from './GroupHeader';
 import type { PastTripDisplay, ThemeColors } from './tripConstants';
+import type { QuickTrip } from '@/lib/quickTripTypes';
 
 interface SummaryTabProps {
   totalMiles: number;
@@ -17,9 +19,12 @@ interface SummaryTabProps {
   activeTrips: PastTripDisplay[];
   incomingTrips: PastTripDisplay[];
   pastTrips: PastTripDisplay[];
+  quickTrips?: QuickTrip[];
   colors: ThemeColors;
   onAddTrip: () => void;
   onTripPress?: (tripId: string) => void;
+  onQuickTripPress?: (id: string) => void;
+  onAddQuickTrip?: () => void;
 }
 
 export function SummaryTab({
@@ -32,9 +37,12 @@ export function SummaryTab({
   activeTrips,
   incomingTrips,
   pastTrips,
+  quickTrips = [],
   colors,
   onAddTrip,
   onTripPress,
+  onQuickTripPress,
+  onAddQuickTrip,
 }: SummaryTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
@@ -151,6 +159,42 @@ export function SummaryTab({
           </View>
           <ChevronRight size={14} color={colors.text3} />
         </TouchableOpacity>
+      </View>
+
+      {/* Quick Trips */}
+      <GroupHeader
+        kicker={`Quick trips \u00B7 ${quickTrips.length}`}
+        title="Quick moments"
+        colors={colors}
+      />
+      <View style={styles.listContainer}>
+        {quickTrips.length === 0 && (
+          <Text style={styles.emptyText}>No quick trips yet</Text>
+        )}
+        {quickTrips.map((qt) => (
+          <QuickTripRow
+            key={qt.id}
+            trip={qt}
+            onPress={onQuickTripPress ? () => onQuickTripPress(qt.id) : undefined}
+          />
+        ))}
+
+        {onAddQuickTrip && (
+          <TouchableOpacity
+            onPress={onAddQuickTrip}
+            style={styles.addPastTripRow}
+            activeOpacity={0.7}
+          >
+            <View style={styles.addPastTripIcon}>
+              <Zap size={18} color={colors.accent} />
+            </View>
+            <View style={styles.addPastTripInfo}>
+              <Text style={styles.addPastTripTitle}>Add a quick trip</Text>
+              <Text style={styles.addPastTripSub}>Dinners, outings, gatherings</Text>
+            </View>
+            <ChevronRight size={14} color={colors.text3} />
+          </TouchableOpacity>
+        )}
       </View>
     </>
   );

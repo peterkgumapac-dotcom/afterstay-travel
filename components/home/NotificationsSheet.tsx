@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import {
   AlertTriangle,
@@ -92,7 +93,7 @@ function generateLocalAlerts(
     if (diff > 0) {
       items.push({
         id: 'budget-over', icon: TrendingUp, iconColor: colors.danger,
-        iconBg: 'rgba(196,85,74,0.12)', title: 'Budget alert',
+        iconBg: colors.accentDim, title: 'Budget alert',
         body: `Projected ₱${Math.round(projected).toLocaleString()} by Day ${totalDays} — ₱${Math.round(diff).toLocaleString()} over.`,
         category: 'budget', action: '/(tabs)/budget', priority: 'high', source: 'local',
       });
@@ -105,7 +106,7 @@ function generateLocalAlerts(
     if (avgDaily > dailyBudget * 1.5) {
       items.push({
         id: 'budget-spike', icon: DollarSign, iconColor: colors.warn,
-        iconBg: 'rgba(226,179,97,0.12)', title: 'Spending spike',
+        iconBg: colors.accentDim, title: 'Spending spike',
         body: `Averaging ₱${Math.round(avgDaily).toLocaleString()}/day — ${Math.round((avgDaily / dailyBudget - 1) * 100)}% above target.`,
         category: 'budget', action: '/(tabs)/budget', priority: 'medium', source: 'local',
       });
@@ -129,7 +130,7 @@ function generateLocalAlerts(
   if (needVotes.length > 0 && members.length >= 2) {
     items.push({
       id: 'group-votes', icon: Users, iconColor: colors.chart2,
-      iconBg: 'rgba(180,140,80,0.12)', title: 'Votes needed',
+      iconBg: colors.accentDim, title: 'Votes needed',
       body: `${needVotes.length} place${needVotes.length !== 1 ? 's' : ''} waiting for group votes.`,
       category: 'group', action: '/(tabs)/discover', priority: 'medium', source: 'local',
     });
@@ -138,7 +139,7 @@ function generateLocalAlerts(
   if (daysLeft === 0) {
     items.push({
       id: 'last-day', icon: Clock, iconColor: colors.warn,
-      iconBg: 'rgba(226,179,97,0.12)', title: 'Last day!',
+      iconBg: colors.accentDim, title: 'Last day!',
       body: `Make the most of ${destination} before checkout.`,
       category: 'trip', priority: 'high', source: 'local',
     });
@@ -147,7 +148,7 @@ function generateLocalAlerts(
   if (daysLeft === 1) {
     items.push({
       id: 'ending-soon', icon: AlertTriangle, iconColor: colors.warn,
-      iconBg: 'rgba(226,179,97,0.12)', title: 'Trip ending tomorrow',
+      iconBg: colors.accentDim, title: 'Trip ending tomorrow',
       body: 'Check your packing list before your last night.',
       category: 'trip', action: '/(tabs)/trip', priority: 'medium', source: 'local',
     });
@@ -164,42 +165,70 @@ function filterLocalAlertsByPrefs(
   return alerts.filter((a) => shouldNotify(a.id, prefs));
 }
 
-// ── Icon mapping for DB notifications ─────────────────────────────────
+// ── Icon + color mapping for DB notifications ───────────────────────
 
-function dbNotifIcon(type: string): React.ComponentType<any> {
-  switch (type) {
-    case 'expense_added': return DollarSign;
-    case 'budget_threshold': return TrendingUp;
-    case 'member_joined': return UserPlus;
-    case 'check_in_reminder': case 'check_out_reminder': return Clock;
-    case 'vote_needed': return Users;
-    case 'flight_boarding': return Plane;
-    case 'departure_prep': return Car;
-    case 'trip_starting': case 'last_day': return MapPin;
-    case 'trip_recap_ready': return CheckCircle;
-    default: return Bell;
-  }
+interface NotifStyle {
+  icon: React.ComponentType<any>;
+  colorKey: 'accent' | 'danger' | 'warn' | 'coral' | 'gold' | 'text2';
 }
 
-// ── Dismissed local alerts (session-scoped) ───────────────────────────
+const NOTIF_STYLES: Record<string, NotifStyle> = {
+  expense_added:      { icon: DollarSign,  colorKey: 'accent' },
+  budget_threshold:   { icon: TrendingUp,  colorKey: 'danger' },
+  member_joined:      { icon: UserPlus,    colorKey: 'accent' },
+  check_in_reminder:  { icon: Clock,       colorKey: 'gold' },
+  check_out_reminder: { icon: Clock,       colorKey: 'warn' },
+  vote_needed:        { icon: Users,       colorKey: 'coral' },
+  moments_added:      { icon: Bell,        colorKey: 'accent' },
+  flight_boarding:    { icon: Plane,       colorKey: 'warn' },
+  departure_prep:     { icon: Car,         colorKey: 'warn' },
+  trip_starting:      { icon: MapPin,      colorKey: 'accent' },
+  last_day:           { icon: MapPin,      colorKey: 'coral' },
+  trip_recap_ready:   { icon: CheckCircle, colorKey: 'accent' },
+};
 
-// Module-level set shared between useNotificationCount and the sheet
+function getNotifStyle(type: string): NotifStyle {
+  return NOTIF_STYLES[type] ?? { icon: Bell, colorKey: 'text2' };
+}
+
+// ── Dismissed local alerts (persisted to AsyncStorage) ──────────────
+
+const DISMISSED_KEY = 'notif_dismissed_local';
+
+// Module-level cache — hydrated from AsyncStorage on first use
 let dismissedLocalIds = new Set<string>();
+let dismissHydrated = false;
 let dismissListeners: Array<() => void> = [];
+
+async function hydrateDismissed() {
+  if (dismissHydrated) return;
+  try {
+    const raw = await AsyncStorage.getItem(DISMISSED_KEY);
+    if (raw) dismissedLocalIds = new Set(JSON.parse(raw));
+  } catch { /* ignore */ }
+  dismissHydrated = true;
+}
 
 function dismissLocal(id: string) {
   dismissedLocalIds.add(id);
   dismissListeners.forEach((fn) => fn());
+  AsyncStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissedLocalIds])).catch(() => {});
 }
 
 function clearDismissed() {
   dismissedLocalIds = new Set();
   dismissListeners.forEach((fn) => fn());
+  AsyncStorage.removeItem(DISMISSED_KEY).catch(() => {});
 }
 
 function useDismissedCount(): number {
   const [, forceUpdate] = useState(0);
   const listener = useCallback(() => forceUpdate((n) => n + 1), []);
+
+  // Hydrate on first mount
+  useEffect(() => {
+    hydrateDismissed().then(() => forceUpdate((n) => n + 1));
+  }, []);
 
   // Register/unregister listener
   useState(() => {
@@ -269,11 +298,14 @@ export default function NotificationsSheet({
 
   // Convert DB notifications to display format
   const dbItems: DBNotification[] = useMemo(
-    () => dbNotifs.map((n) => ({
+    () => dbNotifs.map((n) => {
+      const ns = getNotifStyle(n.type);
+      const iconColor = colors[ns.colorKey];
+      return {
       id: n.id,
-      icon: dbNotifIcon(n.type),
-      iconColor: n.type.includes('budget') ? colors.danger : n.type.includes('member') ? colors.accent : colors.text2,
-      iconBg: n.type.includes('budget') ? 'rgba(196,85,74,0.12)' : colors.accentBg,
+      icon: ns.icon,
+      iconColor,
+      iconBg: colors.accentDim,
       title: n.title,
       body: n.body,
       category: n.type.replace(/_/g, ' '),
@@ -281,13 +313,15 @@ export default function NotificationsSheet({
       source: 'db' as const,
       read: n.read,
       createdAt: n.createdAt,
-    })),
+    };
+    }),
     [dbNotifs, colors],
   );
 
-  // Merge: local alerts (exclude dismissed) first, then DB (newest first)
+  // Merge: local alerts (exclude dismissed) first, then unread DB (newest first)
   const activeLocalAlerts = localAlerts.filter((a) => !dismissedLocalIds.has(a.id));
-  const all: MergedNotification[] = [...activeLocalAlerts, ...dbItems];
+  const unreadDbItems = dbItems.filter((n) => !n.read);
+  const all: MergedNotification[] = [...activeLocalAlerts, ...unreadDbItems];
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -296,20 +330,53 @@ export default function NotificationsSheet({
           <View style={styles.handleRow}><View style={styles.handle} /></View>
 
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Notifications</Text>
-            <View style={styles.headerRight}>
-              {dbItems.some((n) => !n.read) && (
-                <Pressable onPress={markAllRead} hitSlop={8}>
-                  <Text style={styles.markAllRead}>Mark all read</Text>
-                </Pressable>
+            <View style={styles.headerLeft}>
+              <Text style={styles.headerTitle}>Notifications</Text>
+              {all.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    markAllRead();
+                    for (const a of activeLocalAlerts) dismissLocal(a.id);
+                  }}
+                  style={styles.markAllBtn}
+                  activeOpacity={0.7}
+                >
+                  <CheckCircle size={14} color={colors.accent} strokeWidth={2} />
+                  <Text style={styles.markAllRead}>Clear all</Text>
+                </TouchableOpacity>
               )}
-              <Pressable onPress={onClose} hitSlop={12}>
-                <X size={22} color={colors.text2} strokeWidth={2} />
-              </Pressable>
             </View>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <X size={22} color={colors.text2} strokeWidth={2} />
+            </Pressable>
           </View>
 
           <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+            {/* DEV-ONLY: Test notification button — remove before release */}
+            {__DEV__ && (
+              <TouchableOpacity
+                style={{ backgroundColor: colors.accent, padding: 12, borderRadius: 10, marginBottom: 12, alignItems: 'center' }}
+                onPress={async () => {
+                  try {
+                    const { supabase } = await import('@/lib/supabase');
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user?.id) { Alert.alert('No auth user', 'Sign in first'); return; }
+                    const { error } = await supabase.from('notifications').insert({
+                      user_id: user.id,
+                      type: 'trip_starting',
+                      title: 'Test notification',
+                      body: 'If you see this, notifications are working!',
+                      data: { type: 'trip_starting' },
+                      read: false,
+                    });
+                    if (error) Alert.alert('Insert failed', error.message);
+                    else Alert.alert('Sent!', 'Check the bell badge and refresh.');
+                  } catch (e: any) { Alert.alert('Error', e.message); }
+                }}
+              >
+                <Text style={{ color: colors.ink, fontWeight: '700', fontSize: 13 }}>Send Test Notification</Text>
+              </TouchableOpacity>
+            )}
             {all.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <Bell size={32} color={colors.text3} strokeWidth={1.5} />
@@ -319,7 +386,7 @@ export default function NotificationsSheet({
               all.map((n) => {
                 const Icon = n.icon;
                 const isDB = n.source === 'db';
-                const isUnread = isDB && !(n as DBNotification).read;
+                const isUnread = isDB ? !(n as DBNotification).read : true;
                 return (
                   <TouchableOpacity
                     key={n.id}
@@ -382,8 +449,13 @@ const getStyles = (c: ThemeColors) =>
     handleRow: { alignItems: 'center', paddingTop: 10, paddingBottom: 4 },
     handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: c.text3 },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 },
+    headerLeft: { flex: 1, gap: 8 },
     headerTitle: { fontSize: 18, fontWeight: '700', color: c.text },
-    headerRight: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    markAllBtn: {
+      flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6,
+      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,
+      backgroundColor: c.accentBg, borderWidth: 1, borderColor: c.accentBorder,
+    },
     markAllRead: { fontSize: 12, fontWeight: '600', color: c.accent },
     listContent: { paddingHorizontal: 16, paddingBottom: 40, gap: 6 },
     emptyWrap: { paddingVertical: 50, alignItems: 'center', gap: 10 },

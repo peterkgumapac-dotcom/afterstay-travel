@@ -23,6 +23,7 @@ interface EssentialsTabProps {
   onAddItem: () => void;
   onUpload: () => void;
   onDownload: (url: string) => void;
+  onFilePress?: (file: TripFile) => void;
 }
 
 export function EssentialsTab({
@@ -38,6 +39,7 @@ export function EssentialsTab({
   onAddItem,
   onUpload,
   onDownload,
+  onFilePress,
 }: EssentialsTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
@@ -133,7 +135,12 @@ export function EssentialsTab({
         {files.map((f, idx) => {
           const iconColor = FILE_COLORS[idx % FILE_COLORS.length];
           return (
-            <View key={f.id} style={styles.fileRow}>
+            <TouchableOpacity
+              key={f.id}
+              style={styles.fileRow}
+              activeOpacity={0.7}
+              onPress={() => onFilePress?.(f)}
+            >
               <View
                 style={[
                   styles.fileIcon,
@@ -159,11 +166,14 @@ export function EssentialsTab({
               <TouchableOpacity
                 style={styles.downloadBtn}
                 accessibilityLabel={`Download ${f.fileName}`}
-                onPress={() => f.fileUrl && onDownload(f.fileUrl)}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  if (f.fileUrl) onDownload(f.fileUrl);
+                }}
               >
                 <Download size={14} color={colors.text} />
               </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           );
         })}
       </View>

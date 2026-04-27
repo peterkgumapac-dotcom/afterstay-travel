@@ -132,7 +132,7 @@ export function OverviewTab({
             )}
             <View style={styles.accomHeaderInfo}>
               <Text style={styles.accomTitle}>
-                {trip?.roomType || trip?.accommodation || 'Room'}
+                {trip?.roomType || trip?.accommodation || 'Accommodation'}
               </Text>
               <Text style={styles.accomAddr}>
                 {trip?.address || ''}
