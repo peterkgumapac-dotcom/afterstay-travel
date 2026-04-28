@@ -1,4 +1,5 @@
-import { Tabs } from 'expo-router';
+// Note: guide and settings are routable screens outside the tab bar.
+// They are configured as hidden triggers below per NativeTabs requirements.
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React, { createContext, useContext, useMemo, useState } from 'react';
@@ -63,6 +64,7 @@ export default function TabLayout() {
           blurEffect="systemChromeMaterial"
           shadowColor={colors.border}
           hidden={!tabBarVisible}
+          minimizeBehavior="onScrollDown"
         >
           <NativeTabs.Trigger name="home">
             <NativeTabs.Trigger.Icon
@@ -125,8 +127,12 @@ export default function TabLayout() {
           </NativeTabs.Trigger>
 
           {/* Hidden tabs — still routable but not shown in tab bar */}
-          <Tabs.Screen name="guide" options={{ href: null }} />
-          <Tabs.Screen name="settings" options={{ href: null }} />
+          <NativeTabs.Trigger name="guide" hidden>
+            <NativeTabs.Trigger.Label>Guide</NativeTabs.Trigger.Label>
+          </NativeTabs.Trigger>
+          <NativeTabs.Trigger name="settings" hidden>
+            <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
+          </NativeTabs.Trigger>
         </NativeTabs>
 
         {/* Global FAB — rendered above native tabs */}

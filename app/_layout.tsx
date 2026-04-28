@@ -134,6 +134,14 @@ function RootLayoutInner() {
           options={{ presentation: 'fullScreenModal', title: 'Trip Recap', headerShown: false, animation: 'fade' }}
         />
         <Stack.Screen
+          name="photo-viewer"
+          options={{
+            presentation: 'fullScreenModal',
+            headerShown: false,
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
+        <Stack.Screen
           name="quick-trip-create"
           options={{ presentation: 'modal', title: 'Quick Trip', headerShown: false }}
         />

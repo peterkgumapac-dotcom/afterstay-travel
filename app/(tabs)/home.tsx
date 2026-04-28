@@ -56,6 +56,26 @@ import {
   softDeleteTrip,
   restoreTrip,
 } from '@/lib/supabase';
+import {
+  getHomeActiveTripPromise,
+  getHomeActiveTripCached,
+  getHomeFlightsCached,
+  getHomeMomentsCached,
+  getHomeMembersCached,
+  getHomePlacesCached,
+  getHomeExpensesCached,
+  getHomeAllTripsCached,
+  getHomeQuickTripsCached,
+  getHomeLifetimeStatsCached,
+  getHomeAllTripsPromise,
+  getHomeQuickTripsPromise,
+  getHomeLifetimeStatsPromise,
+  getHomeFlightsPromise,
+  getHomeMomentsPromise,
+  getHomeMembersPromise,
+  getHomePlacesPromise,
+  getHomeExpensesPromise,
+} from '@/hooks/useHomeData';
 import { getQuickTrips } from '@/lib/quickTrips';
 import { fetchDestinationPhotos } from '@/lib/google-places';
 import type { Flight, GroupMember, LifetimeStats, Moment, Place, Trip } from '@/lib/types';
@@ -188,6 +208,7 @@ export default function HomeScreen() {
   const [returningMoments, setReturningMoments] = useState<Moment[]>([]);
   const [returningSavedPlaces, setReturningSavedPlaces] = useState<Place[]>([]);
   const [returningStats, setReturningStats] = useState<LifetimeStats | null>(null);
+  const [returningAllTrips, setReturningAllTrips] = useState<Trip[]>([]);
   const { user } = useAuth();
 
   // Resolve current user's group member ID
@@ -231,15 +252,16 @@ export default function HomeScreen() {
     [],
   ));
 
-  const load = useCallback(async (force = false) => {
+  const load = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
+    const { force = false, silent = false } = opts ?? {};
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(undefined);
       // DEBUG: log current user and auth state
       const { data: authData } = await supabase.auth.getUser();
       console.log('[DEBUG] Current user ID:', authData?.user?.id);
       console.log('[DEBUG] User email:', authData?.user?.email);
-      let t = await getActiveTrip(force);
+      let t = await getHomeActiveTripPromise(force);
       // Retry twice if RLS returned 0 rows (auth token race)
       if (!t && !force) {
         await new Promise(r => setTimeout(r, 800));
@@ -258,10 +280,10 @@ export default function HomeScreen() {
       }
       if (t) {
         const [fs, ms, members, places] = await Promise.all([
-          getFlights(t.id).catch((e) => { if (__DEV__) console.warn('[Home] flights error:', e); return [] as Flight[]; }),
-          getMoments(t.id).catch((e) => { if (__DEV__) console.warn('[Home] moments error:', e); return [] as Moment[]; }),
-          getGroupMembers(t.id).catch((e) => { if (__DEV__) console.warn('[Home] members error:', e); return [] as GroupMember[]; }),
-          getSavedPlaces(t.id).catch(() => [] as Place[]),
+          getHomeFlightsPromise(t.id, force).catch((e) => { if (__DEV__) console.warn('[Home] flights error:', e); return [] as Flight[]; }),
+          getHomeMomentsPromise(t.id, force).catch((e) => { if (__DEV__) console.warn('[Home] moments error:', e); return [] as Moment[]; }),
+          getHomeMembersPromise(t.id, force).catch((e) => { if (__DEV__) console.warn('[Home] members error:', e); return [] as GroupMember[]; }),
+          getHomePlacesPromise(t.id, force).catch(() => [] as Place[]),
         ]);
         if (__DEV__) console.log(`[Home] loaded: ${fs.length} flights, ${ms.length} moments, ${members.length} members`);
         setFlights(fs);
@@ -316,7 +338,7 @@ export default function HomeScreen() {
         }
 
         // Fetch expenses once — compute summary + today's totals locally
-        const allExpenses = await getExpenses(t.id).catch(() => []);
+        const allExpenses = await getHomeExpensesPromise(t.id, force).catch(() => []);
         setTotalSpent(allExpenses.reduce((sum, e) => sum + e.amount, 0));
 
         const todayIso = new Date().toISOString().slice(0, 10);
@@ -338,9 +360,9 @@ export default function HomeScreen() {
       // Always fetch returning-user data — needed for ReturningUserHome
       // even when an active trip exists (e.g. My Trips tab navigation)
       const [allTrips, quick, stats] = await Promise.all([
-        getAllUserTrips('').catch((e) => { console.log('[DEBUG] getAllUserTrips error:', e); return [] as Trip[]; }),
-        getQuickTrips().catch(() => [] as QuickTrip[]),
-        getLifetimeStats('').catch(() => null),
+        getHomeAllTripsPromise(force).catch((e) => { console.log('[DEBUG] getAllUserTrips error:', e); return [] as Trip[]; }),
+        getHomeQuickTripsPromise(force).catch(() => [] as QuickTrip[]),
+        getHomeLifetimeStatsPromise(force).catch(() => null),
       ]);
       console.log('[DEBUG] All trips count:', allTrips.length);
       const now = Date.now();
@@ -364,12 +386,13 @@ export default function HomeScreen() {
       setReturningActiveTrips(active);
       setReturningQuickTrips(quick);
       setReturningStats(stats);
+      setReturningAllTrips(allTrips);
 
       // Fetch recent moments + saved places from recent completed trips
       if (completed.length > 0) {
         const recentTripIds = completed.slice(0, 3).map(t => t.id);
         const momentsResults = await Promise.all(
-          recentTripIds.map(id => getMoments(id).catch(() => [] as Moment[]))
+          recentTripIds.map(id => getHomeMomentsPromise(id, force).catch(() => [] as Moment[]))
         );
         const allMoments = momentsResults
           .flat()
@@ -379,7 +402,7 @@ export default function HomeScreen() {
         setReturningMoments(allMoments);
 
         const [recentSaved] = await Promise.all([
-          getSavedPlaces(completed[0].id).catch(() => [] as Place[]),
+          getHomePlacesPromise(completed[0].id, force).catch(() => [] as Place[]),
         ]);
         setReturningSavedPlaces(recentSaved.filter(p => p.saved));
       }
@@ -401,16 +424,70 @@ export default function HomeScreen() {
         setMoments([]);
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unable to load trip');
+      if (!silent) setError(e instanceof Error ? e.message : 'Unable to load trip');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     let alive = true;
-    load();
+    // Cache-first: if we have cached data, restore it instantly and refresh in background
+    const cachedTrip = getHomeActiveTripCached();
+    if (cachedTrip !== undefined) {
+      setTrip(cachedTrip);
+      const cachedTripId = cachedTrip?.id;
+      if (cachedTripId) {
+        const cachedFlights = getHomeFlightsCached(cachedTripId);
+        const cachedMoments = getHomeMomentsCached(cachedTripId);
+        const cachedMembers = getHomeMembersCached(cachedTripId);
+        const cachedPlaces = getHomePlacesCached(cachedTripId);
+        if (cachedFlights) setFlights(cachedFlights);
+        if (cachedMoments) setMoments(cachedMoments);
+        if (cachedMembers) setMembers(cachedMembers);
+        if (cachedPlaces) setSavedPlaces(cachedPlaces);
+        const cachedExpenses = getHomeExpensesCached(cachedTripId);
+        if (cachedExpenses) {
+          setTotalSpent(cachedExpenses.reduce((sum, e) => sum + e.amount, 0));
+          const todayIso = new Date().toISOString().slice(0, 10);
+          const todayExps = cachedExpenses.filter((e) => e.date === todayIso);
+          setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
+          setTodayCount(todayExps.length);
+        }
+      }
+      const cachedAllTrips = getHomeAllTripsCached();
+      if (cachedAllTrips) {
+        const now = Date.now();
+        const drafts = cachedAllTrips.filter(t => t.isDraft === true && !t.deletedAt);
+        const upcoming = cachedAllTrips.filter(t =>
+          t.status === 'Planning' && !t.isDraft && !t.deletedAt && !t.archivedAt
+        );
+        const active = cachedAllTrips.filter(t =>
+          t.status === 'Active' && !t.deletedAt && !t.archivedAt
+        );
+        const completed = cachedAllTrips.filter(tripItem => {
+          if (tripItem.status !== 'Completed' || tripItem.deletedAt) return false;
+          const end = tripItem.endDate ? new Date(tripItem.endDate).getTime() + 86400000 : 0;
+          return end > 0 && now > end;
+        });
+        setReturningPastTrips(completed);
+        setReturningDraftTrips(drafts);
+        setReturningUpcomingTrips(upcoming);
+        setReturningActiveTrips(active);
+        setReturningAllTrips(cachedAllTrips);
+      }
+      const cachedQuickTrips = getHomeQuickTripsCached();
+      if (cachedQuickTrips) setReturningQuickTrips(cachedQuickTrips);
+      const cachedStats = getHomeLifetimeStatsCached();
+      if (cachedStats) setReturningStats(cachedStats);
+      // Skip the 3s branded loader when cached data is available
+      setLoaderDone(true);
+      // Refresh in background
+      load({ silent: true });
+    } else {
+      load();
+    }
     didInitialLoad.current = true;
     return () => { alive = false; };
   }, [load]);
@@ -421,10 +498,10 @@ export default function HomeScreen() {
       if (!didInitialLoad.current) return; // skip first mount
       const tripId = trip?.id;
       if (!tripId) return;
-      // Lightweight refresh — just expenses + trip (for budgetLimit changes)
+      // Lightweight background refresh — no loading states
       Promise.all([
-        getActiveTrip(),
-        getExpenses(tripId).catch(() => []),
+        getHomeActiveTripPromise(true),
+        getHomeExpensesPromise(tripId, true).catch(() => []),
       ]).then(([freshTrip, allExpenses]) => {
         if (freshTrip) setTrip(freshTrip);
         setTotalSpent(allExpenses.reduce((sum, e) => sum + e.amount, 0));
@@ -454,7 +531,7 @@ export default function HomeScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    load();
+    load({ force: true });
   };
 
   const boardFlight = useCallback(async () => {
@@ -577,7 +654,7 @@ export default function HomeScreen() {
             style={styles.retry}
             onPress={() => {
               setLoading(true);
-              load();
+              load({ force: true });
             }}
             accessibilityLabel="Retry loading trip"
             accessibilityRole="button"
@@ -587,8 +664,14 @@ export default function HomeScreen() {
         </SafeAreaView>
       );
     }
-    // Returning user — has past trips or quick trips
-    const hasHistory = returningPastTrips.length > 0 || returningQuickTrips.length > 0 || returningDraftTrips.length > 0;
+    // Returning user — has ANY trips (past, upcoming, active, archived, drafts, quick trips)
+    const hasHistory =
+      returningPastTrips.length > 0 ||
+      returningUpcomingTrips.length > 0 ||
+      returningActiveTrips.length > 0 ||
+      returningQuickTrips.length > 0 ||
+      returningDraftTrips.length > 0 ||
+      returningAllTrips.some(t => !t.deletedAt && !t.isDraft);
     if (hasHistory) {
       const displayName = userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || '';
       const handle = user?.email?.split('@')[0] || (displayName.length > 0 ? displayName.toLowerCase().replace(/\s+/g, '') : 'traveler');
@@ -614,7 +697,7 @@ export default function HomeScreen() {
             onArchiveDraft={async (id) => {
               try {
                 await archiveTrip(id);
-                load(true);
+                load({ force: true });
               } catch {}
             }}
             onQuickTripPress={(id) => router.push(`/quick-trip-detail?quickTripId=${id}`)}
@@ -623,7 +706,7 @@ export default function HomeScreen() {
             onBellPress={() => setShowNotifications(true)}
             onSeeAllTrips={() => router.push('/(tabs)/trip')}
             refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); load(true); }}
+            onRefresh={() => { setRefreshing(true); load({ force: true }); }}
           />
           <NotificationsSheet
             visible={showNotifications}
@@ -644,8 +727,8 @@ export default function HomeScreen() {
         <ProfileRow
           userName={userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || ''}
           avatarUrl={userAvatar}
-          notificationCount={0}
-          onBellPress={() => {}}
+          notificationCount={notifCount}
+          onBellPress={() => setShowNotifications(true)}
         />
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}>
           <EmptyState
@@ -658,6 +741,15 @@ export default function HomeScreen() {
             onSecondary={() => router.push('/onboarding')}
           />
         </View>
+        <NotificationsSheet
+          visible={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          onGroupVoteTap={handleGroupVoteTap}
+          dbNotifications={dbNotifications}
+          onMarkRead={markRead}
+          onMarkAllRead={markAllRead}
+          {...notifProps}
+        />
       </SafeAreaView>
     );
   }
@@ -792,7 +884,7 @@ export default function HomeScreen() {
                                 } else {
                                   await archiveTrip(trip.id);
                                 }
-                                load(true);
+                                load({ force: true });
                               } catch (e: any) {
                                 Alert.alert('Error', e?.message ?? 'Could not remove trip');
                               }

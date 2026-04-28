@@ -8,6 +8,7 @@ import { MomentsTab } from '@/components/moments/MomentsTab';
 import { useTheme } from '@/constants/ThemeContext';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { getAllUserTrips } from '@/lib/supabase';
+import { getAllTripsPromise, getAllTripsCached } from '@/hooks/useTrips';
 import { formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 
@@ -33,10 +34,16 @@ export default function MomentsScreen() {
       setSelectedTripId((prev) => prev ?? pastTrips[0].id);
     } else {
       // Fallback: context might still be loading — fetch independently
-      getAllUserTrips('').catch(() => [] as Trip[]).then((all) => {
-        const completed = all.filter((tr) => tr.status === 'Completed');
+      const cachedAll = getAllTripsCached();
+      if (cachedAll) {
+        const completed = cachedAll.filter((tr) => tr.status === 'Completed');
         setExtraPastTrips(completed);
         if (completed.length > 0) setSelectedTripId(completed[0].id);
+      }
+      getAllTripsPromise(true).catch(() => [] as Trip[]).then((all) => {
+        const completed = all.filter((tr) => tr.status === 'Completed');
+        setExtraPastTrips(completed);
+        if (completed.length > 0) setSelectedTripId((prev) => prev ?? completed[0].id);
       });
     }
   }, [activeTrip, pastTrips]);

@@ -18,6 +18,12 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { getMoments, getGroupMembers, getMomentFavorites, toggleFavorite, toggleMomentVisibility as toggleVisibility, promoteMomentsToGroup, batchFavorite } from '@/lib/supabase';
+import {
+  getMomentsPromise,
+  getGroupMembersPromise,
+  getMomentsCached,
+  getGroupMembersCached,
+} from '@/hooks/useMoments';
 import { cachePhotoMeta, getCachedPhotosByTrip, setOfflineFavorite, getOfflineFavorites } from '@/lib/cache/sqliteCache';
 import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
@@ -360,12 +366,20 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   }, [curationDay]);
 
   // Fetch moments + group members + favorites
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
 
-      // Try SQLite cache first for instant display
-      if (tripId) {
+      // Try cache first for instant display
+      if (tripId && silent) {
+        const cachedMoments = getMomentsCached(tripId);
+        const cachedMembers = getGroupMembersCached(tripId);
+        if (cachedMoments) setRawMoments(cachedMoments);
+        if (cachedMembers) setMembers(cachedMembers);
+      }
+
+      // Also try SQLite cache for photos
+      if (tripId && !silent) {
         const cached = await getCachedPhotosByTrip(tripId).catch(() => []);
         if (cached.length > 0) {
           const cachedMoments = cached.map((c) => ({
@@ -382,8 +396,8 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       }
 
       const [moments, groupMembers, favs] = await Promise.all([
-        getMoments(tripId).catch(() => [] as Moment[]),
-        getGroupMembers(tripId).catch(() => [] as GroupMember[]),
+        getMomentsPromise(tripId, silent).catch(() => [] as Moment[]),
+        getGroupMembersPromise(tripId, silent).catch(() => [] as GroupMember[]),
         getMomentFavorites(tripId).catch(() => ({} as MomentFavoriteMap)),
       ]);
       setRawMoments(moments);
@@ -412,19 +426,27 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         ExpoImg.prefetch(m.photo!).catch(() => {});
       });
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
       setRefreshing(false);
     }
   }, [tripId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Cache-first: load silently if we have cached data
+    const cached = tripId ? getMomentsCached(tripId) : undefined;
+    if (cached !== undefined) {
+      load(true);
+    } else {
+      load();
+    }
+  }, [load, tripId]);
 
   // Refresh when screen comes back into focus (e.g. after add-moment, new-album)
   const isFocused = useIsFocused();
   const prevFocused = useRef(false);
   useEffect(() => {
     if (isFocused && !prevFocused.current) {
-      load();
+      load(true); // background refresh — no loading spinner
     }
     prevFocused.current = isFocused;
   }, [isFocused, load]);

@@ -69,6 +69,8 @@ interface ReturningUserHomeProps {
   onSeeAllTrips: () => void;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /** True when stale data is being revalidated in the background. */
+  isStale?: boolean;
 }
 
 export default function ReturningUserHome({
@@ -95,6 +97,7 @@ export default function ReturningUserHome({
   onSeeAllTrips,
   refreshing = false,
   onRefresh,
+  isStale = false,
 }: ReturningUserHomeProps) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -120,6 +123,12 @@ export default function ReturningUserHome({
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accentLt} />
         ) : undefined}
       >
+        {/* Stale-while-revalidate indicator */}
+        {isStale && !refreshing && (
+          <View style={s.staleBar}>
+            <Text style={s.staleText}>Updating…</Text>
+          </View>
+        )}
         {/* ── 1. WELCOME ── */}
         <Animated.View entering={FadeInDown.duration(400).springify()} style={s.welcomeSection}>
           <Text style={s.welcomeKicker}>WELCOME BACK</Text>
@@ -421,6 +430,22 @@ export default function ReturningUserHome({
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     scroll: { paddingHorizontal: spacing.lg },
+
+    // Stale-while-revalidate indicator
+    staleBar: {
+      alignSelf: 'center',
+      marginTop: 8,
+      marginBottom: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: colors.accentBg,
+    },
+    staleText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.accent,
+    },
 
     // Welcome
     welcomeSection: { paddingTop: spacing.xl, marginBottom: spacing.lg },

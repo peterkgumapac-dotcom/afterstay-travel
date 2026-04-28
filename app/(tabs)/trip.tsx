@@ -62,6 +62,17 @@ import {
   softDeleteTrip,
   restoreTrip,
 } from '@/lib/supabase';
+import {
+  getActiveTripPromise,
+  getActiveTripCached,
+  getAllTripsPromise,
+  getAllTripsCached,
+  getQuickTripsPromise,
+  getQuickTripsCached,
+  getLifetimeStatsPromise,
+  getLifetimeStatsCached,
+  getExpenseSummaryPromise,
+} from '@/hooks/useTrips';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
@@ -694,9 +705,10 @@ export default function TripScreen() {
     totalSpent: number;
   } | null>(null);
 
-  const load = useCallback(async (force = false) => {
+  const load = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
+    const { force = false, silent = false } = opts ?? {};
     try {
-      const t = await getActiveTrip(force);
+      const t = await getActiveTripPromise(force);
       setTrip(t);
       if (t) {
         const [ms, fs, pk, tf] = await Promise.all([
@@ -712,11 +724,11 @@ export default function TripScreen() {
       }
       // Load lifetime data + expense summary for active trip
       const [stats, highlights, allTrips, expSummary, qTrips] = await Promise.all([
-        getLifetimeStats('').catch(() => null),
+        getLifetimeStatsPromise(force).catch(() => null),
         getHighlights('').catch(() => [] as Highlight[]),
-        getAllUserTrips('').catch(() => [] as Trip[]),
-        getExpenseSummary().catch(() => ({ total: 0, byCategory: {}, count: 0 })),
-        getQuickTrips().catch(() => [] as QuickTrip[]),
+        getAllTripsPromise(force).catch(() => [] as Trip[]),
+        getExpenseSummaryPromise(undefined, force).catch(() => ({ total: 0, byCategory: {}, count: 0 })),
+        getQuickTripsPromise(force).catch(() => [] as QuickTrip[]),
       ]);
       if (stats) setLifetimeStats(stats);
       setHighlightsData(highlights);
@@ -747,18 +759,41 @@ export default function TripScreen() {
     } catch (e) {
       if (__DEV__) console.warn('[TripScreen] load trip data failed:', e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
-    load(true);
+    load({ force: true });
   };
 
   useEffect(() => {
-    load();
+    // Cache-first: restore cached data instantly if available
+    const cachedTrip = getActiveTripCached();
+    const cachedAllTrips = getAllTripsCached();
+    const cachedQuickTrips = getQuickTripsCached();
+    const cachedStats = getLifetimeStatsCached();
+    if (cachedTrip !== undefined) {
+      setTrip(cachedTrip);
+      setLoading(false);
+    }
+    if (cachedAllTrips) {
+      const drafts = cachedAllTrips.filter((t) => t.isDraft === true && !t.deletedAt);
+      const archived = cachedAllTrips.filter((t) => t.archivedAt != null && !t.deletedAt);
+      const nonDrafts = cachedAllTrips.filter((t) => !t.isDraft && !t.deletedAt);
+      setDraftTripsData(drafts);
+      setArchivedTripsData(archived);
+      setPastTripsData(nonDrafts);
+    }
+    if (cachedQuickTrips) setQuickTripsData(cachedQuickTrips);
+    if (cachedStats) setLifetimeStats(cachedStats);
+    if (cachedTrip !== undefined) {
+      load({ silent: true });
+    } else {
+      load();
+    }
   }, [load]);
 
   // Derived display data
@@ -899,7 +934,7 @@ export default function TripScreen() {
               const tripId = trip.id;
               await finishTrip(tripId);
               // Refresh the trip list then navigate to summary
-              load(true);
+              load({ force: true });
               router.push({ pathname: '/trip-recap', params: { tripId } } as never);
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not finish trip');
@@ -946,7 +981,7 @@ export default function TripScreen() {
           onPress: async () => {
             try {
               await discardDraftTrip(tripId);
-              load(true);
+              load({ force: true });
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not delete draft');
             }
@@ -968,7 +1003,7 @@ export default function TripScreen() {
           onPress: async () => {
             try {
               await softDeleteTrip(tripId);
-              load(true);
+              load({ force: true });
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not delete trip');
             }
@@ -989,7 +1024,7 @@ export default function TripScreen() {
           onPress: async () => {
             try {
               await restoreTrip(tripId);
-              load(true);
+              load({ force: true });
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not restore trip');
             }
@@ -1011,7 +1046,7 @@ export default function TripScreen() {
           onPress: async () => {
             try {
               await archiveTrip(tripId);
-              load(true);
+              load({ force: true });
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not archive trip');
             }
