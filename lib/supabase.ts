@@ -2565,7 +2565,10 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
     const { data: authData } = await supabase.auth.getUser()
     uid = authData?.user?.id
   }
-  if (!uid) return []
+  if (!uid) {
+    console.warn('[getAllUserTrips] No user ID available')
+    return []
+  }
 
   // Fetch trips owned by user OR where user is a trip member (covers legacy NULL user_id trips)
   let ownedQuery = supabase
@@ -2585,8 +2588,17 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
     memberQuery = memberQuery.is('deleted_at', null)
   }
 
-  const { data: ownedTrips } = await ownedQuery
-  const { data: memberTrips } = await memberQuery
+  const { data: ownedTrips, error: ownedError } = await ownedQuery
+  const { data: memberTrips, error: memberError } = await memberQuery
+
+  if (ownedError) {
+    console.error('[getAllUserTrips] ownedQuery error:', ownedError)
+    throw new Error(`Owned trips fetch failed: ${ownedError.message}`)
+  }
+  if (memberError) {
+    console.error('[getAllUserTrips] memberQuery error:', memberError)
+    throw new Error(`Member trips fetch failed: ${memberError.message}`)
+  }
 
   // Merge and deduplicate by id
   const allRows = [...(ownedTrips ?? []), ...(memberTrips ?? [])]
@@ -2598,6 +2610,7 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
     return true
   })
 
+  console.log(`[getAllUserTrips] User ${uid.slice(0, 8)}: ${unique.length} trips (${ownedTrips?.length ?? 0} owned, ${memberTrips?.length ?? 0} member)`)
   return unique.map((r) => mapTrip(r as Record<string, unknown>))
 }
 

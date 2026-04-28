@@ -209,6 +209,7 @@ export default function HomeScreen() {
   const [returningSavedPlaces, setReturningSavedPlaces] = useState<Place[]>([]);
   const [returningStats, setReturningStats] = useState<LifetimeStats | null>(null);
   const [returningAllTrips, setReturningAllTrips] = useState<Trip[]>([]);
+  const [debugInfo, setDebugInfo] = useState<string>('');
   const { user } = useAuth();
 
   // Resolve current user's group member ID
@@ -365,6 +366,7 @@ export default function HomeScreen() {
         getHomeLifetimeStatsPromise(force).catch(() => null),
       ]);
       console.log('[DEBUG] All trips count:', allTrips.length);
+      setDebugInfo(`User: ${user?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTrips.length} · Past: ${allTrips.filter(t => t.status === 'Completed' && !t.deletedAt).length} · Active: ${allTrips.filter(t => t.status === 'Active' && !t.deletedAt).length}`);
       const now = Date.now();
       // Properly separate trips by lifecycle status
       const drafts = allTrips.filter(t => t.isDraft === true && !t.deletedAt);
@@ -760,6 +762,11 @@ export default function HomeScreen() {
                 ↻ Refresh data
               </Text>
             </TouchableOpacity>
+          )}
+          {__DEV__ && debugInfo.length > 0 && (
+            <Text style={{ marginTop: 12, color: colors.text3, fontSize: 10, fontFamily: 'monospace' }}>
+              {debugInfo}
+            </Text>
           )}
         </ScrollView>
         <NotificationsSheet
