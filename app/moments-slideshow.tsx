@@ -14,6 +14,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -357,10 +358,18 @@ function SmoothViewer({ moments, initialIndex, onClose, onDelete, colors, insets
 
   const renderPhoto = useCallback(({ item }: { item: Moment }) => (
     <View style={{ width: SCREEN_WIDTH, flex: 1, justifyContent: 'center' }}>
-      <Image
-        source={{ uri: item.photo }}
+      <ExpoImage
+        source={item.photo ? { uri: item.photo } : null}
         style={viewerStyles.fullImage}
-        resizeMode="contain"
+        contentFit="contain"
+        transition={200}
+        cachePolicy="memory-disk"
+        onLoad={() => {
+          if (__DEV__) console.log('✅ [SmoothViewer] Image loaded:', item.photo?.slice(0, 60));
+        }}
+        onError={(e) => {
+          if (__DEV__) console.log('❌ [SmoothViewer] Image error:', e, 'URI:', item.photo?.slice(0, 60));
+        }}
       />
     </View>
   ), []);

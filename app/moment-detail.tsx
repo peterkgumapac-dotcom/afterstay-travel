@@ -1,4 +1,4 @@
-import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -80,24 +80,20 @@ export default function MomentDetailScreen() {
         <Share2 size={20} color="#fff" />
       </Pressable>
 
-      {/* Photo with Apple Zoom Target on iOS, standard Image on Android */}
-      {Platform.OS === 'ios' ? (
-        <Link.AppleZoomTarget>
-          <Image
-            source={{ uri: moment.photo ?? undefined }}
-            style={{ flex: 1 }}
-            contentFit="contain"
-            transition={200}
-          />
-        </Link.AppleZoomTarget>
-      ) : (
-        <Image
-          source={{ uri: moment.photo ?? undefined }}
-          style={{ flex: 1 }}
-          contentFit="contain"
-          transition={200}
-        />
-      )}
+      {/* Photo viewer */}
+      <Image
+        source={moment.photo ? { uri: moment.photo } : null}
+        style={{ flex: 1 }}
+        contentFit="contain"
+        transition={200}
+        cachePolicy="memory-disk"
+        onLoad={() => {
+          if (__DEV__) console.log('✅ [MomentDetail] Image loaded:', moment.photo?.slice(0, 60));
+        }}
+        onError={(e) => {
+          if (__DEV__) console.log('❌ [MomentDetail] Image error:', e, 'URI:', moment.photo?.slice(0, 60));
+        }}
+      />
 
       {/* Info overlay */}
       <View style={[s.infoOverlay, { paddingBottom: Math.max(insets.bottom, 20) + 16 }]}>
