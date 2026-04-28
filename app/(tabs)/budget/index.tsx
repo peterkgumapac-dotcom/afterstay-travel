@@ -92,7 +92,17 @@ function smartTitle(e: Expense): string {
 
 // ── Main screen ──────────────────────────────────────────────────────
 
-export default function BudgetScreen() {
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
+
+export default function BudgetScreenWithBoundary() {
+  return (
+    <TabErrorBoundary name="Budget">
+      <BudgetScreen />
+    </TabErrorBoundary>
+  );
+}
+
+function BudgetScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user } = useAuth();

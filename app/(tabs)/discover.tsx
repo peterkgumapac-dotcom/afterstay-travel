@@ -379,36 +379,15 @@ const TopPicksSection = React.memo(function TopPicksSection({
   );
 });
 
-// ── Error boundary for Discover ────────────────────────────────────────
-
-class DiscoverErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error?: string }
-> {
-  state = { hasError: false, error: undefined as string | undefined };
-  static getDerivedStateFromError(e: Error) {
-    return { hasError: true, error: e.message };
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-          <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>Discover crashed</Text>
-          <Text style={{ fontSize: 12, color: '#888', textAlign: 'center' }}>{this.state.error}</Text>
-        </View>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 // ── Main screen ─────────────────────────────────────────────────────────
+
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 
 export default function DiscoverScreenWrapper() {
   return (
-    <DiscoverErrorBoundary>
+    <TabErrorBoundary name="Discover">
       <DiscoverScreenInner />
-    </DiscoverErrorBoundary>
+    </TabErrorBoundary>
   );
 }
 

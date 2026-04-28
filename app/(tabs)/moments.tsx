@@ -14,7 +14,17 @@ import type { Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
-export default function MomentsScreen() {
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
+
+export default function MomentsScreenWithBoundary() {
+  return (
+    <TabErrorBoundary name="Moments">
+      <MomentsScreen />
+    </TabErrorBoundary>
+  );
+}
+
+function MomentsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();

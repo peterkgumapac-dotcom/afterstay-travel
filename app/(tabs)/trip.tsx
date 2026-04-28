@@ -72,7 +72,7 @@ import {
   getLifetimeStatsPromise,
   getLifetimeStatsCached,
   getExpenseSummaryPromise,
-} from '@/hooks/useTrips';
+} from '@/hooks/useTabTrips';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
@@ -670,7 +670,17 @@ const fullFlightStyles = (colors: ThemeColors) =>
 
 // ---------- MAIN SCREEN ----------
 
-export default function TripScreen() {
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
+
+export default function TripScreenWithBoundary() {
+  return (
+    <TabErrorBoundary name="Trip">
+      <TripScreen />
+    </TabErrorBoundary>
+  );
+}
+
+function TripScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();

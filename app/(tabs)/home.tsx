@@ -18,6 +18,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Compass, MapPin, Plane, Trash2, Users, X } from 'lucide-react-native';
 
 import { useAuth } from '@/lib/auth';
+import { useUserSegment } from '@/contexts/UserSegmentContext';
 import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import AfterStayLoader from '@/components/AfterStayLoader';
@@ -174,7 +175,17 @@ function CollapsibleSection({
   );
 }
 
-export default function HomeScreen() {
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
+
+export default function HomeScreenWithBoundary() {
+  return (
+    <TabErrorBoundary name="Home">
+      <HomeScreen />
+    </TabErrorBoundary>
+  );
+}
+
+function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const navigation = useNavigation();
@@ -211,6 +222,7 @@ export default function HomeScreen() {
   const [returningAllTrips, setReturningAllTrips] = useState<Trip[]>([]);
   const [debugInfo, setDebugInfo] = useState<string>('');
   const { user } = useAuth();
+  const { segment } = useUserSegment();
 
   // Resolve current user's group member ID
   const currentMemberId = useMemo(
@@ -668,7 +680,9 @@ export default function HomeScreen() {
       );
     }
     // Returning user — has ANY trips (past, upcoming, active, archived, drafts, quick trips)
+    // Derive from Supabase segment as the source of truth, fallback to local data
     const hasHistory =
+      segment !== 'new' ||
       returningPastTrips.length > 0 ||
       returningUpcomingTrips.length > 0 ||
       returningActiveTrips.length > 0 ||
