@@ -75,7 +75,7 @@ import {
   getHomeMembersPromise,
   getHomePlacesPromise,
   getHomeExpensesPromise,
-} from '@/hooks/useHomeData';
+} from '@/hooks/useTabHomeData';
 import { getQuickTrips } from '@/lib/quickTrips';
 import { fetchDestinationPhotos } from '@/lib/google-places';
 import type { Flight, GroupMember, LifetimeStats, Moment, Place, Trip } from '@/lib/types';
@@ -483,6 +483,7 @@ export default function HomeScreen() {
       if (cachedStats) setReturningStats(cachedStats);
       // Skip the 3s branded loader when cached data is available
       setLoaderDone(true);
+      setLoading(false);
       // Refresh in background
       load({ silent: true });
     } else {
@@ -730,7 +731,16 @@ export default function HomeScreen() {
           notificationCount={notifCount}
           onBellPress={() => setShowNotifications(true)}
         />
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}>
+        <ScrollView
+          contentContainerStyle={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { setRefreshing(true); load({ force: true }); }}
+              tintColor={colors.accentLt}
+            />
+          }
+        >
           <EmptyState
             icon={Compass}
             title="Your next adventure starts here"
@@ -740,7 +750,18 @@ export default function HomeScreen() {
             secondaryLabel="Join a friend's trip"
             onSecondary={() => router.push('/onboarding')}
           />
-        </View>
+          {user && (
+            <TouchableOpacity
+              style={{ marginTop: 24, paddingVertical: 10, paddingHorizontal: 20 }}
+              onPress={() => { setRefreshing(true); load({ force: true }); }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
+                ↻ Refresh data
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
         <NotificationsSheet
           visible={showNotifications}
           onClose={() => setShowNotifications(false)}
