@@ -2,25 +2,53 @@
  * UserSegmentContext — single source of truth for the user's lifecycle state.
  * Wraps the tab layout so all tabs share segment, profile, and active trip data
  * without each tab independently re-fetching.
+ *
+ * FIX: Status is now derived from Supabase trips on every launch instead of
+ * relying on local cache or the stale profile.userSegment field.
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '@/lib/auth';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
-  getActiveTrip,
-  getAllUserTrips,
-  getLifetimeStats,
-  getProfile,
-  type Profile,
-} from '@/lib/supabase';
+  deriveUserStatus,
+  refreshUserStatus,
+  type UserStatus,
+} from '@/lib/userStatus';
+import { getLifetimeStats, getProfile, type Profile } from '@/lib/supabase';
 import type { LifetimeStats, Trip, UserSegment } from '@/lib/types';
 
 // ── Context value ────────────────────────────────────────────────────
 
+// ── Dev override (test mode) ─────────────────────────────────────────
+
+const DEV_OVERRIDE_KEY = 'dev:segment-override';
+const DEV_ALLOWED_EMAIL = 'peterkgumapac@gmail.com';
+
+/** Set a segment override for testing. Pass null to clear. */
+export async function setSegmentOverride(segment: UserSegment | null): Promise<void> {
+  if (segment) {
+    await AsyncStorage.setItem(DEV_OVERRIDE_KEY, segment);
+  } else {
+    await AsyncStorage.removeItem(DEV_OVERRIDE_KEY);
+  }
+}
+
+/** Read the current segment override (null = no override). */
+export async function getSegmentOverride(): Promise<UserSegment | null> {
+  const val = await AsyncStorage.getItem(DEV_OVERRIDE_KEY);
+  if (val && ['new', 'planning', 'active', 'returning'].includes(val)) {
+    return val as UserSegment;
+  }
+  return null;
+}
+
+// ── Context value ────────────────────────────────────────────────────
+
 interface UserSegmentState {
-  /** The user's lifecycle segment — derived from the DB profile */
+  /** The user's lifecycle segment — derived from Supabase trips */
   segment: UserSegment;
   /** Full profile (includes tripCount, completedTripCount, etc.) */
   profile: Profile | null;
@@ -34,6 +62,8 @@ interface UserSegmentState {
   lifetimeStats: LifetimeStats | null;
   /** True during initial load */
   loading: boolean;
+  /** True when a dev override is active */
+  isTestMode: boolean;
   /** Re-fetch everything (e.g. after creating a trip) */
   refresh: () => Promise<void>;
 }
@@ -46,6 +76,7 @@ const defaultState: UserSegmentState = {
   draftTrips: [],
   lifetimeStats: null,
   loading: true,
+  isTestMode: false,
   refresh: async () => {},
 };
 
@@ -56,6 +87,12 @@ const Ctx = createContext<UserSegmentState>(defaultState);
 const CK_PROFILE = 'userseg:profile';
 const CK_SEGMENT = 'userseg:segment';
 const CK_ACTIVE = 'userseg:active-trip';
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function toSegment(status: UserStatus): UserSegment {
+  return status === 'completed' ? 'returning' : status;
+}
 
 // ── Provider ─────────────────────────────────────────────────────────
 
@@ -87,42 +124,52 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
       }));
     }
 
-    // 2. Fresh from server
+    // 2. Fresh from server — derive from actual trip data
     try {
-      const [profile, active] = await Promise.all([
-        getProfile(user.id),
-        getActiveTrip().catch(() => null),
+      const [result, profile] = await Promise.all([
+        deriveUserStatus(user.id),
+        getProfile(user.id).catch(() => null),
       ]);
 
-      const segment: UserSegment = profile?.userSegment ?? (active ? 'active' : 'new');
+      const realSegment = toSegment(result.status);
 
-      // Always fetch all trips + stats — drafts and past trips must be
-      // available even when an active trip exists ( ReturningUserHome )
-      const [allTrips, stats] = await Promise.all([
-        getAllUserTrips('').catch(() => [] as Trip[]),
-        getLifetimeStats('').catch(() => null),
-      ]);
-      const pastTrips = allTrips.filter((t) => t.status === 'Completed');
-      const draftTrips = allTrips.filter((t) => t.status === 'Planning');
-      const lifetimeStats = stats;
+      // Check for dev override (only for allowed email)
+      let segment = realSegment;
+      let isTestMode = false;
+      if (user.email === DEV_ALLOWED_EMAIL) {
+        const override = await getSegmentOverride();
+        if (override) {
+          segment = override;
+          isTestMode = true;
+        }
+      }
+
+      // Fetch lifetime stats for returning users
+      let lifetimeStats: LifetimeStats | null = null;
+      if (realSegment !== 'new') {
+        lifetimeStats = await getLifetimeStats(user.id).catch(() => null);
+      }
 
       if (!mounted.current) return;
 
       setState({
         segment,
         profile,
-        activeTrip: active,
-        pastTrips,
-        draftTrips,
+        activeTrip: result.activeTrip,
+        pastTrips: result.completedTrips,
+        draftTrips: result.planningTrips,
         lifetimeStats,
         loading: false,
+        isTestMode,
       });
 
       // Update cache
       await Promise.all([
-        cacheSet(CK_PROFILE, profile),
+        profile ? cacheSet(CK_PROFILE, profile) : Promise.resolve(),
         cacheSet(CK_SEGMENT, segment),
-        active ? cacheSet(CK_ACTIVE, active) : cacheSet(CK_ACTIVE, null),
+        result.activeTrip
+          ? cacheSet(CK_ACTIVE, result.activeTrip)
+          : cacheSet(CK_ACTIVE, null),
       ]);
     } catch {
       if (mounted.current) {

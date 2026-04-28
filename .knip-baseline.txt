@@ -1,6 +1,11 @@
-Unused files (41)
+Unused files (56)
+.agents/skills/expo-cicd-workflows/scripts/fetch.js: .agents/skills/expo-cicd-workflows/scripts/fetch.js
+.agents/skills/expo-cicd-workflows/scripts/validate.js: .agents/skills/expo-cicd-workflows/scripts/validate.js
+.claude/skills/expo-cicd-workflows/scripts/fetch.js: .claude/skills/expo-cicd-workflows/scripts/fetch.js
+.claude/skills/expo-cicd-workflows/scripts/validate.js: .claude/skills/expo-cicd-workflows/scripts/validate.js
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
+components/ShimmerFallback.tsx: components/ShimmerFallback.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
 components/budget/PaymentQRCard.tsx: components/budget/PaymentQRCard.tsx
 components/budget/QRScannerModal.tsx: components/budget/QRScannerModal.tsx
@@ -8,11 +13,17 @@ components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
 components/home/QuickAccessGrid.tsx: components/home/QuickAccessGrid.tsx
 components/home/SmartNudges.tsx: components/home/SmartNudges.tsx
+components/moments/Avatar.tsx: components/moments/Avatar.tsx
+components/moments/BentoLayout.tsx: components/moments/BentoLayout.tsx
 components/moments/DayChips.tsx: components/moments/DayChips.tsx
+components/moments/DayRail.tsx: components/moments/DayRail.tsx
+components/moments/DaySectionHeader.tsx: components/moments/DaySectionHeader.tsx
 components/moments/DiaryLayout.tsx: components/moments/DiaryLayout.tsx
 components/moments/MapLayout.tsx: components/moments/MapLayout.tsx
+components/moments/MomentLightbox.tsx: components/moments/MomentLightbox.tsx
 components/moments/MosaicLayout.tsx: components/moments/MosaicLayout.tsx
 components/moments/MosaicTile.tsx: components/moments/MosaicTile.tsx
+components/moments/PhotoActionSheet.tsx: components/moments/PhotoActionSheet.tsx
 components/moments/StatBlock.tsx: components/moments/StatBlock.tsx
 components/moments/TripRecapModal.tsx: components/moments/TripRecapModal.tsx
 components/moments/recaps/MinimalTemplate.tsx: components/moments/recaps/MinimalTemplate.tsx
@@ -32,21 +43,23 @@ design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
 design-reference/screens/login.jsx: design-reference/screens/login.jsx
 design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
+hooks/useHomeData.ts: hooks/useHomeData.ts
+hooks/useMoments.ts: hooks/useMoments.ts
+hooks/usePhotoGestures.ts: hooks/usePhotoGestures.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 lib/imageUrl.ts: lib/imageUrl.ts
 lib/qrph.ts: lib/qrph.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
+scripts/debug-user-trips.ts: scripts/debug-user-trips.ts
 supabase/functions/ai-recommend/index.ts: supabase/functions/ai-recommend/index.ts
 supabase/functions/send-push-notification/index.ts: supabase/functions/send-push-notification/index.ts
 supabase/functions/trip-lifecycle-notifications/index.ts: supabase/functions/trip-lifecycle-notifications/index.ts
 utils/fate/randomWinner.ts: utils/fate/randomWinner.ts
 Unused dependencies (1)
-package.json: @expo/vector-icons, base64-arraybuffer, buffer, exifr, expo-auth-session, expo-build-properties, expo-calendar, expo-camera, expo-device, expo-secure-store, react-native-maps
+package.json: base64-arraybuffer, buffer, exifr, expo-auth-session, expo-background-fetch, expo-blur, expo-build-properties, expo-calendar, expo-camera, expo-crypto, expo-device, expo-mcp, expo-symbols, react-native-maps
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
-Unlisted dependencies (1)
-app/(tabs)/_layout.tsx: @react-navigation/bottom-tabs
-Unused exports (16)
+Unused exports (24)
 components/discover/CategoryGrid.tsx: CategoryGrid
 components/discover/ExploreMap.tsx: MAP_AVAILABLE
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
@@ -54,22 +67,34 @@ components/discover/TrendingCard.tsx: TrendingCard
 components/discover/shared.tsx: resolveTypeLabel, formatReviewCount
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
+constants/animations.ts: colors, stagger
 constants/fateTheme.ts: personColors, fateTiming
 hooks/useFilmFilters.ts: getFilter
+hooks/useTabHomeData.ts: preloadHomeData, invalidateHomeCache
+hooks/useTabMoments.ts: getSavedPlacesPromise, getSavedPlacesCached, loadTripMomentsData, getTripMomentsDataCached, useInvalidateMoments
+hooks/useTabTrips.ts: getPastTripsPromise, getPastTripsCached, getExpenseSummaryCached, useInvalidateTrips
+hooks/useTrips.ts: getActiveTripPromise, getActiveTripCached, getPastTripsPromise, getPastTripsCached, getQuickTripsPromise, getQuickTripsCached, getLifetimeStatsPromise, getLifetimeStatsCached, getExpenseSummaryPromise, getExpenseSummaryCached, useInvalidateTrips
 lib/anthropic.ts: generateRecommendations
+lib/backgroundTasks.ts: unregisterBackgroundTasks
 lib/cache/mediaCache.ts: migrateMediaCache, evictCachedImage
+lib/cache/sqliteCache.ts: getCachedPhotoById, clearPhotoCache, setOfflineFavorite, getOfflineFavorites, getCacheStats
 lib/distance.ts: haversine
 lib/google-places.ts: findPlacePhoto, enrichRecommendations
-lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, shouldSendPush, getCategoryForType
+lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, getCategoryForType
 lib/quickTrips.ts: getQuickTripExpenseSummary
+lib/tabDataCache.ts: setCachedData, hasCachedData, useCachedPromise, useCachedData
 lib/utils.ts: tripStatusLabel
-Unused exported types (9)
+Unused exported types (13)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
+hooks/useCurationGesture.ts: CurationAction
+hooks/useTabMoments.ts: TripMomentsData
 lib/anthropic.ts: ItineraryDayLegacy, GeneratedMemoryContent
+lib/cache/sqliteCache.ts: CachedPhotoMeta
 lib/google-places.ts: PlaceSearchResult, AutocompleteResult
 lib/quickTripTypes.ts: QuickTripExpenseSplit
+lib/tabDataCache.ts: CacheOptions
 lib/tripMemoryBuilder.ts: TripMemoryData
 lib/types.ts: WeatherDay, PersonalPhoto, ConciergeWho
 utils/fate/generateSpinPlan.ts: SpinStep, SpinPlan

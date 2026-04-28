@@ -3,11 +3,12 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React, { createContext, useContext, useMemo, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { useTheme } from '@/constants/ThemeContext';
-import { UserSegmentProvider } from '@/contexts/UserSegmentContext';
+import { UserSegmentProvider, useUserSegment } from '@/contexts/UserSegmentContext';
 
 /* ---------- Tab bar visibility context (kept for backward compat) ---------- */
 
@@ -130,14 +131,46 @@ export default function TabLayout() {
           <NativeTabs.Trigger name="guide" hidden>
             <NativeTabs.Trigger.Label>Guide</NativeTabs.Trigger.Label>
           </NativeTabs.Trigger>
-          <NativeTabs.Trigger name="settings" hidden>
-            <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
-          </NativeTabs.Trigger>
         </NativeTabs>
 
         {/* Global FAB — rendered above native tabs */}
         {tabBarVisible && Platform.OS === 'ios' && <FloatingActionButton />}
+        <TestModeBanner />
       </TabBarVisibilityContext.Provider>
     </UserSegmentProvider>
   );
 }
+
+/* ---------- Test Mode Banner ---------- */
+
+function TestModeBanner() {
+  const { isTestMode, segment } = useUserSegment();
+  const insets = useSafeAreaInsets();
+  if (!isTestMode) return null;
+  return (
+    <View style={[testStyles.banner, { top: insets.top }]}>
+      <Text style={testStyles.text}>
+        TEST MODE: segment = "{segment}"
+      </Text>
+    </View>
+  );
+}
+
+const testStyles = StyleSheet.create({
+  banner: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+    backgroundColor: '#c4554a',
+    paddingVertical: 4,
+    alignItems: 'center',
+  },
+  text: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+});
