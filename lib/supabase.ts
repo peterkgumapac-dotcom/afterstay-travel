@@ -403,8 +403,6 @@ export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> 
     .select('*')
     .in('status', ['Planning', 'Active'])
     .is('is_draft', null)          // exclude incomplete onboarding drafts
-    .is('deleted_at', null)        // exclude soft-deleted trips
-    .is('archived_at', null)       // exclude archived trips
     .order('start_date', { ascending: true })
     .limit(1)
 
@@ -2571,22 +2569,17 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
   }
 
   // Fetch trips owned by user OR where user is a trip member (covers legacy NULL user_id trips)
-  let ownedQuery = supabase
+  const ownedQuery = supabase
     .from(T.trips)
     .select('*')
     .eq('user_id', uid)
     .order('start_date', { ascending: false })
 
-  let memberQuery = supabase
+  const memberQuery = supabase
     .from(T.trips)
     .select('*, group_members!inner(user_id)')
     .eq('group_members.user_id', uid)
     .order('start_date', { ascending: false })
-
-  if (!includeDeleted) {
-    ownedQuery = ownedQuery.is('deleted_at', null)
-    memberQuery = memberQuery.is('deleted_at', null)
-  }
 
   const { data: ownedTrips, error: ownedError } = await ownedQuery
   const { data: memberTrips, error: memberError } = await memberQuery
@@ -2610,8 +2603,13 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
     return true
   })
 
-  console.log(`[getAllUserTrips] User ${uid.slice(0, 8)}: ${unique.length} trips (${ownedTrips?.length ?? 0} owned, ${memberTrips?.length ?? 0} member)`)
-  return unique.map((r) => mapTrip(r as Record<string, unknown>))
+  // Filter soft-deleted in JS (deleted_at column may not exist in DB)
+  const result = includeDeleted
+    ? unique
+    : unique.filter((r) => !r.deleted_at)
+
+  console.log(`[getAllUserTrips] User ${uid.slice(0, 8)}: ${result.length} trips (${ownedTrips?.length ?? 0} owned, ${memberTrips?.length ?? 0} member)`)
+  return result.map((r) => mapTrip(r as Record<string, unknown>))
 }
 
 /** Active trips: Planning or Active, not draft, not deleted, not archived */
