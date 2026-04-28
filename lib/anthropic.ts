@@ -1,11 +1,50 @@
-// Anthropic client (fetch-based). Used by AI Trip Planner in Phase 4.
+// Anthropic client — routes all AI calls through the ai-proxy Edge Function.
+// The API key stays server-side. Client sends structured payloads.
 
-import type { AIRecommendation } from './types';
-import { CONFIG } from './config';
+import { supabase } from './supabase';
+import type { AIRecommendation, TripMemoryStats, TripMemoryVibe } from './types';
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
-const MODEL = 'claude-sonnet-4-20250514';
+// ── Proxy helper ──────────────────────────────────────────────────────
+
+async function callProxy(action: string, payload: Record<string, unknown>): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', {
+    body: { action, payload },
+  });
+  if (error) {
+    const msg = typeof error === 'object' && 'message' in error ? (error as { message: string }).message : String(error);
+    if (msg.includes('credit balance is too low')) {
+      throw new Error('AI credits exhausted. Please try again later.');
+    }
+    throw new Error(`AI error: ${msg}`);
+  }
+  return data?.text ?? '';
+}
+
+// ── JSON extraction helpers ───────────────────────────────────────────
+
+function extractJson(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenced ? fenced[1] : text;
+  const firstBracket = candidate.indexOf('[');
+  const lastBracket = candidate.lastIndexOf(']');
+  if (firstBracket === -1 || lastBracket === -1) {
+    throw new Error('No JSON array found in AI response.');
+  }
+  return JSON.parse(candidate.slice(firstBracket, lastBracket + 1));
+}
+
+function extractJsonObject(text: string): Record<string, unknown> {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenced ? fenced[1] : text;
+  const firstBrace = candidate.indexOf('{');
+  const lastBrace = candidate.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1) {
+    throw new Error('No JSON object found in AI response.');
+  }
+  return JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
+}
+
+// ── Recommendations ───────────────────────────────────────────────────
 
 function buildRecommendationPrompt(trip?: { destination?: string; accommodation?: string; startDate?: string; endDate?: string; nights?: number }, groupSize = 2): string {
   const dest = trip?.destination || 'your destination';
@@ -44,50 +83,27 @@ export async function generateRecommendations(args: {
   trip?: { destination?: string; accommodation?: string; startDate?: string; endDate?: string; nights?: number };
   groupSize?: number;
 }): Promise<AIRecommendation[]> {
-  const key = CONFIG.ANTHROPIC_KEY;
-  if (!key) throw new Error('Anthropic API key missing. Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env.');
-
   const userMsg = `Visitor profile: ${args.firstTime}.\nInterests (Top 5 per category please): ${args.interests.join(', ')}.\nReturn ONLY a single JSON array, no prose, no code fences.`;
 
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4096,
-      system: buildRecommendationPrompt(args.trip, args.groupSize),
-      messages: [{ role: 'user', content: userMsg }],
-    }),
+  const text = await callProxy('recommend', {
+    system: buildRecommendationPrompt(args.trip, args.groupSize),
+    userMessage: userMsg,
   });
-  if (!res.ok) {
-    const body = await res.text();
-    if (body.includes('credit balance is too low')) {
-      throw new Error('Anthropic API credits exhausted. Please add credits at console.anthropic.com → Plans & Billing.');
-    }
-    throw new Error(`Anthropic ${res.status}: ${body}`);
-  }
-  const data = await res.json();
-  const text: string = data?.content?.[0]?.text ?? '';
   const json = extractJson(text);
   if (!Array.isArray(json)) throw new Error('AI did not return a JSON array.');
   return json as AIRecommendation[];
 }
 
-// ── Itinerary generation ──────────────────────────────────────────
+// ── Itinerary generation ──────────────────────────────────────────────
 
 export interface ItineraryActivity {
   name: string;
   category: 'Food' | 'Beach' | 'Activity' | 'Culture' | 'Nightlife' | 'Wellness' | 'Shopping' | 'Transport';
   timeSlot: 'morning' | 'afternoon' | 'evening';
-  duration: string;       // e.g. "1-2 hrs"
-  cost: string;           // e.g. "₱500-800" or "Free"
-  tip: string;            // one-liner practical tip
-  description: string;    // one sentence about why this is worth it
+  duration: string;
+  cost: string;
+  tip: string;
+  description: string;
 }
 
 export interface ItineraryDay {
@@ -97,7 +113,6 @@ export interface ItineraryDay {
   activities: ItineraryActivity[];
 }
 
-// Legacy shape for backward compat with existing rendered itineraries
 export interface ItineraryDayLegacy {
   day: number;
   date: string;
@@ -159,6 +174,19 @@ Rules:
 - Cost should be specific local currency ranges, or "Free".`;
 }
 
+function formatShortDate(d: Date): string {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[d.getMonth()]} ${d.getDate()}`;
+}
+
+function getTimeOfDay(): string {
+  const h = new Date().getHours();
+  if (h < 6) return 'early morning (before 6 AM) — suggest breakfast and morning activities only';
+  if (h < 12) return 'morning — suggest remaining morning + afternoon + evening activities';
+  if (h < 17) return 'afternoon — skip morning, suggest afternoon + evening activities';
+  return 'evening — suggest evening and nightlife activities only';
+}
+
 export async function generateItinerary(args: {
   scope: PlannerScope;
   pace: PlannerPace;
@@ -171,9 +199,6 @@ export async function generateItinerary(args: {
   budget?: number;
   budgetCurrency?: string;
 }): Promise<ItineraryDay[]> {
-  const key = CONFIG.ANTHROPIC_KEY;
-  if (!key) throw new Error('Anthropic API key missing. Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env.');
-
   const paceDescriptions: Record<PlannerPace, string> = {
     relaxed: 'Relaxed pace: 2-3 activities/day, plenty of free time and rest.',
     moderate: 'Moderate pace: 3-4 activities/day, balanced with downtime.',
@@ -199,57 +224,24 @@ export async function generateItinerary(args: {
     'Return ONLY a JSON array, no prose, no code fences.',
   ].filter(Boolean).join('\n');
 
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: args.scope === 'today' ? 1024 : 4096,
-      system: buildItinerarySystem({
-        destination: args.destination,
-        hotelName: args.hotelName,
-        groupSize: args.groupSize,
-        budget: args.budget,
-        budgetCurrency: args.budgetCurrency,
-      }),
-      messages: [{ role: 'user', content: userMsg }],
+  const text = await callProxy('itinerary', {
+    system: buildItinerarySystem({
+      destination: args.destination,
+      hotelName: args.hotelName,
+      groupSize: args.groupSize,
+      budget: args.budget,
+      budgetCurrency: args.budgetCurrency,
     }),
+    userMessage: userMsg,
+    maxTokens: args.scope === 'today' ? 1024 : 4096,
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    if (body.includes('credit balance is too low')) {
-      throw new Error('Anthropic API credits exhausted. Please add credits at console.anthropic.com.');
-    }
-    throw new Error(`Anthropic ${res.status}: ${body}`);
-  }
-
-  const data = await res.json();
-  const text: string = data?.content?.[0]?.text ?? '';
   const json = extractJson(text);
   if (!Array.isArray(json)) throw new Error('AI did not return a JSON array.');
   return json as ItineraryDay[];
 }
 
-function formatShortDate(d: Date): string {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
-}
-
-function getTimeOfDay(): string {
-  const h = new Date().getHours();
-  if (h < 6) return 'early morning (before 6 AM) — suggest breakfast and morning activities only';
-  if (h < 12) return 'morning — suggest remaining morning + afternoon + evening activities';
-  if (h < 17) return 'afternoon — skip morning, suggest afternoon + evening activities';
-  return 'evening — suggest evening and nightlife activities only';
-}
-
-// ── Receipt scanning ───────────────────────────────────────────────
+// ── Receipt scanning ───────────────────────────────────────────────────
 
 export interface ReceiptLineItem {
   name: string;
@@ -263,39 +255,12 @@ export interface ScannedReceipt {
   amount: number;
   currency: string;
   category: 'Food' | 'Transport' | 'Activity' | 'Accommodation' | 'Shopping' | 'Other';
-  date: string; // YYYY-MM-DD
-  items: ReceiptLineItem[]; // individual line items with amounts
+  date: string;
+  items: ReceiptLineItem[];
 }
 
 export async function scanReceipt(base64Image: string, mimeType: string = 'image/jpeg'): Promise<ScannedReceipt> {
-  const key = CONFIG.ANTHROPIC_KEY;
-  if (!key) throw new Error('Anthropic API key missing.');
-
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mimeType,
-              data: base64Image,
-            },
-          },
-          {
-            type: 'text',
-            text: `Extract receipt information from this image. Read every line item with its quantity and price. Return ONLY a JSON object (no prose, no code fences) with these fields:
+  const prompt = `Extract receipt information from this image. Read every line item with its quantity and price. Return ONLY a JSON object (no prose, no code fences) with these fields:
 {
   "placeName": "store/restaurant name",
   "description": "brief summary, e.g. 'Lunch for 3'",
@@ -313,43 +278,31 @@ Rules:
 - Each item in "items" has name, qty (default 1), and amount (unit price × qty).
 - Include tax/service charge as a separate item if shown.
 - If you cannot read a field, use reasonable defaults.
-- Default currency to PHP. Default date to today: ${new Date().toISOString().slice(0, 10)}.`,
-          },
-        ],
-      }],
-    }),
+- Default currency to PHP. Default date to today: ${new Date().toISOString().slice(0, 10)}.`;
+
+  const text = await callProxy('receipt-scan', {
+    base64Image,
+    mimeType,
+    prompt,
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    if (body.includes('credit balance is too low')) {
-      throw new Error('Anthropic API credits exhausted. Add credits at console.anthropic.com.');
-    }
-    throw new Error(`Anthropic ${res.status}: ${body}`);
-  }
-
-  const data = await res.json();
-  const text: string = data?.content?.[0]?.text ?? '';
-
-  // Strip code fences if present
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const candidate = fenced ? fenced[1] : text;
   const firstBrace = candidate.indexOf('{');
   const lastBrace = candidate.lastIndexOf('}');
   if (firstBrace === -1 || lastBrace === -1) throw new Error('Could not parse receipt data.');
-
   return JSON.parse(candidate.slice(firstBrace, lastBrace + 1)) as ScannedReceipt;
 }
 
-// ── Trip document scanner ─────────────────────────────────────────
+// ── Trip document scanner ─────────────────────────────────────────────
 
 export interface ScannedTripDetails {
   destination: string;
-  startDate: string;       // YYYY-MM-DD
-  endDate: string;         // YYYY-MM-DD
-  accommodation?: string;  // hotel name
+  startDate: string;
+  endDate: string;
+  accommodation?: string;
   address?: string;
-  checkIn?: string;        // e.g. "3:00 PM"
+  checkIn?: string;
   checkOut?: string;
   roomType?: string;
   bookingRef?: string;
@@ -361,19 +314,16 @@ export interface ScannedTripDetails {
     airline?: string;
     from: string;
     to: string;
-    departTime: string;    // ISO datetime
+    departTime: string;
     arriveTime: string;
     bookingRef?: string;
   }[];
-  members?: string[];      // names found in bookings
+  members?: string[];
 }
 
 export async function scanTripDocuments(
   images: { base64: string; mimeType: string }[],
 ): Promise<ScannedTripDetails> {
-  const key = CONFIG.ANTHROPIC_KEY;
-  if (!key) throw new Error('Anthropic API key missing.');
-
   const imageBlocks = images.map((img) => ({
     type: 'image' as const,
     source: {
@@ -383,24 +333,7 @@ export async function scanTripDocuments(
     },
   }));
 
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 2048,
-      messages: [{
-        role: 'user',
-        content: [
-          ...imageBlocks,
-          {
-            type: 'text',
-            text: `Extract trip details from these screenshots. They may be flight bookings, hotel confirmations, itineraries, or general trip screenshots.
+  const prompt = `Extract trip details from these screenshots. They may be flight bookings, hotel confirmations, itineraries, or general trip screenshots.
 
 Return ONLY a JSON object (no prose, no code fences):
 {
@@ -436,62 +369,22 @@ Rules:
 - If multiple flights found, include all of them with correct direction (Outbound or Return).
 - If you see passenger names, list them in "members".
 - Cost should be numeric (no currency symbol). Currency as ISO code.
-- Default currency to PHP if not specified.`,
-          },
-        ],
-      }],
-    }),
+- Default currency to PHP if not specified.`;
+
+  const text = await callProxy('trip-scan', {
+    imageBlocks,
+    prompt,
   });
-
-  if (!res.ok) {
-    const body = await res.text();
-    if (body.includes('credit balance is too low')) {
-      throw new Error('Anthropic API credits exhausted. Add credits at console.anthropic.com.');
-    }
-    throw new Error(`Anthropic ${res.status}: ${body}`);
-  }
-
-  const data = await res.json();
-  const text: string = data?.content?.[0]?.text ?? '';
 
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const candidate = fenced ? fenced[1] : text;
   const firstBrace = candidate.indexOf('{');
   const lastBrace = candidate.lastIndexOf('}');
   if (firstBrace === -1 || lastBrace === -1) throw new Error('Could not parse trip details.');
-
   return JSON.parse(candidate.slice(firstBrace, lastBrace + 1)) as ScannedTripDetails;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
-
-function extractJson(text: string): unknown {
-  // Strip common code-fence wrappers
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = fenced ? fenced[1] : text;
-  const firstBracket = candidate.indexOf('[');
-  const lastBracket = candidate.lastIndexOf(']');
-  if (firstBracket === -1 || lastBracket === -1) {
-    throw new Error('No JSON array found in AI response.');
-  }
-  return JSON.parse(candidate.slice(firstBracket, lastBracket + 1));
-}
-
-/** Extract a JSON object (not array) from AI response text. */
-function extractJsonObject(text: string): Record<string, unknown> {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = fenced ? fenced[1] : text;
-  const firstBrace = candidate.indexOf('{');
-  const lastBrace = candidate.lastIndexOf('}');
-  if (firstBrace === -1 || lastBrace === -1) {
-    throw new Error('No JSON object found in AI response.');
-  }
-  return JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
-}
-
 // ── Trip Memory generation ──────────────────────────────────────────
-
-import type { TripMemoryStats, TripMemoryVibe } from './types';
 
 export interface GeneratedMemoryContent {
   narrative: string;
@@ -512,9 +405,6 @@ export async function generateTripMemory(args: {
   expenses: { description: string; amount: number; category: string; date: string }[];
   flights: { direction: string; from: string; to: string; airline: string }[];
 }): Promise<GeneratedMemoryContent> {
-  const key = CONFIG.ANTHROPIC_KEY;
-  if (!key) throw new Error('Anthropic API key missing. Set EXPO_PUBLIC_ANTHROPIC_API_KEY in .env.');
-
   const systemPrompt = `You are a gifted travel memoir writer. Given structured trip data, you create warm, vivid, second-person narratives that capture the essence of a journey.
 
 Your output is a single JSON object with exactly these keys:
@@ -558,34 +448,12 @@ Rules:
 
   const userMsg = `Here is the complete trip data. Generate the trip memory JSON.\n\n${JSON.stringify(tripData, null, 2)}`;
 
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMsg }],
-    }),
+  const text = await callProxy('trip-memory', {
+    system: systemPrompt,
+    userMessage: userMsg,
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    if (body.includes('credit balance is too low')) {
-      throw new Error('Anthropic API credits exhausted. Please add credits at console.anthropic.com → Plans & Billing.');
-    }
-    throw new Error(`Anthropic ${res.status}: ${body}`);
-  }
-
-  const data = await res.json();
-  const text: string = data?.content?.[0]?.text ?? '';
   const json = extractJsonObject(text) as Record<string, unknown>;
-
   return {
     narrative: (json.narrative as string) ?? '',
     dayHighlights: (json.dayHighlights as GeneratedMemoryContent['dayHighlights']) ?? [],
@@ -616,9 +484,6 @@ export async function generateConciergeSuggestions(args: {
   budget?: number;
   budgetCurrency?: string;
 }): Promise<ConciergeSuggestion[]> {
-  const apiKey = CONFIG.ANTHROPIC_KEY;
-  if (!apiKey) throw new Error('Anthropic API key not configured');
-
   const hotel = args.hotelName ? ` staying at ${args.hotelName}` : '';
   const budgetNote = args.budget
     ? ` Their trip budget is ${args.budgetCurrency ?? 'PHP'} ${args.budget.toLocaleString()} total.`
@@ -646,34 +511,12 @@ Prioritize places that are:
 
 Return ONLY the JSON array, no other text.`;
 
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: `Find me ${args.what} options for ${args.when}. What do you recommend?` }],
-    }),
+  const text = await callProxy('concierge', {
+    system: systemPrompt,
+    userMessage: `Find me ${args.what} options for ${args.when}. What do you recommend?`,
   });
 
-  if (!res.ok) {
-    const body = await res.text();
-    if (body.includes('credit balance is too low')) {
-      throw new Error('AI credits exhausted. Please try again later.');
-    }
-    throw new Error(`AI error: ${res.status}`);
-  }
-
-  const data = await res.json();
-  const text: string = data?.content?.[0]?.text ?? '';
   const parsed = extractJson(text) as ConciergeSuggestion[];
-
   return parsed.map((s) => ({
     name: s.name ?? 'Unknown',
     category: s.category ?? 'Explore',

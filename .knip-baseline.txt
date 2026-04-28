@@ -1,4 +1,4 @@
-Unused files (56)
+Unused files (57)
 .agents/skills/expo-cicd-workflows/scripts/fetch.js: .agents/skills/expo-cicd-workflows/scripts/fetch.js
 .agents/skills/expo-cicd-workflows/scripts/validate.js: .agents/skills/expo-cicd-workflows/scripts/validate.js
 .claude/skills/expo-cicd-workflows/scripts/fetch.js: .claude/skills/expo-cicd-workflows/scripts/fetch.js
@@ -51,6 +51,7 @@ lib/imageUrl.ts: lib/imageUrl.ts
 lib/qrph.ts: lib/qrph.ts
 plugins/withPackagingFix.js: plugins/withPackagingFix.js
 scripts/debug-user-trips.ts: scripts/debug-user-trips.ts
+supabase/functions/ai-proxy/index.ts: supabase/functions/ai-proxy/index.ts
 supabase/functions/ai-recommend/index.ts: supabase/functions/ai-recommend/index.ts
 supabase/functions/send-push-notification/index.ts: supabase/functions/send-push-notification/index.ts
 supabase/functions/trip-lifecycle-notifications/index.ts: supabase/functions/trip-lifecycle-notifications/index.ts
