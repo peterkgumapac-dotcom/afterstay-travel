@@ -1,4 +1,4 @@
-Unused files (57)
+Unused files (62)
 .agents/skills/expo-cicd-workflows/scripts/fetch.js: .agents/skills/expo-cicd-workflows/scripts/fetch.js
 .agents/skills/expo-cicd-workflows/scripts/validate.js: .agents/skills/expo-cicd-workflows/scripts/validate.js
 .claude/skills/expo-cicd-workflows/scripts/fetch.js: .claude/skills/expo-cicd-workflows/scripts/fetch.js
@@ -6,11 +6,14 @@ Unused files (57)
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
 components/ShimmerFallback.tsx: components/ShimmerFallback.tsx
+components/budget/BudgetSkeleton.tsx: components/budget/BudgetSkeleton.tsx
 components/budget/DiceRoller.tsx: components/budget/DiceRoller.tsx
 components/budget/PaymentQRCard.tsx: components/budget/PaymentQRCard.tsx
 components/budget/QRScannerModal.tsx: components/budget/QRScannerModal.tsx
 components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
+components/discover/DiscoverSkeleton.tsx: components/discover/DiscoverSkeleton.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
+components/home/HomeSkeleton.tsx: components/home/HomeSkeleton.tsx
 components/home/QuickAccessGrid.tsx: components/home/QuickAccessGrid.tsx
 components/home/SmartNudges.tsx: components/home/SmartNudges.tsx
 components/moments/Avatar.tsx: components/moments/Avatar.tsx
@@ -21,6 +24,7 @@ components/moments/DaySectionHeader.tsx: components/moments/DaySectionHeader.tsx
 components/moments/DiaryLayout.tsx: components/moments/DiaryLayout.tsx
 components/moments/MapLayout.tsx: components/moments/MapLayout.tsx
 components/moments/MomentLightbox.tsx: components/moments/MomentLightbox.tsx
+components/moments/MomentsSkeleton.tsx: components/moments/MomentsSkeleton.tsx
 components/moments/MosaicLayout.tsx: components/moments/MosaicLayout.tsx
 components/moments/MosaicTile.tsx: components/moments/MosaicTile.tsx
 components/moments/PhotoActionSheet.tsx: components/moments/PhotoActionSheet.tsx
@@ -31,6 +35,7 @@ components/moments/recaps/PolaroidTemplate.tsx: components/moments/recaps/Polaro
 components/moments/recaps/RecapsLayout.tsx: components/moments/recaps/RecapsLayout.tsx
 components/moments/recaps/generateRecap.ts: components/moments/recaps/generateRecap.ts
 components/shared/PremiumGate.tsx: components/shared/PremiumGate.tsx
+components/shared/Skeleton.tsx: components/shared/Skeleton.tsx
 components/shared/TripFloatingActionButton.tsx: components/shared/TripFloatingActionButton.tsx
 components/trip/FileViewerSheet.tsx: components/trip/FileViewerSheet.tsx
 design-reference/components/icons.jsx: design-reference/components/icons.jsx
