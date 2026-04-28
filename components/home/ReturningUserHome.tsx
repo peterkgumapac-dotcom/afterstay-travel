@@ -51,6 +51,8 @@ interface ReturningUserHomeProps {
   notificationCount: number;
   pastTrips: Trip[];
   draftTrips: Trip[];
+  upcomingTrips?: Trip[];
+  activeTrips?: Trip[];
   quickTrips: QuickTrip[];
   lifetimeStats: LifetimeStats | null;
   recentMoments?: Moment[];
@@ -58,6 +60,7 @@ interface ReturningUserHomeProps {
   onPlanTrip: () => void;
   onTripPress: (tripId: string) => void;
   onDraftTripPress: (tripId: string) => void;
+  onUpcomingTripPress?: (tripId: string) => void;
   onArchiveDraft?: (tripId: string) => void;
   onQuickTripPress: (id: string) => void;
   onAddQuickTrip: () => void;
@@ -74,6 +77,8 @@ export default function ReturningUserHome({
   notificationCount,
   pastTrips,
   draftTrips,
+  upcomingTrips = [],
+  activeTrips = [],
   quickTrips,
   lifetimeStats,
   recentMoments = [],
@@ -81,6 +86,7 @@ export default function ReturningUserHome({
   onPlanTrip,
   onTripPress,
   onDraftTripPress,
+  onUpcomingTripPress,
   onArchiveDraft,
   onQuickTripPress,
   onAddQuickTrip,
@@ -96,7 +102,7 @@ export default function ReturningUserHome({
   const firstName = userName.split(' ')[0] || 'Traveler';
   const recentTrips = pastTrips.slice(0, 3);
   const hasDrafts = draftTrips.length > 0;
-  const hasUpcoming = draftTrips.some((t) => t.status === 'Planning');
+  const hasUpcoming = upcomingTrips.length > 0 || draftTrips.some((t) => t.status === 'Planning');
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -238,46 +244,80 @@ export default function ReturningUserHome({
           </Animated.View>
         )}
 
-        {/* ── 4. YOUR TRIPS ── */}
-        {recentTrips.length > 0 && (
+        {/* ── 4. UPCOMING TRIPS ── */}
+        {upcomingTrips.length > 0 && (
           <Animated.View entering={FadeInDown.delay(160).duration(400)}>
             <View style={s.sectionHeader}>
-              <Text style={s.sectionKicker}>YOUR TRIPS</Text>
-              {pastTrips.length > 3 && (
-                <TouchableOpacity onPress={onSeeAllTrips} style={s.seeAllBtn}>
-                  <Text style={s.seeAllText}>Library</Text>
-                  <ChevronRight size={14} color={colors.accent} />
-                </TouchableOpacity>
-              )}
+              <Text style={s.sectionKicker}>{`UPCOMING \u00B7 ${upcomingTrips.length}`}</Text>
+              <TouchableOpacity onPress={onSeeAllTrips} style={s.seeAllBtn}>
+                <Text style={s.seeAllText}>My Trips</Text>
+                <ChevronRight size={14} color={colors.accent} />
+              </TouchableOpacity>
             </View>
             <View style={s.tripsList}>
-              {recentTrips.map((t, idx) => {
+              {upcomingTrips.slice(0, 3).map((t) => {
                 const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
                 const flag = COUNTRY_FLAGS[t.countryCode ?? ''];
-                // Use first moment photo as fallback thumbnail
-                const thumbUrl = t.heroImageUrl || (idx === 0 && recentMoments[0]?.photo) || undefined;
                 return (
                   <TouchableOpacity
                     key={t.id}
                     style={s.tripCard}
-                    onPress={() => onTripPress(t.id)}
+                    onPress={() => onUpcomingTripPress?.(t.id)}
                     activeOpacity={0.7}
                   >
-                    {thumbUrl ? (
-                      <Image source={{ uri: thumbUrl }} style={s.tripThumb} />
-                    ) : (
-                      <View style={[s.tripThumb, s.tripThumbFallback]}>
-                        {flag ? (
-                          <Text style={s.tripThumbEmoji}>{flag}</Text>
-                        ) : (
-                          <Globe size={20} color={colors.text3} />
-                        )}
-                      </View>
-                    )}
+                    <View style={[s.tripThumb, s.tripThumbFallback]}>
+                      {flag ? (
+                        <Text style={s.tripThumbEmoji}>{flag}</Text>
+                      ) : (
+                        <Globe size={20} color={colors.text3} />
+                      )}
+                    </View>
                     <View style={s.tripInfo}>
                       <Text style={s.tripDest} numberOfLines={1}>
                         {t.destination ?? t.name}
-                        <Text style={s.tripCountry}> {t.country ?? ''}</Text>
+                      </Text>
+                      <Text style={s.tripMeta}>
+                        {formatDatePHT(t.startDate)} {'\u2013'} {formatDatePHT(t.endDate)} {'\u00B7'} {nights} nights
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Animated.View>
+        )}
+
+        {/* ── 4b. ACTIVE TRIPS ── */}
+        {activeTrips.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(170).duration(400)}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionKicker}>{`ACTIVE \u00B7 ${activeTrips.length}`}</Text>
+              <TouchableOpacity onPress={onSeeAllTrips} style={s.seeAllBtn}>
+                <Text style={s.seeAllText}>My Trips</Text>
+                <ChevronRight size={14} color={colors.accent} />
+              </TouchableOpacity>
+            </View>
+            <View style={s.tripsList}>
+              {activeTrips.slice(0, 3).map((t) => {
+                const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
+                const flag = COUNTRY_FLAGS[t.countryCode ?? ''];
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[s.tripCard, { borderColor: colors.accentBorder }]}
+                    onPress={() => onUpcomingTripPress?.(t.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[s.tripThumb, s.tripThumbFallback, { backgroundColor: colors.accentBg }]}>
+                      {flag ? (
+                        <Text style={s.tripThumbEmoji}>{flag}</Text>
+                      ) : (
+                        <Globe size={20} color={colors.accent} />
+                      )}
+                    </View>
+                    <View style={s.tripInfo}>
+                      <Text style={[s.tripDest, { color: colors.accent }]} numberOfLines={1}>
+                        {t.destination ?? t.name}
                       </Text>
                       <Text style={s.tripMeta}>
                         {formatDatePHT(t.startDate)} {'\u2013'} {formatDatePHT(t.endDate)} {'\u00B7'} {nights} nights
@@ -343,7 +383,21 @@ export default function ReturningUserHome({
           </Animated.View>
         )}
 
-        {/* ── 7. NO UPCOMING TRIPS CTA ── */}
+        {/* ── 7. SEE ALL TRIPS CTA ── */}
+        {(upcomingTrips.length > 3 || activeTrips.length > 3 || pastTrips.length > 0) && (
+          <Animated.View entering={FadeInDown.delay(260).duration(400)} style={{ marginBottom: 24 }}>
+            <TouchableOpacity
+              style={[s.ctaCard, { borderStyle: 'solid', backgroundColor: colors.card }]}
+              onPress={onSeeAllTrips}
+              activeOpacity={0.7}
+            >
+              <Text style={s.ctaTitle}>View all trips</Text>
+              <Text style={s.ctaSub}>Past, upcoming, and drafts in one place.</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+
+        {/* ── 8. NO UPCOMING TRIPS CTA ── */}
         {!hasUpcoming && (
           <Animated.View entering={FadeInDown.delay(280).duration(400)} style={s.ctaCard}>
             <Calendar size={28} color={colors.text3} strokeWidth={1.5} />

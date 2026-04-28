@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, ImageStyle, StyleProp } from 'react-native';
+import { ImageStyle, StyleProp } from 'react-native';
+import { Image } from 'expo-image';
 import { cachedImageUri } from '@/lib/cache/mediaCache';
 
 interface CachedImageProps {
@@ -44,10 +45,11 @@ function CachedImageInner({ remoteUrl, style, resizeMode = 'cover' }: CachedImag
   return (
     <Image
       source={{ uri }}
-      style={style}
-      resizeMode={resizeMode}
+      style={style as any}
+      contentFit={resizeMode === 'cover' ? 'cover' : resizeMode === 'contain' ? 'contain' : 'cover'}
       onError={handleError}
-      fadeDuration={150}
+      transition={200}
+      cachePolicy="memory-disk"
     />
   );
 }

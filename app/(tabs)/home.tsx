@@ -42,6 +42,7 @@ import { spacing } from '@/constants/theme';
 import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
+  supabase,
   getAllUserTrips,
   getActiveTrip,
   getExpenses,
@@ -52,6 +53,8 @@ import {
   getSavedPlaces,
   archiveTrip,
   discardDraftTrip,
+  softDeleteTrip,
+  restoreTrip,
 } from '@/lib/supabase';
 import { getQuickTrips } from '@/lib/quickTrips';
 import { fetchDestinationPhotos } from '@/lib/google-places';
@@ -179,6 +182,8 @@ export default function HomeScreen() {
   const [showVotingSheet, setShowVotingSheet] = useState(false);
   const [returningPastTrips, setReturningPastTrips] = useState<Trip[]>([]);
   const [returningDraftTrips, setReturningDraftTrips] = useState<Trip[]>([]);
+  const [returningUpcomingTrips, setReturningUpcomingTrips] = useState<Trip[]>([]);
+  const [returningActiveTrips, setReturningActiveTrips] = useState<Trip[]>([]);
   const [returningQuickTrips, setReturningQuickTrips] = useState<QuickTrip[]>([]);
   const [returningMoments, setReturningMoments] = useState<Moment[]>([]);
   const [returningSavedPlaces, setReturningSavedPlaces] = useState<Place[]>([]);
@@ -230,6 +235,10 @@ export default function HomeScreen() {
     try {
       setLoading(true);
       setError(undefined);
+      // DEBUG: log current user and auth state
+      const { data: authData } = await supabase.auth.getUser();
+      console.log('[DEBUG] Current user ID:', authData?.user?.id);
+      console.log('[DEBUG] User email:', authData?.user?.email);
       let t = await getActiveTrip(force);
       // Retry twice if RLS returned 0 rows (auth token race)
       if (!t && !force) {
@@ -329,18 +338,30 @@ export default function HomeScreen() {
       // Always fetch returning-user data — needed for ReturningUserHome
       // even when an active trip exists (e.g. My Trips tab navigation)
       const [allTrips, quick, stats] = await Promise.all([
-        getAllUserTrips('').catch(() => [] as Trip[]),
+        getAllUserTrips('').catch((e) => { console.log('[DEBUG] getAllUserTrips error:', e); return [] as Trip[]; }),
         getQuickTrips().catch(() => [] as QuickTrip[]),
         getLifetimeStats('').catch(() => null),
       ]);
+      console.log('[DEBUG] All trips count:', allTrips.length);
       const now = Date.now();
+      // Properly separate trips by lifecycle status
+      const drafts = allTrips.filter(t => t.isDraft === true && !t.deletedAt);
+      const upcoming = allTrips.filter(t =>
+        t.status === 'Planning' && !t.isDraft && !t.deletedAt && !t.archivedAt
+      );
+      const active = allTrips.filter(t =>
+        t.status === 'Active' && !t.deletedAt && !t.archivedAt
+      );
       const completed = allTrips.filter(tripItem => {
-        if (tripItem.status !== 'Completed') return false;
+        if (tripItem.status !== 'Completed' || tripItem.deletedAt) return false;
         const end = tripItem.endDate ? new Date(tripItem.endDate).getTime() + 86400000 : 0;
         return end > 0 && now > end;
       });
+      // Keep past trips for stats but don't show inline on home
       setReturningPastTrips(completed);
-      setReturningDraftTrips(allTrips.filter(tripItem => tripItem.status === 'Planning'));
+      setReturningDraftTrips(drafts);
+      setReturningUpcomingTrips(upcoming);
+      setReturningActiveTrips(active);
       setReturningQuickTrips(quick);
       setReturningStats(stats);
 
@@ -578,8 +599,10 @@ export default function HomeScreen() {
             userHandle={handle}
             avatarUrl={userAvatar}
             notificationCount={notifCount}
-            pastTrips={returningPastTrips}
+            pastTrips={[]} /* Moved to My Trips screen */
             draftTrips={returningDraftTrips}
+            upcomingTrips={returningUpcomingTrips}
+            activeTrips={returningActiveTrips}
             quickTrips={returningQuickTrips}
             lifetimeStats={returningStats}
             recentMoments={returningMoments}
@@ -587,6 +610,7 @@ export default function HomeScreen() {
             onPlanTrip={() => router.push('/onboarding')}
             onTripPress={(id) => router.push(`/trip-recap?tripId=${id}`)}
             onDraftTripPress={(id) => router.push({ pathname: '/(tabs)/trip', params: { tripId: id } })}
+            onUpcomingTripPress={(id) => router.push({ pathname: '/(tabs)/trip', params: { tripId: id } })}
             onArchiveDraft={async (id) => {
               try {
                 await archiveTrip(id);

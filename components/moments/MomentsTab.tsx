@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { getMoments, getGroupMembers, getMomentFavorites, toggleFavorite, toggleMomentVisibility as toggleVisibility, promoteMomentsToGroup, batchFavorite } from '@/lib/supabase';
+import { cachePhotoMeta, getCachedPhotosByTrip, setOfflineFavorite, getOfflineFavorites } from '@/lib/cache/sqliteCache';
 import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Moment, GroupMember, MomentVisibility } from '@/lib/types';
@@ -362,6 +363,24 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
+
+      // Try SQLite cache first for instant display
+      if (tripId) {
+        const cached = await getCachedPhotosByTrip(tripId).catch(() => []);
+        if (cached.length > 0) {
+          const cachedMoments = cached.map((c) => ({
+            id: c.id,
+            photo: c.photoUrl,
+            caption: c.caption,
+            location: c.location,
+            date: c.date,
+            takenBy: c.takenBy,
+            visibility: c.visibility,
+          }));
+          setRawMoments(cachedMoments as Moment[]);
+        }
+      }
+
       const [moments, groupMembers, favs] = await Promise.all([
         getMoments(tripId).catch(() => [] as Moment[]),
         getGroupMembers(tripId).catch(() => [] as GroupMember[]),
@@ -371,9 +390,27 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       setMembers(groupMembers);
       setFavoriteMap(favs);
 
+      // Cache photo metadata to SQLite for offline
+      if (tripId && moments.length > 0) {
+        await cachePhotoMeta(
+          moments.map((m) => ({
+            id: m.id,
+            tripId,
+            photoUrl: m.photo ?? undefined,
+            caption: m.caption ?? undefined,
+            location: m.location ?? undefined,
+            date: m.date ?? undefined,
+            takenBy: m.takenBy ?? undefined,
+            visibility: m.visibility ?? undefined,
+          }))
+        ).catch(() => {});
+      }
+
       // Prefetch first 20 photos
-      const { Image: RNImage } = require('react-native');
-      moments.filter((m) => m.photo).slice(0, 20).forEach((m) => RNImage.prefetch(m.photo!).catch(() => {}));
+      moments.filter((m) => m.photo).slice(0, 20).forEach((m) => {
+        const { Image: ExpoImg } = require('expo-image');
+        ExpoImg.prefetch(m.photo!).catch(() => {});
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -578,6 +615,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
                         onToggleSelect={handleToggleSelect}
                         selectMode={selectMode}
                         onLongPress={handleLongPress}
+                        tripId={tripId}
                       />
                     </View>
                   ))}

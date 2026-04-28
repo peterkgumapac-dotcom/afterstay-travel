@@ -1,5 +1,10 @@
 export default ({ config }) => ({
   ...config,
+  plugins: [
+    ...(config.plugins || []),
+    'expo-image',
+    'expo-sqlite',
+  ],
   ios: {
     ...config.ios,
     config: {

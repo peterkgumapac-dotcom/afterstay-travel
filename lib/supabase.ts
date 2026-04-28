@@ -209,6 +209,8 @@ function mapTrip(row: Record<string, unknown>): Trip {
     totalSpent: num(row.total_spent),
     totalNights: num(row.total_nights),
     isDraft: row.is_draft != null ? !!row.is_draft : undefined,
+    deletedAt: (row.deleted_at as string) ?? undefined,
+    archivedAt: (row.archived_at as string) ?? undefined,
   }
 }
 
@@ -401,6 +403,8 @@ export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> 
     .select('*')
     .in('status', ['Planning', 'Active'])
     .is('is_draft', null)          // exclude incomplete onboarding drafts
+    .is('deleted_at', null)        // exclude soft-deleted trips
+    .is('archived_at', null)       // exclude archived trips
     .order('start_date', { ascending: true })
     .limit(1)
 
@@ -2555,7 +2559,7 @@ export async function getPastTrips(userId: string): Promise<Trip[]> {
   return data.map((r) => mapTrip(r as Record<string, unknown>))
 }
 
-export async function getAllUserTrips(userId?: string): Promise<Trip[]> {
+export async function getAllUserTrips(userId?: string, includeDeleted = false): Promise<Trip[]> {
   let uid = userId
   if (!uid) {
     const { data: authData } = await supabase.auth.getUser()
@@ -2564,17 +2568,25 @@ export async function getAllUserTrips(userId?: string): Promise<Trip[]> {
   if (!uid) return []
 
   // Fetch trips owned by user OR where user is a trip member (covers legacy NULL user_id trips)
-  const { data: ownedTrips } = await supabase
+  let ownedQuery = supabase
     .from(T.trips)
     .select('*')
     .eq('user_id', uid)
     .order('start_date', { ascending: false })
 
-  const { data: memberTrips } = await supabase
+  let memberQuery = supabase
     .from(T.trips)
     .select('*, group_members!inner(user_id)')
     .eq('group_members.user_id', uid)
     .order('start_date', { ascending: false })
+
+  if (!includeDeleted) {
+    ownedQuery = ownedQuery.is('deleted_at', null)
+    memberQuery = memberQuery.is('deleted_at', null)
+  }
+
+  const { data: ownedTrips } = await ownedQuery
+  const { data: memberTrips } = await memberQuery
 
   // Merge and deduplicate by id
   const allRows = [...(ownedTrips ?? []), ...(memberTrips ?? [])]
@@ -2587,6 +2599,35 @@ export async function getAllUserTrips(userId?: string): Promise<Trip[]> {
   })
 
   return unique.map((r) => mapTrip(r as Record<string, unknown>))
+}
+
+/** Active trips: Planning or Active, not draft, not deleted, not archived */
+export async function getActiveTrips(userId?: string): Promise<Trip[]> {
+  const all = await getAllUserTrips(userId)
+  return all.filter(t =>
+    (t.status === 'Planning' || t.status === 'Active') &&
+    !t.isDraft &&
+    !t.deletedAt &&
+    !t.archivedAt
+  )
+}
+
+/** Draft trips: incomplete onboarding drafts */
+export async function getDraftTrips(userId?: string): Promise<Trip[]> {
+  const all = await getAllUserTrips(userId)
+  return all.filter(t =>
+    t.isDraft === true &&
+    !t.deletedAt
+  )
+}
+
+/** Archived trips */
+export async function getArchivedTrips(userId?: string): Promise<Trip[]> {
+  const all = await getAllUserTrips(userId)
+  return all.filter(t =>
+    t.archivedAt != null &&
+    !t.deletedAt
+  )
 }
 
 // ---------- TRIP LIFECYCLE ----------
@@ -2623,17 +2664,37 @@ export async function archiveTrip(tripId: string): Promise<void> {
     const nights = trip?.nights ?? 0
     await supabase
       .from(T.trips)
-      .update({ status: 'Completed', total_spent: total, total_nights: nights })
+      .update({ status: 'Completed', total_spent: total, total_nights: nights, archived_at: new Date().toISOString() })
       .eq('id', tripId)
   } catch {
     const { error } = await supabase
       .from(T.trips)
-      .update({ status: 'Completed' })
+      .update({ status: 'Completed', archived_at: new Date().toISOString() })
       .eq('id', tripId)
     if (error) throw new Error(`archiveTrip: ${error.message}`)
   }
   clearTripCache()
   await clearTripLocalData()
+}
+
+/** Soft-delete a trip (30-day retention window). */
+export async function softDeleteTrip(tripId: string): Promise<void> {
+  const { error } = await supabase
+    .from(T.trips)
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', tripId)
+  if (error) throw new Error(`softDeleteTrip: ${error.message}`)
+  clearTripCache()
+}
+
+/** Restore a soft-deleted or archived trip. */
+export async function restoreTrip(tripId: string): Promise<void> {
+  const { error } = await supabase
+    .from(T.trips)
+    .update({ deleted_at: null, archived_at: null })
+    .eq('id', tripId)
+  if (error) throw new Error(`restoreTrip: ${error.message}`)
+  clearTripCache()
 }
 
 // ---------- TRIP MEMORIES ----------

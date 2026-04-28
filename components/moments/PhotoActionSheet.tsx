@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { Edit3, Share2, CheckSquare, Trash2, X } from 'lucide-react-native';
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View, Platform } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
@@ -35,7 +35,15 @@ export function PhotoActionSheet({
   ];
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent={Platform.OS !== 'ios'}
+      animationType={Platform.OS === 'ios' ? 'slide' : 'fade'}
+      presentationStyle={Platform.OS === 'ios' ? 'formSheet' : 'overFullScreen'}
+      onRequestClose={onClose}
+      // @ts-ignore — sheetCornerRadius is iOS 26+ for Liquid Glass
+      sheetCornerRadius={Platform.OS === 'ios' ? 28 : undefined}
+    >
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={[styles.sheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
           {/* Handle bar */}

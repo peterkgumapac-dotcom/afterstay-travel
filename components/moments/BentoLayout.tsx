@@ -1,10 +1,11 @@
 import React, { useCallback } from 'react';
-import { Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, Text, View, Platform } from 'react-native';
+import { Link } from 'expo-router';
+import { Image } from 'expo-image';
 import { Check } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
-import { CachedImage } from '@/components/CachedImage';
 import type { MomentDisplay } from './types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -17,6 +18,7 @@ interface BentoLayoutProps {
   onToggleSelect: (id: string) => void;
   selectMode: boolean;
   onLongPress: (id: string) => void;
+  tripId?: string;
 }
 
 export function BentoLayout({
@@ -26,6 +28,7 @@ export function BentoLayout({
   onToggleSelect,
   selectMode,
   onLongPress,
+  tripId,
 }: BentoLayoutProps) {
   const { colors } = useTheme();
 
@@ -65,6 +68,7 @@ export function BentoLayout({
             onPress={() => handlePress(m0)}
             onLongPress={() => onLongPress(m0.id)}
             colors={colors}
+            tripId={tripId}
           />
           <View style={{ gap: GAP }}>
             <BentoCell
@@ -76,6 +80,7 @@ export function BentoLayout({
               onPress={() => handlePress(m1)}
               onLongPress={() => onLongPress(m1.id)}
               colors={colors}
+              tripId={tripId}
             />
             <BentoCell
               moment={m2}
@@ -86,6 +91,7 @@ export function BentoLayout({
               onPress={() => handlePress(m2)}
               onLongPress={() => onLongPress(m2.id)}
               colors={colors}
+              tripId={tripId}
             />
           </View>
         </View>,
@@ -108,6 +114,7 @@ export function BentoLayout({
             onPress={() => handlePress(m0)}
             onLongPress={() => onLongPress(m0.id)}
             colors={colors}
+            tripId={tripId}
           />
           <BentoCell
             moment={m1}
@@ -118,6 +125,7 @@ export function BentoLayout({
             onPress={() => handlePress(m1)}
             onLongPress={() => onLongPress(m1.id)}
             colors={colors}
+            tripId={tripId}
           />
         </View>,
       );
@@ -138,6 +146,7 @@ export function BentoLayout({
             onPress={() => handlePress(m0)}
             onLongPress={() => onLongPress(m0.id)}
             colors={colors}
+            tripId={tripId}
           />
         </View>,
       );
@@ -157,17 +166,22 @@ interface BentoCellProps {
   onPress: () => void;
   onLongPress: () => void;
   colors: any;
+  tripId?: string;
 }
 
-function BentoCell({ moment, width, height, selected, selectMode, onPress, onLongPress, colors }: BentoCellProps) {
-  return (
-    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300}>
-      <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.card }}>
-        {moment.photo ? (
-          <CachedImage remoteUrl={moment.photo} style={{ width: '100%', height: '100%' }} />
-        ) : (
-          <View style={{ width: '100%', height: '100%', backgroundColor: colors.card }} />
-        )}
+function BentoCell({ moment, width, height, selected, selectMode, onPress, onLongPress, colors, tripId }: BentoCellProps) {
+  const cellContent = (
+    <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.card }}>
+      {moment.photo ? (
+        <Image
+          source={{ uri: moment.photo }}
+          style={{ width: '100%', height: '100%' }}
+          contentFit="cover"
+          transition={200}
+        />
+      ) : (
+        <View style={{ width: '100%', height: '100%', backgroundColor: colors.card }} />
+      )}
         {/* Selection overlay */}
         {selectMode && (
           <View style={[styles.selectOverlay, selected && styles.selectOverlayActive]}>
@@ -189,6 +203,25 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
           </View>
         )}
       </View>
+  );
+
+  // iOS 18+: Apple Zoom transition to fullscreen detail
+  if (Platform.OS === 'ios' && !selectMode && tripId) {
+    return (
+      <Link
+        href={{ pathname: '/moment-detail', params: { momentId: moment.id, tripId } }}
+        asChild
+      >
+        <Link.AppleZoom>
+          {cellContent}
+        </Link.AppleZoom>
+      </Link>
+    );
+  }
+
+  return (
+    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300}>
+      {cellContent}
     </Pressable>
   );
 }

@@ -51,6 +51,8 @@ export interface Trip {
   totalSpent?: number;
   totalNights?: number;
   isDraft?: boolean;
+  deletedAt?: string;
+  archivedAt?: string;
 }
 
 export type TripFileType = 'Boarding Pass' | 'Hotel Confirmation' | 'Itinerary' | 'Insurance' | 'ID/Passport' | 'Receipt' | 'Other';

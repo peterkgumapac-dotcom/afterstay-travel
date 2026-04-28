@@ -59,6 +59,8 @@ import {
   finishTrip,
   archiveTrip,
   discardDraftTrip,
+  softDeleteTrip,
+  restoreTrip,
 } from '@/lib/supabase';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { getQuickTrips } from '@/lib/quickTrips';
@@ -680,6 +682,8 @@ export default function TripScreen() {
   const [filesData, setFilesData] = useState<TripFile[]>([]);
   const [activeTripSpent, setActiveTripSpent] = useState(0);
   const [pastTripsData, setPastTripsData] = useState<Trip[]>([]);
+  const [draftTripsData, setDraftTripsData] = useState<Trip[]>([]);
+  const [archivedTripsData, setArchivedTripsData] = useState<Trip[]>([]);
   const [quickTripsData, setQuickTripsData] = useState<QuickTrip[]>([]);
   const [highlightsData, setHighlightsData] = useState<Highlight[]>([]);
   const [lifetimeStats, setLifetimeStats] = useState<{
@@ -707,7 +711,7 @@ export default function TripScreen() {
         setFilesData(tf);
       }
       // Load lifetime data + expense summary for active trip
-      const [stats, highlights, past, expSummary, qTrips] = await Promise.all([
+      const [stats, highlights, allTrips, expSummary, qTrips] = await Promise.all([
         getLifetimeStats('').catch(() => null),
         getHighlights('').catch(() => [] as Highlight[]),
         getAllUserTrips('').catch(() => [] as Trip[]),
@@ -719,9 +723,17 @@ export default function TripScreen() {
       setActiveTripSpent(expSummary.total);
       setQuickTripsData(qTrips);
 
+      // Separate trips by lifecycle status
+      const drafts = allTrips.filter((t) => t.isDraft === true && !t.deletedAt);
+      const archived = allTrips.filter((t) => t.archivedAt != null && !t.deletedAt);
+      const nonDrafts = allTrips.filter((t) => !t.isDraft && !t.deletedAt);
+
+      setDraftTripsData(drafts);
+      setArchivedTripsData(archived);
+
       // Backfill spent for trips missing total_spent (legacy data)
       const enriched = await Promise.all(
-        past.map(async (t) => {
+        nonDrafts.map(async (t) => {
           if ((t.totalSpent ?? 0) > 0) return t;
           try {
             const s = await getExpenseSummary(t.id);
@@ -937,6 +949,49 @@ export default function TripScreen() {
               load(true);
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not delete draft');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleSoftDelete = (tripId: string) => {
+    Alert.alert(
+      'Delete trip?',
+      'You can restore this from Archived for 30 days.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await softDeleteTrip(tripId);
+              load(true);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Could not delete trip');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleRestore = (tripId: string) => {
+    Alert.alert(
+      'Restore trip?',
+      'This trip will reappear in your main lists.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          onPress: async () => {
+            try {
+              await restoreTrip(tripId);
+              load(true);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Could not restore trip');
             }
           },
         },
@@ -1239,14 +1294,18 @@ export default function TripScreen() {
             activeTrips={activeTripsDisplay}
             incomingTrips={incomingTripsDisplay}
             pastTrips={pastTripsDisplay}
+            draftTrips={draftTripsData}
+            archivedTrips={archivedTripsData}
             quickTrips={quickTripsData}
             colors={colors}
             onAddTrip={() => setAddOpen(true)}
             onTripPress={(tripId) => router.push({ pathname: '/trip-recap', params: { tripId } } as never)}
             onQuickTripPress={(id) => router.push({ pathname: '/quick-trip-detail', params: { quickTripId: id } } as never)}
             onAddQuickTrip={() => router.push('/quick-trip-create' as never)}
-            onDeleteTrip={handleDeleteDraft}
+            onDeleteTrip={handleSoftDelete}
             onArchiveTrip={handleArchiveIncoming}
+            onEditTrip={(tripId) => router.push({ pathname: '/trip-overview', params: { tripId } } as never)}
+            onRestoreTrip={handleRestore}
           />
         )}
 
