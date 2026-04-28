@@ -12,15 +12,15 @@ export type SoundName =
 
 const MUTE_KEY = 'fate_muted';
 
-// Lazy-load expo-av — crashes in Expo Go where ExponentAV native module is missing
-let Audio: typeof import('expo-av').Audio | null = null;
+// Lazy-load expo-audio — crashes in Expo Go where native module may be missing
+let AudioModule: typeof import('expo-audio') | null = null;
 let soundFiles: Record<string, any> | null = null;
 
-function ensureAV() {
-  if (Audio) return true;
+function ensureAudio() {
+  if (AudioModule) return true;
   try {
-    const mod = require('expo-av');
-    Audio = mod.Audio;
+    const mod = require('expo-audio');
+    AudioModule = mod;
     soundFiles = {
       rattle: require('@/assets/sounds/fate/spin-rattle.wav'),
       scratch: require('@/assets/sounds/fate/record-scratch.wav'),
@@ -45,13 +45,13 @@ export interface UseSoundsReturn {
 }
 
 export function useSounds(): UseSoundsReturn {
-  const soundsRef = useRef<Map<SoundName, any>>(new Map());
+  const soundsRef = useRef<Map<SoundName, import('expo-audio').AudioPlayer>>(new Map());
   const [isLoaded, setIsLoaded] = useState(false);
   const [muted, setMutedState] = useState(false);
   const mutedRef = useRef(false);
 
   useEffect(() => {
-    if (!ensureAV() || !Audio || !soundFiles) {
+    if (!ensureAudio() || !AudioModule || !soundFiles) {
       setIsLoaded(true); // mark loaded so UI doesn't block
       return;
     }
@@ -59,9 +59,9 @@ export function useSounds(): UseSoundsReturn {
     let cancelled = false;
 
     async function init() {
-      await Audio!.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
+      await AudioModule!.setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
       });
 
       const storedMute = await AsyncStorage.getItem(MUTE_KEY);
@@ -74,8 +74,8 @@ export function useSounds(): UseSoundsReturn {
       for (const [name, source] of entries) {
         if (cancelled) return;
         try {
-          const { sound } = await Audio!.Sound.createAsync(source);
-          soundsRef.current.set(name, sound);
+          const player = AudioModule!.createAudioPlayer(source);
+          soundsRef.current.set(name, player);
         } catch {
           // Sound loading failed — continue without it
         }
@@ -87,8 +87,8 @@ export function useSounds(): UseSoundsReturn {
 
     return () => {
       cancelled = true;
-      for (const sound of soundsRef.current.values()) {
-        sound.unloadAsync();
+      for (const player of soundsRef.current.values()) {
+        player.remove();
       }
       soundsRef.current.clear();
     };
@@ -96,23 +96,23 @@ export function useSounds(): UseSoundsReturn {
 
   const play = useCallback(async (name: SoundName) => {
     if (mutedRef.current) return;
-    const sound = soundsRef.current.get(name);
-    if (!sound) return;
+    const player = soundsRef.current.get(name);
+    if (!player) return;
     try {
-      await sound.setPositionAsync(0);
-      await sound.playAsync();
+      await player.seekTo(0);
+      player.play();
     } catch {
       // Playback failed — ignore
     }
   }, []);
 
   const stop = useCallback(async (name: SoundName) => {
-    const sound = soundsRef.current.get(name);
-    if (!sound) return;
+    const player = soundsRef.current.get(name);
+    if (!player) return;
     try {
-      await sound.stopAsync();
+      player.pause();
     } catch {
-      // Already stopped or unloaded
+      // Already stopped or removed
     }
   }, []);
 

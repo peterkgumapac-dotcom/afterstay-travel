@@ -62,7 +62,7 @@ interface DiscoverPlaceCardProps {
   /** Member ID → display name for avatar initials */
   memberNames?: Record<string, string>;
   totalMembers?: number;
-  onVoteTap?: () => void;
+  onVoteTap?: (placeName: string) => void;
 }
 
 const VOTE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b']
@@ -156,7 +156,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
         {voteByMember && totalMembers && totalMembers >= 2 && Object.keys(voteByMember).length > 0 && (
           <Pressable
             style={styles.voteRow}
-            onPress={(e) => { e.stopPropagation?.(); onVoteTap?.(); }}
+            onPress={(e) => { e.stopPropagation?.(); onVoteTap?.(place.n); }}
             hitSlop={4}
           >
             {/* Overlapping avatar circles */}

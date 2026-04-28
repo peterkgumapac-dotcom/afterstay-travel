@@ -69,6 +69,78 @@ interface DerivedPlace {
   source: PlaceSource;
 }
 
+// ---------- MEMOIZED SUB-COMPONENTS ----------
+
+const PhotoGrid = React.memo(function PhotoGrid({
+  moments,
+  onPressMore,
+  styles,
+}: {
+  moments: Moment[];
+  onPressMore: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  styles: any;
+}) {
+  const { photos, remaining } = useMemo(() => {
+    const photosWithUrl = moments.filter((m) => resolvePhotoUrl(m.photo));
+    const step = Math.max(1, Math.floor(photosWithUrl.length / 11));
+    const grid: Moment[] = [];
+    for (let idx = 0; idx < photosWithUrl.length && grid.length < 11; idx += step) {
+      grid.push(photosWithUrl[idx]);
+    }
+    return {
+      photos: grid,
+      remaining: Math.max(0, photosWithUrl.length - grid.length),
+    };
+  }, [moments]);
+
+  return (
+    <View style={styles.photoGrid}>
+      {photos.map((m) => (
+        <Image key={m.id} source={{ uri: resolvePhotoUrl(m.photo)! }} style={styles.gridThumb} resizeMode="cover" />
+      ))}
+      {remaining > 0 && (
+        <TouchableOpacity style={styles.gridMore} onPress={onPressMore} activeOpacity={0.7}>
+          <Text style={styles.gridMoreText}>+{remaining}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
+
+const CategoryBars = React.memo(function CategoryBars({
+  summary,
+  currency,
+  colors,
+  styles,
+}: {
+  summary: { total: number; byCategory: Record<string, number>; count: number };
+  currency: string;
+  colors: ThemeColors;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  styles: any;
+}) {
+  const sorted = useMemo(
+    () => Object.entries(summary.byCategory).sort(([, a], [, b]) => b - a),
+    [summary.byCategory],
+  );
+  return (
+    <View style={styles.categoryBars}>
+      {sorted.map(([cat, amount]) => (
+        <CategoryBar
+          key={cat}
+          label={cat}
+          amount={amount}
+          total={summary.total}
+          color={CATEGORY_COLORS[cat] ?? colors.text3}
+          currency={currency}
+          colors={colors}
+        />
+      ))}
+    </View>
+  );
+});
+
 // ---------- SCREEN ----------
 
 export default function TripSummaryScreen() {
@@ -96,16 +168,23 @@ export default function TripSummaryScreen() {
   const load = useCallback(async () => {
     if (!tripId) return;
     try {
-      const [t, moms, exps, expSum, plcs, grp, favs, albs] = await Promise.all([
+      const [t, moms, exps, plcs, grp, favs, albs] = await Promise.all([
         getTripById(tripId),
         getMoments(tripId),
         getExpenses(tripId),
-        getExpenseSummary(tripId),
         getSavedPlaces(tripId),
         getGroupMembers(tripId),
         getMomentFavorites(tripId),
         getAlbums(tripId).catch(() => [] as Album[]),
       ]);
+      // Compute summary locally to avoid double-fetching expenses
+      const byCategory: Record<string, number> = {};
+      let total = 0;
+      for (const e of exps) {
+        byCategory[e.category] = (byCategory[e.category] ?? 0) + e.amount;
+        total += e.amount;
+      }
+      const expSum = { total, byCategory, count: exps.length };
       if (t) setTrip(t);
       setMoments(moms);
       setExpenses(exps);
@@ -159,7 +238,7 @@ export default function TripSummaryScreen() {
   );
 
   const dailyAvg = trip && trip.nights > 0 ? summary.total / trip.nights : 0;
-  const receiptCount = expenses.filter((e) => e.photo).length;
+  const receiptCount = useMemo(() => expenses.filter((e) => e.photo).length, [expenses]);
 
   const dedupedPlaces = useMemo(() => {
     const seen = new Map<string, DerivedPlace>();
@@ -378,27 +457,7 @@ export default function TripSummaryScreen() {
               </TouchableOpacity>
             </View>
 
-            {(() => {
-              const photosWithUrl = moments.filter((m) => resolvePhotoUrl(m.photo));
-              const step = Math.max(1, Math.floor(photosWithUrl.length / 11));
-              const gridPhotos: Moment[] = [];
-              for (let idx = 0; idx < photosWithUrl.length && gridPhotos.length < 11; idx += step) {
-                gridPhotos.push(photosWithUrl[idx]);
-              }
-              const remaining = Math.max(0, photosWithUrl.length - gridPhotos.length);
-              return (
-                <View style={styles.photoGrid}>
-                  {gridPhotos.map((m) => (
-                    <Image key={m.id} source={{ uri: resolvePhotoUrl(m.photo)! }} style={styles.gridThumb} resizeMode="cover" />
-                  ))}
-                  {remaining > 0 && (
-                    <TouchableOpacity style={styles.gridMore} onPress={handlePlayReel} activeOpacity={0.7}>
-                      <Text style={styles.gridMoreText}>+{remaining}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })()}
+            <PhotoGrid moments={moments} onPressMore={handlePlayReel} styles={styles} />
 
             {topTags.length > 0 && (
               <View style={styles.tagsRow}>
@@ -475,21 +534,7 @@ export default function TripSummaryScreen() {
                 </View>
               </View>
 
-              <View style={styles.categoryBars}>
-                {Object.entries(summary.byCategory)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([cat, amount]) => (
-                    <CategoryBar
-                      key={cat}
-                      label={cat}
-                      amount={amount}
-                      total={summary.total}
-                      color={CATEGORY_COLORS[cat] ?? colors.text3}
-                      currency={currency}
-                      colors={colors}
-                    />
-                  ))}
-              </View>
+              <CategoryBars summary={summary} currency={currency} colors={colors} styles={styles} />
 
               {receiptCount > 0 && (
                 <View style={styles.receiptPill}>

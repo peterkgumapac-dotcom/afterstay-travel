@@ -12,6 +12,8 @@ import AfterStayLoader from '@/components/AfterStayLoader';
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useBackgroundTasks } from '@/hooks/useBackgroundTasks';
+import { useAppUpdates } from '@/hooks/useAppUpdates';
 import { verifyConfig } from '@/lib/config';
 import { queryClient } from '@/lib/queryClient';
 
@@ -27,6 +29,8 @@ function RootLayoutInner() {
   const { mode, colors: c } = useTheme();
   const { loading } = useAuth();
   usePushNotifications();
+  useBackgroundTasks();
+  useAppUpdates();
 
   const navTheme = {
     ...(mode === 'dark' ? DarkTheme : DefaultTheme),

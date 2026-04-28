@@ -208,6 +208,7 @@ function mapTrip(row: Record<string, unknown>): Trip {
     longitude: num(row.longitude),
     totalSpent: num(row.total_spent),
     totalNights: num(row.total_nights),
+    isDraft: row.is_draft != null ? !!row.is_draft : undefined,
   }
 }
 
@@ -399,6 +400,7 @@ export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> 
     .from(T.trips)
     .select('*')
     .in('status', ['Planning', 'Active'])
+    .is('is_draft', null)          // exclude incomplete onboarding drafts
     .order('start_date', { ascending: true })
     .limit(1)
 
@@ -501,11 +503,13 @@ export async function createTrip(input: {
   const userId = authData?.user?.id;
   if (!userId) throw new Error('createTrip: not authenticated')
 
-  // Archive only THIS user's active trips (not everyone's)
+  // Archive only THIS user's old Planning trips — never touch an Active
+  // trip. Multi-trip support means users can have past trips alongside
+  // a new one, but only one Planning trip at a time makes sense.
   await supabase
     .from(T.trips)
     .update({ status: 'Completed' })
-    .in('status', ['Planning', 'Active'])
+    .eq('status', 'Planning')
     .eq('user_id', userId)
 
   // Clear all trip-specific local caches for a fresh start
@@ -644,8 +648,25 @@ export async function saveDraftTrip(input: {
 
 /** Delete a draft trip (used when user taps "Discard" on resume nudge) */
 export async function discardDraftTrip(tripId: string): Promise<void> {
-  await supabase.from(T.groupMembers).delete().eq('trip_id', tripId)
-  await supabase.from(T.trips).delete().eq('id', tripId).eq('is_draft', true)
+  // Best-effort cascade cleanup — ignore errors on tables that may not exist
+  // or already have ON DELETE CASCADE in the schema
+  await Promise.all([
+    supabase.from(T.groupMembers).delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from(T.flights).delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from(T.expenses).delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from(T.places).delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from(T.moments).delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from(T.packingItems).delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from(T.tripFiles).delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from(T.checklist).delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from('chat_messages').delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from('trip_invites').delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from('trip_memories').delete().eq('trip_id', tripId).then(() => {}),
+    supabase.from('notifications').delete().eq('trip_id', tripId).then(() => {}),
+  ])
+
+  const { error } = await supabase.from(T.trips).delete().eq('id', tripId)
+  if (error) throw new Error(`deleteTrip: ${error.message}`)
 }
 
 // ---------- ADD GROUP MEMBER ----------

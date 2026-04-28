@@ -30,7 +30,7 @@ import ProfileRow from './ProfileRow';
 import QuickTripRow from '@/components/quick-trips/QuickTripRow';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
-import { discardDraftTrip } from '@/lib/supabase';
+import { archiveTrip, discardDraftTrip } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Moment, Place, Trip } from '@/lib/types';
 import type { QuickTrip } from '@/lib/quickTripTypes';
@@ -58,6 +58,7 @@ interface ReturningUserHomeProps {
   onPlanTrip: () => void;
   onTripPress: (tripId: string) => void;
   onDraftTripPress: (tripId: string) => void;
+  onArchiveDraft?: (tripId: string) => void;
   onQuickTripPress: (id: string) => void;
   onAddQuickTrip: () => void;
   onAddMoment?: () => void;
@@ -80,6 +81,7 @@ export default function ReturningUserHome({
   onPlanTrip,
   onTripPress,
   onDraftTripPress,
+  onArchiveDraft,
   onQuickTripPress,
   onAddQuickTrip,
   onAddMoment,
@@ -137,18 +139,37 @@ export default function ReturningUserHome({
                 >
                   <Text style={s.resumeBtnText}>Resume</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={s.discardBtn}
-                  onPress={async () => {
-                    try {
-                      await discardDraftTrip(draft.id);
-                      onRefresh?.();
-                    } catch {}
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={s.discardBtnText}>Discard</Text>
-                </TouchableOpacity>
+                {draft.isDraft ? (
+                  <TouchableOpacity
+                    style={s.discardBtn}
+                    onPress={async () => {
+                      try {
+                        await discardDraftTrip(draft.id);
+                        onRefresh?.();
+                      } catch {}
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.discardBtnText}>Discard</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={s.discardBtn}
+                    onPress={async () => {
+                      try {
+                        if (onArchiveDraft) {
+                          onArchiveDraft(draft.id);
+                        } else {
+                          await archiveTrip(draft.id);
+                          onRefresh?.();
+                        }
+                      } catch {}
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.discardBtnText}>Archive</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </Animated.View>
           );
@@ -164,10 +185,21 @@ export default function ReturningUserHome({
             <Compass size={16} color={colors.text} />
             <Text style={s.actionBtnText}>Browse{'\n'}Places</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.actionBtn} onPress={onPlanTrip} activeOpacity={0.7}>
-            <TreePalm size={16} color={colors.text} />
-            <Text style={s.actionBtnText}>Plan a{'\n'}Trip</Text>
-          </TouchableOpacity>
+          {hasDrafts ? (
+            <TouchableOpacity
+              style={[s.actionBtn, s.actionBtnAccent]}
+              onPress={() => onDraftTripPress(draftTrips[0].id)}
+              activeOpacity={0.7}
+            >
+              <TreePalm size={16} color={colors.accent} />
+              <Text style={s.actionBtnAccentText}>Continue{'\n'}Planning</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={s.actionBtn} onPress={onPlanTrip} activeOpacity={0.7}>
+              <TreePalm size={16} color={colors.text} />
+              <Text style={s.actionBtnText}>Plan a{'\n'}Trip</Text>
+            </TouchableOpacity>
+          )}
         </Animated.View>
 
         {/* ── 3. RECENT MOMENTS CAROUSEL ── */}
@@ -221,7 +253,7 @@ export default function ReturningUserHome({
             <View style={s.tripsList}>
               {recentTrips.map((t, idx) => {
                 const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
-                const flag = COUNTRY_FLAGS[t.countryCode ?? ''] ?? '\u{1F30D}';
+                const flag = COUNTRY_FLAGS[t.countryCode ?? ''];
                 // Use first moment photo as fallback thumbnail
                 const thumbUrl = t.heroImageUrl || (idx === 0 && recentMoments[0]?.photo) || undefined;
                 return (
@@ -235,7 +267,11 @@ export default function ReturningUserHome({
                       <Image source={{ uri: thumbUrl }} style={s.tripThumb} />
                     ) : (
                       <View style={[s.tripThumb, s.tripThumbFallback]}>
-                        <Text style={s.tripThumbEmoji}>{flag}</Text>
+                        {flag ? (
+                          <Text style={s.tripThumbEmoji}>{flag}</Text>
+                        ) : (
+                          <Globe size={20} color={colors.text3} />
+                        )}
                       </View>
                     )}
                     <View style={s.tripInfo}>
@@ -392,6 +428,13 @@ const getStyles = (colors: ThemeColors) =>
     },
     actionBtnPrimaryText: {
       fontSize: 12, fontWeight: '600', color: '#fff', textAlign: 'center', lineHeight: 16,
+    },
+    actionBtnAccent: {
+      backgroundColor: colors.accentBg,
+      borderColor: colors.accentBorder,
+    },
+    actionBtnAccentText: {
+      fontSize: 12, fontWeight: '600', color: colors.accent, textAlign: 'center', lineHeight: 16,
     },
 
     // Section headers

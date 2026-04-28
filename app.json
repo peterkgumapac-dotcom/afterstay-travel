@@ -32,11 +32,7 @@
         "monochromeImage": "./assets/icon/afterstay-monochrome.png"
       },
       "package": "com.afterstay.travel",
-      "googleServicesFile": "./google-services.json",
-      "notification": {
-        "icon": "./assets/icon/afterstay-notification.png",
-        "color": "#d8ab7a"
-      }
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
@@ -46,6 +42,9 @@
     "plugins": [
       "expo-router",
       "expo-web-browser",
+      "expo-audio",
+      "expo-asset",
+      "expo-background-task",
       "@react-native-community/datetimepicker",
       "@react-native-google-signin/google-signin",
       "./plugins/withPackagingFix"
@@ -53,7 +52,8 @@
     "updates": {
       "url": "https://u.expo.dev/a804380e-5c0d-425e-ac2b-7c07b8b81fd4",
       "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 5000
+      "fallbackToCacheTimeout": 5000,
+      "enableBsdiffPatchSupport": true
     },
     "runtimeVersion": {
       "policy": "appVersion"

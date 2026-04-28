@@ -18,7 +18,7 @@ There are **two related codebases**:
 - **Icons**: `lucide-react-native` (prefer), `@expo/vector-icons` (fallback)
 - **Animation**: `react-native-reanimated` 4 + `react-native-worklets`
 - **Maps**: `react-native-maps`
-- **Media**: `expo-av`, `expo-image-picker`, `expo-document-picker`
+- **Media**: `expo-audio`, `expo-image-picker`, `expo-document-picker`
 - **Integrations**: `expo-calendar`, `expo-clipboard`, `expo-haptics`, `expo-location`, `expo-sharing`, `expo-web-browser`
 - **Device storage**: `@react-native-async-storage/async-storage` (used by `lib/cache.ts`)
 - **Backend**: **Supabase** (current, in-progress migration) — Postgres + Auth + Storage + Realtime + Edge Functions. **Notion** is legacy — see migration section.

@@ -7,7 +7,7 @@ A playful "who pays the bill" feature in the Budget section. Two game modes with
 - react-native-reanimated v3 (animations)
 - react-native-gesture-handler v2.9+ (multi-touch for Touch of Fate)
 - react-native-svg (wheel and icons)
-- expo-haptics, expo-av, expo-linear-gradient
+- expo-haptics, expo-audio, expo-linear-gradient
 - @react-native-async-storage/async-storage (history)
 
 ## Feature routes

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, Platform, ScrollView,
+  ActivityIndicator, Alert, FlatList, Image, Platform, ScrollView,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -280,11 +280,15 @@ export default function TripMemoryScreen() {
         {featuredPhotos.length > 0 && (
           <View>
             <Text style={s.sectionLabel}>HIGHLIGHTS</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.photoStrip}>
-              {featuredPhotos.map((url, i) => (
-                <Image key={`${url}-${i}`} source={{ uri: url }} style={s.photoThumb} />
-              ))}
-            </ScrollView>
+            <FlatList
+              horizontal
+              data={featuredPhotos}
+              keyExtractor={(url, i) => `${url}-${i}`}
+              renderItem={({ item }) => <Image source={{ uri: item }} style={s.photoThumb} />}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.photoStrip}
+              initialNumToRender={4}
+            />
           </View>
         )}
 

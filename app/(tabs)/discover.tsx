@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Linking,
   RefreshControl,
@@ -467,6 +468,15 @@ function DiscoverScreenInner() {
     [tripMembers],
   );
 
+  // Stable vote-by-member lookup to prevent React.memo bail-outs
+  const voteByMemberMap = useMemo(() => {
+    const map: Record<string, Record<string, PlaceVote>> = {};
+    for (const sp of savedPlaces) {
+      if (sp.voteByMember) map[sp.name] = sp.voteByMember;
+    }
+    return map;
+  }, [savedPlaces]);
+
   // Places awaiting group votes
   const pendingVotePlaces = useMemo(
     () => savedPlaces.filter((p) => {
@@ -815,6 +825,23 @@ function DiscoverScreenInner() {
     }
   }, [tripId, savedPlaces, places]);
 
+  // Stable callbacks so DiscoverPlaceCard React.memo actually works
+  const handleSaveToggle = useCallback((name: string) => {
+    toggleSave(name);
+  }, [toggleSave]);
+
+  const handleRecommendToggle = useCallback((name: string) => {
+    toggleRecommend(name);
+  }, [toggleRecommend]);
+
+  const handleVoteTap = useCallback((placeName: string) => {
+    const sp = savedPlaces.find((s) => s.name === placeName);
+    if (sp) {
+      setVotingPlace(sp);
+      setShowVotingSheet(true);
+    }
+  }, [savedPlaces]);
+
   // Generate itinerary via Anthropic
 
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
@@ -851,6 +878,37 @@ function DiscoverScreenInner() {
     setDetailPlaceName(name);
     setShowDetail(true);
   }, []);
+
+  // FlatList renderItem for Places tab — stable ref prevents re-renders
+  const renderPlaceItem = useCallback(({ item }: { item: typeof placesWithDistance[0] }) => {
+    const p = item.place;
+    return (
+      <DiscoverPlaceCard
+        place={p}
+        distanceKm={item.distanceKm}
+        travelMode={travelMode}
+        isSaved={saved.has(p.n)}
+        isRecommended={recommended.has(p.n)}
+        onSave={handleSaveToggle}
+        onRecommend={handleRecommendToggle}
+        onExplore={handleExplore}
+        onAddToPlanner={undefined}
+        showRecommend={tripMembers.length >= 2}
+        voteByMember={voteByMemberMap[p.n]}
+        memberNames={memberNames}
+        totalMembers={tripMembers.length}
+        onVoteTap={handleVoteTap}
+      />
+    );
+  }, [travelMode, saved, recommended, handleSaveToggle, handleRecommendToggle, handleExplore, tripMembers.length, voteByMemberMap, memberNames, handleVoteTap]);
+
+  const CARD_HEIGHT = 128;
+
+  const getPlaceLayout = useCallback((_: any, index: number) => ({
+    length: CARD_HEIGHT,
+    offset: CARD_HEIGHT * index,
+    index,
+  }), []);
 
   const selectedCategory = cat
     ? CATEGORIES.find((c) => c.id === cat)
@@ -904,448 +962,434 @@ function DiscoverScreenInner() {
         </View>
       </View>
 
-      {tab !== 'stays' && (
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              placesCache.current = {};
-              const chipKey = placeCategoryChip.toLowerCase();
-              const search = CATEGORY_SEARCH_MAP[chipKey];
-              searchPlaces(search?.keyword, search?.type, true);
-            }}
-            tintColor={colors.accent}
-          />
-        }
-      >
-        {/* ═══════ AI CONCIERGE TAB ═══════ */}
-        {tab === 'concierge' && (
-          <AIConcierge
-            tripId={tripId}
-            tripDest={tripDest}
-            tripCoords={tripCoords}
-            tripHotel={tripHotel}
-            tripGroupSize={tripGroupSize}
-            tripMembers={tripMembers}
-            tripBudget={tripBudget}
-            tripBudgetCurrency={tripBudgetCurrency}
-            savedNames={saved}
-            travelMode={travelMode}
-            onSavePlace={(name) => {
-              setSaved((s) => { const next = new Set(s); next.add(name); return next; });
-            }}
-            onOpenDetail={handleExplore}
-          />
-        )}
+      {/* ═══════ PLACES TAB (FlatList for virtualization) ═══════ */}
+      {tab === 'places' && (
+        <FlatList
+          data={placesWithDistance.slice(0, visibleCount)}
+          keyExtractor={(item) => item.place.placeId ?? item.place.n}
+          renderItem={renderPlaceItem}
+          getItemLayout={getPlaceLayout}
+          removeClippedSubviews={true}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                placesCache.current = {};
+                const chipKey = placeCategoryChip.toLowerCase();
+                const search = CATEGORY_SEARCH_MAP[chipKey];
+                searchPlaces(search?.keyword, search?.type, true);
+              }}
+              tintColor={colors.accent}
+            />
+          }
+          ListHeaderComponent={
+            <>
+              {/* Search */}
+              <View style={styles.searchBox}>
+                <Search size={16} color={colors.text3} strokeWidth={1.8} />
+                <TextInput
+                  value={q}
+                  onChangeText={setQ}
+                  placeholder="Search restaurants, beaches, activities..."
+                  placeholderTextColor={colors.text3}
+                  style={styles.searchInput}
+                />
+              </View>
 
-        {/* ═══════ PLACES TAB ═══════ */}
-        {tab === 'places' && (
-          <>
-            {/* Search */}
-            <View style={styles.searchBox}>
-              <Search size={16} color={colors.text3} strokeWidth={1.8} />
-              <TextInput
-                value={q}
-                onChangeText={setQ}
-                placeholder="Search restaurants, beaches, activities..."
-                placeholderTextColor={colors.text3}
-                style={styles.searchInput}
-              />
-            </View>
-
-            {/* Category chips */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipRow}
-            >
-              {PLACE_CATEGORY_CHIPS.map((c) => {
-                const isActive = placeCategoryChip === c;
-                return (
-                  <TouchableOpacity
-                    key={c}
-                    style={[styles.chip, isActive && styles.chipActive]}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      setPlaceCategoryChip(c);
-                      setQ('');
-                      setVisibleCount(20);
-                    }}
-                  >
-                    <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                      {c}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {/* Filter toggle */}
-            <TouchableOpacity
-              onPress={toggleShowFilters}
-              style={[
-                styles.filterBarInline,
-                activeFilterCount > 0 && { borderColor: colors.accent },
-              ]}
-              activeOpacity={0.7}
-            >
-              <Filter size={14} color={activeFilterCount > 0 ? colors.accent : colors.text3} strokeWidth={2} />
-              <Text style={{ fontSize: 13, fontWeight: '500', color: activeFilterCount > 0 ? colors.accent : colors.text2 }}>
-                Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
-              </Text>
-              <ChevronDown size={14} color={colors.text3} strokeWidth={2} style={{ transform: [{ rotate: showFilters ? '180deg' : '0deg' }] }} />
-            </TouchableOpacity>
-
-            {/* Expanded filters panel */}
-            {showFilters && (
-              <Animated.View
-                entering={FadeInDown.duration(200)}
-                style={styles.filterPanel}
+              {/* Category chips */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipRow}
               >
-                <FilterRow label="Minimum rating" colors={colors}>
-                  {[0, 4.0, 4.5].map((v) => (
+                {PLACE_CATEGORY_CHIPS.map((c) => {
+                  const isActive = placeCategoryChip === c;
+                  return (
+                    <TouchableOpacity
+                      key={c}
+                      style={[styles.chip, isActive && styles.chipActive]}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setPlaceCategoryChip(c);
+                        setQ('');
+                        setVisibleCount(20);
+                      }}
+                    >
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                        {c}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Filter toggle */}
+              <TouchableOpacity
+                onPress={toggleShowFilters}
+                style={[
+                  styles.filterBarInline,
+                  activeFilterCount > 0 && { borderColor: colors.accent },
+                ]}
+                activeOpacity={0.7}
+              >
+                <Filter size={14} color={activeFilterCount > 0 ? colors.accent : colors.text3} strokeWidth={2} />
+                <Text style={{ fontSize: 13, fontWeight: '500', color: activeFilterCount > 0 ? colors.accent : colors.text2 }}>
+                  Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+                </Text>
+                <ChevronDown size={14} color={colors.text3} strokeWidth={2} style={{ transform: [{ rotate: showFilters ? '180deg' : '0deg' }] }} />
+              </TouchableOpacity>
+
+              {/* Expanded filters panel */}
+              {showFilters && (
+                <Animated.View
+                  entering={FadeInDown.duration(200)}
+                  style={styles.filterPanel}
+                >
+                  <FilterRow label="Minimum rating" colors={colors}>
+                    {[0, 4.0, 4.5].map((v) => (
+                      <SegBtn
+                        key={v}
+                        active={filters.minRating === v}
+                        onPress={() =>
+                          setFilters((f) => ({ ...f, minRating: v }))
+                        }
+                        colors={colors}
+                      >
+                        {v === 0 ? 'Any' : `\u2605 ${v.toFixed(1)}+`}
+                      </SegBtn>
+                    ))}
+                  </FilterRow>
+                  <FilterRow label="Price" colors={colors}>
+                    {['Free', '$', '$$', '$$$'].map((lbl, i) => (
+                      <SegBtn
+                        key={lbl}
+                        active={filters.maxPrice === i}
+                        onPress={() =>
+                          setFilters((f) => ({ ...f, maxPrice: i }))
+                        }
+                        colors={colors}
+                      >
+                        {lbl}
+                        {i < 3 ? ' or less' : ''}
+                      </SegBtn>
+                    ))}
+                  </FilterRow>
+                  <FilterRow label="Distance" colors={colors}>
                     <SegBtn
-                      key={v}
-                      active={filters.minRating === v}
+                      active={!filters.nearby}
                       onPress={() =>
-                        setFilters((f) => ({ ...f, minRating: v }))
+                        setFilters((f) => ({ ...f, nearby: false }))
                       }
                       colors={colors}
                     >
-                      {v === 0 ? 'Any' : `\u2605 ${v.toFixed(1)}+`}
+                      Any
                     </SegBtn>
-                  ))}
-                </FilterRow>
-                <FilterRow label="Price" colors={colors}>
-                  {['Free', '$', '$$', '$$$'].map((lbl, i) => (
                     <SegBtn
-                      key={lbl}
-                      active={filters.maxPrice === i}
+                      active={filters.nearby}
                       onPress={() =>
-                        setFilters((f) => ({ ...f, maxPrice: i }))
+                        setFilters((f) => ({ ...f, nearby: true }))
                       }
                       colors={colors}
                     >
-                      {lbl}
-                      {i < 3 ? ' or less' : ''}
+                      {'\u2264'} 2 km
                     </SegBtn>
-                  ))}
-                </FilterRow>
-                <FilterRow label="Distance" colors={colors}>
-                  <SegBtn
-                    active={!filters.nearby}
-                    onPress={() =>
-                      setFilters((f) => ({ ...f, nearby: false }))
-                    }
-                    colors={colors}
-                  >
-                    Any
-                  </SegBtn>
-                  <SegBtn
-                    active={filters.nearby}
-                    onPress={() =>
-                      setFilters((f) => ({ ...f, nearby: true }))
-                    }
-                    colors={colors}
-                  >
-                    {'\u2264'} 2 km
-                  </SegBtn>
-                </FilterRow>
-                <FilterRow label="Availability" colors={colors}>
-                  <SegBtn
-                    active={!filters.openNow}
-                    onPress={() =>
-                      setFilters((f) => ({ ...f, openNow: false }))
-                    }
-                    colors={colors}
-                  >
-                    All
-                  </SegBtn>
-                  <SegBtn
-                    active={filters.openNow}
-                    onPress={() =>
-                      setFilters((f) => ({ ...f, openNow: true }))
-                    }
-                    colors={colors}
-                  >
-                    Open now
-                  </SegBtn>
-                </FilterRow>
+                  </FilterRow>
+                  <FilterRow label="Availability" colors={colors}>
+                    <SegBtn
+                      active={!filters.openNow}
+                      onPress={() =>
+                        setFilters((f) => ({ ...f, openNow: false }))
+                      }
+                      colors={colors}
+                    >
+                      All
+                    </SegBtn>
+                    <SegBtn
+                      active={filters.openNow}
+                      onPress={() =>
+                        setFilters((f) => ({ ...f, openNow: true }))
+                      }
+                      colors={colors}
+                    >
+                      Open now
+                    </SegBtn>
+                  </FilterRow>
 
-                {/* Distance origin + travel mode (moved inside filter panel) */}
-                <View style={{ marginTop: 8 }}>
-                  <DistanceToggle
-                    anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
-                    travelMode={travelMode}
-                    onAnchorChange={handleAnchorChange}
-                    onTravelModeChange={handleTravelModeChange}
-                  />
-                </View>
+                  {/* Distance origin + travel mode (moved inside filter panel) */}
+                  <View style={{ marginTop: 8 }}>
+                    <DistanceToggle
+                      anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
+                      travelMode={travelMode}
+                      onAnchorChange={handleAnchorChange}
+                      onTravelModeChange={handleTravelModeChange}
+                    />
+                  </View>
 
-                {/* Footer */}
-                <View style={styles.filterFooter}>
-                  <TouchableOpacity
-                    onPress={() => setFilters({ ...DEFAULT_FILTERS })}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.filterResetText}>Reset</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.filterShowBtn}
-                    onPress={() => setShowFilters(false)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.filterShowBtnText}>Show results</Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            )}
+                  {/* Footer */}
+                  <View style={styles.filterFooter}>
+                    <TouchableOpacity
+                      onPress={() => setFilters({ ...DEFAULT_FILTERS })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.filterResetText}>Reset</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.filterShowBtn}
+                      onPress={() => setShowFilters(false)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.filterShowBtnText}>Show results</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              )}
 
-            {/* Top Picks */}
-            {placeCategoryChip === 'All' && !q && (
-              <TopPicksSection places={places} onExplore={handleExplore} distFn={getDistanceKm} />
-            )}
+              {/* Top Picks */}
+              {placeCategoryChip === 'All' && !q && (
+                <TopPicksSection places={places} onExplore={handleExplore} distFn={getDistanceKm} />
+              )}
 
-            {/* Results count */}
-            <Text style={styles.resultsCount}>
-              {filteredPlaces.length} {filteredPlaces.length === 1 ? 'place' : 'places'}
-            </Text>
+              {/* Results count */}
+              <Text style={styles.resultsCount}>
+                {filteredPlaces.length} {filteredPlaces.length === 1 ? 'place' : 'places'}
+              </Text>
 
-            {/* Place cards */}
-            <View style={styles.placeList}>
               {placesError && (
                 <View style={styles.emptyPlaces}>
                   <Text style={styles.errorText}>{placesError}</Text>
                 </View>
               )}
-              {placesLoading ? (
+              {placesLoading && (
                 <View style={styles.emptyPlaces}>
                   <MiniLoader message="Finding places..." />
                 </View>
-              ) : filteredPlaces.length === 0 ? (
+              )}
+              {!placesLoading && !placesError && filteredPlaces.length === 0 && (
                 <View style={styles.emptyPlaces}>
-                  <Text style={styles.emptyText}>
-                    No places match these filters.
+                  <Text style={styles.emptyText}>No places match these filters.</Text>
+                </View>
+              )}
+            </>
+          }
+          ListFooterComponent={
+            placesWithDistance.length > visibleCount ? (
+              <TouchableOpacity
+                style={styles.showMoreBtn}
+                onPress={() => setVisibleCount((c) => c + 20)}
+                activeOpacity={0.7}
+              >
+                <ChevronDown size={16} color={colors.accent} strokeWidth={2} />
+                <Text style={styles.showMoreText}>
+                  Show more ({placesWithDistance.length - visibleCount} remaining)
+                </Text>
+              </TouchableOpacity>
+            ) : null
+          }
+        />
+      )}
+
+      {/* ═══════ CONCIERGE + SAVED TABS (ScrollView) ═══════ */}
+      {(tab === 'concierge' || tab === 'saved') && (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ═══════ AI CONCIERGE TAB ═══════ */}
+          {tab === 'concierge' && (
+            <AIConcierge
+              tripId={tripId}
+              tripDest={tripDest}
+              tripCoords={tripCoords}
+              tripHotel={tripHotel}
+              tripGroupSize={tripGroupSize}
+              tripMembers={tripMembers}
+              tripBudget={tripBudget}
+              tripBudgetCurrency={tripBudgetCurrency}
+              savedNames={saved}
+              travelMode={travelMode}
+              onSavePlace={(name) => {
+                setSaved((s) => { const next = new Set(s); next.add(name); return next; });
+              }}
+              onOpenDetail={handleExplore}
+            />
+          )}
+
+          {/* ═══════ SAVED TAB ═══════ */}
+          {tab === 'saved' && (
+            <View style={styles.placeList}>
+              {savedLoading ? (
+                <View style={styles.emptyPlaces}>
+                  <MiniLoader message="Loading saved places..." />
+                </View>
+              ) : savedPlaces.length === 0 && saved.size === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Bookmark size={28} color={colors.text3} strokeWidth={1.6} opacity={0.6} />
+                  <Text style={styles.emptyCardTitle}>No saved places yet</Text>
+                  <Text style={styles.emptyCardBody}>
+                    Tap the bookmark on a place to save it here.
                   </Text>
                 </View>
               ) : (
                 <>
-                  {placesWithDistance.slice(0, visibleCount).map(({ place: p, distanceKm }, idx) => (
-                    <DiscoverPlaceCard
-                      key={p.placeId ?? `${p.n}-${idx}`}
-                      place={p}
-                      distanceKm={distanceKm}
-                      travelMode={travelMode}
-                      isSaved={saved.has(p.n)}
-                      isRecommended={recommended.has(p.n)}
-                      onSave={toggleSave}
-                      onRecommend={toggleRecommend}
-                      onExplore={handleExplore}
-                      onAddToPlanner={undefined}
-                      showRecommend={tripMembers.length >= 2}
-                      voteByMember={savedPlaces.find((sp) => sp.name === p.n)?.voteByMember}
-                      memberNames={memberNames}
-                      totalMembers={tripMembers.length}
-                      onVoteTap={() => {
-                        const sp = savedPlaces.find((s) => s.name === p.n);
-                        if (sp) { setVotingPlace(sp); setShowVotingSheet(true); }
-                      }}
-                    />
-                  ))}
-                  {placesWithDistance.length > visibleCount && (
+                  {/* ── Group Voting Section ── */}
+                  {tripMembers.length >= 2 && (
+                    <View style={styles.votingSection}>
+                      <View style={styles.votingSectionHeader}>
+                        <Users size={16} color={colors.accent} strokeWidth={2} />
+                        <Text style={styles.votingSectionTitle}>Group Voting</Text>
+                        {pendingVotePlaces.length > 0 && (
+                          <View style={styles.votingBadge}>
+                            <Text style={styles.votingBadgeText}>{pendingVotePlaces.length} pending</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Empty state for groups with no votes yet */}
+                      {pendingVotePlaces.length === 0 && votedPlaces.length === 0 && (
+                        <View style={styles.votingEmpty}>
+                          <ThumbsUp size={20} color={colors.text3} strokeWidth={1.6} />
+                          <Text style={styles.votingEmptyTitle}>No places to vote on yet</Text>
+                          <Text style={styles.votingEmptyBody}>
+                            Tap the {'\u{1F465}'} icon on any place in the Places tab to recommend it to your group.
+                          </Text>
+                        </View>
+                      )}
+
+                      {pendingVotePlaces.length > 0 && (
+                        <>
+                          <Text style={styles.votingSubhead}>Needs your vote</Text>
+                          {pendingVotePlaces.map((p) => {
+                            const votes = p.voteByMember ?? {};
+                            const yes = Object.values(votes).filter((v) => v === '👍 Yes').length;
+                            const voted = Object.keys(votes).length;
+                            return (
+                              <TouchableOpacity
+                                key={p.id}
+                                style={styles.votingRow}
+                                activeOpacity={0.7}
+                                onPress={() => { setVotingPlace(p); setShowVotingSheet(true); }}
+                              >
+                                {p.photoUrl ? (
+                                  <Image source={{ uri: p.photoUrl }} style={styles.votingThumb} />
+                                ) : (
+                                  <View style={[styles.votingThumb, { backgroundColor: colors.bg3, justifyContent: 'center', alignItems: 'center' }]}>
+                                    <ThumbsUp size={14} color={colors.text3} />
+                                  </View>
+                                )}
+                                <View style={styles.votingInfo}>
+                                  <Text style={styles.votingName} numberOfLines={1}>{p.name}</Text>
+                                  <Text style={styles.votingMeta}>
+                                    {voted}/{tripMembers.length} voted{yes > 0 ? ` · ${yes} yes` : ''}
+                                  </Text>
+                                </View>
+                                <ChevronRight size={16} color={colors.text3} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </>
+                      )}
+
+                      {votedPlaces.length > 0 && (
+                        <>
+                          <Text style={styles.votingSubhead}>Decided</Text>
+                          {votedPlaces.map((p) => {
+                            const isYes = p.vote === '👍 Yes';
+                            return (
+                              <TouchableOpacity
+                                key={p.id}
+                                style={styles.votingRow}
+                                activeOpacity={0.7}
+                                onPress={() => { setVotingPlace(p); setShowVotingSheet(true); }}
+                              >
+                                {p.photoUrl ? (
+                                  <Image source={{ uri: p.photoUrl }} style={styles.votingThumb} />
+                                ) : (
+                                  <View style={[styles.votingThumb, { backgroundColor: colors.bg3, justifyContent: 'center', alignItems: 'center' }]}>
+                                    <ThumbsUp size={14} color={colors.text3} />
+                                  </View>
+                                )}
+                                <View style={styles.votingInfo}>
+                                  <Text style={styles.votingName} numberOfLines={1}>{p.name}</Text>
+                                  <View style={[styles.votingDecision, { backgroundColor: isYes ? 'rgba(45,106,46,0.15)' : 'rgba(158,58,52,0.15)' }]}>
+                                    <Text style={{ fontSize: 11, fontWeight: '600', color: isYes ? '#2d6a2e' : '#9e3a34' }}>
+                                      {isYes ? 'Going' : 'Skipped'}
+                                    </Text>
+                                  </View>
+                                </View>
+                                <ChevronRight size={16} color={colors.text3} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </>
+                      )}
+                    </View>
+                  )}
+
+                  <View style={styles.savedHeaderRow}>
+                    <Text style={styles.savedCount}>
+                      {savedPlaces.length} saved {'\u00B7'} {recommended.size} recommended
+                    </Text>
                     <TouchableOpacity
-                      style={styles.showMoreBtn}
-                      onPress={() => setVisibleCount((c) => c + 20)}
+                      onPress={() => {
+                        Alert.alert('Clear All', 'Remove all saved places?', [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Clear',
+                            style: 'destructive',
+                            onPress: () => {
+                              setSaved(new Set());
+                              setRecommended(new Set());
+                              setSavedPlaces([]);
+                            },
+                          },
+                        ]);
+                      }}
                       activeOpacity={0.7}
                     >
-                      <ChevronDown size={16} color={colors.accent} strokeWidth={2} />
-                      <Text style={styles.showMoreText}>
-                        Show more ({placesWithDistance.length - visibleCount} remaining)
-                      </Text>
+                      <Text style={styles.clearAllText}>Clear all</Text>
                     </TouchableOpacity>
-                  )}
+                  </View>
+                  {savedPlaces.map((p) => {
+                    const dp = mapSavedToDiscoverPlace(p, tripCoords ?? undefined);
+                    return (
+                      <SwipeToDelete
+                        key={p.id}
+                        onDelete={() => handleSaveToggle(p.name)}
+                      >
+                        <DiscoverPlaceCard
+                          place={dp}
+                          distanceKm={getDistanceKm(dp.lat, dp.lng)}
+                          travelMode={travelMode}
+                          isSaved={true}
+                          isRecommended={recommended.has(p.name)}
+                          onSave={handleSaveToggle}
+                          onRecommend={handleRecommendToggle}
+                          onAddToPlanner={undefined}
+                          showRecommend={tripMembers.length >= 2}
+                          voteByMember={p.voteByMember}
+                          memberNames={memberNames}
+                          totalMembers={tripMembers.length}
+                          onVoteTap={() => {
+                            setVotingPlace(p);
+                            setShowVotingSheet(true);
+                          }}
+                        />
+                      </SwipeToDelete>
+                    );
+                  })}
                 </>
               )}
             </View>
+          )}
 
-          </>
-        )}
-
-        {/* ═══════ SAVED TAB ═══════ */}
-        {tab === 'saved' && (
-          <View style={styles.placeList}>
-            {savedLoading ? (
-              <View style={styles.emptyPlaces}>
-                <MiniLoader message="Loading saved places..." />
-              </View>
-            ) : savedPlaces.length === 0 && saved.size === 0 ? (
-              <View style={styles.emptyCard}>
-                <Bookmark size={28} color={colors.text3} strokeWidth={1.6} opacity={0.6} />
-                <Text style={styles.emptyCardTitle}>No saved places yet</Text>
-                <Text style={styles.emptyCardBody}>
-                  Tap the bookmark on a place to save it here.
-                </Text>
-              </View>
-            ) : (
-              <>
-                {/* ── Group Voting Section ── */}
-                {tripMembers.length >= 2 && (
-                  <View style={styles.votingSection}>
-                    <View style={styles.votingSectionHeader}>
-                      <Users size={16} color={colors.accent} strokeWidth={2} />
-                      <Text style={styles.votingSectionTitle}>Group Voting</Text>
-                      {pendingVotePlaces.length > 0 && (
-                        <View style={styles.votingBadge}>
-                          <Text style={styles.votingBadgeText}>{pendingVotePlaces.length} pending</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Empty state for groups with no votes yet */}
-                    {pendingVotePlaces.length === 0 && votedPlaces.length === 0 && (
-                      <View style={styles.votingEmpty}>
-                        <ThumbsUp size={20} color={colors.text3} strokeWidth={1.6} />
-                        <Text style={styles.votingEmptyTitle}>No places to vote on yet</Text>
-                        <Text style={styles.votingEmptyBody}>
-                          Tap the {'\u{1F465}'} icon on any place in the Places tab to recommend it to your group.
-                        </Text>
-                      </View>
-                    )}
-
-                    {pendingVotePlaces.length > 0 && (
-                      <>
-                        <Text style={styles.votingSubhead}>Needs your vote</Text>
-                        {pendingVotePlaces.map((p) => {
-                          const votes = p.voteByMember ?? {};
-                          const yes = Object.values(votes).filter((v) => v === '👍 Yes').length;
-                          const voted = Object.keys(votes).length;
-                          return (
-                            <TouchableOpacity
-                              key={p.id}
-                              style={styles.votingRow}
-                              activeOpacity={0.7}
-                              onPress={() => { setVotingPlace(p); setShowVotingSheet(true); }}
-                            >
-                              {p.photoUrl ? (
-                                <Image source={{ uri: p.photoUrl }} style={styles.votingThumb} />
-                              ) : (
-                                <View style={[styles.votingThumb, { backgroundColor: colors.bg3, justifyContent: 'center', alignItems: 'center' }]}>
-                                  <ThumbsUp size={14} color={colors.text3} />
-                                </View>
-                              )}
-                              <View style={styles.votingInfo}>
-                                <Text style={styles.votingName} numberOfLines={1}>{p.name}</Text>
-                                <Text style={styles.votingMeta}>
-                                  {voted}/{tripMembers.length} voted{yes > 0 ? ` · ${yes} yes` : ''}
-                                </Text>
-                              </View>
-                              <ChevronRight size={16} color={colors.text3} />
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </>
-                    )}
-
-                    {votedPlaces.length > 0 && (
-                      <>
-                        <Text style={styles.votingSubhead}>Decided</Text>
-                        {votedPlaces.map((p) => {
-                          const isYes = p.vote === '👍 Yes';
-                          return (
-                            <TouchableOpacity
-                              key={p.id}
-                              style={styles.votingRow}
-                              activeOpacity={0.7}
-                              onPress={() => { setVotingPlace(p); setShowVotingSheet(true); }}
-                            >
-                              {p.photoUrl ? (
-                                <Image source={{ uri: p.photoUrl }} style={styles.votingThumb} />
-                              ) : (
-                                <View style={[styles.votingThumb, { backgroundColor: colors.bg3, justifyContent: 'center', alignItems: 'center' }]}>
-                                  <ThumbsUp size={14} color={colors.text3} />
-                                </View>
-                              )}
-                              <View style={styles.votingInfo}>
-                                <Text style={styles.votingName} numberOfLines={1}>{p.name}</Text>
-                                <View style={[styles.votingDecision, { backgroundColor: isYes ? 'rgba(45,106,46,0.15)' : 'rgba(158,58,52,0.15)' }]}>
-                                  <Text style={{ fontSize: 11, fontWeight: '600', color: isYes ? '#2d6a2e' : '#9e3a34' }}>
-                                    {isYes ? 'Going' : 'Skipped'}
-                                  </Text>
-                                </View>
-                              </View>
-                              <ChevronRight size={16} color={colors.text3} />
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </>
-                    )}
-                  </View>
-                )}
-
-                <View style={styles.savedHeaderRow}>
-                  <Text style={styles.savedCount}>
-                    {savedPlaces.length} saved {'\u00B7'} {recommended.size} recommended
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      Alert.alert('Clear All', 'Remove all saved places?', [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Clear',
-                          style: 'destructive',
-                          onPress: () => {
-                            setSaved(new Set());
-                            setRecommended(new Set());
-                            setSavedPlaces([]);
-                          },
-                        },
-                      ]);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.clearAllText}>Clear all</Text>
-                  </TouchableOpacity>
-                </View>
-                {savedPlaces.map((p) => {
-                  const dp = mapSavedToDiscoverPlace(p, tripCoords ?? undefined);
-                  return (
-                    <SwipeToDelete
-                      key={p.id}
-                      onDelete={() => toggleSave(p.name)}
-                    >
-                      <DiscoverPlaceCard
-                        place={dp}
-                        distanceKm={getDistanceKm(dp.lat, dp.lng)}
-                        travelMode={travelMode}
-                        isSaved={true}
-                        isRecommended={recommended.has(p.name)}
-                        onSave={toggleSave}
-                        onRecommend={toggleRecommend}
-                        onAddToPlanner={undefined}
-                        showRecommend={tripMembers.length >= 2}
-                        voteByMember={p.voteByMember}
-                        memberNames={memberNames}
-                        totalMembers={tripMembers.length}
-                        onVoteTap={() => {
-                          setVotingPlace(p);
-                          setShowVotingSheet(true);
-                        }}
-                      />
-                    </SwipeToDelete>
-                  );
-                })}
-              </>
-            )}
-          </View>
-        )}
-
-        <View style={{ height: 20 }} />
-      </ScrollView>
+          <View style={{ height: 20 }} />
+        </ScrollView>
       )}
 
       {/* ═══════ STAYS TAB (own ScrollView — outside parent) ═══════ */}

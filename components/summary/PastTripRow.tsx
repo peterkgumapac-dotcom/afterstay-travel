@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Star } from 'lucide-react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Archive, Star, Trash2 } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 
@@ -15,19 +15,22 @@ interface PastTrip {
   spent: number;
   miles: number;
   rating: number;
+  isDraft?: boolean;
 }
 
 interface PastTripRowProps {
   trip: PastTrip;
   hasMemory?: boolean;
   onPress?: () => void;
+  onDelete?: () => void;
+  onArchive?: () => void;
 }
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 // ---------- COMPONENT ----------
 
-export default function PastTripRow({ trip, hasMemory, onPress }: PastTripRowProps) {
+export default function PastTripRow({ trip, hasMemory, onPress, onDelete, onArchive }: PastTripRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
@@ -36,6 +39,20 @@ export default function PastTripRow({ trip, hasMemory, onPress }: PastTripRowPro
 
   const Wrapper = onPress ? TouchableOpacity : View;
   const wrapperProps = onPress ? { onPress, activeOpacity: 0.7 } : {};
+
+  const isDraftTrip = trip.isDraft;
+  const hasActions = onDelete || onArchive;
+
+  const showActionSheet = () => {
+    const options: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [];
+    if (isDraftTrip && onDelete) {
+      options.push({ text: 'Delete Draft', style: 'destructive', onPress: onDelete });
+    } else if (!isDraftTrip && onArchive) {
+      options.push({ text: 'Archive Trip', onPress: onArchive });
+    }
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Trip Options', undefined, options);
+  };
 
   return (
     <Wrapper style={styles.row} {...wrapperProps as any}>
@@ -64,6 +81,15 @@ export default function PastTripRow({ trip, hasMemory, onPress }: PastTripRowPro
             {fullStars}
             <Text style={styles.ratingEmpty}>{emptyStars}</Text>
           </Text>
+        )}
+        {hasActions && (
+          <TouchableOpacity onPress={showActionSheet} style={styles.actionBtn} hitSlop={8}>
+            {isDraftTrip ? (
+              <Trash2 size={14} color={colors.danger} />
+            ) : (
+              <Archive size={14} color={colors.text3} />
+            )}
+          </TouchableOpacity>
         )}
       </View>
     </Wrapper>
@@ -114,6 +140,10 @@ const getStyles = (colors: ThemeColors) =>
     },
     meta: {
       alignItems: 'flex-end',
+    },
+    actionBtn: {
+      padding: 6,
+      marginTop: 4,
     },
     spent: {
       fontSize: 12,

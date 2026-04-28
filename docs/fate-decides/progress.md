@@ -43,7 +43,7 @@ Append to this file at the end of every Claude Code session using `/compact Focu
 ## 2026-04-24 — Phase 1 + 2 + 3
 - Completed:
   - **Phase 1**: fateTheme.ts, budget nested layout, fate-decides route, ModeTabs, FateHeader, PrimaryButton, SecondaryButton, NameList, useFateNames
-  - **Phase 2**: randomWinner.ts, useSounds (expo-av preload + iOS silent mode), useHaptics (throttled tap + Android fallback), useFateHistory (AsyncStorage max 5)
+  - **Phase 2**: randomWinner.ts, useSounds (expo-audio preload + iOS silent mode), useHaptics (throttled tap + Android fallback), useFateHistory (AsyncStorage max 5)
   - **Phase 3**: generateSpinPlan (with fake-out logic built in), 6 unit tests (all passing), Wheel SVG, WheelPointer, useWheelSpin (Reanimated withTiming chain + skip), WinnerReveal (spring + confetti), WheelScreen, wired into fate-decides route
 - Decisions:
   - Budget tab converted from flat file to nested Stack layout (budget/_layout.tsx)

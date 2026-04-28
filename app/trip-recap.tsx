@@ -17,6 +17,9 @@ import Animated, {
   FadeOut,
   SlideInRight,
   SlideOutLeft,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -187,6 +190,27 @@ export default function TripRecapScreen() {
     s.push({ type: 'share' });
     return s;
   }, [photosWithUrl.length, peakDay, summary.total, dedupedPlaces.length]);
+
+  // Cleanup auto-advance timer on unmount to prevent leaks
+  useEffect(() => {
+    return () => {
+      if (autoTimer.current) clearTimeout(autoTimer.current);
+    };
+  }, []);
+
+  // Auto-advance slides every 5s (with cleanup)
+  useEffect(() => {
+    if (autoTimer.current) clearTimeout(autoTimer.current);
+    autoTimer.current = setTimeout(() => {
+      setCurrentSlide((prev) => {
+        if (prev >= slides.length - 1) return prev;
+        return prev + 1;
+      });
+    }, 5000);
+    return () => {
+      if (autoTimer.current) clearTimeout(autoTimer.current);
+    };
+  }, [currentSlide, slides.length]);
 
   // ---------- NAVIGATION ----------
 
@@ -490,22 +514,27 @@ export default function TripRecapScreen() {
   }
 
   const slide = slides[currentSlide];
-
   const isShareSlide = slide.type === 'share';
+
+  // Animate opacity on slide change without remounting the entire tree
+  const slideOpacity = useSharedValue(1);
+  useEffect(() => {
+    slideOpacity.value = 0;
+    slideOpacity.value = withTiming(1, { duration: 250 });
+  }, [currentSlide]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: slideOpacity.value,
+  }));
 
   return (
     <View style={styles.container}>
-      {isShareSlide ? (
-        <Animated.View key={currentSlide} entering={FadeIn.duration(250)} style={StyleSheet.absoluteFill}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={(e) => handleTap(e.nativeEvent.locationX)}>
+        <View style={StyleSheet.absoluteFill}>
           {renderSlide(slide)}
-        </Animated.View>
-      ) : (
-        <Pressable style={StyleSheet.absoluteFill} onPress={(e) => handleTap(e.nativeEvent.locationX)}>
-          <Animated.View key={currentSlide} entering={FadeIn.duration(250)} style={StyleSheet.absoluteFill}>
-            {renderSlide(slide)}
-          </Animated.View>
-        </Pressable>
-      )}
+        </View>
+        <Animated.View style={[StyleSheet.absoluteFill, animatedStyle]} pointerEvents="none" />
+      </Pressable>
 
       {/* Progress bar */}
       <View style={[styles.progressRow, { top: insets.top + 8 }]}>

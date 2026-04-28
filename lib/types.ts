@@ -50,6 +50,7 @@ export interface Trip {
   longitude?: number;
   totalSpent?: number;
   totalNights?: number;
+  isDraft?: boolean;
 }
 
 export type TripFileType = 'Boarding Pass' | 'Hotel Confirmation' | 'Itinerary' | 'Insurance' | 'ID/Passport' | 'Receipt' | 'Other';

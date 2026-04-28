@@ -96,20 +96,15 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
       const segment: UserSegment = profile?.userSegment ?? (active ? 'active' : 'new');
 
-      // Fetch past trips + stats for returning/new users
-      let pastTrips: Trip[] = [];
-      let draftTrips: Trip[] = [];
-      let lifetimeStats: LifetimeStats | null = null;
-
-      if (!active) {
-        const [allTrips, stats] = await Promise.all([
-          getAllUserTrips('').catch(() => [] as Trip[]),
-          getLifetimeStats('').catch(() => null),
-        ]);
-        pastTrips = allTrips.filter((t) => t.status === 'Completed');
-        draftTrips = allTrips.filter((t) => t.status === 'Planning');
-        lifetimeStats = stats;
-      }
+      // Always fetch all trips + stats — drafts and past trips must be
+      // available even when an active trip exists ( ReturningUserHome )
+      const [allTrips, stats] = await Promise.all([
+        getAllUserTrips('').catch(() => [] as Trip[]),
+        getLifetimeStats('').catch(() => null),
+      ]);
+      const pastTrips = allTrips.filter((t) => t.status === 'Completed');
+      const draftTrips = allTrips.filter((t) => t.status === 'Planning');
+      const lifetimeStats = stats;
 
       if (!mounted.current) return;
 

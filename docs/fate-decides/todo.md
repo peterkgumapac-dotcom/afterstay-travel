@@ -7,7 +7,7 @@ Work through these in order. Each phase ends with a committable unit. Do NOT sta
 - [ ] Read all spec docs in `/docs/fate-decides/`
 - [ ] Install dependencies:
   ```
-  npx expo install react-native-reanimated react-native-gesture-handler react-native-svg expo-haptics expo-av expo-linear-gradient expo-screen-orientation @react-native-async-storage/async-storage
+  npx expo install react-native-reanimated react-native-gesture-handler react-native-svg expo-haptics expo-audio expo-linear-gradient expo-screen-orientation @react-native-async-storage/async-storage
   ```
 - [ ] Verify `react-native-gesture-handler` is v2.9 or higher
 - [ ] Add babel plugin `react-native-reanimated/plugin` to babel.config.js (last in plugins array)

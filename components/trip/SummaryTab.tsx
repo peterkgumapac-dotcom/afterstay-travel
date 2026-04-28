@@ -25,6 +25,8 @@ interface SummaryTabProps {
   onTripPress?: (tripId: string) => void;
   onQuickTripPress?: (id: string) => void;
   onAddQuickTrip?: () => void;
+  onDeleteTrip?: (tripId: string) => void;
+  onArchiveTrip?: (tripId: string) => void;
 }
 
 export function SummaryTab({
@@ -43,6 +45,8 @@ export function SummaryTab({
   onTripPress,
   onQuickTripPress,
   onAddQuickTrip,
+  onDeleteTrip,
+  onArchiveTrip,
 }: SummaryTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
@@ -81,6 +85,8 @@ export function SummaryTab({
                     trip={t}
                     hasMemory={t.hasMemory}
                     onPress={t.tripId && onTripPress ? () => onTripPress(t.tripId!) : undefined}
+                    onDelete={t.tripId && onDeleteTrip ? () => onDeleteTrip(t.tripId!) : undefined}
+                    onArchive={t.tripId && onArchiveTrip ? () => onArchiveTrip(t.tripId!) : undefined}
                   />
                 </View>
               </View>

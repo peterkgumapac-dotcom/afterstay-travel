@@ -58,6 +58,7 @@ import {
   updateTripProperty,
   finishTrip,
   archiveTrip,
+  discardDraftTrip,
 } from '@/lib/supabase';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { getQuickTrips } from '@/lib/quickTrips';
@@ -156,6 +157,7 @@ interface PastTripDisplay {
   miles: number;
   rating: number;
   hasMemory?: boolean;
+  isDraft?: boolean;
 }
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -920,6 +922,50 @@ export default function TripScreen() {
     );
   };
 
+  const handleDeleteDraft = (tripId: string) => {
+    Alert.alert(
+      'Delete draft?',
+      'This draft trip will be permanently removed.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await discardDraftTrip(tripId);
+              load(true);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Could not delete draft');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleArchiveIncoming = (tripId: string) => {
+    Alert.alert(
+      'Archive this trip?',
+      'It will move to your past trips without generating a memory.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Archive',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await archiveTrip(tripId);
+              load(true);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Could not archive trip');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleInvite = () => {
     router.push('/invite');
   };
@@ -1199,6 +1245,8 @@ export default function TripScreen() {
             onTripPress={(tripId) => router.push({ pathname: '/trip-recap', params: { tripId } } as never)}
             onQuickTripPress={(id) => router.push({ pathname: '/quick-trip-detail', params: { quickTripId: id } } as never)}
             onAddQuickTrip={() => router.push('/quick-trip-create' as never)}
+            onDeleteTrip={handleDeleteDraft}
+            onArchiveTrip={handleArchiveIncoming}
           />
         )}
 

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -77,7 +78,7 @@ export default function StaysTab({
   const [stays, setStays] = useState<DiscoverPlace[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cache = useRef<Record<string, DiscoverPlace[]>>({});
+  const cache = useRef<Map<string, DiscoverPlace[]>>(new Map());
 
   // Destination search (when no trip coords)
   const [destQuery, setDestQuery] = useState('');
@@ -105,8 +106,8 @@ export default function StaysTab({
     const { type, keyword } = STAY_SEARCH[c];
     const cacheKey = `${c}_${coords.lat}_${coords.lng}`;
 
-    if (cache.current[cacheKey]) {
-      setStays(cache.current[cacheKey]);
+    if (cache.current.has(cacheKey)) {
+      setStays(cache.current.get(cacheKey)!);
       return;
     }
 
@@ -116,7 +117,11 @@ export default function StaysTab({
       const results = await searchNearby(type, keyword, coords, 5000);
       if (results.length > 0) {
         const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, coords));
-        cache.current[cacheKey] = mapped;
+        if (cache.current.size >= 20) {
+          const first = cache.current.keys().next().value;
+          if (first) cache.current.delete(first);
+        }
+        cache.current.set(cacheKey, mapped);
         setStays(mapped);
       } else {
         setStays([]);
@@ -173,7 +178,7 @@ export default function StaysTab({
     setSearchCoords(null);
     setSearchLabel('');
     setStays([]);
-    cache.current = {};
+    cache.current.clear();
   }, []);
 
   // ── Filtered results ─────────────────────────────────────────────
@@ -185,20 +190,45 @@ export default function StaysTab({
 
   // ── Distance helper ──────────────────────────────────────────────
 
-  const getDistKm = useCallback((lat?: number, lng?: number) => {
-    if (lat == null || lng == null || !effectiveCoords) return 0;
-    return distanceFromPoint(effectiveCoords.lat, effectiveCoords.lng, lat, lng);
-  }, [effectiveCoords]);
+  // Pre-compute distances so we don't run haversine on every render
+  const distMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!effectiveCoords) return map;
+    for (const stay of filtered) {
+      if (stay.lat != null && stay.lng != null) {
+        map[stay.placeId ?? stay.n] = distanceFromPoint(
+          effectiveCoords.lat,
+          effectiveCoords.lng,
+          stay.lat,
+          stay.lng,
+        );
+      }
+    }
+    return map;
+  }, [filtered, effectiveCoords]);
 
   // ── Render ───────────────────────────────────────────────────────
 
-  return (
-    <ScrollView
-      style={s.container}
-      contentContainerStyle={s.content}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
+  const renderStayItem = useCallback(({ item }: { item: DiscoverPlace }) => (
+    <View style={s.cardWrap}>
+      <DiscoverPlaceCard
+        place={item}
+        distanceKm={distMap[item.placeId ?? item.n] ?? 0}
+        travelMode={travelMode}
+        isSaved={savedSet.has(item.n.toLowerCase())}
+        isRecommended={false}
+        onSave={onSave}
+        onRecommend={() => {}}
+        onExplore={onExplore}
+        showRecommend={tripMembers.length >= 2}
+        voteByMember={{}}
+        memberNames={memberNames}
+      />
+    </View>
+  ), [distMap, travelMode, savedSet, onSave, onExplore, tripMembers.length, memberNames]);
+
+  const ListHeader = useMemo(() => (
+    <>
       {/* Destination search — only when no trip coords */}
       {!tripCoords && (
         <View style={s.destSection}>
@@ -288,52 +318,39 @@ export default function StaysTab({
           <Text style={s.loadingText}>Searching accommodations...</Text>
         </View>
       )}
+    </>
+  ), [tripCoords, s, destQuery, handleDestInput, clearDestination, destSuggestions, searchLabel, selectDestination, chip, minRating, loading, effectiveCoords, filtered.length]);
 
-      {/* Empty: no coords */}
-      {!effectiveCoords && !loading && (
-        <View style={s.emptyState}>
-          <Bed size={40} color={colors.text3} strokeWidth={1.2} />
-          <Text style={s.emptyTitle}>Where do you want to stay?</Text>
-          <Text style={s.emptySub}>
-            {tripCoords
-              ? 'Search for accommodations near your trip.'
-              : 'Search a destination above to discover hotels, resorts, and more.'}
-          </Text>
-        </View>
-      )}
+  const ListEmpty = useMemo(() => {
+    if (loading || effectiveCoords) return null;
+    return (
+      <View style={s.emptyState}>
+        <Bed size={40} color={colors.text3} strokeWidth={1.2} />
+        <Text style={s.emptyTitle}>Where do you want to stay?</Text>
+        <Text style={s.emptySub}>
+          {tripCoords
+            ? 'Search for accommodations near your trip.'
+            : 'Search a destination above to discover hotels, resorts, and more.'}
+        </Text>
+      </View>
+    );
+  }, [loading, effectiveCoords, s, tripCoords]);
 
-      {/* Empty: no results */}
-      {effectiveCoords && !loading && filtered.length === 0 && (
-        <View style={s.emptyState}>
-          <Bed size={36} color={colors.text3} strokeWidth={1.2} />
-          <Text style={s.emptyTitle}>No stays found</Text>
-          <Text style={s.emptySub}>
-            {error || 'Try a different category or lower the rating filter.'}
-          </Text>
-        </View>
-      )}
-
-      {/* Results */}
-      {filtered.map((stay) => (
-        <View key={stay.placeId ?? stay.n} style={s.cardWrap}>
-          <DiscoverPlaceCard
-            place={stay}
-            distanceKm={getDistKm(stay.lat, stay.lng)}
-            travelMode={travelMode}
-            isSaved={savedSet.has(stay.n.toLowerCase())}
-            isRecommended={false}
-            onSave={onSave}
-            onRecommend={() => {}}
-            onExplore={onExplore}
-            showRecommend={tripMembers.length >= 2}
-            voteByMember={{}}
-            memberNames={memberNames}
-          />
-        </View>
-      ))}
-
-      <View style={{ height: 100 }} />
-    </ScrollView>
+  return (
+    <FlatList
+      data={filtered}
+      keyExtractor={(item) => item.placeId ?? item.n}
+      renderItem={renderStayItem}
+      removeClippedSubviews={true}
+      initialNumToRender={5}
+      maxToRenderPerBatch={5}
+      windowSize={5}
+      ListHeaderComponent={ListHeader}
+      ListEmptyComponent={ListEmpty}
+      ListFooterComponent={<View style={{ height: 100 }} />}
+      contentContainerStyle={s.content}
+      keyboardShouldPersistTaps="handled"
+    />
   );
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { Compass, MapPin, Plane, Users } from 'lucide-react-native';
+import { Compass, MapPin, Plane, Trash2, Users, X } from 'lucide-react-native';
 
 import { useAuth } from '@/lib/auth';
 import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
@@ -49,6 +50,8 @@ import {
   getLifetimeStats,
   getMoments,
   getSavedPlaces,
+  archiveTrip,
+  discardDraftTrip,
 } from '@/lib/supabase';
 import { getQuickTrips } from '@/lib/quickTrips';
 import { fetchDestinationPhotos } from '@/lib/google-places';
@@ -225,6 +228,7 @@ export default function HomeScreen() {
 
   const load = useCallback(async (force = false) => {
     try {
+      setLoading(true);
       setError(undefined);
       let t = await getActiveTrip(force);
       // Retry twice if RLS returned 0 rows (auth token race)
@@ -236,9 +240,10 @@ export default function HomeScreen() {
         await new Promise(r => setTimeout(r, 1500));
         t = await getActiveTrip(true);
       }
-      // Only update state if we got a trip — never overwrite cache with null
+      // Always sync trip state with getActiveTrip result so completed
+      // trips don't stay stuck in state after they're archived
+      setTrip(t);
       if (t) {
-        setTrip(t);
         await cacheSet('trip:active', t);
         if (t.hotelLat && t.hotelLng) setHotelCoords(t.hotelLat, t.hotelLng);
       }
@@ -319,43 +324,60 @@ export default function HomeScreen() {
           const daysAway = (tripStart - Date.now()) / MS_PER_DAY;
           setPhase(daysAway > 7 ? 'planning' : 'upcoming');
         }
-      } else {
+      }
+
+      // Always fetch returning-user data — needed for ReturningUserHome
+      // even when an active trip exists (e.g. My Trips tab navigation)
+      const [allTrips, quick, stats] = await Promise.all([
+        getAllUserTrips('').catch(() => [] as Trip[]),
+        getQuickTrips().catch(() => [] as QuickTrip[]),
+        getLifetimeStats('').catch(() => null),
+      ]);
+      const now = Date.now();
+      const completed = allTrips.filter(tripItem => {
+        if (tripItem.status !== 'Completed') return false;
+        const end = tripItem.endDate ? new Date(tripItem.endDate).getTime() + 86400000 : 0;
+        return end > 0 && now > end;
+      });
+      setReturningPastTrips(completed);
+      setReturningDraftTrips(allTrips.filter(tripItem => tripItem.status === 'Planning'));
+      setReturningQuickTrips(quick);
+      setReturningStats(stats);
+
+      // Fetch recent moments + saved places from recent completed trips
+      if (completed.length > 0) {
+        const recentTripIds = completed.slice(0, 3).map(t => t.id);
+        const momentsResults = await Promise.all(
+          recentTripIds.map(id => getMoments(id).catch(() => [] as Moment[]))
+        );
+        const allMoments = momentsResults
+          .flat()
+          .filter(m => m.photo?.startsWith('http'))
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 10);
+        setReturningMoments(allMoments);
+
+        const [recentSaved] = await Promise.all([
+          getSavedPlaces(completed[0].id).catch(() => [] as Place[]),
+        ]);
+        setReturningSavedPlaces(recentSaved.filter(p => p.saved));
+      }
+      // Resolve user name from profiles table first, then auth metadata fallback
+      if (user) {
+        const { getProfile } = await import('@/lib/supabase');
+        const profile = await getProfile(user.id).catch(() => null);
+        if (profile?.fullName) {
+          setUserName(profile.fullName.split(' ')[0]);
+          if (profile.avatarUrl) setUserAvatar(profile.avatarUrl);
+        } else {
+          setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? '');
+          if (user.user_metadata?.avatar_url) setUserAvatar(user.user_metadata.avatar_url);
+        }
+      }
+
+      if (!t) {
         setFlights([]);
         setMoments([]);
-        // No active trip — fetch returning-user data in parallel
-        const [allTrips, quick, stats] = await Promise.all([
-          getAllUserTrips('').catch(() => [] as Trip[]),
-          getQuickTrips().catch(() => [] as QuickTrip[]),
-          getLifetimeStats('').catch(() => null),
-        ]);
-        const completed = allTrips.filter(t => t.status === 'Completed');
-        setReturningPastTrips(completed);
-        setReturningDraftTrips(allTrips.filter(t => t.status === 'Planning'));
-        setReturningQuickTrips(quick);
-        setReturningStats(stats);
-
-        // Fetch recent moments + saved places from most recent completed trip
-        if (completed.length > 0) {
-          const recentTripId = completed[0].id;
-          const [recentMoments, recentSaved] = await Promise.all([
-            getMoments(recentTripId).catch(() => [] as Moment[]),
-            getSavedPlaces(recentTripId).catch(() => [] as Place[]),
-          ]);
-          setReturningMoments(recentMoments.filter(m => m.photo?.startsWith('http')).slice(0, 10));
-          setReturningSavedPlaces(recentSaved.filter(p => p.saved));
-        }
-        // Resolve user name from profiles table first, then auth metadata fallback
-        if (user) {
-          const { getProfile } = await import('@/lib/supabase');
-          const profile = await getProfile(user.id).catch(() => null);
-          if (profile?.fullName) {
-            setUserName(profile.fullName.split(' ')[0]);
-            if (profile.avatarUrl) setUserAvatar(profile.avatarUrl);
-          } else {
-            setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? '');
-            if (user.user_metadata?.avatar_url) setUserAvatar(user.user_metadata.avatar_url);
-          }
-        }
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Unable to load trip');
@@ -565,6 +587,12 @@ export default function HomeScreen() {
             onPlanTrip={() => router.push('/onboarding')}
             onTripPress={(id) => router.push(`/trip-recap?tripId=${id}`)}
             onDraftTripPress={(id) => router.push({ pathname: '/(tabs)/trip', params: { tripId: id } })}
+            onArchiveDraft={async (id) => {
+              try {
+                await archiveTrip(id);
+                load(true);
+              } catch {}
+            }}
             onQuickTripPress={(id) => router.push(`/quick-trip-detail?quickTripId=${id}`)}
             onAddQuickTrip={() => router.push('/quick-trip-create')}
             onAddMoment={() => router.push(`/add-moment?tripId=${returningPastTrips[0]?.id ?? ''}`)}
@@ -711,11 +739,50 @@ export default function HomeScreen() {
               />
             ) : phase === 'planning' ? (
               <View style={styles.planningCard}>
-                <Text style={styles.planningEmoji}>🗺️</Text>
-                <Text style={styles.planningTitle}>Planning your trip</Text>
-                <Text style={styles.planningSubtitle}>
-                  {trip.destination} · {formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}
-                </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                  <View style={{ alignItems: 'center', flex: 1 }}>
+                    <Text style={styles.planningEmoji}>🗺️</Text>
+                    <Text style={styles.planningTitle}>Planning your trip</Text>
+                    <Text style={styles.planningSubtitle}>
+                      {trip.destination} · {formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={{ padding: 6, marginTop: -4, marginRight: -4 }}
+                    onPress={() => {
+                      const isDraft = trip.isDraft;
+                      Alert.alert(
+                        isDraft ? 'Delete draft?' : 'Archive this trip?',
+                        isDraft
+                          ? 'This draft trip will be permanently removed.'
+                          : 'It will move to your past trips without generating a memory.',
+                        [
+                          { text: 'Keep', style: 'cancel' },
+                          {
+                            text: isDraft ? 'Delete' : 'Archive',
+                            style: 'destructive',
+                            onPress: async () => {
+                              try {
+                                if (isDraft) {
+                                  await discardDraftTrip(trip.id);
+                                } else {
+                                  await archiveTrip(trip.id);
+                                }
+                                load(true);
+                              } catch (e: any) {
+                                Alert.alert('Error', e?.message ?? 'Could not remove trip');
+                              }
+                            },
+                          },
+                        ],
+                      );
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityLabel={trip.isDraft ? 'Delete draft' : 'Archive trip'}
+                  >
+                    <X size={18} color={colors.text3} />
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.planningNudges}>
                   {showFlightFeatures && (
                     <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/trip')}>
