@@ -34,6 +34,7 @@ import {
   createTrip,
   joinTripByCode,
   saveDraftTrip,
+  updateProfile,
 } from '@/lib/supabase';
 import { scanTripDocuments } from '@/lib/anthropic';
 import { formatDatePHT, MS_PER_DAY } from '@/lib/utils';
@@ -781,6 +782,9 @@ export default function OnboardingScreen() {
       }
 
       await cacheSet('onboarding_complete', true);
+      if (user?.id) {
+        await updateProfile(user.id, { onboardedAt: new Date().toISOString() }).catch(() => {});
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace('/(tabs)/home' as never);
     } catch (e: any) {

@@ -3,7 +3,8 @@ import { useAuth } from '@/lib/auth';
 import { useEffect, useState } from 'react';
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { getActiveTrip } from '@/lib/supabase';
+import { deriveUserStatus } from '@/lib/userStatus';
+import { supabase } from '@/lib/supabase';
 
 export default function Index() {
   const { session, loading } = useAuth();
@@ -20,23 +21,30 @@ export default function Index() {
         // Check cache flag first
         const flag = await cacheGet<boolean>('onboarding_complete');
         if (flag) {
+          console.log('[Index] onboarding flag cached — skipping check');
           setOnboarded(true);
           return;
         }
 
-        // No cache flag — check if user has existing trips in Supabase
-        // This handles OTA updates or cache clears gracefully
-        const trip = await getActiveTrip().catch(() => null);
-        if (trip) {
+        // Ensure Supabase auth token is fully propagated before querying
+        const { data: authData } = await supabase.auth.getUser();
+        console.log('[Index] auth user:', authData.user?.id?.slice(0, 8));
+
+        // Derive status from Supabase trips.
+        // Retries are built into deriveUserStatus (auth token race on cold start)
+        const result = await deriveUserStatus(session.user.id);
+        console.log('[Index] derived status:', result.status, '| trips:', result.completedTrips.length + result.planningTrips.length + (result.activeTrip ? 1 : 0));
+
+        if (result.status !== 'new') {
           // User has trips — restore the flag and skip onboarding
           await cacheSet('onboarding_complete', true);
           setOnboarded(true);
         } else {
           setOnboarded(false);
         }
-      } catch {
+      } catch (err) {
+        console.error('[Index] error deriving status:', err);
         // Network error — if we have a session, assume onboarded
-        // Better to show home with loading than block on onboarding
         setOnboarded(true);
       }
     })();
@@ -47,7 +55,7 @@ export default function Index() {
   }
 
   if (!session) return <Redirect href="/auth/login" />;
-  if (onboarded === false) return <Redirect href="/onboarding" />;
+  if (onboarded === false) return <Redirect href="/welcome" />;
 
   return <Redirect href="/(tabs)/home" />;
 }
