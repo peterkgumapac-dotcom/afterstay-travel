@@ -11,6 +11,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
+import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
 
 interface Tile {
   id: string;
@@ -127,7 +128,7 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
     <View style={styles.section}>
       <View style={styles.grid}>
         {tiles.map((tile) => (
-          <TouchableOpacity
+          <AnimatedPressable
             key={tile.id}
             style={styles.tile}
             onPress={() => openEdit(tile)}
@@ -137,10 +138,8 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
                   'Door code',
                   tile.value === '\u2014' ? 'Not set' : tile.value,
                 );
-                Haptics.selectionAsync();
               }
             }}
-            activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel={`${tile.label}: ${showValue(tile)}`}
           >
@@ -156,7 +155,7 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
               {showValue(tile)}
             </Text>
             <Text style={styles.tileHint}>{HINT_MAP[tile.id] ?? ''}</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         ))}
       </View>
 

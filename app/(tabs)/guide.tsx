@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Linking,
@@ -30,6 +30,7 @@ import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 
 import { useTheme } from '@/constants/ThemeContext';
+import { useUserSegment } from '@/contexts/UserSegmentContext';
 import EmptyState from '@/components/shared/EmptyState';
 import { getActiveTrip } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
@@ -42,11 +43,29 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 export default function GuideScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { isTestMode, mockData } = useUserSegment();
+  const testModeRef = useRef(isTestMode);
+  testModeRef.current = isTestMode;
   const styles = useMemo(() => getStyles(colors), [colors]);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Dev test mode: apply mock trip
+  useEffect(() => {
+    if (!isTestMode || !mockData) return;
+    setTrip(mockData.trip);
+  }, [isTestMode, mockData]);
+
+  const prevTestModeGuide = useRef(isTestMode);
+  useEffect(() => {
+    if (prevTestModeGuide.current && !isTestMode) {
+      loadTrip(true);
+    }
+    prevTestModeGuide.current = isTestMode;
+  }, [isTestMode]);
+
   const loadTrip = useCallback((force = false) => {
+    if (testModeRef.current) { setRefreshing(false); return; }
     getActiveTrip(force)
       .then((t) => { if (t) setTrip(t); })
       .catch((err) => { if (__DEV__) console.warn('[Guide] loadTrip failed:', err); })
@@ -88,9 +107,9 @@ export default function GuideScreen() {
         </View>
         <EmptyState
           icon={Hotel}
-          title="No trip yet"
-          subtitle="Create a trip to see your property guide and stay details."
-          actionLabel="Get Started"
+          title="Your property guide"
+          subtitle="Book a trip to see WiFi, check-in times, door codes, house rules, and everything about your stay."
+          actionLabel="Plan a Trip"
           onAction={() => router.push('/onboarding')}
         />
       </SafeAreaView>

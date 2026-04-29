@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import {
+  Alert,
   Image,
   Pressable,
   RefreshControl,
@@ -24,19 +25,25 @@ import {
   Moon,
   Plus,
   TreePalm,
+  X,
 } from 'lucide-react-native';
 
 import ProfileRow from './ProfileRow';
+import { TripCollage } from '@/components/trip/TripCollage';
 import QuickTripRow from '@/components/quick-trips/QuickTripRow';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
-import { archiveTrip, discardDraftTrip } from '@/lib/supabase';
+import { archiveTrip, discardDraftTrip, softDeleteTrip } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Moment, Place, Trip } from '@/lib/types';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import type { LifetimeStats } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
+
+const { width: SCREEN_W } = require('react-native').Dimensions.get('window');
+const ALBUM_W = SCREEN_W - 56;
+const ALBUM_H = Math.round(ALBUM_W * 0.65);
 
 const COUNTRY_FLAGS: Record<string, string> = {
   JP: '\u{1F1EF}\u{1F1F5}', VN: '\u{1F1FB}\u{1F1F3}', PH: '\u{1F1F5}\u{1F1ED}',
@@ -71,6 +78,8 @@ interface ReturningUserHomeProps {
   onRefresh?: () => void;
   /** True when stale data is being revalidated in the background. */
   isStale?: boolean;
+  /** Daily tracker strip rendered from home.tsx */
+  dailyTrackerSlot?: React.ReactNode;
 }
 
 export default function ReturningUserHome({
@@ -98,6 +107,7 @@ export default function ReturningUserHome({
   refreshing = false,
   onRefresh,
   isStale = false,
+  dailyTrackerSlot,
 }: ReturningUserHomeProps) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -106,6 +116,22 @@ export default function ReturningUserHome({
   const recentTrips = pastTrips.slice(0, 3);
   const hasDrafts = draftTrips.length > 0;
   const hasUpcoming = upcomingTrips.length > 0 || draftTrips.some((t) => t.status === 'Planning');
+
+  // All trips combined for the album strip (active first, then upcoming, then past)
+  const allRecentTrips = useMemo(() => {
+    const all = [
+      ...activeTrips,
+      ...upcomingTrips,
+      ...pastTrips,
+    ].filter((t) => !t.deletedAt && !t.isDraft);
+    // Dedupe by id
+    const seen = new Set<string>();
+    return all.filter((t) => {
+      if (seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    });
+  }, [activeTrips, upcomingTrips, pastTrips]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -217,34 +243,92 @@ export default function ReturningUserHome({
           )}
         </Animated.View>
 
-        {/* ── 3. RECENT MOMENTS CAROUSEL ── */}
-        {recentMoments.length > 0 && (
+        {/* ── 2b. DAILY TRACKER ── */}
+        {dailyTrackerSlot}
+
+        {/* ── 3. RECENT TRIPS ── */}
+        {allRecentTrips.length > 0 && (
           <Animated.View entering={FadeInDown.delay(120).duration(400)}>
             <View style={s.sectionHeader}>
-              <Text style={s.sectionKicker}>RECENT MOMENTS</Text>
+              <Text style={s.sectionKicker}>{`MY TRIPS \u00B7 ${allRecentTrips.length}`}</Text>
               <TouchableOpacity onPress={onSeeAllTrips} style={s.seeAllBtn}>
                 <Text style={s.seeAllText}>All</Text>
                 <ChevronRight size={14} color={colors.accent} />
               </TouchableOpacity>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.momentScroll}>
-              {recentMoments.map((m) => (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.albumScroll} contentContainerStyle={s.albumScrollContent}>
+              {allRecentTrips.slice(0, 6).map((t) => {
+                const flag = COUNTRY_FLAGS[t.countryCode ?? ''] ?? '\u{1F30D}';
+                const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={s.albumCard}
+                    onPress={() => onTripPress(t.id)}
+                    onLongPress={() => {
+                      Alert.alert(
+                        t.destination ?? t.name ?? 'Trip',
+                        'What would you like to do?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Archive',
+                            onPress: async () => {
+                              try { await archiveTrip(t.id); onRefresh?.(); } catch {}
+                            },
+                          },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: async () => {
+                              try { await softDeleteTrip(t.id); onRefresh?.(); } catch {}
+                            },
+                          },
+                        ],
+                      );
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <TripCollage tripId={t.id} width={ALBUM_W} height={ALBUM_H} />
+                    <View style={s.albumOverlay} />
+                    {t.status === 'Active' && <View style={[s.albumDot, { backgroundColor: colors.success }]} />}
+                    {t.isDraft && <View style={s.albumBadge}><Text style={s.albumBadgeText}>Draft</Text></View>}
+                    <View style={s.albumInfo}>
+                      <Text style={s.albumDest} numberOfLines={1}>{t.destination ?? t.name}</Text>
+                      <Text style={s.albumDates} numberOfLines={1}>
+                        {formatDatePHT(t.startDate)} {'\u2013'} {formatDatePHT(t.endDate)}
+                      </Text>
+                      {nights > 0 && (
+                        <View style={s.albumMetaRow}>
+                          <Moon size={10} color="rgba(255,255,255,0.7)" />
+                          <Text style={s.albumMetaText}>{nights}n</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+              {/* Quick trips inline with a badge */}
+              {quickTrips.slice(0, 4).map((qt) => (
                 <TouchableOpacity
-                  key={m.id}
-                  style={s.momentCard}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    const tripId = pastTrips[0]?.id;
-                    if (tripId) onTripPress(tripId);
-                  }}
+                  key={`qt-${qt.id}`}
+                  style={s.albumCard}
+                  onPress={() => onQuickTripPress(qt.id)}
+                  activeOpacity={0.8}
                 >
-                  <Image source={{ uri: m.photo! }} style={s.momentImage} />
-                  <View style={s.momentOverlay}>
-                    <Text style={s.momentPlace} numberOfLines={1}>
-                      {m.location || pastTrips[0]?.destination || ''}
-                    </Text>
-                    <Text style={s.momentDay}>
-                      {formatDatePHT(m.date)}
+                  {qt.coverPhotoUrl ? (
+                    <Image source={{ uri: qt.coverPhotoUrl }} style={{ width: ALBUM_W, height: ALBUM_H }} />
+                  ) : (
+                    <View style={[s.albumCardBg, { backgroundColor: colors.card2 }]}>
+                      <Text style={{ fontSize: 32 }}>{'\u{1F4F8}'}</Text>
+                    </View>
+                  )}
+                  <View style={s.albumOverlay} />
+                  <View style={s.albumBadge}><Text style={s.albumBadgeText}>Quick Trip</Text></View>
+                  <View style={s.albumInfo}>
+                    <Text style={s.albumDest} numberOfLines={1}>{qt.placeName || qt.title}</Text>
+                    <Text style={s.albumDates} numberOfLines={1}>
+                      {formatDatePHT(qt.createdAt)}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -351,6 +435,34 @@ export default function ReturningUserHome({
                   key={t.id}
                   style={s.draftRow}
                   onPress={() => onDraftTripPress(t.id)}
+                  onLongPress={() => {
+                    Alert.alert(
+                      t.destination ?? t.name ?? 'Draft trip',
+                      'What would you like to do with this draft?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Archive',
+                          onPress: async () => {
+                            try {
+                              await archiveTrip(t.id);
+                              onRefresh?.();
+                            } catch {}
+                          },
+                        },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await discardDraftTrip(t.id);
+                              onRefresh?.();
+                            } catch {}
+                          },
+                        },
+                      ],
+                    );
+                  }}
                   activeOpacity={0.7}
                 >
                   <View style={s.draftIcon}>
@@ -360,7 +472,31 @@ export default function ReturningUserHome({
                     <Text style={s.draftTitle} numberOfLines={1}>{t.destination ?? t.name}</Text>
                     <Text style={s.draftDates}>{formatDatePHT(t.startDate)} {'\u2013'} {formatDatePHT(t.endDate)}</Text>
                   </View>
-                  <ChevronRight size={16} color={colors.text3} />
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        'Delete draft?',
+                        'This draft trip will be permanently removed.',
+                        [
+                          { text: 'Keep', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: async () => {
+                              try {
+                                await discardDraftTrip(t.id);
+                                onRefresh?.();
+                              } catch {}
+                            },
+                          },
+                        ],
+                      );
+                    }}
+                    hitSlop={8}
+                    style={s.draftDeleteBtn}
+                  >
+                    <X size={16} color={colors.text3} />
+                  </TouchableOpacity>
                 </TouchableOpacity>
               ))}
             </View>
@@ -392,19 +528,7 @@ export default function ReturningUserHome({
           </Animated.View>
         )}
 
-        {/* ── 7. SEE ALL TRIPS CTA ── */}
-        {(upcomingTrips.length > 3 || activeTrips.length > 3 || pastTrips.length > 0) && (
-          <Animated.View entering={FadeInDown.delay(260).duration(400)} style={{ marginBottom: 24 }}>
-            <TouchableOpacity
-              style={[s.ctaCard, { borderStyle: 'solid', backgroundColor: colors.card }]}
-              onPress={onSeeAllTrips}
-              activeOpacity={0.7}
-            >
-              <Text style={s.ctaTitle}>View all trips</Text>
-              <Text style={s.ctaSub}>Past, upcoming, and drafts in one place.</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
+        {/* (View all trips CTA removed — album strip is sufficient) */}
 
         {/* ── 8. NO UPCOMING TRIPS CTA ── */}
         {!hasUpcoming && (
@@ -528,19 +652,43 @@ const getStyles = (colors: ThemeColors) =>
     seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     seeAllText: { fontSize: 13, fontWeight: '600', color: colors.accent },
 
-    // Moments carousel
-    momentScroll: { marginHorizontal: -spacing.lg, paddingHorizontal: spacing.lg, marginBottom: 24 },
-    momentCard: {
-      width: 140, height: 180, borderRadius: 16, overflow: 'hidden', marginRight: 10,
+    // Trip album cards
+    albumScroll: { marginHorizontal: -spacing.lg, marginBottom: 24 },
+    albumScrollContent: { paddingHorizontal: spacing.lg, gap: 10 },
+    albumCard: {
+      width: ALBUM_W, height: ALBUM_H, borderRadius: 16, overflow: 'hidden',
+      backgroundColor: colors.card,
     },
-    momentImage: { width: '100%', height: '100%' },
-    momentOverlay: {
+    albumCardBg: {
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    albumOverlay: {
+      position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%',
+      backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    albumDot: {
+      position: 'absolute', top: 10, right: 10,
+      width: 8, height: 8, borderRadius: 4,
+      borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.3)',
+    },
+    albumBadge: {
+      position: 'absolute', top: 10, left: 10,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+    },
+    albumBadgeText: {
+      fontSize: 9, fontWeight: '700', color: '#fff',
+      textTransform: 'uppercase', letterSpacing: 0.5,
+    },
+    albumInfo: {
       position: 'absolute', bottom: 0, left: 0, right: 0,
-      paddingHorizontal: 10, paddingVertical: 8,
-      backgroundColor: 'rgba(0,0,0,0.35)',
+      padding: 12, backgroundColor: 'rgba(0,0,0,0.4)',
     },
-    momentPlace: { fontSize: 12, fontWeight: '700', color: '#fff' },
-    momentDay: { fontSize: 10, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
+    albumDest: { fontSize: 14, fontWeight: '700', color: '#fff', letterSpacing: -0.2 },
+    albumDates: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+    albumMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+    albumMetaText: { fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
 
     // Trips
     tripsList: { gap: 8, marginBottom: 24 },
@@ -573,6 +721,11 @@ const getStyles = (colors: ThemeColors) =>
     },
     draftTitle: { fontSize: 14, fontWeight: '600', color: colors.text },
     draftDates: { fontSize: 11, color: colors.text3, marginTop: 2 },
+    draftDeleteBtn: {
+      width: 32, height: 32, borderRadius: 16,
+      alignItems: 'center' as const, justifyContent: 'center' as const,
+      marginLeft: 4,
+    },
 
     // Saved places
     savedScroll: { marginHorizontal: -spacing.lg, paddingHorizontal: spacing.lg, marginBottom: 24 },

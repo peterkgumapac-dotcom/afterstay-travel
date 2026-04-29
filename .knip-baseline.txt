@@ -1,4 +1,4 @@
-Unused files (62)
+Unused files (65)
 .agents/skills/expo-cicd-workflows/scripts/fetch.js: .agents/skills/expo-cicd-workflows/scripts/fetch.js
 .agents/skills/expo-cicd-workflows/scripts/validate.js: .agents/skills/expo-cicd-workflows/scripts/validate.js
 .claude/skills/expo-cicd-workflows/scripts/fetch.js: .claude/skills/expo-cicd-workflows/scripts/fetch.js
@@ -14,10 +14,10 @@ components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
 components/discover/DiscoverSkeleton.tsx: components/discover/DiscoverSkeleton.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
 components/home/HomeSkeleton.tsx: components/home/HomeSkeleton.tsx
+components/home/MomentsShowcase.tsx: components/home/MomentsShowcase.tsx
 components/home/QuickAccessGrid.tsx: components/home/QuickAccessGrid.tsx
 components/home/SmartNudges.tsx: components/home/SmartNudges.tsx
 components/moments/Avatar.tsx: components/moments/Avatar.tsx
-components/moments/BentoLayout.tsx: components/moments/BentoLayout.tsx
 components/moments/DayChips.tsx: components/moments/DayChips.tsx
 components/moments/DayRail.tsx: components/moments/DayRail.tsx
 components/moments/DaySectionHeader.tsx: components/moments/DaySectionHeader.tsx
@@ -28,6 +28,9 @@ components/moments/MomentsSkeleton.tsx: components/moments/MomentsSkeleton.tsx
 components/moments/MosaicLayout.tsx: components/moments/MosaicLayout.tsx
 components/moments/MosaicTile.tsx: components/moments/MosaicTile.tsx
 components/moments/PhotoActionSheet.tsx: components/moments/PhotoActionSheet.tsx
+components/moments/PhotoGrid.tsx: components/moments/PhotoGrid.tsx
+components/moments/PhotoItem.tsx: components/moments/PhotoItem.tsx
+components/moments/SelectionOverlay.tsx: components/moments/SelectionOverlay.tsx
 components/moments/StatBlock.tsx: components/moments/StatBlock.tsx
 components/moments/TripRecapModal.tsx: components/moments/TripRecapModal.tsx
 components/moments/recaps/MinimalTemplate.tsx: components/moments/recaps/MinimalTemplate.tsx
@@ -65,7 +68,7 @@ Unused dependencies (1)
 package.json: base64-arraybuffer, buffer, exifr, expo-auth-session, expo-background-fetch, expo-blur, expo-build-properties, expo-calendar, expo-camera, expo-crypto, expo-device, expo-mcp, expo-symbols, react-native-maps
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
-Unused exports (24)
+Unused exports (25)
 components/discover/CategoryGrid.tsx: CategoryGrid
 components/discover/ExploreMap.tsx: MAP_AVAILABLE
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
@@ -73,7 +76,7 @@ components/discover/TrendingCard.tsx: TrendingCard
 components/discover/shared.tsx: resolveTypeLabel, formatReviewCount
 components/trip/tripConstants.ts: mapFlightToDisplay
 constants/ThemeContext.tsx: lightColors
-constants/animations.ts: colors, stagger
+constants/animations.ts: colors, durations, stagger
 constants/fateTheme.ts: personColors, fateTiming
 hooks/useFilmFilters.ts: getFilter
 hooks/useTabHomeData.ts: preloadHomeData, invalidateHomeCache
@@ -86,15 +89,17 @@ lib/cache/mediaCache.ts: migrateMediaCache, evictCachedImage
 lib/cache/sqliteCache.ts: getCachedPhotoById, clearPhotoCache, setOfflineFavorite, getOfflineFavorites, getCacheStats
 lib/distance.ts: haversine
 lib/google-places.ts: findPlacePhoto, enrichRecommendations
+lib/mockData.ts: getMockDataForSegment
 lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, getCategoryForType
 lib/quickTrips.ts: getQuickTripExpenseSummary
 lib/tabDataCache.ts: setCachedData, hasCachedData, useCachedPromise, useCachedData
 lib/utils.ts: tripStatusLabel
-Unused exported types (13)
+Unused exported types (14)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
 hooks/useCurationGesture.ts: CurationAction
+hooks/useHomeScreen.ts: TripPhase
 hooks/useTabMoments.ts: TripMomentsData
 lib/anthropic.ts: ItineraryDayLegacy, GeneratedMemoryContent
 lib/cache/sqliteCache.ts: CachedPhotoMeta

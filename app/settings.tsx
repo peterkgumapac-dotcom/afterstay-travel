@@ -41,6 +41,7 @@ import { spacing, radius } from '@/constants/theme';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { useUserSegment, setSegmentOverride, getSegmentOverride } from '@/contexts/UserSegmentContext';
+import { MOCK_KEYS, MOCK_LABELS, MOCK_DESCRIPTIONS, type MockKey } from '@/lib/mockData';
 import {
   getActiveTrip,
   getProfile,
@@ -481,6 +482,33 @@ export default function SettingsScreen() {
             </View>
           ))}
         </View>
+
+        {/* Test Notification */}
+        {user?.email === 'peterkgumapac@gmail.com' && (
+          <>
+            <SectionLabel label="Notifications" textColor={colors.text3} />
+            <TouchableOpacity
+              style={s.card}
+              activeOpacity={0.7}
+              onPress={async () => {
+                const Notifs = await import('expo-notifications');
+                await Notifs.scheduleNotificationAsync({
+                  content: {
+                    title: 'AfterStay \u00B7 Trip Reminder',
+                    body: 'Your Boracay trip memories are waiting! Tap to relive the moments.',
+                    sound: 'default',
+                  },
+                  trigger: { seconds: 2, channelId: 'default' } as any,
+                });
+                Alert.alert('Sent', 'Test notification in 2 seconds');
+              }}
+            >
+              <Bell size={18} color={colors.accent} />
+              <Text style={s.cardTitle}>Send Test Notification</Text>
+              <ChevronRight size={16} color={colors.text3} />
+            </TouchableOpacity>
+          </>
+        )}
 
         {/* Dev Test Mode — only for peterkgumapac@gmail.com */}
         {user?.email === 'peterkgumapac@gmail.com' && <DevSegmentSection colors={colors} />}
@@ -1059,88 +1087,186 @@ const styles = StyleSheet.create({
   },
 });
 
-/* ---------- Dev Segment Override (test mode) ---------- */
-
-const SEGMENTS: UserSegment[] = ['new', 'planning', 'active', 'returning'];
+/* ---------- Dev Panel (test mode) ---------- */
 
 type ThemeColorsLocal = ReturnType<typeof useTheme>['colors'];
 
 function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
   const { segment, isTestMode, refresh } = useUserSegment();
-  const [override, setOverride] = useState<UserSegment | null>(null);
+  const [override, setOverride] = useState<MockKey | null>(null);
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
-    getSegmentOverride().then(setOverride);
+    getSegmentOverride().then((val) => {
+      setOverride(val);
+      setEnabled(val !== null);
+    });
   }, []);
 
-  const handleSelect = async (seg: UserSegment | null) => {
-    await setSegmentOverride(seg);
-    setOverride(seg);
+  const handleToggle = async (on: boolean) => {
+    setEnabled(on);
+    if (!on) {
+      await setSegmentOverride(null);
+      setOverride(null);
+      await refresh();
+    } else if (!override) {
+      await setSegmentOverride('new');
+      setOverride('new');
+      await refresh();
+    }
+  };
+
+  const handleSelect = async (key: MockKey) => {
+    await setSegmentOverride(key);
+    setOverride(key);
     await refresh();
+  };
+
+  const handleClearCache = async () => {
+    await AsyncStorage.clear();
+    Alert.alert('Cache Cleared', 'All AsyncStorage data has been wiped. Restart the app.');
+  };
+
+  const handleResetOnboarding = async () => {
+    const { cacheSet: cs } = await import('@/lib/cache');
+    await cs('onboarding_complete', false);
+    Alert.alert('Onboarding Reset', 'Next cold start will show the welcome flow.');
+  };
+
+  const handleForceRefresh = async () => {
+    await refresh();
+    Alert.alert('Refreshed', 'Segment context reloaded from server.');
   };
 
   return (
     <>
       <SectionLabel label="Developer" textColor="#c4554a" />
+
+      {/* Master toggle */}
       <View style={{
         backgroundColor: colors.card,
         borderRadius: radius.md,
         borderWidth: 1,
-        borderColor: isTestMode ? '#c4554a' : colors.border,
+        borderColor: enabled ? '#c4554a' : colors.border,
         padding: 16,
-        gap: 12,
+        gap: 14,
       }}>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-          User Segment Override
-        </Text>
-        <Text style={{ fontSize: 11, color: colors.text3 }}>
-          Current real segment: {segment}{isTestMode ? ' (overridden)' : ''}
-        </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {SEGMENTS.map((seg) => {
-            const active = override === seg;
-            return (
-              <TouchableOpacity
-                key={seg}
-                onPress={() => handleSelect(active ? null : seg)}
-                activeOpacity={0.7}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: radius.pill,
-                  backgroundColor: active ? '#c4554a' : colors.card2,
-                  borderWidth: 1,
-                  borderColor: active ? '#c4554a' : colors.border,
-                }}
-              >
-                <Text style={{
-                  fontSize: 12,
-                  fontWeight: '700',
-                  color: active ? '#fff' : colors.text2,
-                }}>
-                  {seg}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        {override && (
-          <TouchableOpacity
-            onPress={() => handleSelect(null)}
-            activeOpacity={0.7}
-            style={{
-              alignSelf: 'flex-start',
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: radius.sm,
-              backgroundColor: colors.card2,
-            }}
-          >
-            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text3 }}>
-              Clear override
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
+              Test Mode
             </Text>
-          </TouchableOpacity>
+            <Text style={{ fontSize: 11, color: colors.text3, marginTop: 2 }}>
+              Override user segment with mock data
+            </Text>
+          </View>
+          <Switch
+            value={enabled}
+            onValueChange={handleToggle}
+            trackColor={{ false: colors.border, true: '#c4554a' }}
+            thumbColor="#fff"
+          />
+        </View>
+
+        {enabled && (
+          <>
+            {/* Current real segment info */}
+            <View style={{
+              backgroundColor: colors.bg2,
+              borderRadius: radius.sm,
+              padding: 10,
+            }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: colors.text3, textTransform: 'uppercase', letterSpacing: 1 }}>
+                Real segment
+              </Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent, marginTop: 2 }}>
+                {segment}{isTestMode ? ` (showing: ${override})` : ''}
+              </Text>
+            </View>
+
+            {/* Segment picker */}
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text2, textTransform: 'uppercase', letterSpacing: 1 }}>
+              Simulate as
+            </Text>
+            <View style={{ gap: 8 }}>
+              {MOCK_KEYS.map((key) => {
+                const active = override === key;
+                const isSubPhase = key.startsWith('active:');
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    onPress={() => handleSelect(key)}
+                    activeOpacity={0.7}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      padding: 12,
+                      paddingLeft: isSubPhase ? 24 : 12,
+                      borderRadius: radius.sm,
+                      backgroundColor: active ? '#c4554a' : colors.card2,
+                      borderWidth: 1,
+                      borderColor: active ? '#c4554a' : colors.border,
+                      gap: 10,
+                    }}
+                  >
+                    <View style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: active ? '#fff' : isSubPhase ? colors.accent : colors.text3,
+                    }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{
+                        fontSize: 13,
+                        fontWeight: '700',
+                        color: active ? '#fff' : colors.text,
+                      }}>
+                        {MOCK_LABELS[key]}
+                      </Text>
+                      <Text style={{
+                        fontSize: 11,
+                        color: active ? 'rgba(255,255,255,0.7)' : colors.text3,
+                        marginTop: 1,
+                      }}>
+                        {MOCK_DESCRIPTIONS[key]}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
         )}
+      </View>
+
+      {/* Dev tools */}
+      <View style={{
+        backgroundColor: colors.card,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 16,
+        gap: 10,
+        marginTop: 12,
+      }}>
+        <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text2, textTransform: 'uppercase', letterSpacing: 1 }}>
+          Dev Tools
+        </Text>
+        <TouchableOpacity onPress={handleForceRefresh} activeOpacity={0.7}
+          style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Force Refresh Segment</Text>
+          <Text style={{ fontSize: 11, color: colors.text3 }}>Re-derive segment from Supabase</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleResetOnboarding} activeOpacity={0.7}
+          style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Reset Onboarding</Text>
+          <Text style={{ fontSize: 11, color: colors.text3 }}>Show welcome slides on next launch</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleClearCache} activeOpacity={0.7}
+          style={{ paddingVertical: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>Clear All Cache</Text>
+          <Text style={{ fontSize: 11, color: colors.text3 }}>Wipe AsyncStorage (requires restart)</Text>
+        </TouchableOpacity>
       </View>
     </>
   );

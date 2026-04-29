@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, CalendarDays, ChevronDown, ChevronRight, Filter, Map, Search, SlidersHorizontal, Sparkles, ThumbsUp, Users, Vote } from 'lucide-react-native';
+import { Bookmark, CalendarDays, ChevronDown, ChevronRight, Filter, Map, MapPin, Search, SlidersHorizontal, Sparkles, ThumbsUp, Users, Vote } from 'lucide-react-native';
 
 import EmptyState from '@/components/shared/EmptyState';
 import { SwipeToDelete } from '@/components/shared/SwipeToDelete';
@@ -41,7 +41,7 @@ import { MS_PER_DAY } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
 import ExploreMap from '@/components/discover/ExploreMap';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { searchNearby, type NearbyPlace } from '@/lib/google-places';
+import { searchNearby, placeAutocomplete, getPlaceLocation, type NearbyPlace } from '@/lib/google-places';
 import {
   addPlace,
   getActiveTrip,
@@ -395,7 +395,9 @@ function DiscoverScreenInner() {
   const { colors } = useTheme();
   const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
-  const { segment } = useUserSegment();
+  const { segment, isTestMode, mockData } = useUserSegment();
+  const testModeRef = useRef(isTestMode);
+  testModeRef.current = isTestMode;
 
   const [tab, setTab] = useState<TabId>(segment === 'returning' || segment === 'new' ? 'stays' : 'places');
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
@@ -407,6 +409,16 @@ function DiscoverScreenInner() {
   const [filters, setFilters] = useState<FilterState>({ ...DEFAULT_FILTERS });
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
+
+  // Destination explorer (no-trip mode)
+  const [exploreCoords, setExploreCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [exploreDest, setExploreDest] = useState('');
+  const [exploreQuery, setExploreQuery] = useState('');
+  const [exploreResults, setExploreResults] = useState<{ placeId: string; description: string }[]>([]);
+  const exploreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Wishlist (no-trip saves)
+  const [wishlistItems, setWishlistItems] = useState<import('@/lib/types').WishlistItem[]>([]);
 
   // API-wired state
   const [tripId, setTripId] = useState<string | null>(null);
@@ -483,17 +495,21 @@ function DiscoverScreenInner() {
   const [tripBudgetCurrency, setTripBudgetCurrency] = useState('PHP');
 
 
+  // Effective coords: trip hotel → explore destination → null
+  const effectiveCoords = tripCoords ?? exploreCoords;
+  const effectiveDest = tripDest || exploreDest;
+
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
     if (placeLat == null || placeLng == null) return 0;
     if (distanceOrigin === 'me' && userLocation) {
       return distanceFromPoint(userLocation.lat, userLocation.lng, placeLat, placeLng);
     }
-    if (tripCoords) {
-      return distanceFromPoint(tripCoords.lat, tripCoords.lng, placeLat, placeLng);
+    if (effectiveCoords) {
+      return distanceFromPoint(effectiveCoords.lat, effectiveCoords.lng, placeLat, placeLng);
     }
     return 0;
-  }, [distanceOrigin, userLocation, tripCoords]);
+  }, [distanceOrigin, userLocation, effectiveCoords]);
 
   // Fetch GPS when user switches to "me"
   const switchToMyLocation = useCallback(async () => {
@@ -543,9 +559,47 @@ function DiscoverScreenInner() {
     cacheGet<'walk' | 'car'>('discover:travelMode').then((v) => { if (v) setTravelMode(v); });
   }, [switchToMyLocation]);
 
+  // Dev test mode: apply mock trip data
+  useEffect(() => {
+    if (!isTestMode || !mockData) return;
+    if (mockData.trip) {
+      setTripId(mockData.trip.id);
+      setTripDest(mockData.trip.destination ?? '');
+      setTripStartDate(mockData.trip.startDate);
+      setTripEndDate(mockData.trip.endDate);
+      setTripHotel(mockData.trip.accommodation ?? '');
+      const lat = mockData.trip.hotelLat ?? mockData.trip.latitude;
+      const lng = mockData.trip.hotelLng ?? mockData.trip.longitude;
+      if (lat != null && lng != null) setTripCoords({ lat, lng });
+      setTripMembers(mockData.members);
+      setTripGroupSize(Math.max(1, mockData.members.length));
+    } else {
+      setTripId(null);
+      setTripCoords(null);
+      setTripDest('');
+      setTripMembers([]);
+    }
+    setSavedPlaces(mockData.places as Place[]);
+    setSaved(new Set(mockData.places.filter(p => p.saved !== false).map(p => p.name)));
+  }, [isTestMode, segment, mockData]);
+
+  // Re-fetch real data when test mode turns off
+  const prevTestModeDiscover = useRef(isTestMode);
+  useEffect(() => {
+    if (prevTestModeDiscover.current && !isTestMode) {
+      // force remount-like behavior
+      setTripId(null);
+      setTripCoords(null);
+      setSavedPlaces([]);
+      setPlaces([]);
+    }
+    prevTestModeDiscover.current = isTestMode;
+  }, [isTestMode]);
+
   // Load trip ID on mount
   useEffect(() => {
     let cancelled = false;
+    if (testModeRef.current) return;
     const load = async () => {
       try {
         const trip = await getActiveTrip();
@@ -608,18 +662,44 @@ function DiscoverScreenInner() {
     if (tab === 'saved' && tripId) {
       loadSavedPlaces();
     }
+    if (tab === 'saved' && !tripId) {
+      // Load wishlist
+      (async () => {
+        const { getWishlist } = await import('@/lib/supabase');
+        setWishlistItems(await getWishlist().catch(() => []));
+      })();
+    }
   }, [tab, tripId, loadSavedPlaces]);
 
   // Search places via Google Places API
   const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false) => {
-    // Don't search if no destination is set
-    if (!tripCoords) {
+    // If no coords but user typed a keyword, auto-geocode it as a destination
+    if (!effectiveCoords && keyword?.trim()) {
+      setPlacesLoading(true);
+      try {
+        const results = await placeAutocomplete(keyword);
+        if (results.length > 0) {
+          const loc = await getPlaceLocation(results[0].placeId);
+          if (loc) {
+            setExploreCoords({ lat: loc.lat, lng: loc.lng });
+            setExploreDest(results[0].description.split(',')[0] ?? keyword);
+            setExploreQuery(results[0].description.split(',')[0] ?? keyword);
+            // Will re-trigger via effectiveCoords change
+            return;
+          }
+        }
+      } catch {}
+      setPlacesLoading(false);
+      setPlaces([]);
+      return;
+    }
+    if (!effectiveCoords) {
       setPlaces([]);
       setPlacesLoading(false);
       return;
     }
 
-    const cacheKey = `${type ?? ''}_${keyword ?? ''}_${tripCoords.lat}_${tripCoords.lng}`;
+    const cacheKey = `${type ?? ''}_${keyword ?? ''}_${effectiveCoords.lat}_${effectiveCoords.lng}`;
 
     // Use cache if available and not forced refresh
     if (!skipCache && placesCache.current[cacheKey]) {
@@ -630,9 +710,9 @@ function DiscoverScreenInner() {
     setPlacesLoading(true);
     setPlacesError(null);
     try {
-      const results = await searchNearby(type, keyword, tripCoords) ?? [];
+      const results = await searchNearby(type, keyword, effectiveCoords) ?? [];
       if (results.length > 0) {
-        const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, tripCoords ?? undefined));
+        const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords ?? undefined));
         placesCache.current[cacheKey] = mapped;
         setPlaces(mapped);
       } else {
@@ -646,7 +726,7 @@ function DiscoverScreenInner() {
       setPlacesLoading(false);
       setRefreshing(false);
     }
-  }, [tripCoords]);
+  }, [effectiveCoords]);
 
   // Load places when category chip changes
   useEffect(() => {
@@ -693,50 +773,70 @@ function DiscoverScreenInner() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     // Persist to Supabase
-    if (!tripId) return;
-    const existingPlace = savedPlaces.find((p) => p.name === name);
-    if (existingPlace) {
-      try {
-        await savePlace(existingPlace.id, !existingPlace.saved);
-      } catch {
-        // Revert on failure
-        setSaved((s) => {
-          const next = new Set(s);
-          if (existingPlace.saved) next.add(name);
-          else next.delete(name);
-          return next;
-        });
-      }
-    } else {
-      // Find the place data in current places list to save it
-      const placeData = places.find((p) => p.n === name);
-      if (placeData) {
+    if (tripId) {
+      // Save to trip
+      const existingPlace = savedPlaces.find((p) => p.name === name);
+      if (existingPlace) {
         try {
-          await addPlace({
-            tripId,
-            name: placeData.n,
-            category: (placeData.types ? resolveCategory(placeData.types) : 'Do') as PlaceCategory,
-            distance: placeData.d,
-            rating: placeData.r,
-            source: 'Manual',
-            vote: 'Pending' as PlaceVote,
-            photoUrl: placeData.img,
-            googlePlaceId: placeData.placeId,
-            latitude: placeData.lat,
-            longitude: placeData.lng,
-            totalRatings: placeData.totalRatings,
-            saved: true,
-          });
+          await savePlace(existingPlace.id, !existingPlace.saved);
         } catch {
           setSaved((s) => {
             const next = new Set(s);
-            next.delete(name);
+            if (existingPlace.saved) next.add(name);
+            else next.delete(name);
             return next;
           });
         }
+      } else {
+        const placeData = places.find((p) => p.n === name);
+        if (placeData) {
+          try {
+            await addPlace({
+              tripId,
+              name: placeData.n,
+              category: (placeData.types ? resolveCategory(placeData.types) : 'Do') as PlaceCategory,
+              distance: placeData.d,
+              rating: placeData.r,
+              source: 'Manual',
+              vote: 'Pending' as PlaceVote,
+              photoUrl: placeData.img,
+              googlePlaceId: placeData.placeId,
+              latitude: placeData.lat,
+              longitude: placeData.lng,
+              totalRatings: placeData.totalRatings,
+              saved: true,
+            });
+          } catch {
+            setSaved((s) => { const next = new Set(s); next.delete(name); return next; });
+          }
+        }
+      }
+    } else {
+      // No trip — save to wishlist
+      const placeData = places.find((p) => p.n === name);
+      if (placeData) {
+        try {
+          const { addToWishlist } = await import('@/lib/supabase');
+          await addToWishlist({
+            name: placeData.n,
+            category: placeData.types ? resolveCategory(placeData.types) : undefined,
+            googlePlaceId: placeData.placeId,
+            photoUrl: placeData.img,
+            rating: placeData.r,
+            totalRatings: placeData.totalRatings,
+            latitude: placeData.lat,
+            longitude: placeData.lng,
+            destination: effectiveDest || undefined,
+          });
+          // Refresh wishlist
+          const { getWishlist } = await import('@/lib/supabase');
+          setWishlistItems(await getWishlist());
+        } catch {
+          setSaved((s) => { const next = new Set(s); next.delete(name); return next; });
+        }
       }
     }
-  }, [tripId, savedPlaces, places]);
+  }, [tripId, savedPlaces, places, effectiveDest]);
 
   const toggleRecommend = useCallback(async (name: string) => {
     // Optimistic local update
@@ -899,7 +999,7 @@ function DiscoverScreenInner() {
       <View style={styles.topBar}>
         <View>
           <Text style={styles.title}>Discover</Text>
-          {tripDest ? <Text style={styles.subtitle}>{tripDest}</Text> : null}
+          {effectiveDest ? <Text style={styles.subtitle}>{effectiveDest}</Text> : null}
         </View>
         <TouchableOpacity
           style={styles.iconBtn}
@@ -916,6 +1016,51 @@ function DiscoverScreenInner() {
         </TouchableOpacity>
       </View>
 
+      {/* Destination search — shown when no active trip */}
+      {!tripId && (
+        <View style={styles.destSearchWrap}>
+          <TextInput
+            style={styles.destSearchInput}
+            placeholder="Where do you want to explore?"
+            placeholderTextColor={colors.text3}
+            value={exploreQuery}
+            onChangeText={(text) => {
+              setExploreQuery(text);
+              if (exploreTimer.current) clearTimeout(exploreTimer.current);
+              if (text.trim().length < 2) { setExploreResults([]); return; }
+              exploreTimer.current = setTimeout(async () => {
+                const results = await placeAutocomplete(text);
+                setExploreResults(results);
+              }, 300);
+            }}
+          />
+          {exploreResults.length > 0 && (
+            <View style={styles.destDropdown}>
+              {exploreResults.slice(0, 5).map((r) => (
+                <TouchableOpacity
+                  key={r.placeId}
+                  style={styles.destRow}
+                  onPress={async () => {
+                    const loc = await getPlaceLocation(r.placeId);
+                    if (loc) {
+                      setExploreCoords({ lat: loc.lat, lng: loc.lng });
+                      setExploreDest(r.description.split(',')[0] ?? r.description);
+                      setExploreQuery(r.description.split(',')[0] ?? r.description);
+                      setExploreResults([]);
+                      placesCache.current = {};
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <MapPin size={14} color={colors.text3} />
+                  <Text style={styles.destRowText} numberOfLines={1}>{r.description}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Segmented control */}
       <View style={styles.segWrapper}>
         <View style={styles.seg}>
@@ -924,7 +1069,7 @@ function DiscoverScreenInner() {
               id === 'places' ? 'Places'
               : id === 'stays' ? 'Stays'
               : id === 'concierge' ? '\u2728 AI'
-              : `Saved${saved.size ? ` \u00B7 ${saved.size}` : ''}`;
+              : tripId ? `Saved${saved.size ? ` \u00B7 ${saved.size}` : ''}` : `Wishlist${wishlistItems.length ? ` \u00B7 ${wishlistItems.length}` : ''}`;
             return (
               <TouchableOpacity
                 key={id}
@@ -1199,8 +1344,72 @@ function DiscoverScreenInner() {
             />
           )}
 
-          {/* ═══════ SAVED TAB ═══════ */}
-          {tab === 'saved' && (
+          {/* ═══════ SAVED / WISHLIST TAB ═══════ */}
+          {tab === 'saved' && !tripId && (
+            <View style={styles.placeList}>
+              {wishlistItems.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Bookmark size={28} color={colors.text3} strokeWidth={1.6} opacity={0.6} />
+                  <Text style={styles.emptyCardTitle}>Your wishlist is empty</Text>
+                  <Text style={styles.emptyCardBody}>
+                    Search a destination and bookmark places to save them here.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.wishlistHeader}>
+                    {wishlistItems.length} saved {wishlistItems.length === 1 ? 'place' : 'places'}
+                  </Text>
+                  {wishlistItems.map((item) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.wishlistRow}
+                      onPress={() => {
+                        if (item.googlePlaceId) {
+                          setDetailPlaceId(item.googlePlaceId);
+                          setDetailPlaceName(item.name);
+                          setShowDetail(true);
+                        }
+                      }}
+                      onLongPress={() => {
+                        Alert.alert('Remove from wishlist?', item.name, [
+                          { text: 'Keep', style: 'cancel' },
+                          {
+                            text: 'Remove',
+                            style: 'destructive',
+                            onPress: async () => {
+                              const { removeFromWishlist } = await import('@/lib/supabase');
+                              await removeFromWishlist(item.id).catch(() => {});
+                              setWishlistItems((prev) => prev.filter((w) => w.id !== item.id));
+                              setSaved((s) => { const next = new Set(s); next.delete(item.name); return next; });
+                            },
+                          },
+                        ]);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      {item.photoUrl ? (
+                        <Image source={{ uri: item.photoUrl }} style={styles.wishlistThumb} />
+                      ) : (
+                        <View style={[styles.wishlistThumb, styles.wishlistThumbFallback]}>
+                          <MapPin size={18} color={colors.text3} />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.wishlistName} numberOfLines={1}>{item.name}</Text>
+                        {item.destination && <Text style={styles.wishlistDest} numberOfLines={1}>{item.destination}</Text>}
+                        {item.rating != null && (
+                          <Text style={styles.wishlistRating}>{'\u2605'} {item.rating.toFixed(1)}</Text>
+                        )}
+                      </View>
+                      <Bookmark size={16} color={colors.accent} fill={colors.accent} />
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+            </View>
+          )}
+          {tab === 'saved' && tripId && (
             <View style={styles.placeList}>
               {savedLoading ? (
                 <View style={styles.emptyPlaces}>
@@ -1899,7 +2108,44 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text3,
     },
 
-    // Saved header
+    // Destination search
+    destSearchWrap: {
+      paddingHorizontal: 16, marginBottom: 8, zIndex: 20,
+    },
+    destSearchInput: {
+      backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
+      paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: colors.text,
+    },
+    destDropdown: {
+      marginTop: 4, backgroundColor: colors.card, borderRadius: 12,
+      borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
+    },
+    destRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingHorizontal: 14, paddingVertical: 12,
+      borderBottomWidth: 1, borderBottomColor: colors.border,
+    },
+    destRowText: { fontSize: 13, color: colors.text, flex: 1 },
+
+    // Wishlist
+    wishlistHeader: {
+      fontSize: 12, fontWeight: '600', color: colors.text3, marginBottom: 12,
+      textTransform: 'uppercase', letterSpacing: 1,
+    },
+    wishlistRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 12,
+      paddingVertical: 12, paddingHorizontal: 14,
+      backgroundColor: colors.card, borderRadius: 14,
+      borderWidth: 1, borderColor: colors.border, marginBottom: 8,
+    },
+    wishlistThumb: { width: 48, height: 48, borderRadius: 12 },
+    wishlistThumbFallback: {
+      backgroundColor: colors.card2, alignItems: 'center' as const, justifyContent: 'center' as const,
+    },
+    wishlistName: { fontSize: 14, fontWeight: '600', color: colors.text },
+    wishlistDest: { fontSize: 11, color: colors.text3, marginTop: 1 },
+    wishlistRating: { fontSize: 11, color: colors.accent, marginTop: 2 },
+
     // Group voting section
     votingSection: {
       marginBottom: 16,

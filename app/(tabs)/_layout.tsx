@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
 import { useTheme } from '@/constants/ThemeContext';
-import { UserSegmentProvider, useUserSegment } from '@/contexts/UserSegmentContext';
+import { useUserSegment } from '@/contexts/UserSegmentContext';
 
 /* ---------- Tab bar visibility context (kept for backward compat) ---------- */
 
@@ -56,7 +56,6 @@ export default function TabLayout() {
   );
 
   return (
-    <UserSegmentProvider>
       <TabBarVisibilityContext.Provider value={visibilityValue}>
         <NativeTabs
           backgroundColor={colors.card}
@@ -134,23 +133,22 @@ export default function TabLayout() {
         </NativeTabs>
 
         {/* Global FAB — rendered above native tabs */}
-        {tabBarVisible && Platform.OS === 'ios' && <FloatingActionButton />}
+        {tabBarVisible && <FloatingActionButton />}
         <TestModeBanner />
       </TabBarVisibilityContext.Provider>
-    </UserSegmentProvider>
   );
 }
 
 /* ---------- Test Mode Banner ---------- */
 
 function TestModeBanner() {
-  const { isTestMode, segment } = useUserSegment();
+  const { isTestMode, mockKeyLabel } = useUserSegment();
   const insets = useSafeAreaInsets();
   if (!isTestMode) return null;
   return (
     <View style={[testStyles.banner, { top: insets.top }]}>
       <Text style={testStyles.text}>
-        TEST MODE: segment = "{segment}"
+        TEST: {mockKeyLabel ?? 'unknown'}
       </Text>
     </View>
   );

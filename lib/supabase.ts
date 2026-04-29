@@ -3,7 +3,7 @@
 // files only need to change their import path.
 
 import { createClient } from '@supabase/supabase-js'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { secureStorage } from './secureStorage'
 import * as FileSystem from 'expo-file-system/legacy'
 import { clearTripLocalData } from './cache'
 import { compressImage } from './compressImage'
@@ -63,7 +63,7 @@ const noopStorage = {
 
 // Detect Node.js (OTA export) vs React Native (device)
 const isNode = typeof process !== 'undefined' && !!process.versions?.node
-const safeStorage = isNode ? noopStorage : AsyncStorage
+const safeStorage = isNode ? noopStorage : secureStorage
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
@@ -369,6 +369,7 @@ function mapMoment(row: Record<string, unknown>): Moment {
     caption: (row.caption as string) ?? '',
     photo: momentPhotoUrl(row),
     hdPhoto: (row.hd_url as string) ?? undefined,
+    blurhash: (row.blurhash as string) ?? undefined,
     location: (row.location as string) ?? undefined,
     takenBy: (row.uploaded_by as string) ?? undefined,
     userId: (row.user_id as string) ?? undefined,
@@ -2379,6 +2380,70 @@ export async function deletePage(
   throw new Error(`deletePage: no row found with id ${rowId} in any table.`)
 }
 
+// ---------- WISHLIST ----------
+
+import type { WishlistItem } from './types'
+
+function mapWishlistItem(row: Record<string, unknown>): WishlistItem {
+  return {
+    id: row.id as string,
+    name: (row.name as string) ?? '',
+    category: (row.category as string) ?? undefined,
+    googlePlaceId: (row.google_place_id as string) ?? undefined,
+    photoUrl: (row.photo_url as string) ?? undefined,
+    rating: num(row.rating),
+    totalRatings: num(row.total_ratings),
+    latitude: num(row.latitude),
+    longitude: num(row.longitude),
+    address: (row.address as string) ?? undefined,
+    destination: (row.destination as string) ?? undefined,
+    notes: (row.notes as string) ?? undefined,
+    createdAt: (row.created_at as string) ?? new Date().toISOString(),
+  }
+}
+
+export async function getWishlist(): Promise<WishlistItem[]> {
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+  if (!userId) return []
+
+  const { data, error } = await supabase
+    .from('wishlist')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error || !data) return []
+  return data.map((r) => mapWishlistItem(r as Record<string, unknown>))
+}
+
+export async function addToWishlist(item: Omit<WishlistItem, 'id' | 'createdAt'>): Promise<void> {
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+  if (!userId) throw new Error('Not authenticated')
+
+  const { error } = await supabase.from('wishlist').insert({
+    user_id: userId,
+    name: item.name,
+    category: item.category ?? null,
+    google_place_id: item.googlePlaceId ?? null,
+    photo_url: item.photoUrl ?? null,
+    rating: item.rating ?? null,
+    total_ratings: item.totalRatings ?? null,
+    latitude: item.latitude ?? null,
+    longitude: item.longitude ?? null,
+    address: item.address ?? null,
+    destination: item.destination ?? null,
+    notes: item.notes ?? null,
+  })
+  if (error) throw new Error(`addToWishlist: ${error.message}`)
+}
+
+export async function removeFromWishlist(id: string): Promise<void> {
+  const { error } = await supabase.from('wishlist').delete().eq('id', id)
+  if (error) throw new Error(`removeFromWishlist: ${error.message}`)
+}
+
 // ---------- PROFILES ----------
 
 export interface ProfileSocials {
@@ -2866,4 +2931,322 @@ export async function getPersonalPhotos(userId: string): Promise<import('./types
     takenAt: (row.taken_at as string) ?? new Date().toISOString().slice(0, 10),
     tags: (row.tags as string[]) ?? [],
   }))
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// DAILY EXPENSE TRACKER
+// ═══════════════════════════════════════════════════════════════════════
+
+import type {
+  DailyExpense,
+  DailyExpenseCategory,
+  DailyExpenseSummary,
+  DailyExpensePeriodSummary,
+  SavingsGoal,
+  SavingsEntry,
+  SavingsMilestone,
+} from '@/lib/types'
+
+export async function getDailyTrackerEnabled(): Promise<boolean> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) return false
+  const { data } = await supabase
+    .from('profiles')
+    .select('daily_tracker_enabled')
+    .eq('id', auth.user.id)
+    .single()
+  return data?.daily_tracker_enabled === true
+}
+
+export async function setDailyTrackerEnabled(enabled: boolean): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) return
+  await supabase
+    .from('profiles')
+    .update({ daily_tracker_enabled: enabled })
+    .eq('id', auth.user.id)
+}
+
+export async function addDailyExpense(input: {
+  description: string
+  amount: number
+  currency?: string
+  dailyCategory: DailyExpenseCategory
+  date?: string
+  notes?: string
+  photo?: string
+  placeName?: string
+}): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not authenticated')
+  const { error } = await supabase.from('expenses').insert({
+    user_id: auth.user.id,
+    trip_id: null,
+    title: input.description,
+    amount: input.amount,
+    currency: input.currency ?? 'PHP',
+    category: input.dailyCategory === 'Bills' || input.dailyCategory === 'Entertainment' || input.dailyCategory === 'Groceries'
+      ? 'Other' : input.dailyCategory,
+    daily_category: input.dailyCategory,
+    expense_date: input.date ?? new Date().toISOString().slice(0, 10),
+    notes: input.notes,
+    photo_url: input.photo,
+    place_name: input.placeName,
+  })
+  if (error) throw new Error(`addDailyExpense: ${error.message}`)
+}
+
+export async function getDailyExpenses(from: string, to: string): Promise<DailyExpense[]> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) return []
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*')
+    .eq('user_id', auth.user.id)
+    .is('trip_id', null)
+    .not('daily_category', 'is', null)
+    .gte('expense_date', from)
+    .lte('expense_date', to)
+    .order('expense_date', { ascending: false })
+  if (error) throw new Error(`getDailyExpenses: ${error.message}`)
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    id: r.id as string,
+    description: (r.title as string) ?? '',
+    amount: Number(r.amount ?? 0),
+    currency: (r.currency as string) ?? 'PHP',
+    category: (r.category as string) ?? 'Other',
+    date: (r.expense_date as string) ?? '',
+    notes: r.notes as string | undefined,
+    photo: r.photo_url as string | undefined,
+    placeName: r.place_name as string | undefined,
+    dailyCategory: (r.daily_category as DailyExpenseCategory) ?? 'Other',
+  })) as DailyExpense[]
+}
+
+export async function getDailyExpenseSummary(date: string): Promise<DailyExpenseSummary> {
+  const exps = await getDailyExpenses(date, date)
+  const byCategory: Partial<Record<DailyExpenseCategory, number>> = {}
+  let total = 0
+  for (const e of exps) {
+    total += e.amount
+    byCategory[e.dailyCategory] = (byCategory[e.dailyCategory] ?? 0) + e.amount
+  }
+  return { date, total, byCategory, count: exps.length }
+}
+
+export async function getDailyExpensePeriodSummary(
+  period: 'daily' | 'weekly' | 'monthly',
+): Promise<DailyExpensePeriodSummary> {
+  const now = new Date()
+  let startDate: string
+  let endDate: string = now.toISOString().slice(0, 10)
+  let days: number
+
+  if (period === 'daily') {
+    startDate = endDate
+    days = 1
+  } else if (period === 'weekly') {
+    const d = new Date(now)
+    d.setDate(d.getDate() - 6)
+    startDate = d.toISOString().slice(0, 10)
+    days = 7
+  } else {
+    const d = new Date(now)
+    d.setDate(d.getDate() - 29)
+    startDate = d.toISOString().slice(0, 10)
+    days = 30
+  }
+
+  const exps = await getDailyExpenses(startDate, endDate)
+  const byCategory: Record<string, number> = {}
+  let total = 0
+  for (const e of exps) {
+    total += e.amount
+    byCategory[e.dailyCategory] = (byCategory[e.dailyCategory] ?? 0) + e.amount
+  }
+  return {
+    period,
+    startDate,
+    endDate,
+    total,
+    average: days > 0 ? total / days : 0,
+    byCategory,
+    count: exps.length,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SAVINGS GOALS
+// ═══════════════════════════════════════════════════════════════════════
+
+function mapSavingsGoal(row: Record<string, unknown>): SavingsGoal {
+  return {
+    id: row.id as string,
+    title: (row.title as string) ?? 'Next Trip Fund',
+    targetAmount: Number(row.target_amount ?? 0),
+    targetCurrency: (row.target_currency as string) ?? 'PHP',
+    targetDate: row.target_date as string | undefined,
+    destination: row.destination as string | undefined,
+    linkedTripId: row.linked_trip_id as string | undefined,
+    currentAmount: Number(row.current_amount ?? 0),
+    isActive: row.is_active as boolean,
+    celebratedMilestones: (row.celebrated_milestones as number[]) ?? [],
+    createdAt: (row.created_at as string) ?? '',
+    updatedAt: (row.updated_at as string) ?? '',
+  }
+}
+
+function mapSavingsEntry(row: Record<string, unknown>): SavingsEntry {
+  return {
+    id: row.id as string,
+    goalId: row.goal_id as string,
+    amount: Number(row.amount ?? 0),
+    currency: (row.currency as string) ?? 'PHP',
+    note: row.note as string | undefined,
+    entryDate: (row.entry_date as string) ?? '',
+    createdAt: (row.created_at as string) ?? '',
+  }
+}
+
+export async function getActiveSavingsGoal(): Promise<SavingsGoal | null> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) return null
+  const { data, error } = await supabase
+    .from('savings_goals')
+    .select('*')
+    .eq('user_id', auth.user.id)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`getActiveSavingsGoal: ${error.message}`)
+  return data ? mapSavingsGoal(data) : null
+}
+
+export async function createSavingsGoal(input: {
+  title: string
+  targetAmount: number
+  targetCurrency?: string
+  targetDate?: string
+  destination?: string
+  linkedTripId?: string
+}): Promise<SavingsGoal> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not authenticated')
+  // Deactivate any existing active goal
+  await supabase
+    .from('savings_goals')
+    .update({ is_active: false })
+    .eq('user_id', auth.user.id)
+    .eq('is_active', true)
+  const { data, error } = await supabase
+    .from('savings_goals')
+    .insert({
+      user_id: auth.user.id,
+      title: input.title,
+      target_amount: input.targetAmount,
+      target_currency: input.targetCurrency ?? 'PHP',
+      target_date: input.targetDate ?? null,
+      destination: input.destination ?? null,
+      linked_trip_id: input.linkedTripId ?? null,
+    })
+    .select()
+    .single()
+  if (error) throw new Error(`createSavingsGoal: ${error.message}`)
+  return mapSavingsGoal(data)
+}
+
+export async function updateSavingsGoal(
+  goalId: string,
+  input: Partial<Pick<SavingsGoal, 'title' | 'targetAmount' | 'targetDate' | 'destination' | 'linkedTripId'>>,
+): Promise<void> {
+  const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (input.title !== undefined) update.title = input.title
+  if (input.targetAmount !== undefined) update.target_amount = input.targetAmount
+  if (input.targetDate !== undefined) update.target_date = input.targetDate
+  if (input.destination !== undefined) update.destination = input.destination
+  if (input.linkedTripId !== undefined) update.linked_trip_id = input.linkedTripId
+  const { error } = await supabase.from('savings_goals').update(update).eq('id', goalId)
+  if (error) throw new Error(`updateSavingsGoal: ${error.message}`)
+}
+
+export async function deleteSavingsGoal(goalId: string): Promise<void> {
+  const { error } = await supabase.from('savings_goals').delete().eq('id', goalId)
+  if (error) throw new Error(`deleteSavingsGoal: ${error.message}`)
+}
+
+export async function addSavingsEntry(
+  goalId: string,
+  amount: number,
+  note?: string,
+): Promise<{ entry: SavingsEntry; newMilestones: SavingsMilestone[] }> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not authenticated')
+
+  // Insert entry
+  const { data: entryData, error: entryErr } = await supabase
+    .from('savings_entries')
+    .insert({
+      goal_id: goalId,
+      user_id: auth.user.id,
+      amount,
+      note: note ?? null,
+    })
+    .select()
+    .single()
+  if (entryErr) throw new Error(`addSavingsEntry: ${entryErr.message}`)
+
+  // Update goal current_amount
+  const { data: goalData, error: goalErr } = await supabase
+    .from('savings_goals')
+    .select('current_amount, target_amount, celebrated_milestones')
+    .eq('id', goalId)
+    .single()
+  if (goalErr) throw new Error(`addSavingsEntry goal fetch: ${goalErr.message}`)
+
+  const newAmount = Number(goalData.current_amount ?? 0) + amount
+  const target = Number(goalData.target_amount ?? 1)
+  const celebrated = (goalData.celebrated_milestones as number[]) ?? []
+  const pct = (newAmount / target) * 100
+
+  // Check milestones
+  const MILESTONES: SavingsMilestone[] = [25, 50, 75, 100]
+  const newMilestones = MILESTONES.filter((m) => pct >= m && !celebrated.includes(m))
+
+  const updatePayload: Record<string, unknown> = {
+    current_amount: newAmount,
+    updated_at: new Date().toISOString(),
+  }
+  if (newMilestones.length > 0) {
+    updatePayload.celebrated_milestones = [...celebrated, ...newMilestones]
+  }
+
+  await supabase.from('savings_goals').update(updatePayload).eq('id', goalId)
+
+  return { entry: mapSavingsEntry(entryData), newMilestones }
+}
+
+export async function getSavingsEntries(goalId: string, limit = 20): Promise<SavingsEntry[]> {
+  const { data, error } = await supabase
+    .from('savings_entries')
+    .select('*')
+    .eq('goal_id', goalId)
+    .order('entry_date', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(`getSavingsEntries: ${error.message}`)
+  return (data ?? []).map(mapSavingsEntry)
+}
+
+export async function markMilestoneCelebrated(goalId: string, milestone: number): Promise<void> {
+  const { data } = await supabase
+    .from('savings_goals')
+    .select('celebrated_milestones')
+    .eq('id', goalId)
+    .single()
+  const current = (data?.celebrated_milestones as number[]) ?? []
+  if (current.includes(milestone)) return
+  await supabase
+    .from('savings_goals')
+    .update({ celebrated_milestones: [...current, milestone] })
+    .eq('id', goalId)
 }

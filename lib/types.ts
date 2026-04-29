@@ -152,6 +152,22 @@ export interface Place {
   saved?: boolean;
 }
 
+export interface WishlistItem {
+  id: string;
+  name: string;
+  category?: string;
+  googlePlaceId?: string;
+  photoUrl?: string;
+  rating?: number;
+  totalRatings?: number;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  destination?: string;
+  notes?: string;
+  createdAt: string;
+}
+
 export interface ChecklistItem {
   id: string;
   task: string;
@@ -178,6 +194,7 @@ export interface Moment {
   caption: string;
   photo?: string;
   hdPhoto?: string;
+  blurhash?: string;
   location?: string;
   takenBy?: string;
   userId?: string;
@@ -378,7 +395,61 @@ export interface UnifiedExpenseHistoryItem {
   currency: string;
   category: string;
   date: string;
-  source: 'trip' | 'quick-trip' | 'standalone';
+  source: 'trip' | 'quick-trip' | 'standalone' | 'daily';
   sourceLabel?: string;
   sourceId?: string;
 }
+
+// ── Daily Expense Tracker ────────────────────────────────────────────
+
+export type DailyExpenseCategory = 'Food' | 'Transport' | 'Bills' | 'Entertainment' | 'Groceries' | 'Other';
+
+export interface DailyExpense extends Expense {
+  dailyCategory: DailyExpenseCategory;
+}
+
+export interface DailyExpenseSummary {
+  date: string;
+  total: number;
+  byCategory: Partial<Record<DailyExpenseCategory, number>>;
+  count: number;
+}
+
+export interface DailyExpensePeriodSummary {
+  period: 'daily' | 'weekly' | 'monthly';
+  startDate: string;
+  endDate: string;
+  total: number;
+  average: number;
+  byCategory: Record<string, number>;
+  count: number;
+}
+
+// ── Savings Goal ─────────────────────────────────────────────────────
+
+export interface SavingsGoal {
+  id: string;
+  title: string;
+  targetAmount: number;
+  targetCurrency: string;
+  targetDate?: string;
+  destination?: string;
+  linkedTripId?: string;
+  currentAmount: number;
+  isActive: boolean;
+  celebratedMilestones: number[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavingsEntry {
+  id: string;
+  goalId: string;
+  amount: number;
+  currency: string;
+  note?: string;
+  entryDate: string;
+  createdAt: string;
+}
+
+export type SavingsMilestone = 25 | 50 | 75 | 100;

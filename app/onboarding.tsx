@@ -204,6 +204,7 @@ function PathPicker({ onPick, onBack, onSkip, name, colors }: { onPick: (p: Path
 
 function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (data: any) => void; colors: ThemeColors }) {
   const router = useRouter();
+  const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [dest, setDest] = useState('');
   const [vibes, setVibes] = useState<string[]>([]);
@@ -223,11 +224,12 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
         });
         await cacheSet('draft:trip_id', draftId);
         await cacheSet('onboarding_complete', true);
+        if (user?.id) await updateProfile(user.id, { onboardedAt: new Date().toISOString() }).catch(() => {});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace('/(tabs)/home' as never);
         return;
-      } catch {
-        // Draft save failed — fall back to normal back
+      } catch (e: any) {
+        Alert.alert('Could not save draft', e?.message ?? 'Your progress was not saved. You can try again later.');
       }
     }
     onBack();
@@ -794,7 +796,7 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
-      {!path && <PathPicker onPick={setPath} onBack={() => router.back()} onSkip={() => { cacheSet('onboarding_complete', true); router.replace('/(tabs)/home' as never); }} name={firstName} colors={colors} />}
+      {!path && <PathPicker onPick={setPath} onBack={() => router.back()} onSkip={() => { cacheSet('onboarding_complete', true); if (user?.id) updateProfile(user.id, { onboardedAt: new Date().toISOString() }).catch(() => {}); router.replace('/(tabs)/home' as never); }} name={firstName} colors={colors} />}
       {path === 'plan' && <PlanFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
       {path === 'upload' && <UploadFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
       {path === 'invited' && <InvitedFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}

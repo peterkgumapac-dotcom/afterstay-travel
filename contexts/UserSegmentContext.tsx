@@ -19,6 +19,7 @@ import {
 } from '@/lib/userStatus';
 import { getLifetimeStats, getProfile, type Profile } from '@/lib/supabase';
 import type { LifetimeStats, Trip, UserSegment } from '@/lib/types';
+import { getMockDataForKey, parseMockKey, MOCK_LABELS, type MockSegmentData, type MockKey } from '@/lib/mockData';
 
 // ── Context value ────────────────────────────────────────────────────
 
@@ -27,21 +28,24 @@ import type { LifetimeStats, Trip, UserSegment } from '@/lib/types';
 const DEV_OVERRIDE_KEY = 'dev:segment-override';
 const DEV_ALLOWED_EMAIL = 'peterkgumapac@gmail.com';
 
-/** Set a segment override for testing. Pass null to clear. */
-export async function setSegmentOverride(segment: UserSegment | null): Promise<void> {
-  if (segment) {
-    await AsyncStorage.setItem(DEV_OVERRIDE_KEY, segment);
+/** Set a mock key override for testing. Pass null to clear. */
+export async function setSegmentOverride(key: MockKey | null): Promise<void> {
+  if (key) {
+    await AsyncStorage.setItem(DEV_OVERRIDE_KEY, key);
   } else {
     await AsyncStorage.removeItem(DEV_OVERRIDE_KEY);
   }
 }
 
-/** Read the current segment override (null = no override). */
-export async function getSegmentOverride(): Promise<UserSegment | null> {
+/** Read the current mock key override (null = no override). */
+export async function getSegmentOverride(): Promise<MockKey | null> {
   const val = await AsyncStorage.getItem(DEV_OVERRIDE_KEY);
-  if (val && ['new', 'planning', 'active', 'returning'].includes(val)) {
-    return val as UserSegment;
-  }
+  if (!val) return null;
+  // Validate it's a known mock key
+  const valid = ['new', 'planning', 'active:upcoming', 'active:inflight', 'active:arrived', 'active:active', 'returning'];
+  if (valid.includes(val)) return val as MockKey;
+  // Legacy: bare 'active' → 'active:active'
+  if (val === 'active') return 'active:active';
   return null;
 }
 
@@ -64,6 +68,10 @@ interface UserSegmentState {
   loading: boolean;
   /** True when a dev override is active */
   isTestMode: boolean;
+  /** Mock data for the active test segment (null when not in test mode) */
+  mockData: MockSegmentData | null;
+  /** The active mock key label (null when not in test mode) */
+  mockKeyLabel: string | null;
   /** Re-fetch everything (e.g. after creating a trip) */
   refresh: () => Promise<void>;
 }
@@ -77,6 +85,8 @@ const defaultState: UserSegmentState = {
   lifetimeStats: null,
   loading: true,
   isTestMode: false,
+  mockData: null,
+  mockKeyLabel: null,
   refresh: async () => {},
 };
 
@@ -136,12 +146,17 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
       // Check for dev override (only for allowed email)
       let segment = realSegment;
       let isTestMode = false;
+      let mockKey: MockKey | null = null;
       if (user.email === DEV_ALLOWED_EMAIL) {
-        const override = await getSegmentOverride();
-        if (override) {
-          segment = override;
+        mockKey = await getSegmentOverride();
+        if (mockKey) {
+          const parsed = parseMockKey(mockKey);
+          segment = parsed.segment;
           isTestMode = true;
         }
+      } else {
+        // Clear test mode if email is no longer whitelisted
+        await setSegmentOverride(null);
       }
 
       // Fetch lifetime stats for returning users
@@ -152,15 +167,32 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
       if (!mounted.current) return;
 
+      // When dev override is active, replace trip data with mock data
+      let mockData: MockSegmentData | null = null;
+      let activeTrip = result.activeTrip;
+      let pastTrips = result.completedTrips;
+      let draftTrips = result.planningTrips;
+      let finalStats = lifetimeStats;
+
+      if (isTestMode && mockKey) {
+        mockData = getMockDataForKey(mockKey);
+        activeTrip = mockData.trip;
+        pastTrips = mockData.pastTrips;
+        draftTrips = mockData.draftTrips;
+        finalStats = mockData.lifetimeStats;
+      }
+
       setState({
         segment,
         profile,
-        activeTrip: result.activeTrip,
-        pastTrips: result.completedTrips,
-        draftTrips: result.planningTrips,
-        lifetimeStats,
+        activeTrip,
+        pastTrips,
+        draftTrips,
+        lifetimeStats: finalStats,
         loading: false,
         isTestMode,
+        mockData,
+        mockKeyLabel: mockKey ? MOCK_LABELS[mockKey] : null,
       });
 
       // Update cache
@@ -171,9 +203,15 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
           ? cacheSet(CK_ACTIVE, result.activeTrip)
           : cacheSet(CK_ACTIVE, null),
       ]);
-    } catch {
+    } catch (err) {
+      if (__DEV__) console.warn('[UserSegment] load failed:', err);
       if (mounted.current) {
-        setState((prev) => ({ ...prev, loading: false }));
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          // If fetch fails during test mode, disable it to prevent stale state
+          ...(prev.isTestMode ? { isTestMode: false, mockData: null, mockKeyLabel: null } : {}),
+        }));
       }
     }
   }, [user?.id]);

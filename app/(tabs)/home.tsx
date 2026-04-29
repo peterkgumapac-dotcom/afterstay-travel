@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useHomeScreen } from '@/hooks/useHomeScreen';
 import {
   ActivityIndicator,
   Alert,
@@ -36,6 +37,8 @@ import { TripCompletedCard } from '@/components/home/TripCompletedCard';
 import EmptyState from '@/components/shared/EmptyState';
 import ReturningUserHome from '@/components/home/ReturningUserHome';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
+import DailyTrackerStrip from '@/components/home/DailyTrackerStrip';
+import { DailyTrackerSheet } from '@/components/budget/DailyTrackerSheet';
 import ProfileRow from '@/components/home/ProfileRow';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
 import { useTheme } from '@/constants/ThemeContext';
@@ -56,6 +59,10 @@ import {
   discardDraftTrip,
   softDeleteTrip,
   restoreTrip,
+  getDailyTrackerEnabled,
+  setDailyTrackerEnabled,
+  getDailyExpenseSummary,
+  addDailyExpense,
 } from '@/lib/supabase';
 import {
   getHomeActiveTripPromise,
@@ -188,41 +195,31 @@ export default function HomeScreenWithBoundary() {
 function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const navigation = useNavigation();
   const styles = useMemo(() => getStyles(colors), [colors]);
-  const didInitialLoad = useRef(false);
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const [flights, setFlights] = useState<Flight[]>([]);
-  const [moments, setMoments] = useState<Moment[]>([]);
-  const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showLoader, setShowLoader] = useState(false);
-  const [loaderDone, setLoaderDone] = useState(false);
-  const { setVisible: setTabBarVisible } = useTabBarVisibility();
-  const [refreshing, setRefreshing] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [error, setError] = useState<string>();
+  const h = useHomeScreen();
+  const {
+    trip, phase, flights, moments, savedPlaces, members,
+    totalSpent, todaySpent, todayCount,
+    dailyTrackerOn, dailyTrackerTotal, dailyTrackerCount, dailyTrackerByCat, setDailyTrackerOn,
+    pastTrips, draftTrips, upcomingTrips, activeTrips, quickTrips, allTrips, lifetimeStats,
+    returningMoments, returningSavedPlaces,
+    userName, userAvatar, user,
+    loading, loaderDone, showLoader, refreshing, error, debugInfo,
+    hotelPhotos, isPlaneTransport, showFlightFeatures,
+    isTestMode, segment,
+    load, refresh, setRefreshing, setSavedPlaces, setPhase, setShowLoader,
+  } = h;
 
-  const [phase, setPhase] = useState<TripPhase>('upcoming');
-  const [totalSpent, setTotalSpent] = useState(0);
-  const [todaySpent, setTodaySpent] = useState(0);
-  const [todayCount, setTodayCount] = useState(0);
-  const [userName, setUserName] = useState('');
-  const [userAvatar, setUserAvatar] = useState<string>();
-  const [members, setMembers] = useState<GroupMember[]>([]);
+  // UI-only state (not data)
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showDailySheet, setShowDailySheet] = useState(false);
   const [showVotingSheet, setShowVotingSheet] = useState(false);
-  const [returningPastTrips, setReturningPastTrips] = useState<Trip[]>([]);
-  const [returningDraftTrips, setReturningDraftTrips] = useState<Trip[]>([]);
-  const [returningUpcomingTrips, setReturningUpcomingTrips] = useState<Trip[]>([]);
-  const [returningActiveTrips, setReturningActiveTrips] = useState<Trip[]>([]);
-  const [returningQuickTrips, setReturningQuickTrips] = useState<QuickTrip[]>([]);
-  const [returningMoments, setReturningMoments] = useState<Moment[]>([]);
-  const [returningSavedPlaces, setReturningSavedPlaces] = useState<Place[]>([]);
-  const [returningStats, setReturningStats] = useState<LifetimeStats | null>(null);
-  const [returningAllTrips, setReturningAllTrips] = useState<Trip[]>([]);
-  const [debugInfo, setDebugInfo] = useState<string>('');
-  const { user } = useAuth();
-  const { segment } = useUserSegment();
+  const { setVisible: setTabBarVisible } = useTabBarVisibility();
+
+  // REMOVED: all data state, load(), cache-first effect, focus listener, test mode effects
+  // These now live in useHomeScreen() hook
+
+  // Data state, effects, test mode — all in useHomeScreen hook above
 
   // Resolve current user's group member ID
   const currentMemberId = useMemo(
@@ -239,11 +236,6 @@ function HomeScreen() {
     }),
     [savedPlaces, members],
   );
-
-  // Transport gating: show flight features only for plane transport or when unset
-  const isPlaneTransport = !trip?.transport || trip.transport === 'plane';
-  const hasFlights = flights.length > 0;
-  const showFlightFeatures = isPlaneTransport || hasFlights;
 
   const handleGroupVoteTap = useCallback(() => {
     setShowVotingSheet(true);
@@ -265,289 +257,11 @@ function HomeScreen() {
     [],
   ));
 
-  const load = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
-    const { force = false, silent = false } = opts ?? {};
-    try {
-      if (!silent) setLoading(true);
-      setError(undefined);
-      // DEBUG: log current user and auth state
-      const { data: authData } = await supabase.auth.getUser();
-      console.log('[DEBUG] Current user ID:', authData?.user?.id);
-      console.log('[DEBUG] User email:', authData?.user?.email);
-      let t = await getHomeActiveTripPromise(force);
-      // Retry twice if RLS returned 0 rows (auth token race)
-      if (!t && !force) {
-        await new Promise(r => setTimeout(r, 800));
-        t = await getActiveTrip(true);
-      }
-      if (!t && !force) {
-        await new Promise(r => setTimeout(r, 1500));
-        t = await getActiveTrip(true);
-      }
-      // Always sync trip state with getActiveTrip result so completed
-      // trips don't stay stuck in state after they're archived
-      setTrip(t);
-      if (t) {
-        await cacheSet('trip:active', t);
-        if (t.hotelLat && t.hotelLng) setHotelCoords(t.hotelLat, t.hotelLng);
-      }
-      if (t) {
-        const [fs, ms, members, places] = await Promise.all([
-          getHomeFlightsPromise(t.id, force).catch((e) => { if (__DEV__) console.warn('[Home] flights error:', e); return [] as Flight[]; }),
-          getHomeMomentsPromise(t.id, force).catch((e) => { if (__DEV__) console.warn('[Home] moments error:', e); return [] as Moment[]; }),
-          getHomeMembersPromise(t.id, force).catch((e) => { if (__DEV__) console.warn('[Home] members error:', e); return [] as GroupMember[]; }),
-          getHomePlacesPromise(t.id, force).catch(() => [] as Place[]),
-        ]);
-        if (__DEV__) console.log(`[Home] loaded: ${fs.length} flights, ${ms.length} moments, ${members.length} members`);
-        setFlights(fs);
-        setMoments(ms);
-        setMembers(members);
-        setSavedPlaces(places);
-        await cacheSet(`flights:${t.id}`, fs);
-
-        const primary = members.find((m) => m.role === 'Primary');
-        if (primary) {
-          setUserName(primary.name);
-          if (primary.profilePhoto) setUserAvatar(primary.profilePhoto);
-        }
-
-        // Compute trip phase from flight data
-        const outbound = fs.find((f) => f.direction === 'Outbound');
-        if (outbound) {
-          const departMs = safeParse(outbound.departTime).getTime();
-          const arriveMs = safeParse(outbound.arriveTime).getTime();
-          const nowMs = Date.now();
-
-          // Clear stale phase override if trip changed
-          const cachedTripId = await cacheGet<string>('trip:phase:tripId');
-          if (cachedTripId && cachedTripId !== t.id) {
-            await cacheSet('trip:phase:override', null);
-          }
-          await cacheSet('trip:phase:tripId', t.id);
-
-          const override = await cacheGet<TripPhase>('trip:phase:override');
-          // Only use override if it makes sense for current time
-          // (e.g., don't stay "upcoming" if flight already departed)
-          const computedPhase: TripPhase =
-            nowMs < departMs ? 'upcoming' :
-            nowMs < arriveMs ? 'inflight' :
-            nowMs < arriveMs + 4 * 3600000 ? 'arrived' : 'active';
-
-          if (override && override === computedPhase) {
-            setPhase(override);
-          } else if (override) {
-            // Override is stale — clear it and use computed
-            await cacheSet('trip:phase:override', null);
-            setPhase(computedPhase);
-          } else if (nowMs < departMs) {
-            setPhase('upcoming');
-          } else if (nowMs >= departMs && nowMs < arriveMs) {
-            setPhase('inflight');
-          } else if (nowMs >= arriveMs && nowMs < arriveMs + 4 * 3600000) {
-            setPhase('arrived');
-          } else {
-            setPhase('active');
-          }
-        }
-
-        // Fetch expenses once — compute summary + today's totals locally
-        const allExpenses = await getHomeExpensesPromise(t.id, force).catch(() => []);
-        setTotalSpent(allExpenses.reduce((sum, e) => sum + e.amount, 0));
-
-        const todayIso = new Date().toISOString().slice(0, 10);
-        const todayExps = allExpenses.filter((e) => e.date === todayIso);
-        setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
-        setTodayCount(todayExps.length);
-        // Check if trip is completed (status or past end date)
-        const tripEnd = safeParse(t.endDate).getTime() + MS_PER_DAY; // end of last day
-        if (t.status === 'Completed' || Date.now() > tripEnd) {
-          setPhase('completed');
-        } else if (!outbound) {
-          // If no outbound flight, determine phase from trip dates
-          const tripStart = safeParse(t.startDate).getTime();
-          const daysAway = (tripStart - Date.now()) / MS_PER_DAY;
-          setPhase(daysAway > 7 ? 'planning' : 'upcoming');
-        }
-      }
-
-      // Always fetch returning-user data — needed for ReturningUserHome
-      // even when an active trip exists (e.g. My Trips tab navigation)
-      const [allTrips, quick, stats] = await Promise.all([
-        getHomeAllTripsPromise(force).catch((e) => { console.log('[DEBUG] getAllUserTrips error:', e); return [] as Trip[]; }),
-        getHomeQuickTripsPromise(force).catch(() => [] as QuickTrip[]),
-        getHomeLifetimeStatsPromise(force).catch(() => null),
-      ]);
-      console.log('[DEBUG] All trips count:', allTrips.length);
-      setDebugInfo(`User: ${user?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTrips.length} · Past: ${allTrips.filter(t => t.status === 'Completed' && !t.deletedAt).length} · Active: ${allTrips.filter(t => t.status === 'Active' && !t.deletedAt).length}`);
-      const now = Date.now();
-      // Properly separate trips by lifecycle status
-      const drafts = allTrips.filter(t => t.isDraft === true && !t.deletedAt);
-      const upcoming = allTrips.filter(t =>
-        t.status === 'Planning' && !t.isDraft && !t.deletedAt && !t.archivedAt
-      );
-      const active = allTrips.filter(t =>
-        t.status === 'Active' && !t.deletedAt && !t.archivedAt
-      );
-      const completed = allTrips.filter(tripItem => {
-        if (tripItem.status !== 'Completed' || tripItem.deletedAt) return false;
-        const end = tripItem.endDate ? new Date(tripItem.endDate).getTime() + 86400000 : 0;
-        return end > 0 && now > end;
-      });
-      // Keep past trips for stats but don't show inline on home
-      setReturningPastTrips(completed);
-      setReturningDraftTrips(drafts);
-      setReturningUpcomingTrips(upcoming);
-      setReturningActiveTrips(active);
-      setReturningQuickTrips(quick);
-      setReturningStats(stats);
-      setReturningAllTrips(allTrips);
-
-      // Fetch recent moments + saved places from recent completed trips
-      if (completed.length > 0) {
-        const recentTripIds = completed.slice(0, 3).map(t => t.id);
-        const momentsResults = await Promise.all(
-          recentTripIds.map(id => getHomeMomentsPromise(id, force).catch(() => [] as Moment[]))
-        );
-        const allMoments = momentsResults
-          .flat()
-          .filter(m => m.photo?.startsWith('http'))
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          .slice(0, 10);
-        setReturningMoments(allMoments);
-
-        const [recentSaved] = await Promise.all([
-          getHomePlacesPromise(completed[0].id, force).catch(() => [] as Place[]),
-        ]);
-        setReturningSavedPlaces(recentSaved.filter(p => p.saved));
-      }
-      // Resolve user name from profiles table first, then auth metadata fallback
-      if (user) {
-        const { getProfile } = await import('@/lib/supabase');
-        const profile = await getProfile(user.id).catch(() => null);
-        if (profile?.fullName) {
-          setUserName(profile.fullName.split(' ')[0]);
-          if (profile.avatarUrl) setUserAvatar(profile.avatarUrl);
-        } else {
-          setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? '');
-          if (user.user_metadata?.avatar_url) setUserAvatar(user.user_metadata.avatar_url);
-        }
-      }
-
-      if (!t) {
-        setFlights([]);
-        setMoments([]);
-      }
-    } catch (e: unknown) {
-      if (!silent) setError(e instanceof Error ? e.message : 'Unable to load trip');
-    } finally {
-      if (!silent) setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    // Cache-first: if we have cached data, restore it instantly and refresh in background
-    const cachedTrip = getHomeActiveTripCached();
-    if (cachedTrip !== undefined) {
-      setTrip(cachedTrip);
-      const cachedTripId = cachedTrip?.id;
-      if (cachedTripId) {
-        const cachedFlights = getHomeFlightsCached(cachedTripId);
-        const cachedMoments = getHomeMomentsCached(cachedTripId);
-        const cachedMembers = getHomeMembersCached(cachedTripId);
-        const cachedPlaces = getHomePlacesCached(cachedTripId);
-        if (cachedFlights) setFlights(cachedFlights);
-        if (cachedMoments) setMoments(cachedMoments);
-        if (cachedMembers) setMembers(cachedMembers);
-        if (cachedPlaces) setSavedPlaces(cachedPlaces);
-        const cachedExpenses = getHomeExpensesCached(cachedTripId);
-        if (cachedExpenses) {
-          setTotalSpent(cachedExpenses.reduce((sum, e) => sum + e.amount, 0));
-          const todayIso = new Date().toISOString().slice(0, 10);
-          const todayExps = cachedExpenses.filter((e) => e.date === todayIso);
-          setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
-          setTodayCount(todayExps.length);
-        }
-      }
-      const cachedAllTrips = getHomeAllTripsCached();
-      if (cachedAllTrips) {
-        const now = Date.now();
-        const drafts = cachedAllTrips.filter(t => t.isDraft === true && !t.deletedAt);
-        const upcoming = cachedAllTrips.filter(t =>
-          t.status === 'Planning' && !t.isDraft && !t.deletedAt && !t.archivedAt
-        );
-        const active = cachedAllTrips.filter(t =>
-          t.status === 'Active' && !t.deletedAt && !t.archivedAt
-        );
-        const completed = cachedAllTrips.filter(tripItem => {
-          if (tripItem.status !== 'Completed' || tripItem.deletedAt) return false;
-          const end = tripItem.endDate ? new Date(tripItem.endDate).getTime() + 86400000 : 0;
-          return end > 0 && now > end;
-        });
-        setReturningPastTrips(completed);
-        setReturningDraftTrips(drafts);
-        setReturningUpcomingTrips(upcoming);
-        setReturningActiveTrips(active);
-        setReturningAllTrips(cachedAllTrips);
-      }
-      const cachedQuickTrips = getHomeQuickTripsCached();
-      if (cachedQuickTrips) setReturningQuickTrips(cachedQuickTrips);
-      const cachedStats = getHomeLifetimeStatsCached();
-      if (cachedStats) setReturningStats(cachedStats);
-      // Skip the 3s branded loader when cached data is available
-      setLoaderDone(true);
-      setLoading(false);
-      // Refresh in background
-      load({ silent: true });
-    } else {
-      load();
-    }
-    didInitialLoad.current = true;
-    return () => { alive = false; };
-  }, [load]);
-
-  // Refresh budget + trip data when tab gets focus (e.g. after editing budget)
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      if (!didInitialLoad.current) return; // skip first mount
-      const tripId = trip?.id;
-      if (!tripId) return;
-      // Lightweight background refresh — no loading states
-      Promise.all([
-        getHomeActiveTripPromise(true),
-        getHomeExpensesPromise(tripId, true).catch(() => []),
-      ]).then(([freshTrip, allExpenses]) => {
-        if (freshTrip) setTrip(freshTrip);
-        setTotalSpent(allExpenses.reduce((sum, e) => sum + e.amount, 0));
-        const todayIso = new Date().toISOString().slice(0, 10);
-        const todayExps = allExpenses.filter((e) => e.date === todayIso);
-        setTodaySpent(todayExps.reduce((sum, e) => sum + e.amount, 0));
-        setTodayCount(todayExps.length);
-      }).catch(() => {});
-    });
-    return unsubscribe;
-  }, [navigation, trip?.id]);
-
-  // Always show branded loader for at least 3 seconds on cold start
-  useEffect(() => {
-    if (!loading) return;
-    setShowLoader(true);
-    // Minimum 3s loader — ensures fresh data arrives before content shows
-    const t = setTimeout(() => setLoaderDone(true), 3000);
-    return () => clearTimeout(t);
-  }, []);
-
   // Hide tab bar during initial load
   useEffect(() => {
     const isInitialLoading = loading || (showLoader && !loaderDone);
     setTabBarVisible(!isInitialLoading);
   }, [loading, showLoader, loaderDone, setTabBarVisible]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    load({ force: true });
-  };
 
   const boardFlight = useCallback(async () => {
     setPhase('inflight');
@@ -564,45 +278,7 @@ function HomeScreen() {
     await cacheSet('trip:phase:override', 'active');
   }, []);
 
-  // Hero gallery photos — must be above early returns (hooks order)
-  // Priority: hotel photos from DB → destination photos from Google Places (cached)
-  const parsedHotelPhotos = useMemo<string[]>(() => {
-    if (!trip?.hotelPhotos) return [];
-    try {
-      const parsed = JSON.parse(trip.hotelPhotos);
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [];
-    } catch {
-      return [];
-    }
-  }, [trip?.hotelPhotos]);
-
-  const [destinationPhotos, setDestinationPhotos] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (parsedHotelPhotos.length > 0 || !trip?.destination) return;
-
-    let cancelled = false;
-    const loadDestPhotos = async () => {
-      // Check cache first
-      const cached = await cacheGet<string[]>(DEST_PHOTO_CACHE_KEY);
-      if (cached && cached.length > 0 && !cancelled) {
-        setDestinationPhotos(cached);
-        return;
-      }
-      // Fetch from Google Places
-      const photos = await fetchDestinationPhotos(trip.destination);
-      if (!cancelled && photos.length > 0) {
-        setDestinationPhotos(photos);
-        await cacheSet(DEST_PHOTO_CACHE_KEY, photos);
-      }
-    };
-    loadDestPhotos();
-    return () => { cancelled = true; };
-  }, [parsedHotelPhotos.length, trip?.destination]);
-
-  const hotelPhotos = parsedHotelPhotos.length > 0 ? parsedHotelPhotos : destinationPhotos;
-
-  // Date range label
+  // Date range label (hotelPhotos now comes from hook)
   const dateRange = useMemo(
     () => trip ? `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}` : '',
     [trip?.startDate, trip?.endDate],
@@ -654,9 +330,12 @@ function HomeScreen() {
   );
 
   // Show branded loader until both: 3s minimum passed AND data loaded
-  if (!loaderDone || loading) {
+  // In test mode, skip loader entirely — mock data is synchronous
+  if (!isTestMode && (!loaderDone || loading)) {
     return <AfterStayLoader />;
   }
+
+  // Hook already returns test-mode-aware values for pastTrips, draftTrips, etc.
 
   if (!trip) {
     // Actual network error — show retry
@@ -668,7 +347,6 @@ function HomeScreen() {
           <Pressable
             style={styles.retry}
             onPress={() => {
-              setLoading(true);
               load({ force: true });
             }}
             accessibilityLabel="Retry loading trip"
@@ -680,15 +358,14 @@ function HomeScreen() {
       );
     }
     // Returning user — has ANY trips (past, upcoming, active, archived, drafts, quick trips)
-    // Derive from Supabase segment as the source of truth, fallback to local data
+    // In test mode, segment is the sole gate (ignore real trip data)
     const hasHistory =
-      segment !== 'new' ||
-      returningPastTrips.length > 0 ||
-      returningUpcomingTrips.length > 0 ||
-      returningActiveTrips.length > 0 ||
-      returningQuickTrips.length > 0 ||
-      returningDraftTrips.length > 0 ||
-      returningAllTrips.some(t => !t.deletedAt && !t.isDraft);
+      pastTrips.length > 0 ||
+      upcomingTrips.length > 0 ||
+      activeTrips.length > 0 ||
+      quickTrips.length > 0 ||
+      draftTrips.length > 0 ||
+      allTrips.some(t => !t.deletedAt && !t.isDraft);
     if (hasHistory) {
       const displayName = userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || '';
       const handle = user?.email?.split('@')[0] || (displayName.length > 0 ? displayName.toLowerCase().replace(/\s+/g, '') : 'traveler');
@@ -699,12 +376,12 @@ function HomeScreen() {
             userHandle={handle}
             avatarUrl={userAvatar}
             notificationCount={notifCount}
-            pastTrips={[]} /* Moved to My Trips screen */
-            draftTrips={returningDraftTrips}
-            upcomingTrips={returningUpcomingTrips}
-            activeTrips={returningActiveTrips}
-            quickTrips={returningQuickTrips}
-            lifetimeStats={returningStats}
+            pastTrips={pastTrips}
+            draftTrips={draftTrips}
+            upcomingTrips={upcomingTrips}
+            activeTrips={activeTrips}
+            quickTrips={quickTrips}
+            lifetimeStats={lifetimeStats}
             recentMoments={returningMoments}
             savedPlaces={returningSavedPlaces}
             onPlanTrip={() => router.push('/onboarding')}
@@ -719,11 +396,26 @@ function HomeScreen() {
             }}
             onQuickTripPress={(id) => router.push(`/quick-trip-detail?quickTripId=${id}`)}
             onAddQuickTrip={() => router.push('/quick-trip-create')}
-            onAddMoment={() => router.push(`/add-moment?tripId=${returningPastTrips[0]?.id ?? ''}`)}
+            onAddMoment={() => router.push(`/add-moment?tripId=${pastTrips[0]?.id ?? ''}`)}
             onBellPress={() => setShowNotifications(true)}
             onSeeAllTrips={() => router.push('/(tabs)/trip')}
             refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); load({ force: true }); }}
+            dailyTrackerSlot={
+              <DailyTrackerStrip
+                enabled={dailyTrackerOn}
+                todayTotal={dailyTrackerTotal}
+                todayCount={dailyTrackerCount}
+                byCategory={dailyTrackerByCat}
+                currency="PHP"
+                onPress={() => router.push('/(tabs)/budget' as never)}
+                onAddPress={() => setShowDailySheet(true)}
+                onEnable={async () => {
+                  await setDailyTrackerEnabled(true).catch(() => {});
+                  setDailyTrackerOn(true);
+                }}
+              />
+            }
           />
           <NotificationsSheet
             visible={showNotifications}
@@ -734,6 +426,18 @@ function HomeScreen() {
             onMarkAllRead={markAllRead}
             {...notifProps}
           />
+          {dailyTrackerOn && (
+            <DailyTrackerSheet
+              visible={showDailySheet}
+              onClose={() => setShowDailySheet(false)}
+              onSave={async (input) => {
+                try {
+                  await addDailyExpense(input);
+                  load({ silent: true });
+                } catch {}
+              }}
+            />
+          )}
         </View>
       );
     }
@@ -760,23 +464,22 @@ function HomeScreen() {
           <EmptyState
             icon={Compass}
             title="Your next adventure starts here"
-            subtitle="Create a trip to unlock your dashboard — add flights, budget, places, and more."
-            actionLabel="Get Started"
+            subtitle="Plan a trip, track your budget, capture moments, and discover amazing places."
+            actionLabel="Plan a Trip"
             onAction={() => router.push('/onboarding')}
             secondaryLabel="Join a friend's trip"
             onSecondary={() => router.push('/onboarding')}
           />
-          {user && (
-            <TouchableOpacity
-              style={{ marginTop: 24, paddingVertical: 10, paddingHorizontal: 20 }}
-              onPress={() => { setRefreshing(true); load({ force: true }); }}
-              activeOpacity={0.7}
-            >
-              <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '600' }}>
-                ↻ Refresh data
-              </Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}
+            onPress={() => router.push('/(tabs)/discover')}
+            activeOpacity={0.7}
+          >
+            <MapPin size={16} color={colors.accent} strokeWidth={2} />
+            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
+              Discover places to visit
+            </Text>
+          </TouchableOpacity>
           {__DEV__ && debugInfo.length > 0 && (
             <Text style={{ marginTop: 12, color: colors.text3, fontSize: 10, fontFamily: 'monospace' }}>
               {debugInfo}
@@ -804,7 +507,7 @@ function HomeScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
+            onRefresh={refresh}
             tintColor={colors.accentLt}
           />
         }
@@ -828,6 +531,21 @@ function HomeScreen() {
           roomInfo={roomInfo}
           bookingRef={trip.bookingRef ? `Agoda #${trip.bookingRef}` : undefined}
           members={members}
+        />
+
+        {/* 2b. Daily Tracker strip */}
+        <DailyTrackerStrip
+          enabled={dailyTrackerOn}
+          todayTotal={dailyTrackerTotal}
+          todayCount={dailyTrackerCount}
+          byCategory={dailyTrackerByCat}
+          currency={trip.costCurrency ?? 'PHP'}
+          onPress={() => router.push('/(tabs)/budget' as never)}
+          onAddPress={() => setShowDailySheet(true)}
+          onEnable={async () => {
+            await setDailyTrackerEnabled(true).catch(() => {});
+            setDailyTrackerOn(true);
+          }}
         />
 
         {/* 3. Phase card */}
@@ -1059,6 +777,20 @@ function HomeScreen() {
         currentMemberId={currentMemberId}
         onVoteUpdated={handleVoteUpdated}
       />
+      {dailyTrackerOn && (
+        <DailyTrackerSheet
+          visible={showDailySheet}
+          onClose={() => setShowDailySheet(false)}
+          onSave={async (input) => {
+            try {
+              await addDailyExpense(input);
+              load({ silent: true });
+            } catch (e) {
+              if (__DEV__) console.warn('[Home] add daily expense failed:', e);
+            }
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

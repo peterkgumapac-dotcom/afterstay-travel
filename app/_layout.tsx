@@ -11,9 +11,11 @@ import 'react-native-reanimated';
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { UserSegmentProvider } from '@/contexts/UserSegmentContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useBackgroundTasks } from '@/hooks/useBackgroundTasks';
 import { useAppUpdates } from '@/hooks/useAppUpdates';
+import { useUserStatus } from '@/hooks/useUserStatus';
 import { verifyConfig } from '@/lib/config';
 import { queryClient } from '@/lib/queryClient';
 
@@ -27,7 +29,8 @@ SplashScreen.preventAutoHideAsync();
 
 function RootLayoutInner() {
   const { mode, colors: c } = useTheme();
-  const { loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { isLoading: statusLoading } = useUserStatus();
   usePushNotifications();
   useBackgroundTasks();
   useAppUpdates();
@@ -45,7 +48,7 @@ function RootLayoutInner() {
     },
   };
 
-  if (loading) {
+  if (authLoading || (user && statusLoading)) {
     return (
       <NavThemeProvider value={navTheme}>
         <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
@@ -71,11 +74,11 @@ function RootLayoutInner() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="trip-planner"
-          options={{ presentation: 'modal', title: 'Trip Planner', headerShown: true }}
+          options={{ presentation: 'modal', title: 'Trip Planner', headerShown: true, animation: 'fade_from_bottom', animationDuration: 300 }}
         />
         <Stack.Screen
           name="add-expense"
-          options={{ presentation: 'modal', title: 'Add Expense', headerShown: true }}
+          options={{ presentation: 'modal', title: 'Add Expense', headerShown: true, animation: 'slide_from_bottom', animationDuration: 250 }}
         />
         <Stack.Screen
           name="add-place"
@@ -83,7 +86,7 @@ function RootLayoutInner() {
         />
         <Stack.Screen
           name="add-moment"
-          options={{ presentation: 'modal', title: 'Add Moment', headerShown: true }}
+          options={{ presentation: 'modal', title: 'Add Moment', headerShown: true, animation: 'slide_from_bottom', animationDuration: 250 }}
         />
         <Stack.Screen
           name="add-member"
@@ -111,15 +114,15 @@ function RootLayoutInner() {
         />
         <Stack.Screen
           name="moments-slideshow"
-          options={{ presentation: 'modal', title: 'Photo Gallery', headerShown: true }}
+          options={{ presentation: 'fullScreenModal', title: 'Photo Gallery', headerShown: false, animation: 'fade', animationDuration: 200 }}
         />
         <Stack.Screen
           name="trip-overview"
-          options={{ presentation: 'modal', title: 'Trip Overview', headerShown: true }}
+          options={{ presentation: 'modal', title: 'Trip Overview', headerShown: true, animation: 'fade_from_bottom', animationDuration: 300 }}
         />
         <Stack.Screen
           name="scan-receipt"
-          options={{ presentation: 'modal', title: 'Scan Receipt', headerShown: true }}
+          options={{ presentation: 'modal', title: 'Scan Receipt', headerShown: true, animation: 'slide_from_bottom', animationDuration: 250 }}
         />
         <Stack.Screen
           name="place-details"
@@ -195,7 +198,9 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <AuthProvider>
-            <RootLayoutInner />
+            <UserSegmentProvider>
+              <RootLayoutInner />
+            </UserSegmentProvider>
           </AuthProvider>
         </ThemeProvider>
       </QueryClientProvider>

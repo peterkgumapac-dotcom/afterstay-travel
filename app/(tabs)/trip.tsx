@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -76,6 +76,7 @@ import {
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
+import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 import type {
   Flight,
@@ -197,6 +198,7 @@ function mapTripToPastDisplay(t: Trip): PastTripDisplay {
     spent: t.totalSpent ?? 0,
     miles: 0,
     rating: 0,
+    hasMemory: t.status === 'Completed',
   };
 }
 
@@ -684,6 +686,9 @@ function TripScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { isTestMode, mockData } = useUserSegment();
+  const testModeRef = useRef(isTestMode);
+  testModeRef.current = isTestMode;
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [addOpen, setAddOpen] = useState(false);
@@ -697,6 +702,15 @@ function TripScreen() {
 
   // Data from Supabase
   const [trip, setTrip] = useState<Trip | null>(null);
+
+  // Default to "My Trips" when no active trip (first mount)
+  const didSetDefaultTab = useRef(false);
+  useEffect(() => {
+    if (didSetDefaultTab.current) return;
+    if (!loading && !trip) { setActiveTab('summary'); didSetDefaultTab.current = true; }
+    else if (!loading && trip) { didSetDefaultTab.current = true; }
+  }, [loading, trip]);
+
   const [membersData, setMembersData] = useState<GroupMember[]>([]);
   const [flightsData, setFlightsData] = useState<Flight[]>([]);
   const [packingItems, setPackingItems] = useState<PackingItem[]>([]);
@@ -715,7 +729,40 @@ function TripScreen() {
     totalSpent: number;
   } | null>(null);
 
+  // Dev test mode: apply mock trip data
+  useEffect(() => {
+    if (!isTestMode || !mockData) return;
+    setTrip(mockData.trip);
+    setMembersData(mockData.members as GroupMember[]);
+    setFlightsData(mockData.flights as Flight[]);
+    setPackingItems(mockData.packing as PackingItem[]);
+    setFilesData([]);
+    setPastTripsData(mockData.pastTrips as Trip[]);
+    setDraftTripsData(mockData.draftTrips as Trip[]);
+    setQuickTripsData([]);
+    setLifetimeStats(mockData.lifetimeStats ? {
+      totalTrips: mockData.lifetimeStats.totalTrips,
+      totalCountries: mockData.lifetimeStats.totalCountries,
+      totalNights: mockData.lifetimeStats.totalNights,
+      totalMiles: mockData.lifetimeStats.totalMiles,
+      totalSpent: mockData.lifetimeStats.totalSpent,
+    } : null);
+    const total = mockData.expenses.reduce((s, e) => s + e.amount, 0);
+    setActiveTripSpent(total);
+    setLoading(false);
+    setRefreshing(false);
+  }, [isTestMode, mockData]);
+
+  const prevTestModeTrip = useRef(isTestMode);
+  useEffect(() => {
+    if (prevTestModeTrip.current && !isTestMode) {
+      load({ force: true });
+    }
+    prevTestModeTrip.current = isTestMode;
+  }, [isTestMode]);
+
   const load = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
+    if (testModeRef.current) { setLoading(false); setRefreshing(false); return; }
     const { force = false, silent = false } = opts ?? {};
     try {
       const t = await getActiveTripPromise(force);
@@ -1223,17 +1270,19 @@ function TripScreen() {
         </View>
         <EmptyState
           icon={Map}
-          title="No active trip"
-          subtitle="Create a trip to see your overview, packing list, files, and travel companions."
-          actionLabel="Get Started"
+          title="Plan your first trip"
+          subtitle="Your trips, flights, packing lists, and travel files will all live here. Start planning to unlock everything."
+          actionLabel="Plan a Trip"
           onAction={() => router.push('/onboarding')}
+          secondaryLabel="Join a friend's trip"
+          onSecondary={() => router.push('/onboarding')}
         />
       </SafeAreaView>
     );
   }
 
-  // No active trip but has past/quick trips — force summary tab
-  const effectiveTab = (!trip && hasAnyTrips) ? 'summary' : activeTab;
+  // Always use user's selected tab — empty states handle no-trip cases per tab
+  const effectiveTab = activeTab;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -1278,8 +1327,7 @@ function TripScreen() {
           </View>
         )}
 
-        {/* Segmented control — only show when there's an active trip */}
-        {trip && (
+        {/* Segmented control — always visible */}
           <View style={styles.segWrapper}>
             <View style={styles.segmented}>
               {TAB_KEYS.map((t) => (
@@ -1309,10 +1357,9 @@ function TripScreen() {
               ))}
             </View>
           </View>
-        )}
 
         {/* ===================== OVERVIEW ===================== */}
-        {trip && effectiveTab === 'overview' && (
+        {effectiveTab === 'overview' && (trip ? (
           <OverviewTab
             trip={trip}
             members={membersData}
@@ -1325,7 +1372,15 @@ function TripScreen() {
             onAddMember={() => router.push('/add-member')}
             onLoad={load}
           />
-        )}
+        ) : (
+          <EmptyState
+            icon={Map}
+            title="Plan your first trip"
+            subtitle="Your trip overview, group members, flights, and hotel details will appear here."
+            actionLabel="Plan a Trip"
+            onAction={() => router.push('/onboarding')}
+          />
+        ))}
 
         {/* ===================== SUMMARY ===================== */}
         {effectiveTab === 'summary' && (
@@ -1357,7 +1412,7 @@ function TripScreen() {
         {/* ===================== MOMENTS ===================== */}
 
         {/* ===================== ESSENTIALS ===================== */}
-        {trip && effectiveTab === 'essentials' && (
+        {effectiveTab === 'essentials' && (trip ? (
           <EssentialsTab
             packingState={packingState}
             packingStats={packingStats}
@@ -1372,7 +1427,15 @@ function TripScreen() {
             onUpload={handleUpload}
             onDownload={handleDownload}
           />
-        )}
+        ) : (
+          <EmptyState
+            icon={Archive}
+            title="Packing & files"
+            subtitle="Start a trip to manage your packing list, boarding passes, and travel documents."
+            actionLabel="Plan a Trip"
+            onAction={() => router.push('/onboarding')}
+          />
+        ))}
 
         {/* Bottom spacer -- keep outside tabs */}
         <View style={styles.bottomSpacer} />
