@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
   Linking,
@@ -28,6 +29,7 @@ import {
   getCompanionProfile,
   getFollowState,
   getAllUserTrips,
+  getFlights,
   getLifetimeStats,
   getMoments,
   getMutualTrips,
@@ -38,20 +40,20 @@ import {
 } from '@/lib/supabase';
 import type { Profile } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
-import type { CompanionProfile as CompanionProfileType, FeedPost, Moment, Trip } from '@/lib/types';
+import type { CompanionProfile as CompanionProfileType, FeedPost, Flight, Moment, Trip } from '@/lib/types';
 import { GroupHeader } from '@/components/trip/GroupHeader';
 import { TripCollage } from '@/components/trip/TripCollage';
-import ProfileHeader from '@/components/profile/ProfileHeader';
-import TravelStatsCard from '@/components/profile/TravelStatsCard';
-import TravelMapCard from '@/components/profile/TravelMapCard';
 import TopTripCard from '@/components/profile/TopTripCard';
 import MemoriesGrid from '@/components/profile/MemoriesGrid';
 import CountriesVisited from '@/components/profile/CountriesVisited';
-import AchievementBadges from '@/components/profile/AchievementBadges';
 import ProfileCustomizeSheet from '@/components/profile/ProfileCustomizeSheet';
+import ProfilePager from '@/components/profile/ProfilePager';
+import ProfileCoverHeader from '@/components/profile/ProfileCoverHeader';
+import ProfileFlightMapCard from '@/components/profile/ProfileFlightMapCard';
+import ProfileStatsStrip from '@/components/profile/ProfileStatsStrip';
 import {
-  buildAchievementBadges,
   buildCountriesVisited,
+  buildProfileMapData,
   buildProfileStatsFromTrips,
   buildTopTrip,
 } from '@/lib/profileStats';
@@ -72,11 +74,13 @@ export default function CompanionProfileScreen() {
   const [profile, setProfile] = useState<CompanionProfileType | null>(null);
   const [ownProfile, setOwnProfile] = useState<Profile | null>(null);
   const [mutualTrips, setMutualTrips] = useState<Trip[]>([]);
+  const [profileFlights, setProfileFlights] = useState<(Flight & { tripId?: string })[]>([]);
   const [sharedMoments, setSharedMoments] = useState<Moment[]>([]);
   const [loading, setLoading] = useState(true);
   const [tripFilter, setTripFilter] = useState<TripFilter>('all');
   const [myPosts, setMyPosts] = useState<FeedPost[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
   const [customizeVisible, setCustomizeVisible] = useState(false);
 
   const isSelf = user?.id === userId;
@@ -103,10 +107,17 @@ export default function CompanionProfileScreen() {
         ? (await Promise.allSettled(trips.slice(0, 12).map((trip) => getMoments(trip.id))))
           .flatMap((result) => result.status === 'fulfilled' ? result.value : [])
         : await getSharedMomentsWith(userId).catch(() => []);
+      const flights = (await Promise.allSettled(
+        trips.map(async (trip) => {
+          const tripFlights = await getFlights(trip.id);
+          return tripFlights.map((flight) => ({ ...flight, tripId: trip.id }));
+        }),
+      )).flatMap((result) => result.status === 'fulfilled' ? result.value : []);
 
       setProfile(lifetimeStats ? { ...profileResult, lifetimeStats } : profileResult);
       setOwnProfile(resolvedOwnProfile);
       setMutualTrips(trips);
+      setProfileFlights(flights);
       setSharedMoments(moments);
       setMyPosts(posts);
       setIsFollowing(follow.isFollowing);
@@ -120,12 +131,23 @@ export default function CompanionProfileScreen() {
   useEffect(() => { load(); }, [load]);
 
   const handleFollowPress = async () => {
-    if (!userId) return;
+    if (!userId || followBusy) return;
+    setFollowBusy(true);
     try {
       const next = await toggleFollow(userId);
       setIsFollowing(next);
       Haptics.selectionAsync();
-    } catch { /* best-effort */ }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Follow is unavailable right now.';
+      Alert.alert(
+        'Follow unavailable',
+        /relation .*follows|schema cache|Could not find/i.test(message)
+          ? 'Profile follows are still being set up on the server. You can still view public travel posts.'
+          : message,
+      );
+    } finally {
+      setFollowBusy(false);
+    }
   };
 
   // Filtered trips
@@ -145,8 +167,15 @@ export default function CompanionProfileScreen() {
 
   if (!profile) {
     return (
-      <SafeAreaView style={[s.screen, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={s.emptyText}>Profile not found</Text>
+      <SafeAreaView style={[s.screen, { flex: 1 }]}>
+        <View style={s.topbar}>
+          <TouchableOpacity style={s.iconBtn} onPress={() => router.back()} activeOpacity={0.7}>
+            <ArrowLeft size={22} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
+          <Text style={s.emptyText}>Profile not found or private</Text>
+        </View>
       </SafeAreaView>
     );
   }
@@ -154,10 +183,17 @@ export default function CompanionProfileScreen() {
   const isCompanion = profile.companionStatus === 'companion';
   const privacy = profile.companionPrivacy;
   const firstName = profile.fullName.split(' ')[0];
-  const stats = profile.lifetimeStats ?? buildProfileStatsFromTrips({ trips: mutualTrips, moments: sharedMoments });
+  const computedStats = buildProfileStatsFromTrips({ trips: mutualTrips, moments: sharedMoments, flights: profileFlights });
+  const stats = profile.lifetimeStats
+    ? {
+      ...profile.lifetimeStats,
+      totalMiles: computedStats.totalMiles > 0 ? computedStats.totalMiles : profile.lifetimeStats.totalMiles,
+      totalMoments: Math.max(profile.lifetimeStats.totalMoments, computedStats.totalMoments),
+    }
+    : computedStats;
   const countries = buildCountriesVisited(stats);
-  const badges = buildAchievementBadges(stats);
   const topTrip = buildTopTrip(mutualTrips);
+  const mapData = buildProfileMapData({ trips: mutualTrips, flights: profileFlights, homeBase: profile.homeBase });
   const canSeeStats = isSelf || isCompanion || !!profile.publicStatsEnabled;
 
   return (
@@ -172,248 +208,244 @@ export default function CompanionProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        <ProfileHeader
-          fullName={profile.fullName}
-          handle={profile.handle}
-          avatarUrl={profile.avatarUrl}
-          bio={profile.bio}
-          homeBase={profile.homeBase}
-          companionStatus={profile.companionStatus}
-          isSelf={isSelf}
-          isFollowing={isFollowing}
-          onCustomize={() => setCustomizeVisible(true)}
-          onToggleFollow={handleFollowPress}
-        />
-
-        {/* Crossed Paths (non-companion only) */}
-        {!isCompanion && !isSelf && profile.mutualTripCount > 0 && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>Crossed Paths</Text>
-            <View style={s.crossedCard}>
-              <View style={s.crossedIcon}>
-                <MapPin size={18} color={colors.accent} strokeWidth={1.6} />
-              </View>
-              <View>
-                <Text style={s.crossedTitle}>
-                  {mutualTrips[0]?.destination ?? 'Shared trip'}
-                </Text>
-                <Text style={s.crossedSub}>
-                  You both traveled here
-                  {mutualTrips[0]?.startDate
-                    ? ` · ${new Date(mutualTrips[0].startDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
-                    : ''}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Travel Stats */}
-        {canSeeStats && (privacy.showStats || isSelf || profile.publicStatsEnabled) ? (
-          <>
-            <TravelStatsCard stats={stats} />
-            <TravelMapCard stats={stats} />
-          </>
-        ) : null}
-
-        {topTrip && (isSelf || isCompanion || profile.profileVisibility === 'public') && (
-          <>
-            <GroupHeader kicker="TOP TRIP" title="Travel flex" colors={colors as any} />
-            <TopTripCard
-              trip={topTrip}
-              photoCount={sharedMoments.length}
-              onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: topTrip.id } } as never)}
-            />
-          </>
-        )}
-
-        {/* ── Trips Together — Album Grid ── */}
-        {(isCompanion || isSelf) && (isSelf || privacy.showPastTrips || privacy.showUpcomingTrips) && (
-          <>
-            <GroupHeader
-              kicker="TRIPS TOGETHER"
-              title="Travel memories"
-              colors={colors as any}
-              action={
-                mutualTrips.length > 0 ? (
-                  <Text style={s.link}>All {mutualTrips.length}</Text>
-                ) : undefined
-              }
+      <ProfilePager
+        profilePage={(
+          <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+            <ProfileCoverHeader
+              fullName={profile.fullName}
+              handle={profile.handle}
+              avatarUrl={profile.avatarUrl}
+              bio={profile.bio}
+              homeBase={profile.homeBase}
+              companionStatus={profile.companionStatus}
+              isSelf={isSelf}
+              isFollowing={isFollowing}
+              stats={stats}
+              topTrip={topTrip}
+              onCustomize={() => setCustomizeVisible(true)}
+              onToggleFollow={handleFollowPress}
+              followBusy={followBusy}
             />
 
-            {/* Filter chips */}
-            {mutualTrips.length > 1 && (
-              <View style={s.filterRow}>
-                {(['all', 'completed', 'upcoming'] as TripFilter[]).map(f => {
-                  const active = tripFilter === f;
-                  return (
-                    <TouchableOpacity
-                      key={f}
-                      style={[s.filterChip, active && s.filterChipActive]}
-                      onPress={() => { Haptics.selectionAsync(); setTripFilter(f); }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[s.filterChipText, active && s.filterChipTextActive]}>
-                        {f === 'all' ? 'All' : f === 'completed' ? 'Past' : 'Upcoming'}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+            {!isCompanion && !isSelf && profile.mutualTripCount > 0 && (
+              <View style={s.section}>
+                <Text style={s.sectionLabel}>Crossed Paths</Text>
+                <View style={s.crossedCard}>
+                  <View style={s.crossedIcon}>
+                    <MapPin size={18} color={colors.accent} strokeWidth={1.6} />
+                  </View>
+                  <View>
+                    <Text style={s.crossedTitle}>
+                      {mutualTrips[0]?.destination ?? 'Shared trip'}
+                    </Text>
+                    <Text style={s.crossedSub}>
+                      You both traveled here
+                      {mutualTrips[0]?.startDate
+                        ? ` · ${new Date(mutualTrips[0].startDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+                        : ''}
+                    </Text>
+                  </View>
+                </View>
               </View>
             )}
 
-            {/* Album grid */}
-            <View style={s.albumGrid}>
-              {filteredTrips.length === 0 ? (
+            {canSeeStats && (privacy.showStats || isSelf || profile.publicStatsEnabled) ? (
+              <ProfileFlightMapCard mapData={mapData} stats={stats} />
+            ) : null}
+
+            {topTrip && (isSelf || isCompanion || profile.profileVisibility === 'public') && (
+              <>
+                <GroupHeader kicker="TOP TRIP" title="Travel flex" colors={colors as any} />
+                <TopTripCard
+                  trip={topTrip}
+                  photoCount={sharedMoments.length}
+                  onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: topTrip.id } } as never)}
+                />
+              </>
+            )}
+
+            <View style={{ height: 36 }} />
+          </ScrollView>
+        )}
+        memoriesPage={(
+          <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+            {canSeeStats && (privacy.showStats || isSelf || profile.publicStatsEnabled) ? (
+              <ProfileStatsStrip stats={stats} />
+            ) : null}
+
+            {(isCompanion || isSelf) && (isSelf || privacy.showPastTrips || privacy.showUpcomingTrips) && (
+              <>
+                <GroupHeader
+                  kicker="TRIPS TOGETHER"
+                  title="Travel memories"
+                  colors={colors as any}
+                  action={
+                    mutualTrips.length > 0 ? (
+                      <Text style={s.link}>All {mutualTrips.length}</Text>
+                    ) : undefined
+                  }
+                />
+
+                {mutualTrips.length > 1 && (
+                  <View style={s.filterRow}>
+                    {(['all', 'completed', 'upcoming'] as TripFilter[]).map(f => {
+                      const active = tripFilter === f;
+                      return (
+                        <TouchableOpacity
+                          key={f}
+                          style={[s.filterChip, active && s.filterChipActive]}
+                          onPress={() => { Haptics.selectionAsync(); setTripFilter(f); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[s.filterChipText, active && s.filterChipTextActive]}>
+                            {f === 'all' ? 'All' : f === 'completed' ? 'Past' : 'Upcoming'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                <View style={s.albumGrid}>
+                  {filteredTrips.length === 0 ? (
+                    <View style={s.emptyCardDashed}>
+                      <Text style={s.emptyCardText}>
+                        {mutualTrips.length === 0
+                          ? `No shared trips with ${firstName} yet.`
+                          : 'No trips match this filter.'}
+                      </Text>
+                    </View>
+                  ) : (
+                    filteredTrips.map(trip => (
+                      <AlbumTripCard
+                        key={trip.id}
+                        trip={trip}
+                        colors={colors}
+                        onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never)}
+                      />
+                    ))
+                  )}
+                </View>
+              </>
+            )}
+
+            {!isCompanion && !isSelf && profile.profileVisibility !== 'public' && (
+              <View style={s.section}>
+                <Text style={s.sectionLabel}>Trips Together</Text>
                 <View style={s.emptyCardDashed}>
                   <Text style={s.emptyCardText}>
-                    {mutualTrips.length === 0
-                      ? `No shared trips with ${firstName} yet.`
-                      : 'No trips match this filter.'}
+                    Travel together to unlock shared trip memories.
                   </Text>
                 </View>
-              ) : (
-                filteredTrips.map(trip => (
-                  <AlbumTripCard
-                    key={trip.id}
-                    trip={trip}
-                    colors={colors}
-                    onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never)}
-                  />
-                ))
-              )}
-            </View>
-          </>
-        )}
-
-        {/* Non-companion trips placeholder */}
-        {!isCompanion && !isSelf && profile.profileVisibility !== 'public' && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>Trips Together</Text>
-            <View style={s.emptyCardDashed}>
-              <Text style={s.emptyCardText}>
-                Travel together to unlock shared trip memories.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* ── Public Posts ── */}
-        {myPosts.length > 0 && (
-          <>
-            <GroupHeader
-              kicker={`${myPosts.length} posts`}
-              title={isSelf ? 'My Posts' : `${firstName}'s Posts`}
-              colors={colors as any}
-            />
-            <View style={{ paddingBottom: 8 }}>
-              {myPosts.map((post) => (
-                <PublicPostCard
-                  key={post.id}
-                  post={post}
-                  colors={colors}
-                  onPress={() => {
-                    if (post.tripId) router.push({ pathname: '/trip-recap', params: { tripId: post.tripId } } as never);
-                  }}
-                />
-              ))}
-            </View>
-          </>
-        )}
-
-        {/* ── Shared Moments — 2-col grid ── */}
-        {(isCompanion || isSelf) && (
-          <>
-            <GroupHeader
-              kicker={sharedMoments.length > 0 ? `${sharedMoments.length} photos` : undefined}
-              title="Shared moments"
-              colors={colors as any}
-              action={
-                sharedMoments.length > 4 ? (
-                  <Text style={s.link}>View all</Text>
-                ) : undefined
-              }
-            />
-
-            {privacy.showSharedMoments && sharedMoments.length > 0 ? (
-              <MemoriesGrid moments={sharedMoments} />
-            ) : (
-              <View style={[s.emptyCard, { marginHorizontal: 16 }]}>
-                <Text style={s.emptyCardText}>
-                  {sharedMoments.length === 0
-                    ? 'No shared moments yet.'
-                    : 'Shared moments are private'}
-                </Text>
               </View>
             )}
-          </>
-        )}
 
-        {countries.length > 0 && canSeeStats && (
-          <>
-            <GroupHeader kicker={`${countries.length} countries`} title="Countries visited" colors={colors as any} />
-            <CountriesVisited countries={countries} />
-          </>
-        )}
-
-        {badges.length > 0 && canSeeStats && (
-          <>
-            <GroupHeader kicker="ACHIEVEMENTS" title="Travel badges" colors={colors as any} />
-            <AchievementBadges badges={badges} />
-          </>
-        )}
-
-        {profile.bio ? (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>About {isSelf ? 'You' : firstName}</Text>
-            <View style={s.aboutCard}>
-              <Text style={s.aboutText}>{profile.bio}</Text>
-            </View>
-          </View>
-        ) : null}
-
-        {/* Non-companion moments placeholder */}
-        {!isCompanion && !isSelf && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>Shared Moments</Text>
-            <View style={s.emptyCardDashed}>
-              <Text style={s.emptyCardText}>
-                Moments stay private until you're{'\n'}both companions on a trip.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Socials / Connect */}
-        {(isCompanion || isSelf) && privacy.showSocials && profile.socials && (
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>Connect</Text>
-            <View style={s.socialsList}>
-              {profile.socials.instagram && (
-                <SocialRow
-                  icon={<Instagram size={20} color={colors.accent} strokeWidth={1.7} />}
-                  handle={`@${profile.socials.instagram}`}
-                  platform="Instagram"
-                  colors={colors}
-                  onPress={() => Linking.openURL(`https://instagram.com/${profile.socials!.instagram}`)}
+            {myPosts.length > 0 && (
+              <>
+                <GroupHeader
+                  kicker={`${myPosts.length} posts`}
+                  title={isSelf ? 'My Posts' : `${firstName}'s Posts`}
+                  colors={colors as any}
                 />
-              )}
-              {profile.socials.tiktok && (
-                <SocialRow
-                  icon={<Music2 size={20} color={colors.accent} strokeWidth={1.7} />}
-                  handle={`@${profile.socials.tiktok}`}
-                  platform="TikTok"
-                  colors={colors}
-                  onPress={() => Linking.openURL(`https://tiktok.com/@${profile.socials!.tiktok}`)}
-                />
-              )}
-            </View>
-          </View>
-        )}
+                <View style={{ paddingBottom: 8 }}>
+                  {myPosts.map((post) => (
+                    <PublicPostCard
+                      key={post.id}
+                      post={post}
+                      colors={colors}
+                      onPress={() => {
+                        if (post.tripId) router.push({ pathname: '/trip-recap', params: { tripId: post.tripId } } as never);
+                      }}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
 
-        <View style={{ height: 36 }} />
-      </ScrollView>
+            {(isCompanion || isSelf) && (
+              <>
+                <GroupHeader
+                  kicker={sharedMoments.length > 0 ? `${sharedMoments.length} photos` : undefined}
+                  title="Shared moments"
+                  colors={colors as any}
+                  action={
+                    sharedMoments.length > 4 ? (
+                      <Text style={s.link}>View all</Text>
+                    ) : undefined
+                  }
+                />
+
+                {privacy.showSharedMoments && sharedMoments.length > 0 ? (
+                  <MemoriesGrid moments={sharedMoments} />
+                ) : (
+                  <View style={[s.emptyCard, { marginHorizontal: 16 }]}>
+                    <Text style={s.emptyCardText}>
+                      {sharedMoments.length === 0
+                        ? 'No shared moments yet.'
+                        : 'Shared moments are private'}
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+
+            {countries.length > 0 && canSeeStats && (
+              <>
+                <GroupHeader kicker={`${countries.length} countries`} title="Countries visited" colors={colors as any} />
+                <CountriesVisited countries={countries} />
+              </>
+            )}
+
+            {profile.bio ? (
+              <View style={s.section}>
+                <Text style={s.sectionLabel}>About {isSelf ? 'You' : firstName}</Text>
+                <View style={s.aboutCard}>
+                  <Text style={s.aboutText}>{profile.bio}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            {!isCompanion && !isSelf && (
+              <View style={s.section}>
+                <Text style={s.sectionLabel}>Shared Moments</Text>
+                <View style={s.emptyCardDashed}>
+                  <Text style={s.emptyCardText}>
+                    Moments stay private until you're{'\n'}both companions on a trip.
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {(isCompanion || isSelf) && privacy.showSocials && profile.socials && (
+              <View style={s.section}>
+                <Text style={s.sectionLabel}>Connect</Text>
+                <View style={s.socialsList}>
+                  {profile.socials.instagram && (
+                    <SocialRow
+                      icon={<Instagram size={20} color={colors.accent} strokeWidth={1.7} />}
+                      handle={`@${profile.socials.instagram}`}
+                      platform="Instagram"
+                      colors={colors}
+                      onPress={() => Linking.openURL(`https://instagram.com/${profile.socials!.instagram}`)}
+                    />
+                  )}
+                  {profile.socials.tiktok && (
+                    <SocialRow
+                      icon={<Music2 size={20} color={colors.accent} strokeWidth={1.7} />}
+                      handle={`@${profile.socials.tiktok}`}
+                      platform="TikTok"
+                      colors={colors}
+                      onPress={() => Linking.openURL(`https://tiktok.com/@${profile.socials!.tiktok}`)}
+                    />
+                  )}
+                </View>
+              </View>
+            )}
+
+            <View style={{ height: 36 }} />
+          </ScrollView>
+        )}
+      />
 
       <ProfileCustomizeSheet
         visible={customizeVisible}
@@ -490,7 +522,7 @@ function AlbumTripCard({ trip, colors, onPress }: { trip: Trip; colors: any; onP
 
 function PublicPostCard({ post, colors, onPress }: { post: FeedPost; colors: any; onPress: () => void }) {
   const s = getStyles(colors);
-  const imageUrl = post.media?.[0]?.mediaUrl ?? post.photoUrl;
+  const imageUrl = post.media?.find((media) => !!media.mediaUrl)?.mediaUrl || post.photoUrl;
 
   return (
     <TouchableOpacity style={s.postCard} onPress={onPress} activeOpacity={0.82} disabled={!post.tripId}>

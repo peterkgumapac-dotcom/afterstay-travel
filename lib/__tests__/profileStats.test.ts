@@ -1,9 +1,12 @@
-import type { LifetimeStats, Moment, Trip } from '../types';
+import type { Flight, LifetimeStats, Moment, Trip } from '../types';
 import {
   buildAchievementBadges,
   buildCountriesVisited,
+  buildProfileMapData,
   buildProfileStatsFromTrips,
   buildTopTrip,
+  extractAirportCode,
+  haversineKm,
 } from '../profileStats';
 
 const baseTrip: Trip = {
@@ -29,6 +32,19 @@ const moments: Moment[] = [
   { id: 'm2', caption: '', date: '2024-04-22', tags: [], photo: 'https://example.com/2.jpg', userId: 'u1' },
 ];
 
+const flights: Flight[] = [
+  {
+    id: 'flight-1',
+    direction: 'Outbound',
+    flightNumber: 'PR 2045',
+    airline: 'Philippine Airlines',
+    from: 'Manila (MNL)',
+    to: 'Boracay (MPH)',
+    departTime: '2024-04-20T01:00:00Z',
+    arriveTime: '2024-04-20T02:10:00Z',
+  },
+];
+
 describe('profileStats', () => {
   it('builds travel stats from visible trips and moments', () => {
     const stats = buildProfileStatsFromTrips({
@@ -38,6 +54,7 @@ describe('profileStats', () => {
         { ...baseTrip, id: 'deleted', deletedAt: '2026-01-01T00:00:00Z' },
       ],
       moments,
+      flights,
     });
 
     expect(stats.totalTrips).toBe(1);
@@ -45,6 +62,7 @@ describe('profileStats', () => {
     expect(stats.totalNights).toBe(7);
     expect(stats.totalSpent).toBe(36420);
     expect(stats.totalMoments).toBe(2);
+    expect(stats.totalMiles).toBeGreaterThan(100);
     expect(stats.countriesList).toEqual(['Philippines']);
   });
 
@@ -81,5 +99,38 @@ describe('profileStats', () => {
 
     expect(top?.id).toBe('trip-1');
     expect(top?.destination).toBe('Boracay, Philippines');
+  });
+
+  it('extracts airport codes from scanned flight labels', () => {
+    expect(extractAirportCode('Manila (MNL)')).toBe('MNL');
+    expect(extractAirportCode('Godofredo P. Ramos / Caticlan')).toBe('MPH');
+    expect(extractAirportCode('Tokyo')).toBe('TYO');
+  });
+
+  it('builds map routes and total distance from flights', () => {
+    const mapData = buildProfileMapData({ trips: [baseTrip], flights, homeBase: 'Manila' });
+
+    expect(mapData.homeAirportCode).toBe('MNL');
+    expect(mapData.routes).toHaveLength(1);
+    expect(mapData.routes[0].fromCode).toBe('MNL');
+    expect(mapData.routes[0].toCode).toBe('MPH');
+    expect(mapData.destinations.map((destination) => destination.code)).toEqual(['MPH']);
+    expect(mapData.totalKm).toBeGreaterThan(250);
+  });
+
+  it('falls back to trip coordinates when airport codes are unknown', () => {
+    const mapData = buildProfileMapData({
+      trips: [{ ...baseTrip, destination: 'Mystery Beach', countryCode: 'PH' }],
+      flights: [{ ...flights[0], from: 'Unknown origin', to: 'Unknown destination' }],
+    });
+
+    expect(mapData.routes).toHaveLength(0);
+    expect(mapData.destinations).toHaveLength(1);
+    expect(mapData.destinations[0].label).toBe('Mystery Beach');
+    expect(mapData.totalKm).toBeGreaterThan(0);
+  });
+
+  it('calculates route distances with haversine', () => {
+    expect(Math.round(haversineKm({ lat: 14.5086, lng: 121.0195 }, { lat: 11.9245, lng: 121.9540 }))).toBeGreaterThan(280);
   });
 });
