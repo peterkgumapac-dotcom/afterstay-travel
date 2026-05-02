@@ -50,6 +50,9 @@ import type {
   FeedPostType,
   FeedPostComment,
   FollowState,
+  CompanionProfile,
+  CompanionPrivacy,
+  CompanionStatus,
 } from './types'
 
 // ---------- client ----------
@@ -4702,14 +4705,62 @@ async function notifyComment(
 
 // ---------- COMPANION SYSTEM ----------
 
-import type { CompanionStatus, CompanionPrivacy, CompanionProfile } from './types'
-
 const DEFAULT_PRIVACY: CompanionPrivacy = {
   showStats: true,
   showSharedMoments: true,
   showPastTrips: true,
   showUpcomingTrips: false,
   showSocials: true,
+}
+
+type PublicProfileRpcRow = {
+  id?: string;
+  fullName?: string;
+  handle?: string | null;
+  avatarUrl?: string | null;
+  bio?: string | null;
+  homeBase?: string | null;
+  profileVisibility?: CompanionProfile['profileVisibility'];
+  publicStatsEnabled?: boolean;
+  profileBadges?: string[] | null;
+  followersCount?: number;
+  followingCount?: number;
+  viewerIsFollowing?: boolean;
+}
+
+function mapPublicProfileRpcToProfileRow(row: PublicProfileRpcRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    full_name: row.fullName,
+    handle: row.handle,
+    avatar_url: row.avatarUrl,
+    bio: row.bio,
+    home_base: row.homeBase,
+    profile_visibility: row.profileVisibility,
+    public_stats_enabled: row.publicStatsEnabled,
+    profile_badges: row.profileBadges,
+  }
+}
+
+async function getPublicProfileRpc(targetUserId: string): Promise<PublicProfileRpcRow | null> {
+  const { data, error } = await supabase.rpc('get_public_profile', {
+    p_user_id: targetUserId,
+  })
+
+  if (error) {
+    const canFallback =
+      error.code === 'PGRST202' ||
+      error.message?.includes('Could not find the function') ||
+      error.message?.includes('schema cache') ||
+      error.message?.includes('get_public_profile')
+    if (!canFallback && __DEV__) {
+      console.warn('[getPublicProfileRpc] failed:', error.message)
+    }
+    return null
+  }
+
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+  return data as PublicProfileRpcRow
 }
 
 /** Get companion status between current user and target. */
@@ -4734,7 +4785,7 @@ export async function getCompanionStatus(targetUserId: string): Promise<Companio
     if (sharedMember) return 'companion'
   }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('companions')
     .select('status, source')
     .or(`and(user_id.eq.${user.id},companion_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},companion_id.eq.${user.id})`)
@@ -4742,28 +4793,34 @@ export async function getCompanionStatus(targetUserId: string): Promise<Companio
     .limit(1)
     .maybeSingle()
 
+  if (error) return 'none'
   if (!data) return 'none'
   return data.status === 'accepted' ? 'companion' : 'pending'
 }
 
 /** Get full companion profile for viewing. */
 export async function getCompanionProfile(targetUserId: string): Promise<CompanionProfile> {
-  const { data: profile, error } = await supabase
+  const publicProfile = await getPublicProfileRpc(targetUserId)
+
+  const { data: profile } = await supabase
     .from('profiles')
     .select('id, full_name, avatar_url, handle, bio, home_base, profile_visibility, public_stats_enabled, profile_badges, phone, socials, companion_privacy')
     .eq('id', targetUserId)
-    .single()
+    .maybeSingle()
 
   let resolvedProfile = profile as Record<string, unknown> | null
-  if (error || !resolvedProfile) {
-    const [publicProfile] = await getPublicProfiles([targetUserId])
-    if (!publicProfile) throw new Error('Profile not found')
+  if (!resolvedProfile && publicProfile) {
+    resolvedProfile = mapPublicProfileRpcToProfileRow(publicProfile)
+  }
+  if (!resolvedProfile) {
+    const [fallbackProfile] = await getPublicProfiles([targetUserId])
+    if (!fallbackProfile) throw new Error('Profile not found')
     resolvedProfile = {
-      id: publicProfile.id,
-      full_name: publicProfile.fullName,
-      avatar_url: publicProfile.avatarUrl,
-      handle: publicProfile.handle,
-      companion_privacy: publicProfile.companionPrivacy,
+      id: fallbackProfile.id,
+      full_name: fallbackProfile.fullName,
+      avatar_url: fallbackProfile.avatarUrl,
+      handle: fallbackProfile.handle,
+      companion_privacy: fallbackProfile.companionPrivacy,
     }
   }
 
@@ -4873,6 +4930,15 @@ export async function getCompanions(): Promise<CompanionProfile[]> {
 export async function getFollowState(targetUserId: string): Promise<FollowState> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { isFollowing: false, followersCount: 0, followingCount: 0 }
+
+  const publicProfile = await getPublicProfileRpc(targetUserId)
+  if (publicProfile) {
+    return {
+      isFollowing: !!publicProfile.viewerIsFollowing,
+      followersCount: Number(publicProfile.followersCount ?? 0),
+      followingCount: Number(publicProfile.followingCount ?? 0),
+    }
+  }
 
   const [following, followersCount, followingCount] = await Promise.all([
     supabase
