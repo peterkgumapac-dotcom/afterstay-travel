@@ -443,7 +443,7 @@ function AlbumTripCard({ trip, colors, onPress }: { trip: Trip; colors: any; onP
   return (
     <TouchableOpacity style={s.albumCard} onPress={onPress} activeOpacity={0.8}>
       {trip.id ? (
-        <TripCollage tripId={trip.id} width={CARD_W} height={CARD_H} />
+        <TripCollage tripId={trip.id} width={CARD_W} height={CARD_H} animated={false} />
       ) : (
         <View style={[s.albumCover, s.albumCoverFallback]}>
           <Text style={{ fontSize: 40 }}>✈️</Text>

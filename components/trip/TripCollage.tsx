@@ -4,10 +4,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withDelay,
   withSequence,
   Easing,
-  runOnJS,
 } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { supabase } from '@/lib/supabase';
@@ -19,6 +17,7 @@ interface TripCollageProps {
   quickTripId?: string;
   width: number;
   height: number;
+  animated?: boolean;
   /** If provided, skip the fetch and use these URLs directly */
   photoUrls?: string[];
 }
@@ -82,15 +81,16 @@ interface FlipCellProps {
   cellH: number;
   flipInterval: number;
   flipDelay: number;
+  animated: boolean;
 }
 
-const FlipCell = memo(function FlipCell({ photos, cellW, cellH, flipInterval, flipDelay }: FlipCellProps) {
+const FlipCell = memo(function FlipCell({ photos, cellW, cellH, flipInterval, flipDelay, animated }: FlipCellProps) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const rotateY = useSharedValue(0);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (photos.length <= 1) return;
+    if (!animated || photos.length <= 1) return;
 
     const startFlipping = () => {
       timer.current = setInterval(() => {
@@ -112,7 +112,7 @@ const FlipCell = memo(function FlipCell({ photos, cellW, cellH, flipInterval, fl
       clearTimeout(timeout);
       if (timer.current) clearInterval(timer.current);
     };
-  }, [photos.length, flipInterval, flipDelay]);
+  }, [animated, photos.length, flipInterval, flipDelay, rotateY]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [
@@ -122,6 +122,20 @@ const FlipCell = memo(function FlipCell({ photos, cellW, cellH, flipInterval, fl
   }));
 
   if (photos.length === 0) return <View style={{ width: cellW, height: cellH, backgroundColor: '#1a1a1a' }} />;
+
+  if (!animated) {
+    return (
+      <View style={{ width: cellW, height: cellH, overflow: 'hidden' }}>
+        <Image
+          source={{ uri: photos[currentIdx] }}
+          style={{ width: cellW, height: cellH }}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={0}
+        />
+      </View>
+    );
+  }
 
   return (
     <Animated.View style={[{ width: cellW, height: cellH, overflow: 'hidden' }, animStyle]}>
@@ -137,7 +151,7 @@ const FlipCell = memo(function FlipCell({ photos, cellW, cellH, flipInterval, fl
 });
 
 // ── Main collage ──
-function TripCollageInner({ tripId, quickTripId, width, height, photoUrls }: TripCollageProps) {
+function TripCollageInner({ tripId, quickTripId, width, height, animated = true, photoUrls }: TripCollageProps) {
   const [photos, setPhotos] = useState<string[]>(photoUrls ?? []);
   const [loaded, setLoaded] = useState(!!photoUrls);
 
@@ -192,12 +206,12 @@ function TripCollageInner({ tripId, quickTripId, width, height, photoUrls }: Tri
   return (
     <View style={[styles.grid, { width, height }]}>
       <View style={styles.row}>
-        <FlipCell photos={cells[0]} cellW={cellW} cellH={cellH} flipInterval={intervals[0]} flipDelay={delays[0]} />
-        <FlipCell photos={cells[1]} cellW={cellW} cellH={cellH} flipInterval={intervals[1]} flipDelay={delays[1]} />
+        <FlipCell photos={cells[0]} cellW={cellW} cellH={cellH} flipInterval={intervals[0]} flipDelay={delays[0]} animated={animated} />
+        <FlipCell photos={cells[1]} cellW={cellW} cellH={cellH} flipInterval={intervals[1]} flipDelay={delays[1]} animated={animated} />
       </View>
       <View style={styles.row}>
-        <FlipCell photos={cells[2]} cellW={cellW} cellH={cellH} flipInterval={intervals[2]} flipDelay={delays[2]} />
-        <FlipCell photos={cells[3]} cellW={cellW} cellH={cellH} flipInterval={intervals[3]} flipDelay={delays[3]} />
+        <FlipCell photos={cells[2]} cellW={cellW} cellH={cellH} flipInterval={intervals[2]} flipDelay={delays[2]} animated={animated} />
+        <FlipCell photos={cells[3]} cellW={cellW} cellH={cellH} flipInterval={intervals[3]} flipDelay={delays[3]} animated={animated} />
       </View>
     </View>
   );

@@ -1,6 +1,6 @@
 import { Camera, Moon } from 'lucide-react-native';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { formatProfileCurrency } from '@/lib/profileStats';
@@ -15,12 +15,14 @@ interface TopTripCardProps {
 }
 
 export default function TopTripCard({ trip, photoCount, onPress }: TopTripCardProps) {
+  const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const s = getStyles(colors);
+  const cardWidth = Math.max(0, width - 32);
 
   return (
     <TouchableOpacity style={s.card} onPress={onPress} activeOpacity={0.82}>
-      <TripCollage tripId={trip.id} width={320} height={190} />
+      <TripCollage tripId={trip.id} width={cardWidth} height={220} animated={false} />
       <View style={s.overlay} />
       <View style={s.content}>
         <Text style={s.destination} numberOfLines={1}>{trip.destination || trip.name}</Text>
