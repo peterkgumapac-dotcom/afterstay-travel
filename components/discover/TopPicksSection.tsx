@@ -29,10 +29,46 @@ interface EnrichedItem extends CuratedItem {
 }
 
 const HIDE_KEY = 'top_picks_hidden';
-const POOL_KEY = 'top_picks_pool';
+const POOL_KEY_PREFIX = 'top_picks_pool';
 const TWELVE_HOURS = 12 * 60 * 60 * 1000;
 const POOL_SIZE = 20;
 const SHOW_COUNT = 5;
+const TOP_PICK_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), TOP_PICK_TIMEOUT_MS);
+    promise
+      .then(resolve)
+      .catch(() => resolve(fallback))
+      .finally(() => clearTimeout(timer));
+  });
+}
+
+function fallbackTopPicks(destination: string): EnrichedItem[] {
+  const normalized = destination.toLowerCase();
+  if (normalized.includes('boracay')) {
+    return [
+      { name: 'White Beach', category: 'Beach', reason: 'The classic Boracay sunset walk, calm water, and easy food stops.', price: 'Free' },
+      { name: "Willy's Rock", category: 'Landmark', reason: 'A quick scenic stop near Station 1 with one of the island’s most recognizable views.', price: 'Free' },
+      { name: 'Puka Shell Beach', category: 'Beach', reason: 'Quieter stretch for photos, swimming, and a slower afternoon away from the main strip.', price: 'Free' },
+      { name: "D'Mall Boracay", category: 'Food', reason: 'Easy base for dinner, coffee, essentials, and meeting points with your group.', price: 'Varies' },
+      { name: "Ariel's Point", category: 'Activity', reason: 'A bigger half-day adventure for cliff jumps, snorkeling, and boat-day energy.', price: 'Paid' },
+    ];
+  }
+
+  return [
+    { name: `${destination} viewpoint`, category: 'Sight', reason: 'Start with a scenic overview and orient the group.', price: 'Varies' },
+    { name: `${destination} local market`, category: 'Food', reason: 'A low-friction stop for snacks, souvenirs, and local texture.', price: 'Varies' },
+    { name: `${destination} old town`, category: 'Walk', reason: 'Good first walk for photos, cafes, and getting a feel for the place.', price: 'Free' },
+    { name: `${destination} beach or park`, category: 'Relax', reason: 'A flexible reset spot when the group needs something easy.', price: 'Free' },
+    { name: `${destination} signature restaurant`, category: 'Food', reason: 'Save one memorable dinner for the trip story.', price: 'Varies' },
+  ];
+}
+
+function poolCacheKey(destination: string, hotelName?: string) {
+  return `${POOL_KEY_PREFIX}:${destination.trim().toLowerCase()}:${(hotelName ?? '').trim().toLowerCase()}`;
+}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -46,12 +82,21 @@ function shuffle<T>(arr: T[]): T[] {
 export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps) {
   const { colors } = useTheme();
   const s = useMemo(() => getStyles(colors), [colors]);
+  const placeQuery = useMemo(() => destination.trim().replace(/\s+/g, ' '), [destination]);
   const [visible, setVisible] = useState<EnrichedItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!placeQuery);
   const [error, setError] = useState<string>();
   const [hidden, setHidden] = useState(false);
   const pool = useRef<EnrichedItem[]>([]);
   const poolIndex = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     AsyncStorage.getItem(HIDE_KEY).then((v) => { if (v === 'true') setHidden(true); });
@@ -71,12 +116,21 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
   }, []);
 
   const loadPool = useCallback(async (force = false) => {
-    if (!destination) return;
+    if (!placeQuery) {
+      pool.current = [];
+      poolIndex.current = 0;
+      setVisible([]);
+      setLoading(false);
+      setError(undefined);
+      return;
+    }
+    const fallback = fallbackTopPicks(placeQuery);
+    const cacheKey = poolCacheKey(placeQuery, hotelName);
 
     // Check cache
     if (!force) {
       try {
-        const raw = await AsyncStorage.getItem(POOL_KEY);
+        const raw = await AsyncStorage.getItem(cacheKey);
         if (raw) {
           const { items, ts } = JSON.parse(raw);
           if (Date.now() - ts < TWELVE_HOURS && items?.length > 0) {
@@ -90,22 +144,29 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
       } catch { /* ignore */ }
     }
 
-    setLoading(true);
+    // Do not leave Home looking empty while AI/Places enrichment is slow.
+    pool.current = fallback;
+    poolIndex.current = 0;
+    setVisible(fallback.slice(0, SHOW_COUNT));
+    setLoading(false);
     setError(undefined);
     try {
-      const r = await getCuratedList({
-        destination,
-        category: 'must-visit places, restaurants, cafes, beaches, activities, and hidden gems',
-        hotelName,
-        count: POOL_SIZE,
-      });
+      const r = await withTimeout(
+        getCuratedList({
+          destination: placeQuery,
+          category: 'must-visit places, restaurants, cafes, beaches, activities, and hidden gems',
+          hotelName,
+          count: POOL_SIZE,
+        }),
+        { items: fallback, cached: false },
+      );
 
       // Enrich with Google Places photos (first 10 only to limit API calls)
       const enriched = await Promise.all(
         r.items.map(async (item, i) => {
           if (i >= 10) return item as EnrichedItem; // skip photo for items 11-20
           try {
-            const place = await searchPlace(item.name, destination);
+            const place = await withTimeout(searchPlace(item.name, placeQuery), null);
             return {
               ...item,
               photoUrl: place?.photo_url ?? undefined,
@@ -120,19 +181,24 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
       );
 
       // Save to cache
-      AsyncStorage.setItem(POOL_KEY, JSON.stringify({ items: enriched, ts: Date.now() })).catch(() => {});
+      AsyncStorage.setItem(cacheKey, JSON.stringify({ items: enriched, ts: Date.now() })).catch(() => {});
 
+      if (!mountedRef.current) return;
       pool.current = shuffle(enriched);
       poolIndex.current = 0;
       showNext5();
     } catch {
-      setError('Could not load');
+      if (!mountedRef.current) return;
+      pool.current = fallback;
+      poolIndex.current = 0;
+      setVisible(fallback.slice(0, SHOW_COUNT));
+      setError(undefined);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
-  }, [destination, hotelName, showNext5]);
+  }, [placeQuery, hotelName, showNext5]);
 
-  useEffect(() => { if (!hidden) loadPool(); }, [destination, hotelName, hidden]);
+  useEffect(() => { if (!hidden) loadPool(); }, [placeQuery, hotelName, hidden, loadPool]);
 
   const handleRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -151,7 +217,7 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
   };
 
   const openMaps = (item: EnrichedItem) => {
-    const url = item.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIComponent(item.name + ' ' + destination)}`;
+    const url = item.mapsUrl ?? `https://www.google.com/maps/search/${encodeURIComponent(item.name + ' ' + placeQuery)}`;
     Linking.openURL(url).catch(() => {});
   };
 

@@ -39,7 +39,7 @@ interface Props {
 export default function CaptureDestinationSheet({ visible, onClose, onSelect }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
-  const [pastTrips, setPastTrips] = useState<Trip[]>([]);
+  const [availableTrips, setAvailableTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTrips, setShowTrips] = useState(false);
 
@@ -47,9 +47,16 @@ export default function CaptureDestinationSheet({ visible, onClose, onSelect }: 
     if (!visible) return;
     setShowTrips(false);
     setLoading(true);
-    getAllUserTrips('')
-      .then((trips) => setPastTrips(trips.filter((t) => t.status === 'Completed' || t.status === 'Active')))
-      .catch(() => setPastTrips([]))
+    getAllUserTrips()
+      .then((trips) => setAvailableTrips(
+        trips.filter((t) =>
+          !t.deletedAt &&
+          !t.archivedAt &&
+          !t.isDraft &&
+          (t.status === 'Planning' || t.status === 'Active' || t.status === 'Completed'),
+        ),
+      ))
+      .catch(() => setAvailableTrips([]))
       .finally(() => setLoading(false));
   }, [visible]);
 
@@ -97,7 +104,7 @@ export default function CaptureDestinationSheet({ visible, onClose, onSelect }: 
               </TouchableOpacity>
 
               {/* Add to Trip */}
-              {pastTrips.length > 0 && (
+              {availableTrips.length > 0 && (
                 <TouchableOpacity
                   style={styles.optionRow}
                   activeOpacity={0.7}
@@ -127,7 +134,7 @@ export default function CaptureDestinationSheet({ visible, onClose, onSelect }: 
                 <ActivityIndicator color={colors.accent} style={{ marginTop: 20 }} />
               ) : (
                 <ScrollView style={styles.tripScroll} showsVerticalScrollIndicator={false}>
-                  {pastTrips.map((t) => (
+                  {availableTrips.map((t) => (
                     <TouchableOpacity
                       key={t.id}
                       style={styles.tripRow}
@@ -143,9 +150,17 @@ export default function CaptureDestinationSheet({ visible, onClose, onSelect }: 
                           {formatDatePHT(t.startDate)} – {formatDatePHT(t.endDate)} · {t.nights} nights
                         </Text>
                       </View>
-                      <View style={[styles.statusBadge, t.status === 'Active' && styles.activeBadge]}>
-                        <Text style={[styles.statusText, t.status === 'Active' && styles.activeText]}>
-                          {t.status === 'Active' ? 'Active' : 'Past'}
+                      <View style={[
+                        styles.statusBadge,
+                        t.status === 'Active' && styles.activeBadge,
+                        t.status === 'Planning' && styles.planningBadge,
+                      ]}>
+                        <Text style={[
+                          styles.statusText,
+                          t.status === 'Active' && styles.activeText,
+                          t.status === 'Planning' && styles.planningText,
+                        ]}>
+                          {t.status === 'Active' ? 'Active' : t.status === 'Planning' ? 'Upcoming' : 'Past'}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -301,6 +316,9 @@ const getStyles = (colors: ThemeColors) =>
     activeBadge: {
       backgroundColor: colors.accent + '20',
     },
+    planningBadge: {
+      backgroundColor: colors.gold + '20',
+    },
     statusText: {
       fontSize: 10,
       fontWeight: '600',
@@ -308,5 +326,8 @@ const getStyles = (colors: ThemeColors) =>
     },
     activeText: {
       color: colors.accent,
+    },
+    planningText: {
+      color: colors.gold,
     },
   });

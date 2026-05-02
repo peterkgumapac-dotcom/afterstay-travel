@@ -29,7 +29,7 @@ import Animated, {
 import Svg, { Polyline } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Car, Compass, Package, Pencil, QrCode, ShoppingBag, UtensilsCrossed, Wallet, X } from 'lucide-react-native';
+import { Car, Compass, Package, Pencil, QrCode, ShoppingBag, Users, UtensilsCrossed, Wallet, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -39,21 +39,28 @@ import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import SwipeableExpenseRow from '@/components/budget/SwipeableExpenseRow';
 import {
   addPaymentQr,
+  addUserPaymentQr,
   deleteExpense,
   getActiveTrip,
   getExpenses,
   getExpenseSummary,
   getGroupMembers,
   getPaymentQrs,
+  getTripBalances,
+  getUserPaymentQrs,
   removePaymentQr as removePaymentQrSupabase,
+  removeUserPaymentQr,
+  settleExpenseSplit,
   updateTripBudgetLimit,
   updateTripBudgetMode,
 } from '@/lib/supabase';
-import type { PaymentQr } from '@/lib/supabase';
+import type { MemberBalance, PaymentQr, UserPaymentQr } from '@/lib/supabase';
 import { getUnifiedExpenseHistory } from '@/lib/expenseHistory';
 import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import ExpenseTargetSheet from '@/components/budget/ExpenseTargetSheet';
+import { ExpenseDetailSheet } from '@/components/budget/ExpenseDetailSheet';
+import { GroupBalanceCard } from '@/components/budget/GroupBalanceCard';
 import { DailyTrackerCard } from '@/components/budget/DailyTrackerCard';
 import { DailyTrackerSheet } from '@/components/budget/DailyTrackerSheet';
 import { SavingsGoalCard } from '@/components/budget/SavingsGoalCard';
@@ -75,7 +82,7 @@ import type { Expense, ExpenseTarget, GroupMember, Trip, UnifiedExpenseHistoryIt
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type BudgetState = 'cruising' | 'low' | 'over';
 type BudgetMode = 'budget' | 'group';
-type TabId = 'overview' | 'fate';
+type TabId = 'expenses' | 'savings' | 'settle' | 'fate';
 
 // ── Category config ──────────────────────────────────────────────────
 
@@ -111,10 +118,12 @@ import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 export default function BudgetScreenWithBoundary() {
   return (
     <TabErrorBoundary name="Budget">
-      <BudgetScreen />
+      <BudgetScreenMemo />
     </TabErrorBoundary>
   );
 }
+
+const BudgetScreenMemo = React.memo(BudgetScreen);
 
 function BudgetScreen() {
   const { colors } = useTheme();
@@ -127,8 +136,9 @@ function BudgetScreen() {
 
   const [mode, setMode] = useState<BudgetMode>('budget');
   const modeInit = useRef(false);
-  const [tab, setTab] = useState<TabId>('overview');
+  const [tab, setTab] = useState<TabId>('expenses');
   const [trip, setTrip] = useState<Trip | null>(null);
+  const [budgetLoading, setBudgetLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [expenseSummary, setExpenseSummary] = useState<{ total: number; byCategory: Record<string, number>; count: number }>({ total: 0, byCategory: {}, count: 0 });
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -145,6 +155,19 @@ function BudgetScreen() {
   const [pendingQrUri, setPendingQrUri] = useState<string | null>(null);
   const [qrNameInput, setQrNameInput] = useState('');
 
+  // Expense detail sheet
+  const [detailExpense, setDetailExpense] = useState<Expense | null>(null);
+
+  // User-scoped QR codes (visible in all states)
+  const [userQrs, setUserQrs] = useState<UserPaymentQr[]>([]);
+  const [viewingUserQr, setViewingUserQr] = useState<UserPaymentQr | null>(null);
+  const [showUserQrNameModal, setShowUserQrNameModal] = useState(false);
+  const [pendingUserQrUri, setPendingUserQrUri] = useState<string | null>(null);
+  const [userQrNameInput, setUserQrNameInput] = useState('');
+
+  // Real split-based balances
+  const [balances, setBalances] = useState<MemberBalance[]>([]);
+
   // Savings + Daily Tracker state
   const [savingsGoal, setSavingsGoal] = useState<SavingsGoal | null>(null);
   const [showSavingsSetup, setShowSavingsSetup] = useState(false);
@@ -156,6 +179,20 @@ function BudgetScreen() {
   useEffect(() => {
     getActiveSavingsGoal().then(setSavingsGoal).catch(() => {});
   }, []);
+
+  // Load user-scoped QR codes (always, regardless of trip)
+  useEffect(() => {
+    if (user?.id) {
+      getUserPaymentQrs(user.id).then(setUserQrs).catch(() => {});
+    }
+  }, [user?.id]);
+
+  // Load real balances when expenses or members change
+  useEffect(() => {
+    if (trip?.id && expenses.length > 0 && members.length > 1) {
+      getTripBalances(trip.id, expenses, members).then(setBalances).catch(() => {});
+    }
+  }, [trip?.id, expenses.length, members.length]);
 
   const handleCreateGoal = async (input: { title: string; targetAmount: number; targetCurrency: string; targetDate?: string; destination?: string }) => {
     try {
@@ -236,6 +273,7 @@ function BudgetScreen() {
       }
     } catch (e) { if (__DEV__) console.warn('[BudgetScreen] load budget data failed:', e); } finally {
       setRefreshing(false);
+      setBudgetLoading(false);
     }
   }, []);
 
@@ -281,7 +319,9 @@ function BudgetScreen() {
         try {
           const next = await removePaymentQrSupabase(trip.id, idx);
           setPaymentQrs(next);
-        } catch { /* ignore */ }
+        } catch {
+          Alert.alert('Error', 'Something went wrong. Please try again.');
+        }
       }},
     ]);
   }, [paymentQrs, trip?.id]);
@@ -357,6 +397,9 @@ function BudgetScreen() {
   const displayExpenses = showAllExpenses ? filteredExpenses : filteredExpenses.slice(0, 5);
   const maxDaySpend = Math.max(...spendingByDay.map(d => d[1]), 1);
 
+  // Past trip budget summary modal
+  const [pastBudgetGroup, setPastBudgetGroup] = useState<{ label: string; items: UnifiedExpenseHistoryItem[] } | null>(null);
+
   // History expenses for users without active trip (unified: trip + standalone + quick-trip)
   const [historyExpenses, setHistoryExpenses] = useState<UnifiedExpenseHistoryItem[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -421,7 +464,7 @@ function BudgetScreen() {
     [historyExpenses],
   );
 
-  if (!trip) {
+  if (!trip && !budgetLoading) {
     const tripTotal = tripExpenses.reduce((s, e) => s + e.amount, 0);
     const quickTotal = quickTripExpenses.reduce((s, e) => s + e.amount, 0);
     const standaloneTotal = standaloneExpenses.reduce((s, e) => s + e.amount, 0);
@@ -443,58 +486,106 @@ function BudgetScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {hasAnyExpenses ? (
-            <>
-              {/* Total summary */}
-              <View style={styles.historyTotal}>
-                <Text style={styles.historyTotalAmount}>
-                  {formatCurrency(historyTotal, 'PHP')}
-                </Text>
-                <Text style={styles.historyTotalLabel}>
-                  total across all trips
-                </Text>
-              </View>
+        {/* Tab row — same tabs for all states */}
+        <View style={styles.tabRow}>
+          {([
+            { id: 'expenses' as const, label: 'Expenses' },
+            { id: 'savings' as const, label: 'Savings' },
+            { id: 'settle' as const, label: 'Settle Up' },
+          ]).map(t => (
+            <TouchableOpacity
+              key={t.id}
+              onPress={() => setTab(t.id)}
+              style={[styles.tabBtn, tab === t.id && styles.tabBtnActive]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-              {/* Summary cards by source */}
-              <View style={{ paddingHorizontal: 16, gap: 10, marginBottom: 20 }}>
-                {tripTotal > 0 && (
-                  <View style={[styles.historyRow, { gap: 12 }]}>
-                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' }}>
-                      <Compass size={18} color={colors.accent} strokeWidth={1.5} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.historyDesc}>Trip Expenses</Text>
-                      <Text style={styles.historyMeta}>{tripExpenses.length} expense{tripExpenses.length !== 1 ? 's' : ''}</Text>
-                    </View>
-                    <Text style={styles.historyAmount}>{formatCurrency(tripTotal, 'PHP')}</Text>
-                  </View>
-                )}
-                {quickTotal > 0 && (
-                  <View style={[styles.historyRow, { gap: 12 }]}>
-                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(217,164,65,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Package size={18} color={colors.gold} strokeWidth={1.5} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.historyDesc}>Quick Trips</Text>
-                      <Text style={styles.historyMeta}>{quickTripExpenses.length} expense{quickTripExpenses.length !== 1 ? 's' : ''}</Text>
-                    </View>
-                    <Text style={styles.historyAmount}>{formatCurrency(quickTotal, 'PHP')}</Text>
-                  </View>
-                )}
-                {standaloneTotal > 0 && (
-                  <View style={[styles.historyRow, { gap: 12 }]}>
-                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(227,136,104,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-                      <Wallet size={18} color={colors.coral} strokeWidth={1.5} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.historyDesc}>Personal</Text>
-                      <Text style={styles.historyMeta}>{standaloneExpenses.length} expense{standaloneExpenses.length !== 1 ? 's' : ''}</Text>
-                    </View>
-                    <Text style={styles.historyAmount}>{formatCurrency(standaloneTotal, 'PHP')}</Text>
-                  </View>
-                )}
-              </View>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* ── SAVINGS TAB (no-trip) ── */}
+          {tab === 'savings' && (
+            <View style={{ gap: 16 }}>
+              <DailyTrackerCard
+                onAddExpense={() => setShowDailySheet(true)}
+                onScanReceipt={() => router.push('/scan-receipt' as never)}
+              />
+              <SavingsGoalCard
+                goal={savingsGoal}
+                onSetup={() => setShowSavingsSetup(true)}
+                onLogSavings={() => setShowSavingsEntry(true)}
+                onEdit={() => setShowSavingsSetup(true)}
+                onPlanTrip={() => router.push('/onboarding' as never)}
+              />
+            </View>
+          )}
+
+          {/* ── SETTLE UP TAB (no-trip) ── */}
+          {tab === 'settle' && (
+            <View style={{ gap: 16 }}>
+              {/* Show shared expenses across all sources */}
+              {historyExpenses.filter(e => e.paidBy || e.splitType).length > 0 ? (
+                <>
+                  <Text style={styles.historyLabel}>WHO OWES WHAT</Text>
+                  {historyExpenses
+                    .filter(e => e.paidBy || e.splitType)
+                    .slice(0, 20)
+                    .map((e) => {
+                      const badge = e.source === 'standalone' ? 'Personal'
+                        : e.sourceLabel ?? (e.source === 'quick-trip' ? 'Quick Trip' : 'Trip');
+                      return (
+                        <TouchableOpacity
+                          key={e.id}
+                          style={styles.settleRow}
+                          onPress={() => setDetailExpense({
+                            id: e.id,
+                            description: e.description,
+                            amount: e.amount,
+                            currency: e.currency,
+                            category: e.category as Expense['category'],
+                            date: e.date,
+                            paidBy: e.paidBy,
+                            splitType: e.splitType as Expense['splitType'],
+                          })}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[styles.avatar, { backgroundColor: colors.chart2, width: 36, height: 36 }]}>
+                            <Text style={[styles.avatarText, { fontSize: 14 }]}>
+                              {(e.paidBy ?? '?').charAt(0)}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.settleText}>
+                              <Text style={{ fontWeight: '600' }}>{e.description}</Text>
+                            </Text>
+                            <Text style={{ fontSize: 11, color: colors.text3, marginTop: 2 }}>
+                              {e.paidBy ? `Paid by ${e.paidBy}` : ''} · {badge} · {formatDatePHT(e.date)}
+                            </Text>
+                          </View>
+                          <Text style={styles.settleAmount}>{formatCurrency(e.amount, e.currency)}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </>
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+                  <Users size={28} color={colors.text3} strokeWidth={1.5} />
+                  <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>No shared expenses</Text>
+                  <Text style={{ fontSize: 13, color: colors.text3, textAlign: 'center' }}>
+                    Add expenses with people to see who owes whom.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* ── EXPENSES TAB (no-trip) ── */}
+          {tab === 'expenses' && hasAnyExpenses ? (
+            <>
 
               {/* Category breakdown */}
               {(() => {
@@ -557,59 +648,134 @@ function BudgetScreen() {
                 </View>
               </TouchableOpacity>
 
-              {/* Daily Tracker + Savings Goal */}
+              {/* Daily Tracker */}
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
                 onScanReceipt={() => router.push('/scan-receipt' as never)}
               />
-              <SavingsGoalCard
-                goal={savingsGoal}
-                onSetup={() => setShowSavingsSetup(true)}
-                onLogSavings={() => setShowSavingsEntry(true)}
-                onEdit={() => setShowSavingsSetup(true)}
-                onPlanTrip={() => router.push('/onboarding' as never)}
-              />
 
-              {/* Recent purchases list */}
+              {/* Grouped purchases — per source with sub-groups by name/date */}
               <View style={styles.historyList}>
-                <Text style={styles.historyLabel}>RECENT PURCHASES</Text>
-                {historyExpenses.slice(0, 15).map((e) => {
-                  const badge =
-                    e.source === 'standalone'
-                      ? 'Personal'
-                      : e.sourceLabel ?? (e.source === 'quick-trip' ? 'Quick Trip' : 'Trip');
-                  return (
-                    <SwipeableExpenseRow
-                      key={e.id}
-                      colors={colors}
-                      onEdit={() => router.push({
-                        pathname: '/add-expense',
-                        params: {
-                          editId: e.id,
-                          description: e.description,
-                          amount: String(e.amount),
-                          currency: e.currency,
-                          category: e.category,
-                          date: e.date,
-                        },
-                      })}
-                      onDelete={() => handleDeleteExpense(e.id, e.description)}
-                    >
-                      <View style={styles.historyRow}>
-                        <View style={styles.historyInfo}>
-                          <Text style={styles.historyDesc} numberOfLines={1}>{e.description || 'Expense'}</Text>
-                          <Text style={styles.historyMeta}>
-                            {formatDatePHT(e.date)} {'\u00B7'} {badge}
+                {(() => {
+                  // Group trip expenses by sourceLabel (trip name)
+                  const tripGroups = new Map<string, typeof tripExpenses>();
+                  for (const e of tripExpenses) {
+                    const key = e.sourceLabel ?? 'Trip';
+                    const arr = tripGroups.get(key) ?? [];
+                    arr.push(e);
+                    tripGroups.set(key, arr);
+                  }
+
+                  // Group quick trip expenses by sourceLabel
+                  const qtGroups = new Map<string, typeof quickTripExpenses>();
+                  for (const e of quickTripExpenses) {
+                    const key = e.sourceLabel ?? 'Quick Trip';
+                    const arr = qtGroups.get(key) ?? [];
+                    arr.push(e);
+                    qtGroups.set(key, arr);
+                  }
+
+                  // Build all groups
+                  const allGroups: { key: string; label: string; items: typeof historyExpenses; total: number }[] = [];
+                  for (const [name, items] of tripGroups) {
+                    allGroups.push({ key: `trip-${name}`, label: name, items, total: items.reduce((s, e) => s + e.amount, 0) });
+                  }
+                  for (const [name, items] of qtGroups) {
+                    allGroups.push({ key: `qt-${name}`, label: name, items, total: items.reduce((s, e) => s + e.amount, 0) });
+                  }
+                  if (standaloneExpenses.length > 0) {
+                    allGroups.push({ key: 'personal', label: 'Personal', items: standaloneExpenses, total: standaloneExpenses.reduce((s, e) => s + e.amount, 0) });
+                  }
+
+                  return allGroups.map((group) => {
+                    const isOpen = expandedExpense === group.key;
+                    // Sub-group by date when expanded
+                    const byDate = new Map<string, typeof group.items>();
+                    for (const e of group.items) {
+                      const day = e.date;
+                      const arr = byDate.get(day) ?? [];
+                      arr.push(e);
+                      byDate.set(day, arr);
+                    }
+
+                    return (
+                      <View key={group.key} style={{ marginBottom: 12 }}>
+                        <TouchableOpacity
+                          style={styles.groupHeader}
+                          activeOpacity={0.7}
+                          onPress={() => setExpandedExpense(isOpen ? null : group.key)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.historyDesc, { fontSize: 14 }]}>{group.label}</Text>
+                            {isOpen && group.items.length >= 2 && (
+                              <TouchableOpacity
+                                onPress={() => setPastBudgetGroup({ label: group.label, items: group.items })}
+                                hitSlop={8}
+                                style={{ marginTop: 4 }}
+                              >
+                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.accent }}>View Budget Summary</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                          <Text style={[styles.historyAmount, { fontSize: 14 }]}>
+                            {formatCurrency(group.total, group.items[0]?.currency ?? 'PHP')}
                           </Text>
-                        </View>
-                        <Text style={styles.historyAmount}>{formatCurrency(e.amount, e.currency)}</Text>
+                        </TouchableOpacity>
+                        {isOpen && [...byDate.entries()].map(([date, items]) => (
+                          <View key={date}>
+                            <Text style={[styles.historyMeta, { paddingHorizontal: 4, paddingVertical: 6 }]}>
+                              {formatDatePHT(date)}
+                            </Text>
+                            {items.map((e) => (
+                              <SwipeableExpenseRow
+                                key={e.id}
+                                colors={colors}
+                                onEdit={() => router.push({
+                                  pathname: '/add-expense',
+                                  params: {
+                                    editId: e.id,
+                                    description: e.description,
+                                    amount: String(e.amount),
+                                    currency: e.currency,
+                                    category: e.category,
+                                    date: e.date,
+                                  },
+                                })}
+                                onDelete={() => handleDeleteExpense(e.id, e.description)}
+                              >
+                                <TouchableOpacity
+                                  style={styles.historyRow}
+                                  onPress={() => setDetailExpense({
+                                    id: e.id,
+                                    description: e.description,
+                                    amount: e.amount,
+                                    currency: e.currency,
+                                    category: e.category as Expense['category'],
+                                    date: e.date,
+                                    paidBy: e.paidBy,
+                                    placeName: e.placeName,
+                                  })}
+                                  activeOpacity={0.7}
+                                >
+                                  <View style={styles.historyInfo}>
+                                    <Text style={styles.historyDesc} numberOfLines={1}>{e.description || 'Expense'}</Text>
+                                    <Text style={styles.historyMeta}>
+                                      {e.paidBy ? `by ${e.paidBy}` : e.category}
+                                    </Text>
+                                  </View>
+                                  <Text style={styles.historyAmount}>{formatCurrency(e.amount, e.currency)}</Text>
+                                </TouchableOpacity>
+                              </SwipeableExpenseRow>
+                            ))}
+                          </View>
+                        ))}
                       </View>
-                    </SwipeableExpenseRow>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </View>
             </>
-          ) : (
+          ) : tab === 'expenses' ? (
             <View style={styles.historyEmpty}>
               <Wallet size={32} color={colors.text3} strokeWidth={1.5} />
               <Text style={styles.historyEmptyTitle}>No expenses yet</Text>
@@ -633,10 +799,107 @@ function BudgetScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          )}
+          ) : null}
+
+          {/* User-scoped Payment QR codes (visible in all states) */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>AfterStay Pay</Text>
+            {userQrs.map((qr) => (
+              <TouchableOpacity
+                key={qr.id}
+                style={styles.qrRow}
+                onPress={() => setViewingUserQr(qr)}
+                onLongPress={() => {
+                  Alert.alert('Remove QR?', `Remove "${qr.label}"?`, [
+                    { text: 'Keep', style: 'cancel' },
+                    {
+                      text: 'Remove',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await removeUserPaymentQr(qr.id).catch(() => {});
+                        setUserQrs((prev) => prev.filter((q) => q.id !== qr.id));
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      },
+                    },
+                  ]);
+                }}
+                activeOpacity={0.7}
+              >
+                <Image source={{ uri: qr.uri }} style={styles.qrThumb} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.qrLabel}>{qr.label}</Text>
+                  <Text style={styles.qrHint}>Tap to show · long press to remove</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.qrUploadBtn}
+              onPress={async () => {
+                const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+                if (!result.canceled && result.assets[0]) {
+                  setPendingUserQrUri(result.assets[0].uri);
+                  setUserQrNameInput('');
+                  setShowUserQrNameModal(true);
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.qrUploadText}>
+                {userQrs.length > 0 ? '+ Add another QR' : '+ Add payment QR'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={{ height: 100 }} />
         </ScrollView>
+
+        {/* User QR name modal */}
+        <Modal visible={showUserQrNameModal} transparent animationType="fade">
+          <Pressable style={styles.modalOverlay} onPress={() => setShowUserQrNameModal(false)}>
+            <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Name this QR</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: colors.bg3, borderColor: colors.border, color: colors.text }]}
+                value={userQrNameInput}
+                onChangeText={setUserQrNameInput}
+                placeholder="e.g. GCash, Maya, BPI"
+                placeholderTextColor={colors.text3}
+                autoFocus
+              />
+              <TouchableOpacity
+                style={{ backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 12 }}
+                onPress={async () => {
+                  if (!pendingUserQrUri || !user?.id || !userQrNameInput.trim()) return;
+                  try {
+                    const qr = await addUserPaymentQr(user.id, userQrNameInput.trim(), pendingUserQrUri);
+                    setUserQrs((prev) => [...prev, qr]);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    setShowUserQrNameModal(false);
+                    setPendingUserQrUri(null);
+                  } catch (err: any) {
+                    Alert.alert('Upload failed', err?.message ?? 'Could not save QR code. Check your connection and try again.');
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* User QR viewer modal */}
+        <Modal visible={!!viewingUserQr} transparent animationType="fade">
+          <Pressable style={styles.modalOverlay} onPress={() => setViewingUserQr(null)}>
+            <View style={[styles.modalCard, { backgroundColor: colors.card, alignItems: 'center', padding: 24 }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{viewingUserQr?.label}</Text>
+              {viewingUserQr?.uri && (
+                <Image source={{ uri: viewingUserQr.uri }} style={{ width: 240, height: 240, borderRadius: 12, marginTop: 12 }} />
+              )}
+              <Text style={{ color: colors.text3, fontSize: 12, marginTop: 12 }}>Scan to pay</Text>
+            </View>
+          </Pressable>
+        </Modal>
 
         <ExpenseTargetSheet
           visible={targetSheetVisible}
@@ -669,6 +932,100 @@ function BudgetScreen() {
           currency={savingsGoal?.targetCurrency ?? 'PHP'}
           onClose={() => setMilestoneToShow(null)}
         />
+
+        {/* Past trip budget summary modal */}
+        <Modal visible={!!pastBudgetGroup} transparent animationType="fade" onRequestClose={() => setPastBudgetGroup(null)}>
+          <Pressable style={styles.modalOverlay} onPress={() => setPastBudgetGroup(null)}>
+            <View style={[styles.modalCard, { maxHeight: '75%' }]} onStartShouldSetResponder={() => true}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <Text style={styles.modalTitle}>{pastBudgetGroup?.label ?? 'Budget'}</Text>
+                <TouchableOpacity onPress={() => setPastBudgetGroup(null)} hitSlop={12}>
+                  <X size={20} color={colors.text3} />
+                </TouchableOpacity>
+              </View>
+
+              {pastBudgetGroup && (() => {
+                const items = pastBudgetGroup.items;
+                const total = items.reduce((s, e) => s + e.amount, 0);
+                const byCat: Record<string, number> = {};
+                for (const e of items) {
+                  byCat[e.category] = (byCat[e.category] ?? 0) + e.amount;
+                }
+                const sorted = Object.entries(byCat).sort(([, a], [, b]) => b - a);
+                const maxVal = sorted[0]?.[1] ?? 1;
+                const topExpense = [...items].sort((a, b) => b.amount - a.amount)[0];
+                const catColors: Record<string, string> = { Food: colors.chart1, Transport: colors.chart2, Activity: colors.chart3, Shopping: colors.chart4, Accommodation: colors.accent, Other: colors.text3 };
+                const groupCurrency = items[0]?.currency ?? 'PHP';
+
+                return (
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    {/* Total */}
+                    <View style={{ alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 16 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: colors.text3 }}>TOTAL SPENT</Text>
+                      <Text style={{ fontSize: 28, fontWeight: '500', letterSpacing: -0.5, color: colors.text, marginTop: 4 }}>{formatCurrency(total, groupCurrency)}</Text>
+                      <Text style={{ fontSize: 12, color: colors.text3, marginTop: 2 }}>{items.length} expenses</Text>
+                    </View>
+
+                    {/* Category breakdown */}
+                    <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: colors.text3, marginBottom: 10 }}>BY CATEGORY</Text>
+                    <View style={{ gap: 10, marginBottom: 20 }}>
+                      {sorted.map(([cat, amt]) => (
+                        <View key={cat} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <Text style={{ width: 90, fontSize: 12, fontWeight: '600', color: colors.text2 }}>{cat}</Text>
+                          <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bg2, overflow: 'hidden' }}>
+                            <View style={{ height: 8, borderRadius: 4, width: `${(amt / maxVal) * 100}%`, backgroundColor: catColors[cat] ?? colors.accent }} />
+                          </View>
+                          <Text style={{ width: 80, fontSize: 12, fontWeight: '600', color: colors.text, textAlign: 'right' }}>{formatCurrency(amt, groupCurrency)}</Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    {/* Top expense */}
+                    {topExpense && (
+                      <>
+                        <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: colors.text3, marginBottom: 8 }}>BIGGEST EXPENSE</Text>
+                        <View style={{ padding: 14, backgroundColor: colors.card2, borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 20 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text, flex: 1 }}>{topExpense.description}</Text>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{formatCurrency(topExpense.amount, topExpense.currency)}</Text>
+                          </View>
+                          <Text style={{ fontSize: 11, color: colors.text3, marginTop: 4 }}>{topExpense.category} · {formatDatePHT(topExpense.date)}{topExpense.paidBy ? ` · Paid by ${topExpense.paidBy}` : ''}</Text>
+                        </View>
+                      </>
+                    )}
+
+                    {/* Per-payer breakdown */}
+                    {(() => {
+                      const byPayer: Record<string, number> = {};
+                      for (const e of items) {
+                        const p = e.paidBy ?? 'Unknown';
+                        byPayer[p] = (byPayer[p] ?? 0) + e.amount;
+                      }
+                      const payers = Object.entries(byPayer).sort(([, a], [, b]) => b - a);
+                      if (payers.length < 2) return null;
+                      return (
+                        <>
+                          <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: colors.text3, marginBottom: 8 }}>BY MEMBER</Text>
+                          <View style={{ gap: 8, marginBottom: 16 }}>
+                            {payers.map(([name, amt]) => (
+                              <View key={name} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: colors.card2, borderRadius: 12 }}>
+                                <View style={{ width: 32, height: 32, borderRadius: 999, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#fffaf0' }}>{name.charAt(0)}</Text>
+                                </View>
+                                <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: colors.text }}>{name.split(' ')[0]}</Text>
+                                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>{formatCurrency(amt, groupCurrency)}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        </>
+                      );
+                    })()}
+                  </ScrollView>
+                );
+              })()}
+            </View>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -710,17 +1067,22 @@ function BudgetScreen() {
         </View>
       </View>
 
-      {/* Tab row — Overview / Fate */}
+      {/* Tab row */}
       <View style={styles.tabRow}>
-        {(['overview', 'fate'] as const).map(t => (
+        {([
+          { id: 'expenses' as const, label: 'Expenses' },
+          { id: 'savings' as const, label: 'Savings' },
+          { id: 'settle' as const, label: 'Settle Up' },
+          { id: 'fate' as const, label: 'Who Pays?' },
+        ]).map(t => (
           <TouchableOpacity
-            key={t}
-            onPress={() => setTab(t)}
-            style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
+            key={t.id}
+            onPress={() => setTab(t.id)}
+            style={[styles.tabBtn, tab === t.id && styles.tabBtnActive]}
             activeOpacity={0.7}
           >
-            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'overview' ? 'Overview' : 'Who Pays?'}
+            <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>
+              {t.label}
             </Text>
           </TouchableOpacity>
         ))}
@@ -732,7 +1094,7 @@ function BudgetScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={colors.accent} />}
         showsVerticalScrollIndicator={false}
       >
-        {tab === 'overview' && (
+        {tab === 'expenses' && (
           <>
             {/* Status banner */}
             {total > 0 && (
@@ -831,6 +1193,38 @@ function BudgetScreen() {
                   <QrCode size={18} color={colors.accent} />
                   <Text style={styles.qrUploadText}>{paymentQrs.length > 0 ? 'Add another QR' : 'Add payment QR'}</Text>
                 </TouchableOpacity>
+                {/* User-scoped QRs (portable across trips) */}
+                {userQrs.filter(uq => !paymentQrs.some(pq => pq.uri === uq.uri)).map((qr) => (
+                  <TouchableOpacity
+                    key={qr.id}
+                    style={styles.qrRow}
+                    onPress={() => setViewingUserQr(qr)}
+                    onLongPress={() => {
+                      Alert.alert('Remove QR?', `Remove "${qr.label}"?`, [
+                        { text: 'Keep', style: 'cancel' },
+                        {
+                          text: 'Remove',
+                          style: 'destructive',
+                          onPress: async () => {
+                            await removeUserPaymentQr(qr.id).catch(() => {});
+                            setUserQrs((prev) => prev.filter((q) => q.id !== qr.id));
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          },
+                        },
+                      ]);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.qrThumb, { borderColor: colors.border }]}>
+                      <Image source={{ uri: qr.uri }} style={{ width: 44, height: 44, borderRadius: 8 }} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.qrLabel}>{qr.label}</Text>
+                      <Text style={styles.qrHint}>Personal · Tap to show</Text>
+                    </View>
+                    <QrCode size={20} color={colors.accent} />
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
 
@@ -966,7 +1360,7 @@ function BudgetScreen() {
                     >
                       <TouchableOpacity
                         style={styles.expenseRow}
-                        onPress={() => setExpandedExpense(isOpen ? null : e.id)}
+                        onPress={() => setDetailExpense(e)}
                         activeOpacity={0.7}
                       >
                         <View style={styles.expenseMain}>
@@ -987,21 +1381,6 @@ function BudgetScreen() {
                             )}
                           </View>
                         </View>
-
-                        {/* Expanded breakdown */}
-                        {isOpen && mode === 'group' && (
-                          <View style={styles.expenseBreakdown}>
-                            <View style={styles.breakdownRow}>
-                              <Text style={styles.breakdownLabel}>{payer?.name.split(' ')[0] ?? 'Payer'} paid</Text>
-                              <Text style={styles.breakdownValue}>{formatCurrency(e.amount, 'PHP')}</Text>
-                            </View>
-                            <View style={styles.breakdownRow}>
-                              <Text style={styles.breakdownLabel}>Split across {splitCount} · each</Text>
-                              <Text style={styles.breakdownValue}>{formatCurrency(each, 'PHP')}</Text>
-                            </View>
-                            <Text style={[styles.breakdownLabel, { marginTop: 4 }]}>{e.category}</Text>
-                          </View>
-                        )}
                       </TouchableOpacity>
                     </SwipeableExpenseRow>
                   );
@@ -1009,55 +1388,46 @@ function BudgetScreen() {
               </View>
             )}
 
-            {/* Settle cards — Group mode only */}
-            {mode === 'group' && members.length >= 2 && (() => {
-              const primaryPayer = members.reduce((top, m) =>
-                (spendingByPerson[m.name] ?? 0) > (spendingByPerson[top.name] ?? 0) ? m : top,
-                members[0],
-              );
-              const others = members.filter(m => m.name !== primaryPayer.name);
-              const perPerson = spent > 0 ? Math.round(spent / members.length) : 0;
-
-              return others.length > 0 ? (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Settle up</Text>
-                  {others.map(m => {
-                    const theirPaid = spendingByPerson[m.name] ?? 0;
-                    const owes = Math.max(0, perPerson - theirPaid);
-                    if (owes < 1) return null;
-                    return (
-                      <View key={m.id} style={styles.settleRow}>
-                        <View style={[styles.avatar, { backgroundColor: colors.chart2, width: 36, height: 36 }]}>
-                          <Text style={[styles.avatarText, { fontSize: 14 }]}>{m.name.charAt(0)}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.settleText}>
-                            <Text style={{ fontWeight: '600' }}>{m.name.split(' ')[0]}</Text>
-                            <Text style={{ color: colors.text3 }}> owes </Text>
-                            <Text style={{ fontWeight: '600' }}>{primaryPayer.name.split(' ')[0]}</Text>
-                          </Text>
-                          <Text style={styles.settleAmount}>{formatCurrency(owes, 'PHP')}</Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.settleBtn}
-                          onPress={() => Alert.alert('Settle', `Mark ${formatCurrency(owes, 'PHP')} as settled?`, [
-                            { text: 'Not yet', style: 'cancel' },
-                            { text: 'Settled', onPress: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success) },
-                          ])}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.settleBtnText}>Settle</Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              ) : null;
-            })()}
           </>
         )}
 
-        {/* Fate tab */}
+        {/* ── SAVINGS TAB ── */}
+        {tab === 'savings' && (
+          <View style={{ gap: 16 }}>
+            <DailyTrackerCard
+              onAddExpense={() => setShowDailySheet(true)}
+              onScanReceipt={() => router.push('/scan-receipt' as never)}
+            />
+            <SavingsGoalCard
+              goal={savingsGoal}
+              onSetup={() => setShowSavingsSetup(true)}
+              onLogSavings={() => setShowSavingsEntry(true)}
+              onEdit={() => setShowSavingsSetup(true)}
+              onPlanTrip={() => router.push('/onboarding' as never)}
+            />
+          </View>
+        )}
+
+        {/* ── SETTLE UP TAB ── */}
+        {tab === 'settle' && trip && (
+          <GroupBalanceCard
+            trip={trip}
+            expenses={expenses}
+            members={members}
+            onBalancesChange={setBalances}
+          />
+        )}
+        {tab === 'settle' && !trip && (
+          <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+            <Users size={28} color={colors.text3} strokeWidth={1.5} />
+            <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>No active trip</Text>
+            <Text style={{ fontSize: 13, color: colors.text3, textAlign: 'center' }}>
+              Start a trip to track group balances.
+            </Text>
+          </View>
+        )}
+
+        {/* ── FATE TAB ── */}
         {tab === 'fate' && (
           <View style={styles.section}>
             <Text style={styles.eyebrow}>Who pays?</Text>
@@ -1074,21 +1444,6 @@ function BudgetScreen() {
           </View>
         )}
 
-        {/* Daily Tracker + Savings Goal (also in active trip view) */}
-        <View style={{ marginTop: 20 }}>
-          <DailyTrackerCard
-            onAddExpense={() => setShowDailySheet(true)}
-            onScanReceipt={() => router.push('/scan-receipt' as never)}
-          />
-          <SavingsGoalCard
-            goal={savingsGoal}
-            onSetup={() => setShowSavingsSetup(true)}
-            onLogSavings={() => setShowSavingsEntry(true)}
-            onEdit={() => setShowSavingsSetup(true)}
-            onPlanTrip={() => router.push('/onboarding' as never)}
-          />
-        </View>
-
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -1097,6 +1452,16 @@ function BudgetScreen() {
       <SavingsGoalSetup visible={showSavingsSetup} onClose={() => setShowSavingsSetup(false)} onSave={savingsGoal ? handleUpdateGoal : handleCreateGoal} existing={savingsGoal} />
       <SavingsEntrySheet visible={showSavingsEntry} onClose={() => setShowSavingsEntry(false)} onSave={handleLogSavings} currency={savingsGoal?.targetCurrency ?? 'PHP'} />
       <SavingsMilestoneModal visible={milestoneToShow !== null} milestone={milestoneToShow} currentAmount={savingsGoal?.currentAmount ?? 0} currency={savingsGoal?.targetCurrency ?? 'PHP'} onClose={() => setMilestoneToShow(null)} />
+
+      {/* Expense detail sheet */}
+      <ExpenseDetailSheet
+        visible={!!detailExpense}
+        expense={detailExpense}
+        currency={trip?.costCurrency ?? 'PHP'}
+        onClose={() => setDetailExpense(null)}
+        onEdit={(e) => handleEditExpense(e)}
+        onDelete={(id) => handleDeleteExpense(id, detailExpense?.description ?? '')}
+      />
 
       {/* QR view modal — branded card */}
       <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
@@ -1314,6 +1679,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   historyTotalLabel: { fontSize: 12, color: c.text3, marginTop: 4 },
   historyList: { paddingHorizontal: 16 },
   historyLabel: { fontSize: 10, fontWeight: '700', color: c.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 10 },
+  groupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: c.border, marginBottom: 8 },
   historyRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 14, paddingHorizontal: 14,

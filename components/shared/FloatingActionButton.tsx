@@ -42,7 +42,7 @@ export const FloatingActionButton: React.FC = () => {
     const items: FabAction[] = [
       { id: 'moment', icon: Camera, label: 'Capture Moment', onPress: () => router.push('/add-moment') },
       { id: 'quick-trip', icon: Zap, label: 'Quick Trip', onPress: () => router.push('/quick-trip-create' as never) },
-      { id: 'expense', icon: Receipt, label: 'Quick Expense', onPress: () => router.push('/scan-receipt') },
+      { id: 'expense', icon: Receipt, label: 'Add Expense', onPress: () => router.push('/add-expense') },
     ];
     if (isPlane) {
       items.push({ id: 'trip', icon: Plane, label: 'Plan Trip', onPress: () => router.push('/trip-planner') });

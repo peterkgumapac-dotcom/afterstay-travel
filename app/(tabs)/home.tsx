@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useHomeScreen } from '@/hooks/useHomeScreen';
 import {
   ActivityIndicator,
@@ -38,13 +38,15 @@ import EmptyState from '@/components/shared/EmptyState';
 import ReturningUserHome from '@/components/home/ReturningUserHome';
 import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import DailyTrackerStrip from '@/components/home/DailyTrackerStrip';
+import { TripReadinessCard } from '@/components/home/TripReadinessCard';
+import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
 import { DailyTrackerSheet } from '@/components/budget/DailyTrackerSheet';
 import ProfileRow from '@/components/home/ProfileRow';
 import { WeatherForecastCard } from '@/components/home/WeatherForecastCard';
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
 import { useTabBarVisibility } from '@/app/(tabs)/_layout';
-import { cacheGet, cacheSet } from '@/lib/cache';
 import {
   supabase,
   getAllUserTrips,
@@ -89,9 +91,8 @@ import { fetchDestinationPhotos } from '@/lib/google-places';
 import type { Flight, GroupMember, LifetimeStats, Moment, Place, Trip } from '@/lib/types';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import { setHotelCoords } from '@/lib/config';
-import { formatDatePHT, formatTimePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
-
-type TripPhase = 'planning' | 'upcoming' | 'inflight' | 'arrived' | 'active' | 'completed';
+import { formatDatePHT, formatTimePHT } from '@/lib/utils';
+import { getTripDayMetrics, inferFlightLeg, sortFlightsByTime } from '@/lib/tripState';
 
 const DEST_PHOTO_CACHE_KEY = 'hero:destination-photos';
 
@@ -144,6 +145,48 @@ const sectionHeaderStyles = StyleSheet.create({
   },
 });
 
+function cleanLocationText(value?: string | null) {
+  return (value ?? '').trim().replace(/\s+/g, ' ');
+}
+
+function shortLocationLabel(value: string) {
+  const normalized = cleanLocationText(value);
+  const parts = normalized.split(',').map((part) => part.trim()).filter(Boolean);
+  return parts.length >= 2 ? `${parts[0]}, ${parts[1]}` : normalized;
+}
+
+function resolvePlanningLocation(trip: Trip, flights: Flight[]) {
+  const destination = cleanLocationText(trip.destination);
+  if (destination) {
+    return { query: destination, label: shortLocationLabel(destination), source: 'destination' as const };
+  }
+
+  const address = cleanLocationText(trip.address);
+  if (address) {
+    return { query: address, label: shortLocationLabel(address), source: 'stay' as const };
+  }
+
+  const accommodation = cleanLocationText(trip.accommodation);
+  if (accommodation) {
+    return { query: accommodation, label: accommodation, source: 'stay' as const };
+  }
+
+  const sortedFlights = sortFlightsByTime(flights);
+  const outbound = sortedFlights.find((flight) => inferFlightLeg(flight, flights) === 'outbound' && cleanLocationText(flight.to));
+  if (outbound?.to) {
+    const label = shortLocationLabel(outbound.to);
+    return { query: outbound.to, label, source: 'flight' as const };
+  }
+
+  const returnFlight = sortedFlights.find((flight) => inferFlightLeg(flight, flights) === 'return' && cleanLocationText(flight.from));
+  if (returnFlight?.from) {
+    const label = shortLocationLabel(returnFlight.from);
+    return { query: returnFlight.from, label, source: 'flight' as const };
+  }
+
+  return { query: '', label: '', source: 'none' as const };
+}
+
 function CollapsibleSection({
   kicker,
   title,
@@ -182,15 +225,15 @@ function CollapsibleSection({
   );
 }
 
-import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
-
 export default function HomeScreenWithBoundary() {
   return (
     <TabErrorBoundary name="Home">
-      <HomeScreen />
+      <HomeScreenMemo />
     </TabErrorBoundary>
   );
 }
+
+const HomeScreenMemo = React.memo(HomeScreen);
 
 function HomeScreen() {
   const { colors } = useTheme();
@@ -198,16 +241,16 @@ function HomeScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
   const h = useHomeScreen();
   const {
-    trip, phase, flights, moments, savedPlaces, members,
+    trip, phase, hasPhaseOverride, flights, phaseFlight, moments, savedPlaces, members,
     totalSpent, todaySpent, todayCount,
     dailyTrackerOn, dailyTrackerTotal, dailyTrackerCount, dailyTrackerByCat, setDailyTrackerOn,
     pastTrips, draftTrips, upcomingTrips, activeTrips, quickTrips, allTrips, lifetimeStats,
-    returningMoments, returningSavedPlaces,
+    returningMoments, returningMembers, returningSavedPlaces,
     userName, userAvatar, user,
     loading, loaderDone, showLoader, refreshing, error, debugInfo,
-    hotelPhotos, isPlaneTransport, showFlightFeatures,
+    hotelPhotos, heroLocation, isPlaneTransport, showFlightFeatures,
     isTestMode, segment,
-    load, refresh, setRefreshing, setSavedPlaces, setPhase, setShowLoader,
+    load, refresh, setRefreshing, setSavedPlaces, setManualPhaseOverride, clearManualPhaseOverride, setShowLoader,
   } = h;
 
   // UI-only state (not data)
@@ -264,19 +307,16 @@ function HomeScreen() {
   }, [loading, showLoader, loaderDone, setTabBarVisible]);
 
   const boardFlight = useCallback(async () => {
-    setPhase('inflight');
-    await cacheSet('trip:phase:override', 'inflight');
-  }, []);
+    await setManualPhaseOverride('inflight');
+  }, [setManualPhaseOverride]);
 
   const landFlight = useCallback(async () => {
-    setPhase('arrived');
-    await cacheSet('trip:phase:override', 'arrived');
-  }, []);
+    await setManualPhaseOverride('arrived');
+  }, [setManualPhaseOverride]);
 
   const goExplore = useCallback(async () => {
-    setPhase('active');
-    await cacheSet('trip:phase:override', 'active');
-  }, []);
+    await setManualPhaseOverride('active');
+  }, [setManualPhaseOverride]);
 
   // Date range label (hotelPhotos now comes from hook)
   const dateRange = useMemo(
@@ -285,32 +325,30 @@ function HomeScreen() {
   );
 
   // Countdown computation
-  const tripStartMs = trip ? safeParse(trip.startDate).getTime() : 0;
-  const tripEndMs = trip ? safeParse(trip.endDate).getTime() : 0;
-  const nowMs = Date.now();
-  const totalNights = Math.max(
-    1,
-    tripStartMs && tripEndMs ? Math.ceil((tripEndMs - tripStartMs) / MS_PER_DAY) : 1,
-  );
-  const totalDays = totalNights;
+  const [clockNow, setClockNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setClockNow(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const countdown = useMemo(() => {
-    if (!tripStartMs) return { status: 'upcoming' as const, totalDays };
-    if (nowMs < tripStartMs) {
-      return { status: 'upcoming' as const, totalDays };
+  const countdown = useMemo(
+    () => getTripDayMetrics(trip, clockNow),
+    [trip?.id, trip?.startDate, trip?.endDate, trip?.status, clockNow],
+  );
+  const totalNights = countdown.totalDays;
+  const openTripOverview = useCallback(() => {
+    if (trip?.id) {
+      router.push({ pathname: '/trip-overview', params: { tripId: trip.id } } as never);
+    } else {
+      router.push('/trip-overview' as never);
     }
-    if (nowMs > tripEndMs + MS_PER_DAY) {
-      return { status: 'completed' as const, totalDays };
-    }
-    const dayNumber = Math.floor((nowMs - tripStartMs) / MS_PER_DAY) + 1;
-    return { status: 'active' as const, dayNumber, totalDays };
-  }, [nowMs, tripStartMs, tripEndMs, totalDays]);
+  }, [router, trip?.id]);
 
   // Notification count for bell badge
   const notifProps = useMemo(() => ({
     dayOfTrip: countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1,
     totalDays: countdown.totalDays,
-    daysLeft: countdown.totalDays - (countdown.status === 'active' ? countdown.dayNumber ?? 1 : 0),
+    daysLeft: countdown.daysLeft,
     spent: totalSpent,
     budget: trip?.budgetLimit ?? 0,
     savedPlaces,
@@ -328,6 +366,16 @@ function HomeScreen() {
       : undefined,
     [trip?.roomType, totalNights, dateRange],
   );
+
+  const planningLocation = useMemo(
+    () => trip ? resolvePlanningLocation(trip, flights) : { query: '', label: '', source: 'none' as const },
+    [trip, flights],
+  );
+  const planningLocationTitle = planningLocation.source === 'destination'
+    ? `Top 5 in ${planningLocation.label}`
+    : planningLocation.label
+      ? `Top 5 near ${planningLocation.label}`
+      : 'Unlock local picks';
 
   // Show branded loader until both: 3s minimum passed AND data loaded
   // In test mode, skip loader entirely — mock data is synchronous
@@ -383,16 +431,19 @@ function HomeScreen() {
             quickTrips={quickTrips}
             lifetimeStats={lifetimeStats}
             recentMoments={returningMoments}
+            recentMembers={returningMembers}
             savedPlaces={returningSavedPlaces}
             onPlanTrip={() => router.push('/onboarding')}
             onTripPress={(id) => router.push(`/trip-recap?tripId=${id}`)}
-            onDraftTripPress={(id) => router.push({ pathname: '/(tabs)/trip', params: { tripId: id } })}
+            onDraftTripPress={(id) => router.push({ pathname: '/trip-overview', params: { tripId: id } } as never)}
             onUpcomingTripPress={(id) => router.push({ pathname: '/(tabs)/trip', params: { tripId: id } })}
             onArchiveDraft={async (id) => {
               try {
                 await archiveTrip(id);
                 load({ force: true });
-              } catch {}
+              } catch {
+                Alert.alert('Error', 'Something went wrong. Please try again.');
+              }
             }}
             onQuickTripPress={(id) => router.push(`/quick-trip-detail?quickTripId=${id}`)}
             onAddQuickTrip={() => router.push('/quick-trip-create')}
@@ -400,7 +451,7 @@ function HomeScreen() {
             onBellPress={() => setShowNotifications(true)}
             onSeeAllTrips={() => router.push('/(tabs)/trip')}
             refreshing={refreshing}
-            onRefresh={() => { setRefreshing(true); load({ force: true }); }}
+            onRefresh={refresh}
             dailyTrackerSlot={
               <DailyTrackerStrip
                 enabled={dailyTrackerOn}
@@ -434,7 +485,9 @@ function HomeScreen() {
                 try {
                   await addDailyExpense(input);
                   load({ silent: true });
-                } catch {}
+                } catch {
+                  Alert.alert('Error', 'Something went wrong. Please try again.');
+                }
               }}
             />
           )}
@@ -456,7 +509,7 @@ function HomeScreen() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); load({ force: true }); }}
+              onRefresh={refresh}
               tintColor={colors.accentLt}
             />
           }
@@ -468,7 +521,7 @@ function HomeScreen() {
             actionLabel="Plan a Trip"
             onAction={() => router.push('/onboarding')}
             secondaryLabel="Join a friend's trip"
-            onSecondary={() => router.push('/onboarding')}
+            onSecondary={() => router.push('/join-trip')}
           />
           <TouchableOpacity
             style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}
@@ -525,7 +578,7 @@ function HomeScreen() {
         <AnticipationHero
           photos={hotelPhotos}
           hotelName={trip.accommodation}
-          destination={trip.destination || ''}
+          destination={heroLocation || planningLocation.query || trip.destination || ''}
           dateRange={dateRange}
           verified={true}
           roomInfo={roomInfo}
@@ -557,17 +610,16 @@ function HomeScreen() {
           >
             {phase === 'inflight' ? (
               (() => {
-                const outbound = flights.find((f) => f.direction === 'Outbound');
                 return (
                   <FlightProgressCard
                     onLanded={landFlight}
-                    fromCode={outbound?.from}
-                    fromCity={outbound?.from === 'MNL' ? 'Manila' : outbound?.from}
-                    toCode={outbound?.to}
-                    toCity={outbound?.to === 'MPH' ? 'Caticlan' : outbound?.to}
-                    etaLabel={outbound?.arriveTime ? formatTimePHT(outbound.arriveTime) : undefined}
-                    departIso={outbound?.departTime}
-                    arriveIso={outbound?.arriveTime}
+                    fromCode={phaseFlight?.from}
+                    fromCity={phaseFlight?.from === 'MNL' ? 'Manila' : phaseFlight?.from}
+                    toCode={phaseFlight?.to}
+                    toCity={phaseFlight?.to === 'MPH' ? 'Caticlan' : phaseFlight?.to}
+                    etaLabel={phaseFlight?.arriveTime ? formatTimePHT(phaseFlight.arriveTime) : undefined}
+                    departIso={phaseFlight?.departTime}
+                    arriveIso={phaseFlight?.arriveTime}
                   />
                 );
               })()
@@ -587,10 +639,7 @@ function HomeScreen() {
                 }
                 totalDays={countdown.totalDays}
                 daysLeft={
-                  countdown.totalDays -
-                  (countdown.status === 'active'
-                    ? countdown.dayNumber ?? 1
-                    : 0)
+                  countdown.daysLeft
                 }
                 budgetStatus={(() => {
                   const b = trip.budgetLimit ?? 0;
@@ -611,95 +660,134 @@ function HomeScreen() {
                 destination={trip.destination}
                 nights={trip.nights}
                 momentCount={moments.length}
+                placesCount={savedPlaces.length}
+                totalSpent={totalSpent}
+                currency={trip.costCurrency ?? 'PHP'}
                 onViewMemory={() => router.push({ pathname: '/trip-memory', params: { tripId: trip.id } } as never)}
+                onShare={() => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never)}
               />
             ) : phase === 'planning' ? (
-              <View style={styles.planningCard}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
-                  <View style={{ alignItems: 'center', flex: 1 }}>
-                    <Text style={styles.planningEmoji}>🗺️</Text>
-                    <Text style={styles.planningTitle}>Planning your trip</Text>
-                    <Text style={styles.planningSubtitle}>
-                      {trip.destination} · {formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={{ padding: 6, marginTop: -4, marginRight: -4 }}
-                    onPress={() => {
-                      const isDraft = trip.isDraft;
-                      Alert.alert(
-                        isDraft ? 'Delete draft?' : 'Archive this trip?',
-                        isDraft
-                          ? 'This draft trip will be permanently removed.'
-                          : 'It will move to your past trips without generating a memory.',
-                        [
-                          { text: 'Keep', style: 'cancel' },
-                          {
-                            text: isDraft ? 'Delete' : 'Archive',
-                            style: 'destructive',
-                            onPress: async () => {
-                              try {
-                                if (isDraft) {
-                                  await discardDraftTrip(trip.id);
-                                } else {
-                                  await archiveTrip(trip.id);
-                                }
-                                load({ force: true });
-                              } catch (e: any) {
-                                Alert.alert('Error', e?.message ?? 'Could not remove trip');
-                              }
-                            },
-                          },
-                        ],
-                      );
-                    }}
-                    activeOpacity={0.7}
-                    accessibilityLabel={trip.isDraft ? 'Delete draft' : 'Archive trip'}
-                  >
-                    <X size={18} color={colors.text3} />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.planningNudges}>
-                  {showFlightFeatures && (
-                    <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/trip')}>
-                      <Plane size={16} color={colors.accent} />
-                      <Text style={styles.nudgeText}>Add your flights</Text>
-                    </Pressable>
-                  )}
-                  <Pressable style={styles.nudgeRow} onPress={() => router.push('/invite')}>
-                    <Users size={16} color={colors.accent} />
-                    <Text style={styles.nudgeText}>Invite travel companions</Text>
-                  </Pressable>
-                  <Pressable style={styles.nudgeRow} onPress={() => router.push('/(tabs)/discover')}>
-                    <MapPin size={16} color={colors.accent} />
-                    <Text style={styles.nudgeText}>Discover places to visit</Text>
-                  </Pressable>
-                </View>
+              /* DRAFT — no confirmed booking yet */
+              <View style={styles.draftCard}>
+                <Text style={styles.draftTitle}>{trip.destination ?? 'Your trip'}</Text>
+                <Text style={styles.draftDates}>
+                  {formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}
+                </Text>
+                <Text style={styles.draftHint}>
+                  Upload your booking confirmation to unlock countdown, flights, and weather
+                </Text>
+	                <TouchableOpacity
+	                  style={styles.draftUploadBtn}
+	                  onPress={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
+	                  activeOpacity={0.7}
+	                >
+                  <Text style={styles.draftUploadText}>Upload Booking</Text>
+                </TouchableOpacity>
               </View>
-            ) : (
+            ) : phase === 'upcoming' ? (
               <CountdownCard
                 tripStartISO={
-                  flights.find((f) => f.direction === 'Outbound')?.departTime ??
+                  phaseFlight?.departTime ??
                   trip.startDate
                 }
                 status={'upcoming'}
                 dayNumber={undefined}
                 totalDays={countdown.totalDays}
                 dateLabel={
-                  flights.find((f) => f.direction === 'Outbound')?.departTime
+                  phaseFlight?.departTime
                     ? formatDatePHT(
-                        flights.find((f) => f.direction === 'Outbound')!
-                          .departTime,
+                        phaseFlight.departTime,
                       )
                     : formatDatePHT(trip.startDate)
                 }
                 onBoard={boardFlight}
               />
-            )}
+            ) : null}
           </Animated.View>
+          {hasPhaseOverride && phase !== 'completed' && phase !== 'planning' && phase !== 'upcoming' ? (
+            <TouchableOpacity
+              style={styles.resetPhaseBtn}
+              onPress={clearManualPhaseOverride}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.resetPhaseText}>Reset to schedule</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Smart nudges moved to bell icon → NotificationsSheet */}
+
+        {/* 3b. Trip readiness — always visible so travelers can see what is missing */}
+        {trip && phase !== 'completed' && (
+          <TripReadinessCard
+            trip={trip}
+            flights={flights}
+            members={members}
+            savedPlaces={savedPlaces}
+            onScanBooking={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
+	            onAction={(key) => {
+	              switch (key) {
+	                case 'flights': openTripOverview(); break;
+	                case 'accommodation': openTripOverview(); break;
+	                case 'members': router.push('/add-member' as never); break;
+	                case 'places': router.push('/(tabs)/discover' as never); break;
+	                case 'budget': router.push('/(tabs)/budget' as never); break;
+	                default: openTripOverview();
+	              }
+	            }}
+          />
+        )}
+
+        {/* 3c. Top picks — keep this high on the page so planning does not dead-end */}
+        {planningLocation.query ? (
+          <>
+            <SectionHeader
+              kicker="Curated for you"
+              title={planningLocationTitle}
+            />
+            <HomeTopPicks
+              destination={planningLocation.query}
+              hotelName={trip.accommodation || undefined}
+            />
+          </>
+        ) : (
+          <>
+            <SectionHeader
+              kicker="Curated for you"
+              title={planningLocationTitle}
+            />
+            <View style={styles.discoverFallbackCard}>
+              <Text style={styles.discoverFallbackTitle}>Add a destination or booking to unlock local picks</Text>
+              <Text style={styles.discoverFallbackBody}>
+                Scan your hotel or flight details so AfterStay can suggest places near where you are actually going.
+              </Text>
+              <View style={styles.discoverFallbackActions}>
+                <TouchableOpacity
+                  style={styles.discoverPrimaryBtn}
+                  onPress={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.discoverPrimaryText}>Scan Booking</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.discoverSecondaryBtn}
+                  onPress={openTripOverview}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.discoverSecondaryText}>Edit Trip</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
+
+        {/* 3d. Quick access tiles — check-in, checkout, WiFi, door code */}
+        {trip.accommodation && (
+          <>
+            <SectionHeader kicker="Stay" title="Quick access" />
+            <QuickAccessGrid trip={trip} />
+          </>
+        )}
 
         {/* 4. Moments preview — first after trip card */}
         <SectionHeader
@@ -722,39 +810,34 @@ function HomeScreen() {
           <WeatherForecastCard destination={trip.destination} />
         </CollapsibleSection>
 
-        {/* 6. Flight card — only for plane transport or existing flights */}
-        {showFlightFeatures && (() => {
-          const activeFlight = phase === 'active'
-            ? flights.find((f) => f.direction === 'Return')
-            : flights.find((f) => f.direction === 'Outbound');
-          const dirLabel = phase === 'active' ? 'Return' : 'Outbound';
-          const destCity = activeFlight?.to ?? (phase === 'active' ? 'Home' : trip.destination ?? 'Destination');
+	        {/* 6. Flight card — only for plane transport or existing flights */}
+	        {showFlightFeatures && (() => {
+	          const visibleFlights = sortFlightsByTime(flights)
+	            .map((flight) => ({ flight, direction: inferFlightLeg(flight, flights) }))
+	            .filter((item, index, arr) => arr.findIndex((other) => other.flight.id === item.flight.id) === index);
+	          const fallbackDirection = phase === 'active' ? 'return' : 'outbound';
+	          const firstFlight = visibleFlights[0]?.flight;
+	          const title = visibleFlights.length > 1
+	            ? 'Trip flights'
+	            : `Flight to ${firstFlight?.to ?? (phase === 'active' ? 'Home' : trip.destination ?? 'Destination')}`;
           return (
             <>
               <SectionHeader
-                kicker={`Transit · ${dirLabel}`}
-                title={`Flight to ${destCity}`}
+                kicker={`Transit · ${visibleFlights.length > 1 ? 'Round trip' : fallbackDirection === 'return' ? 'Return' : 'Outbound'}`}
+                title={title}
               />
-              <FlightCard
-                flight={activeFlight}
-                direction={phase === 'active' ? 'return' : 'outbound'}
-              />
+	              <View style={styles.flightStack}>
+	                {visibleFlights.length > 0 ? (
+	                  visibleFlights.map(({ flight, direction }) => (
+	                    <FlightCard key={flight.id} flight={flight} direction={direction} onAddFlight={openTripOverview} />
+	                  ))
+	                ) : (
+	                  <FlightCard direction={fallbackDirection} onAddFlight={openTripOverview} />
+	                )}
+	              </View>
             </>
           );
         })()}
-
-        {/* 7. Top Picks — collapsible */}
-        {trip.destination && (
-          <CollapsibleSection
-            kicker="Curated for you"
-            title={`Top picks in ${trip.destination}`}
-          >
-            <HomeTopPicks
-              destination={trip.destination}
-              hotelName={trip.accommodation || undefined}
-            />
-          </CollapsibleSection>
-        )}
 
         {/* Bottom spacer for FAB clearance */}
         <View style={{ height: 80 }} />
@@ -821,7 +904,25 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       paddingHorizontal: 16,
       paddingBottom: 14,
     },
-    planningCard: {
+    resetPhaseBtn: {
+      alignSelf: 'center',
+      marginTop: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    resetPhaseText: {
+      color: colors.text2,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    flightStack: {
+      gap: 12,
+    },
+    draftCard: {
       backgroundColor: colors.card,
       borderRadius: 20,
       padding: 24,
@@ -829,37 +930,85 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       borderWidth: 1,
       borderColor: colors.border,
     },
-    planningEmoji: {
-      fontSize: 36,
-      marginBottom: 12,
-    },
-    planningTitle: {
-      fontSize: 18,
-      fontWeight: '600',
+    draftTitle: {
+      fontSize: 20,
+      fontWeight: '700',
       color: colors.text,
       marginBottom: 4,
     },
-    planningSubtitle: {
+    draftDates: {
       fontSize: 13,
       color: colors.text2,
-      marginBottom: 20,
+      marginBottom: 12,
     },
-    planningNudges: {
-      width: '100%',
-      gap: 12,
+    draftHint: {
+      fontSize: 13,
+      color: colors.text3,
+      textAlign: 'center',
+      lineHeight: 19,
+      marginBottom: 18,
     },
-    nudgeRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      backgroundColor: colors.accentDim,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
+    draftUploadBtn: {
+      backgroundColor: colors.accent,
+      paddingVertical: 13,
+      paddingHorizontal: 28,
+      borderRadius: 14,
     },
-    nudgeText: {
+    draftUploadText: {
+      color: '#fff',
       fontSize: 14,
-      fontWeight: '500',
-      color: colors.accent,
+      fontWeight: '700',
+    },
+    discoverFallbackCard: {
+      marginHorizontal: 16,
+      padding: 16,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      gap: 10,
+    },
+    discoverFallbackTitle: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    discoverFallbackBody: {
+      color: colors.text3,
+      fontSize: 12,
+      lineHeight: 18,
+    },
+    discoverFallbackActions: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 2,
+    },
+    discoverPrimaryBtn: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 12,
+      paddingVertical: 11,
+      backgroundColor: colors.accent,
+    },
+    discoverPrimaryText: {
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    discoverSecondaryBtn: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 12,
+      paddingVertical: 11,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card2,
+    },
+    discoverSecondaryText: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '700',
     },
   });

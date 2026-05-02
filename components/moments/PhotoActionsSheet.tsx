@@ -8,12 +8,11 @@ import {
   Platform,
 } from 'react-native';
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
   runOnJS,
-  Easing,
 } from 'react-native-reanimated';
 import {
   Gesture,
@@ -21,24 +20,51 @@ import {
 } from 'react-native-gesture-handler';
 import {
   Share2,
+  Download,
+  BookmarkPlus,
+  EyeOff,
   Film,
-  Archive,
   Trash2,
+  Edit3,
+  Lock,
+  Images,
+  Users,
+  Globe,
+  Sparkles,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { springPresets } from '@/constants/animations';
-import { useTheme } from '@/constants/ThemeContext';
+import { useTheme, type ThemeColors } from '@/constants/ThemeContext';
+import { spacing, radius } from '@/constants/theme';
+import type { MomentVisibility } from '@/lib/types';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
-export type PhotoAction = 'share' | 'reel' | 'archive' | 'delete';
+export type PhotoAction =
+  | 'share'
+  | 'share-hd'
+  | 'download-hd'
+  | 'reel'
+  | 'archive'       // legacy — kept for compat
+  | 'delete'
+  | 'edit'
+  | 'set-private'
+  | 'set-album'
+  | 'set-shared'
+  | 'set-public'
+  | 'hide'
+  | 'unhide'
+  | 'save-to-mine';
 
 interface PhotoActionsSheetProps {
   visible: boolean;
   onAction: (action: PhotoAction) => void;
   onClose: () => void;
   photoId: string;
+  currentVisibility?: MomentVisibility;
+  hasHd?: boolean;
+  isMine?: boolean;
+  isDismissed?: boolean;
 }
 
 interface ActionItemProps {
@@ -46,10 +72,11 @@ interface ActionItemProps {
   label: string;
   color: string;
   bgColor: string;
+  active?: boolean;
   onPress: () => void;
 }
 
-function ActionItem({ icon: Icon, label, color, bgColor, onPress }: ActionItemProps) {
+function ActionItem({ icon: Icon, label, color, bgColor, active, onPress }: ActionItemProps) {
   return (
     <Pressable
       onPress={() => {
@@ -59,16 +86,26 @@ function ActionItem({ icon: Icon, label, color, bgColor, onPress }: ActionItemPr
       style={({ pressed }) => [
         styles.actionItem,
         { backgroundColor: bgColor },
+        active && styles.actionItemActive,
         pressed && styles.actionItemPressed,
       ]}
     >
       <Icon size={20} color={color} strokeWidth={2} />
-      <Text style={[styles.actionLabel, { color }]}>{label}</Text>
+      <Text style={[styles.actionLabel, { color }]} numberOfLines={1}>{label}</Text>
+      {active && <View style={[styles.activeDot, { backgroundColor: color }]} />}
     </Pressable>
   );
 }
 
-export function PhotoActionsSheet({ visible, onAction, onClose }: PhotoActionsSheetProps) {
+export function PhotoActionsSheet({
+  visible,
+  onAction,
+  onClose,
+  currentVisibility = 'shared',
+  hasHd = false,
+  isMine = true,
+  isDismissed = false,
+}: PhotoActionsSheetProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(SCREEN_H);
@@ -76,10 +113,10 @@ export function PhotoActionsSheet({ visible, onAction, onClose }: PhotoActionsSh
 
   React.useEffect(() => {
     if (visible) {
-      translateY.value = withSpring(0, springPresets.SHEET_REVEAL);
+      translateY.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) });
       backdropOpacity.value = withTiming(1, { duration: 200 });
     } else {
-      translateY.value = withSpring(SCREEN_H, springPresets.SHEET_REVEAL);
+      translateY.value = withTiming(SCREEN_H, { duration: 220, easing: Easing.in(Easing.cubic) });
       backdropOpacity.value = withTiming(0, { duration: 200 });
     }
   }, [visible]);
@@ -95,11 +132,11 @@ export function PhotoActionsSheet({ visible, onAction, onClose }: PhotoActionsSh
     .onEnd((event) => {
       'worklet';
       if (event.translationY > 120 || event.velocityY > 500) {
-        translateY.value = withSpring(SCREEN_H, springPresets.SHEET_REVEAL);
+        translateY.value = withTiming(SCREEN_H, { duration: 220, easing: Easing.in(Easing.cubic) });
         backdropOpacity.value = withTiming(0, { duration: 200 });
         runOnJS(onClose)();
       } else {
-        translateY.value = withSpring(0, springPresets.SHEET_REVEAL);
+        translateY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
       }
     });
 
@@ -125,7 +162,7 @@ export function PhotoActionsSheet({ visible, onAction, onClose }: PhotoActionsSh
         <Animated.View
           style={[
             styles.sheet,
-            { paddingBottom: insets.bottom + 20 },
+            { backgroundColor: colors.bg2, paddingBottom: insets.bottom + 20 },
             sheetStyle,
           ]}
         >
@@ -134,39 +171,125 @@ export function PhotoActionsSheet({ visible, onAction, onClose }: PhotoActionsSh
             <View style={[styles.handle, { backgroundColor: colors.accent }]} />
           </View>
 
-          {/* Title */}
-          <Text style={styles.title}>Actions</Text>
+          {/* ── Visibility section ── */}
+          <Text style={[styles.sectionLabel, { color: colors.text3 }]}>WHO CAN SEE</Text>
+          <View style={styles.visibilityRow}>
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); onAction('set-private'); }}
+              style={[
+                styles.visPill,
+                { borderColor: colors.border },
+                currentVisibility === 'private' && { borderColor: colors.warn, backgroundColor: colors.accentDim },
+              ]}
+            >
+              <Lock size={16} color={currentVisibility === 'private' ? colors.warn : colors.text3} strokeWidth={2} />
+              <Text style={[styles.visPillLabel, { color: currentVisibility === 'private' ? colors.warn : colors.text2 }]}>Just Me</Text>
+            </Pressable>
 
-          {/* Actions */}
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); onAction('set-album'); }}
+              style={[
+                styles.visPill,
+                { borderColor: colors.border },
+                currentVisibility === 'album' && { borderColor: colors.accentLt, backgroundColor: colors.accentDim },
+              ]}
+            >
+              <Images size={16} color={currentVisibility === 'album' ? colors.accentLt : colors.text3} strokeWidth={2} />
+              <Text style={[styles.visPillLabel, { color: currentVisibility === 'album' ? colors.accentLt : colors.text2 }]}>Album</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); onAction('set-shared'); }}
+              style={[
+                styles.visPill,
+                { borderColor: colors.border },
+                currentVisibility === 'shared' && { borderColor: colors.accent, backgroundColor: colors.accentBg },
+              ]}
+            >
+              <Users size={16} color={currentVisibility === 'shared' ? colors.accent : colors.text3} strokeWidth={2} />
+              <Text style={[styles.visPillLabel, { color: currentVisibility === 'shared' ? colors.accent : colors.text2 }]}>Group</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); onAction('set-public'); }}
+              style={[
+                styles.visPill,
+                { borderColor: colors.border },
+                currentVisibility === 'public' && { borderColor: colors.success, backgroundColor: colors.accentBg },
+              ]}
+            >
+              <Globe size={16} color={currentVisibility === 'public' ? colors.success : colors.text3} strokeWidth={2} />
+              <Text style={[styles.visPillLabel, { color: currentVisibility === 'public' ? colors.success : colors.text2 }]}>Public</Text>
+            </Pressable>
+          </View>
+
+          {/* ── Actions grid ── */}
+          <Text style={[styles.sectionLabel, { color: colors.text3, marginTop: 16 }]}>ACTIONS</Text>
           <View style={styles.actionsGrid}>
             <ActionItem
-              icon={Share2}
-              label="Share Moment"
-              color="#4CAF50"
-              bgColor="rgba(76, 175, 80, 0.12)"
-              onPress={() => onAction('share')}
+              icon={Edit3}
+              label="Edit"
+              color={colors.info}
+              bgColor={colors.accentDim}
+              onPress={() => onAction('edit')}
             />
             <ActionItem
               icon={Film}
               label="Add to Reel"
-              color="#9C27B0"
-              bgColor="rgba(156, 39, 176, 0.12)"
+              color={colors.accentLt}
+              bgColor={colors.accentDim}
               onPress={() => onAction('reel')}
             />
             <ActionItem
-              icon={Archive}
-              label="Archive"
-              color="#d8ab7a"
-              bgColor="rgba(216, 171, 122, 0.12)"
-              onPress={() => onAction('archive')}
+              icon={Share2}
+              label="Share"
+              color={colors.accent}
+              bgColor={colors.accentBg}
+              onPress={() => onAction('share')}
             />
+            {hasHd && (
+              <ActionItem
+                icon={Sparkles}
+                label="Share HD"
+                color={colors.accentLt}
+                bgColor={colors.accentBg}
+                onPress={() => onAction('share-hd')}
+              />
+            )}
+            {hasHd && (
+              <ActionItem
+                icon={Download}
+                label="Save HD"
+                color={colors.accent}
+                bgColor={colors.accentDim}
+                onPress={() => onAction('download-hd')}
+              />
+            )}
             <ActionItem
               icon={Trash2}
               label="Delete"
-              color="#ff4444"
-              bgColor="rgba(255, 68, 68, 0.12)"
+              color={colors.danger}
+              bgColor={colors.accentDim}
               onPress={() => onAction('delete')}
             />
+            {!isMine && currentVisibility === 'shared' && (
+              <ActionItem
+                icon={isDismissed ? EyeOff : EyeOff}
+                label={isDismissed ? 'Show Again' : 'Hide'}
+                color={colors.text3}
+                bgColor={colors.accentDim}
+                onPress={() => onAction(isDismissed ? 'unhide' : 'hide')}
+              />
+            )}
+            {!isMine && currentVisibility === 'shared' && (
+              <ActionItem
+                icon={BookmarkPlus}
+                label="Save to Mine"
+                color={colors.accent}
+                bgColor={colors.accentBg}
+                onPress={() => onAction('save-to-mine')}
+              />
+            )}
           </View>
 
           {/* Cancel */}
@@ -175,9 +298,9 @@ export function PhotoActionsSheet({ visible, onAction, onClose }: PhotoActionsSh
               Haptics.selectionAsync();
               onClose();
             }}
-            style={styles.cancelBtn}
+            style={[styles.cancelBtn, { backgroundColor: colors.card }]}
           >
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={[styles.cancelText, { color: colors.text }]}>Cancel</Text>
           </Pressable>
         </Animated.View>
       </GestureDetector>
@@ -195,7 +318,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#1a1a1a',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingTop: 12,
@@ -222,17 +344,37 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     opacity: 0.6,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#f1ebe2',
-    textAlign: 'center',
-    marginBottom: 20,
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 1.7,
+    marginBottom: 10,
   },
+  // ── Visibility pills ──
+  visibilityRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  visPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  visPillLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // ── Actions grid ──
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
     marginBottom: 16,
   },
   actionItem: {
@@ -240,28 +382,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+  },
+  actionItemActive: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   actionItemPressed: {
     opacity: 0.7,
     transform: [{ scale: 0.97 }],
   },
   actionLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
+    flex: 1,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   cancelBtn: {
     paddingVertical: 16,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     marginTop: 4,
   },
   cancelText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#f1ebe2',
   },
 });

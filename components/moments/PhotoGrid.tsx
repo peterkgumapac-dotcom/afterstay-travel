@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Dimensions,
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
 } from 'react-native';
@@ -53,6 +54,7 @@ interface PhotoGridProps {
   onAction?: (action: PhotoAction, moment: MomentDisplay) => void;
   emptyTitle?: string;
   emptySubtitle?: string;
+  ListFooterComponent?: React.ComponentType<any> | React.ReactElement | null;
 }
 
 interface EmptyStateProps {
@@ -106,6 +108,7 @@ export function PhotoGrid({
   onAction,
   emptyTitle = 'No moments yet',
   emptySubtitle = 'Photos you add will appear here',
+  ListFooterComponent,
 }: PhotoGridProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -322,6 +325,16 @@ export function PhotoGrid({
             ]}
             columnWrapperStyle={styles.gridRow}
             showsVerticalScrollIndicator={false}
+            ListFooterComponent={ListFooterComponent}
+            initialNumToRender={12}
+            maxToRenderPerBatch={12}
+            windowSize={5}
+            removeClippedSubviews
+            getItemLayout={(_data, index) => ({
+              length: THUMB_SIZE + GRID_GAP,
+              offset: (THUMB_SIZE + GRID_GAP) * Math.floor(index / NUM_COLS),
+              index,
+            })}
             refreshControl={
               onRefresh ? (
                 <RefreshControl
@@ -355,18 +368,22 @@ export function PhotoGrid({
       </Animated.View>
 
       {/* Fullscreen Carousel */}
-      {carouselVisible && (
-        <View style={StyleSheet.absoluteFillObject}>
-          <PhotoCarousel
-            moments={moments}
-            initialIndex={carouselIndex}
-            people={people}
-            onClose={handleCarouselClose}
-            onFavorite={handleCarouselFavorite}
-            onAction={handleCarouselAction}
-          />
-        </View>
-      )}
+      <Modal
+        visible={carouselVisible}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={handleCarouselClose}
+      >
+        <PhotoCarousel
+          moments={moments}
+          initialIndex={carouselIndex}
+          people={people}
+          onClose={handleCarouselClose}
+          onFavorite={handleCarouselFavorite}
+          onAction={handleCarouselAction}
+        />
+      </Modal>
     </View>
   );
 }

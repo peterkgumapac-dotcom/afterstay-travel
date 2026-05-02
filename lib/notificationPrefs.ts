@@ -69,6 +69,7 @@ const NOTIF_TYPE_TO_CATEGORY: Record<string, keyof NotificationCategoryPrefs> = 
   budget_threshold: 'budgetAlerts',
   vote_needed: 'groupActivity',
   moments_added: 'groupActivity',
+  moment_comment: 'groupActivity',
   trip_starting: 'tripLifecycle',
   departure_prep: 'departureReminders',
   last_day: 'tripLifecycle',
@@ -167,24 +168,44 @@ export function getCategoryForType(type: string): keyof NotificationCategoryPref
 
 // ---------- LOCAL STORAGE ----------
 
-const STORAGE_KEY = 'settings_notifications';
+const STORAGE_KEY_PREFIX = 'settings_notifications';
 
-let cachedPrefs: Partial<NotificationPrefs> | undefined;
+const cachedPrefsByKey = new Map<string, Partial<NotificationPrefs>>();
+
+export function notificationPrefsStorageKey(userId?: string | null): string {
+  return userId ? `${STORAGE_KEY_PREFIX}:${userId}` : STORAGE_KEY_PREFIX;
+}
 
 /** Read notification prefs from AsyncStorage (client-side). Cached after first read. */
-export async function getLocalNotificationPrefs(): Promise<Partial<NotificationPrefs>> {
-  if (cachedPrefs) return cachedPrefs;
+export async function getLocalNotificationPrefs(userId?: string | null): Promise<Partial<NotificationPrefs>> {
+  const key = notificationPrefsStorageKey(userId);
+  const cached = cachedPrefsByKey.get(key);
+  if (cached) return cached;
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const raw = await AsyncStorage.getItem(key);
     if (raw) {
-      cachedPrefs = JSON.parse(raw);
-      return cachedPrefs!;
+      const parsed = JSON.parse(raw);
+      cachedPrefsByKey.set(key, parsed);
+      return parsed;
     }
   } catch { /* fallback to defaults */ }
   return {};
 }
 
+export async function saveLocalNotificationPrefs(
+  prefs: Partial<NotificationPrefs>,
+  userId?: string | null,
+): Promise<void> {
+  const key = notificationPrefsStorageKey(userId);
+  cachedPrefsByKey.set(key, prefs);
+  await AsyncStorage.setItem(key, JSON.stringify(prefs));
+}
+
 /** Invalidate the cached prefs (call after settings change). */
-export function clearPrefsCache(): void {
-  cachedPrefs = undefined;
+export function clearPrefsCache(userId?: string | null): void {
+  if (userId !== undefined) {
+    cachedPrefsByKey.delete(notificationPrefsStorageKey(userId));
+    return;
+  }
+  cachedPrefsByKey.clear();
 }

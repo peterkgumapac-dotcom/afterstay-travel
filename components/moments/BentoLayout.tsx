@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View, Platform } from 'react-native';
-import { Link } from 'expo-router';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import { Image as RNImage } from 'react-native';
 import { Check } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -177,6 +177,9 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
           source={{ uri: moment.photo }}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
+          cachePolicy="memory-disk"
+          recyclingKey={moment.id}
+          placeholder={moment.blurhash ? { blurhash: moment.blurhash } : undefined}
           transition={200}
         />
       ) : (
@@ -199,25 +202,15 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
         {/* Author avatar badge */}
         {moment.authorKey && !selectMode && (
           <View style={[styles.authorBadge, { backgroundColor: moment.authorColor ?? '#a64d1e' }]}>
-            <Text style={styles.authorInitial}>{moment.authorKey}</Text>
+            {moment.authorAvatar ? (
+              <RNImage source={{ uri: moment.authorAvatar }} style={styles.authorAvatarImg} />
+            ) : (
+              <Text style={styles.authorInitial}>{moment.authorKey}</Text>
+            )}
           </View>
         )}
       </View>
   );
-
-  // iOS 18+: Apple Zoom transition to fullscreen detail
-  if (Platform.OS === 'ios' && !selectMode && tripId) {
-    return (
-      <Link
-        href={{ pathname: '/moment-detail', params: { momentId: moment.id, tripId } }}
-        asChild
-      >
-        <Link.AppleZoom>
-          {cellContent}
-        </Link.AppleZoom>
-      </Link>
-    );
-  }
 
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={300}>
@@ -280,5 +273,10 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
     color: '#0b0f14',
+  },
+  authorAvatarImg: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
 });

@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera } from 'lucide-react-native';
+import { Briefcase, Camera, ChevronDown, NotebookPen, PenLine, PiggyBank, QrCode, ScanLine, Zap } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,10 +23,13 @@ import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { getPlaceLocation, placeAutocomplete } from '@/lib/google-places';
-import { addExpense, getGroupMembers, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
-import { addQuickTripExpense } from '@/lib/quickTrips';
+import { addExpense, addExpenseSplits, getActiveTrip, getGroupMembers, getUserPaymentQrs, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
+import type { UserPaymentQr } from '@/lib/supabase';
+import { addQuickTripExpense, getQuickTripCompanions } from '@/lib/quickTrips';
+import type { QuickTripCompanion } from '@/lib/quickTripTypes';
 import { useAuth } from '@/lib/auth';
-import type { Expense } from '@/lib/types';
+import type { Expense, GroupMember } from '@/lib/types';
+import { refreshWidgets, writeWidgetSnapshots } from '@/widgets/refresh';
 
 const CATEGORY_EMOJI: Record<Expense['category'], string> = {
   Food: '🍽',
@@ -50,6 +53,15 @@ const CURRENCIES = ['PHP', 'USD', 'EUR', 'JPY'] as const;
 
 const SPLIT_TYPES: NonNullable<Expense['splitType']>[] = ['Equal', 'Custom', 'Individual'];
 
+type ExpenseType = 'trip' | 'quick-trip' | 'personal' | 'budgeting';
+
+const EXPENSE_TYPES: { id: ExpenseType; label: string; icon: any; desc: string }[] = [
+  { id: 'trip', label: 'Trip', icon: Briefcase, desc: 'Active trip budget' },
+  { id: 'quick-trip', label: 'Quick Trip', icon: Zap, desc: 'Outing or day trip' },
+  { id: 'personal', label: 'Personal', icon: NotebookPen, desc: 'Just for you' },
+  { id: 'budgeting', label: 'Budgeting', icon: PiggyBank, desc: 'Planned expense' },
+];
+
 export default function AddExpenseScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -68,6 +80,7 @@ export default function AddExpenseScreen() {
     date?: string;
     paidBy?: string;
     splitType?: string;
+    receiptSplits?: string; // JSON-encoded per-member amounts from receipt scan
   }>();
 
   const isEditing = !!params.editId;
@@ -93,16 +106,93 @@ export default function AddExpenseScreen() {
   const [photoUri, setPhotoUri] = useState(params.photoUri ?? '');
   const [expenseDate] = useState(params.date ?? new Date().toISOString().slice(0, 10));
   const [members, setMembers] = useState<string[]>([]);
+  const [memberObjects, setMemberObjects] = useState<GroupMember[]>([]);
+  const [splitAssignments, setSplitAssignments] = useState<Record<string, { selected: boolean; amount: string }>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Auto-fetch lat/lng when placeName is pre-filled from scan-receipt
   useEffect(() => {
+    if (!params.placeName || placeLatitude != null) return;
+    (async () => {
+      try {
+        const results = await placeAutocomplete(params.placeName!);
+        if (results.length > 0) {
+          const loc = await getPlaceLocation(results[0].placeId);
+          if (loc) {
+            setPlaceLatitude(loc.lat);
+            setPlaceLongitude(loc.lng);
+          }
+        }
+      } catch {}
+    })();
+  }, [params.placeName]);
+
+  // Entry mode: pick OCR or manual first (skip if editing or pre-filled from scan)
+  const hasPrefilledData = !!(params.description || params.amount || params.photoUri);
+  const [entryMode, setEntryMode] = useState<'pick' | 'form'>(
+    isEditing || hasPrefilledData ? 'form' : 'pick'
+  );
+
+  // Expense type (replaces params.target)
+  const initialType: ExpenseType = params.target === 'quick-trip' ? 'quick-trip'
+    : params.target === 'standalone' ? 'personal' : 'trip';
+  const [expenseType, setExpenseType] = useState<ExpenseType>(initialType);
+  const [hasActiveTrip, setHasActiveTrip] = useState(true);
+
+  // User QR codes
+  const [userQrs, setUserQrs] = useState<UserPaymentQr[]>([]);
+  const [showQr, setShowQr] = useState(false);
+  const [viewingQr, setViewingQr] = useState<UserPaymentQr | null>(null);
+
+  // Quick trip companions
+  const [companions, setCompanions] = useState<QuickTripCompanion[]>([]);
+  const [sharedWith, setSharedWith] = useState<string>(''); // freeform for personal
+  const [adHocNames, setAdHocNames] = useState<string[]>([]); // parsed from sharedWith
+  const [newPersonName, setNewPersonName] = useState('');
+
+  // Unified people list for splitting — adapts to expense type
+  const splitPeople: { id: string; name: string }[] = (() => {
+    if (expenseType === 'trip') return memberObjects.map(m => ({ id: m.id, name: m.name }));
+    if (expenseType === 'quick-trip') return companions.map(c => ({ id: c.id, name: c.displayName }));
+    // Personal / budgeting — use ad-hoc names
+    return adHocNames.map((n, i) => ({ id: `adhoc-${i}`, name: n }));
+  })();
+  const hasPeople = splitPeople.length > 1;
+
+  useEffect(() => {
+    // Load group members
     getGroupMembers()
       .then(ms => {
         const names = ms.map(m => m.name);
         setMembers(names);
+        setMemberObjects(ms);
         if (!paidBy && names[0]) setPaidBy(names[0]);
+        const init: Record<string, { selected: boolean; amount: string }> = {};
+        for (const m of ms) {
+          init[m.id] = { selected: true, amount: '' };
+        }
+        setSplitAssignments(init);
       })
       .catch(() => {});
+
+    // Check if active trip exists
+    getActiveTrip().then(t => {
+      setHasActiveTrip(!!t);
+      if (!t && expenseType === 'trip') setExpenseType('personal');
+    }).catch(() => {
+      setHasActiveTrip(false);
+      if (expenseType === 'trip') setExpenseType('personal');
+    });
+
+    // Load user QR codes
+    if (user?.id) {
+      getUserPaymentQrs(user.id).then(setUserQrs).catch(() => {});
+    }
+
+    // Load quick trip companions if applicable
+    if (params.quickTripId) {
+      getQuickTripCompanions(params.quickTripId).then(setCompanions).catch(() => {});
+    }
   }, []);
 
   const pickPhoto = async () => {
@@ -181,7 +271,7 @@ export default function AddExpenseScreen() {
       };
       if (isEditing) {
         await updateExpense(params.editId!, expenseData);
-      } else if (params.target === 'quick-trip' && params.quickTripId) {
+      } else if (expenseType === 'quick-trip' && params.quickTripId) {
         await addQuickTripExpense({
           quickTripId: params.quickTripId,
           amount: n,
@@ -190,10 +280,57 @@ export default function AddExpenseScreen() {
           occurredAt: expenseDate,
           receiptPhotoUrl: photoUri || undefined,
         });
-      } else if (params.target === 'standalone') {
+      } else if (expenseType === 'personal' || expenseType === 'budgeting') {
         await addExpense({ ...expenseData, standalone: true });
       } else {
-        await addExpense(expenseData);
+        const newExpense = await addExpense(expenseData);
+        const tripId = (newExpense as any).tripId ?? (newExpense as any).trip_id ?? '';
+
+        // Receipt scan splits (pre-computed per-member amounts from ReceiptItemReview)
+        if (newExpense?.id && params.receiptSplits && tripId && memberObjects.length > 1) {
+          try {
+            const splitAmounts = JSON.parse(params.receiptSplits) as Record<string, number>;
+            const splits = memberObjects
+              .filter((m) => (splitAmounts[m.name] ?? 0) > 0)
+              .map((m) => ({
+                memberId: m.id,
+                memberName: m.name,
+                amount: splitAmounts[m.name] ?? 0,
+              }));
+            if (splits.length > 0) {
+              addExpenseSplits(newExpense.id, tripId, splits).catch(() => {});
+            }
+          } catch (err) {
+            if (__DEV__) console.warn('[AddExpense] receipt splits failed:', err);
+          }
+        }
+        // Manual splits — Custom or Individual
+        else if (newExpense?.id && splitType !== 'Equal' && memberObjects.length > 1 && tripId) {
+          const n = Number(amount);
+          const selected = memberObjects.filter((m) => splitAssignments[m.id]?.selected);
+          if (selected.length > 0) {
+            const splits = selected.map((m) => {
+              const custom = Number(splitAssignments[m.id]?.amount);
+              return {
+                memberId: m.id,
+                memberName: m.name,
+                amount: splitType === 'Custom' && custom > 0 ? custom : n / selected.length,
+              };
+            });
+            addExpenseSplits(newExpense.id, tripId, splits).catch(() => {});
+          }
+        }
+        // Auto-create equal splits for group expenses
+        else if (newExpense?.id && splitType === 'Equal' && memberObjects.length > 1 && tripId) {
+          const n = Number(amount);
+          const perPerson = n / memberObjects.length;
+          const splits = memberObjects.map((m) => ({
+            memberId: m.id,
+            memberName: m.name,
+            amount: perPerson,
+          }));
+          addExpenseSplits(newExpense.id, tripId, splits).catch(() => {});
+        }
         // Notify group members about new expense (best-effort, non-blocking)
         if (user?.id && members.length >= 2) {
           notifyExpenseAdded(
@@ -204,6 +341,7 @@ export default function AddExpenseScreen() {
         }
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      writeWidgetSnapshots().then(() => refreshWidgets('DailyBudget')).catch(() => {});
       router.back();
     } catch (e: any) {
       Alert.alert('Save failed', e?.message ?? 'Unknown error');
@@ -212,12 +350,84 @@ export default function AddExpenseScreen() {
     }
   };
 
+  // Entry mode picker — OCR or Manual
+  if (entryMode === 'pick') {
+    return (
+      <View style={[styles.safe, { backgroundColor: colors.bg }]}>
+        <View style={styles.pickContainer}>
+          <Text style={[styles.pickTitle, { color: colors.text }]}>Add Expense</Text>
+          <Text style={[styles.pickSub, { color: colors.text3 }]}>How do you want to add it?</Text>
+
+          <Pressable
+            style={[styles.pickCard, { backgroundColor: colors.card, borderColor: colors.accentBorder }]}
+            onPress={() => router.push({ pathname: '/scan-receipt', params: { expenseType } } as never)}
+          >
+            <View style={[styles.pickIconWrap, { backgroundColor: colors.accentBg }]}>
+              <ScanLine size={24} color={colors.accent} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.pickCardTitle, { color: colors.text }]}>Scan Receipt</Text>
+              <Text style={[styles.pickCardDesc, { color: colors.text3 }]}>
+                Take a photo or pick from gallery.{'\n'}AI reads items, prices, and totals.
+              </Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={[styles.pickCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => setEntryMode('form')}
+          >
+            <View style={[styles.pickIconWrap, { backgroundColor: colors.bg3 }]}>
+              <PenLine size={24} color={colors.text2} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.pickCardTitle, { color: colors.text }]}>Manual Entry</Text>
+              <Text style={[styles.pickCardDesc, { color: colors.text3 }]}>
+                Type in the details yourself.{'\n'}Add category, split, and location.
+              </Text>
+            </View>
+          </Pressable>
+
+          <Pressable onPress={() => router.back()} style={styles.pickCancel}>
+            <Text style={{ color: colors.text3, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={[styles.safe, { backgroundColor: colors.bg }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* ── EXPENSE TYPE SELECTOR ── */}
+        {!isEditing && (
+          <View>
+            <Text style={[styles.sectionLabel, { color: colors.text3 }]}>EXPENSE TYPE</Text>
+            <View style={styles.typeRow}>
+              {EXPENSE_TYPES.filter(t => t.id !== 'trip' || hasActiveTrip).map((t) => {
+                const Icon = t.icon;
+                const active = expenseType === t.id;
+                return (
+                  <Pressable
+                    key={t.id}
+                    style={[
+                      styles.typeChip,
+                      { backgroundColor: active ? colors.accentBg : colors.card, borderColor: active ? colors.accentBorder : colors.border },
+                    ]}
+                    onPress={() => setExpenseType(t.id)}
+                  >
+                    <Icon size={14} color={active ? colors.accent : colors.text3} strokeWidth={2} />
+                    <Text style={[styles.typeChipText, { color: active ? colors.accent : colors.text2 }]}>{t.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         <FormField
           label="Description"
           placeholder="e.g. Dinner at D'Talipapa"
@@ -264,14 +474,69 @@ export default function AddExpenseScreen() {
           </ScrollView>
         </View>
 
-        {members.length > 0 && params.target !== 'standalone' && params.target !== 'quick-trip' ? (
+        {/* Add people — for personal, quick-trip, or budgeting expenses (BEFORE split controls) */}
+        {(expenseType === 'personal' || expenseType === 'budgeting' || (expenseType === 'quick-trip' && companions.length === 0)) && (
+          <View>
+            <Text style={[styles.sectionLabel, { color: colors.text3 }]}>SPLIT WITH</Text>
+            {adHocNames.map((name, i) => (
+              <View key={i} style={[styles.splitRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={[styles.splitCheck, { backgroundColor: colors.accent, borderColor: colors.accent }]}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>✓</Text>
+                </View>
+                <Text style={[styles.splitName, { color: colors.text }]}>{name}</Text>
+                <Pressable onPress={() => setAdHocNames(prev => prev.filter((_, j) => j !== i))} hitSlop={8}>
+                  <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '600' }}>Remove</Text>
+                </Pressable>
+              </View>
+            ))}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                style={[styles.addPersonInput, { backgroundColor: colors.card, borderColor: colors.border, color: colors.text, flex: 1 }]}
+                value={newPersonName}
+                onChangeText={setNewPersonName}
+                placeholder="Add a person..."
+                placeholderTextColor={colors.text3}
+                onSubmitEditing={() => {
+                  const trimmed = newPersonName.trim();
+                  if (trimmed && !adHocNames.includes(trimmed)) {
+                    setAdHocNames(prev => [...prev, trimmed]);
+                    setNewPersonName('');
+                    setSplitAssignments(prev => ({
+                      ...prev,
+                      [`adhoc-${adHocNames.length}`]: { selected: true, amount: '' },
+                    }));
+                  }
+                }}
+                returnKeyType="done"
+              />
+              <Pressable
+                style={[styles.addPersonBtn, { backgroundColor: colors.accent }]}
+                onPress={() => {
+                  const trimmed = newPersonName.trim();
+                  if (trimmed && !adHocNames.includes(trimmed)) {
+                    setAdHocNames(prev => [...prev, trimmed]);
+                    setNewPersonName('');
+                    setSplitAssignments(prev => ({
+                      ...prev,
+                      [`adhoc-${adHocNames.length}`]: { selected: true, amount: '' },
+                    }));
+                  }
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Add</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {hasPeople && (
           <Select
             label="Paid by"
-            options={members}
+            options={splitPeople.map(p => p.name)}
             value={paidBy}
             onChange={setPaidBy}
           />
-        ) : null}
+        )}
 
         <View>
           <Text style={{ color: colors.text3, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: spacing.xs }}>Place Name</Text>
@@ -313,13 +578,69 @@ export default function AddExpenseScreen() {
           )}
         </View>
 
-        {params.target !== 'standalone' && params.target !== 'quick-trip' && (
+        {hasPeople && (
           <Select<NonNullable<Expense['splitType']>>
             label="Split Type"
             options={SPLIT_TYPES}
             value={splitType}
             onChange={setSplitType}
           />
+        )}
+
+        {/* Member/person split assignment — shows for Custom and Individual */}
+        {hasPeople && splitType !== 'Equal' && (
+          <View>
+            <Text style={[styles.sectionLabel, { color: colors.text3 }]}>
+              {splitType === 'Individual' ? 'ASSIGN TO' : 'SPLIT BETWEEN'}
+            </Text>
+            {splitPeople.map((m) => {
+              const a = splitAssignments[m.id] ?? { selected: false, amount: '' };
+              return (
+                <Pressable
+                  key={m.id}
+                  style={[
+                    styles.splitRow,
+                    { backgroundColor: a.selected ? colors.accentBg : colors.card, borderColor: a.selected ? colors.accentBorder : colors.border },
+                  ]}
+                  onPress={() => {
+                    if (splitType === 'Individual') {
+                      // Single select — deselect all, select this one
+                      const next: Record<string, { selected: boolean; amount: string }> = {};
+                      for (const mo of splitPeople) {
+                        next[mo.id] = { selected: mo.id === m.id, amount: mo.id === m.id ? amount : '' };
+                      }
+                      setSplitAssignments(next);
+                    } else {
+                      setSplitAssignments((prev) => ({
+                        ...prev,
+                        [m.id]: { ...a, selected: !a.selected },
+                      }));
+                    }
+                  }}
+                >
+                  <View style={[styles.splitCheck, a.selected ? { backgroundColor: colors.accent, borderColor: colors.accent } : { borderColor: colors.border2 }]}>
+                    {a.selected && <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>✓</Text>}
+                  </View>
+                  <Text style={[styles.splitName, { color: colors.text }]} numberOfLines={1}>{m.name}</Text>
+                  {splitType === 'Custom' && a.selected && (
+                    <TextInput
+                      style={[styles.splitAmountInput, { backgroundColor: colors.bg3, borderColor: colors.border, color: colors.text }]}
+                      value={a.amount}
+                      onChangeText={(v) =>
+                        setSplitAssignments((prev) => ({
+                          ...prev,
+                          [m.id]: { ...a, amount: v },
+                        }))
+                      }
+                      placeholder="0"
+                      placeholderTextColor={colors.text3}
+                      keyboardType="decimal-pad"
+                    />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
         )}
 
         <View>
@@ -392,6 +713,107 @@ export default function AddExpenseScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
+  // Entry mode picker
+  pickContainer: {
+    flex: 1, justifyContent: 'center', paddingHorizontal: 24, gap: 16,
+  },
+  pickTitle: {
+    fontSize: 24, fontWeight: '700', textAlign: 'center', letterSpacing: -0.5,
+  },
+  pickSub: {
+    fontSize: 14, textAlign: 'center', marginBottom: 8,
+  },
+  pickCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 16,
+    padding: 18, borderRadius: 16, borderWidth: 1.5,
+  },
+  pickIconWrap: {
+    width: 48, height: 48, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pickCardTitle: { fontSize: 16, fontWeight: '700' },
+  pickCardDesc: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  pickCancel: {
+    alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 20,
+    marginTop: 8,
+  },
+  // Expense type selector
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  typeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: 12, borderWidth: 1,
+  },
+  typeChipText: { fontSize: 12, fontWeight: '600' },
+  // QR strip
+  qrStrip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 10, paddingHorizontal: 14,
+    borderRadius: 12, borderWidth: 1,
+  },
+  qrStripText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  qrGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  qrCard: {
+    width: 80, alignItems: 'center', gap: 4,
+    padding: 8, borderRadius: 12, borderWidth: 1,
+  },
+  qrCardImage: { width: 56, height: 56, borderRadius: 8 },
+  qrCardLabel: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  qrOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center', alignItems: 'center',
+    zIndex: 100,
+  },
+  qrModal: {
+    width: '80%', padding: 24, borderRadius: 20,
+    alignItems: 'center',
+  },
+  qrModalLabel: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  qrModalImage: { width: 220, height: 220, borderRadius: 12 },
+  // Add person
+  addPersonInput: {
+    paddingVertical: 8, paddingHorizontal: 12,
+    borderWidth: 1, borderRadius: 10, fontSize: 14,
+  },
+  addPersonBtn: {
+    paddingVertical: 8, paddingHorizontal: 16,
+    borderRadius: 10, justifyContent: 'center',
+  },
+  // Split rows
+  splitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 6,
+  },
+  splitCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 99,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splitName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  splitAmountInput: {
+    width: 80,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'right',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',

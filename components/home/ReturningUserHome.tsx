@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import {
   Alert,
@@ -29,13 +30,15 @@ import {
 } from 'lucide-react-native';
 
 import ProfileRow from './ProfileRow';
+import { HomeMomentsPreview } from './HomeMomentsPreview';
 import { TripCollage } from '@/components/trip/TripCollage';
 import QuickTripRow from '@/components/quick-trips/QuickTripRow';
+import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
 import { archiveTrip, discardDraftTrip, softDeleteTrip } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
-import type { Moment, Place, Trip } from '@/lib/types';
+import type { GroupMember, Moment, Place, Trip } from '@/lib/types';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import type { LifetimeStats } from '@/lib/types';
 
@@ -63,6 +66,7 @@ interface ReturningUserHomeProps {
   quickTrips: QuickTrip[];
   lifetimeStats: LifetimeStats | null;
   recentMoments?: Moment[];
+  recentMembers?: GroupMember[];
   savedPlaces?: Place[];
   onPlanTrip: () => void;
   onTripPress: (tripId: string) => void;
@@ -93,6 +97,7 @@ export default function ReturningUserHome({
   quickTrips,
   lifetimeStats,
   recentMoments = [],
+  recentMembers = [],
   savedPlaces = [],
   onPlanTrip,
   onTripPress,
@@ -115,7 +120,7 @@ export default function ReturningUserHome({
   const firstName = userName.split(' ')[0] || 'Traveler';
   const recentTrips = pastTrips.slice(0, 3);
   const hasDrafts = draftTrips.length > 0;
-  const hasUpcoming = upcomingTrips.length > 0 || draftTrips.some((t) => t.status === 'Planning');
+  const hasUpcoming = activeTrips.length > 0 || upcomingTrips.length > 0 || draftTrips.some((t) => t.status === 'Planning');
 
   // All trips combined for the album strip (active first, then upcoming, then past)
   const allRecentTrips = useMemo(() => {
@@ -156,7 +161,7 @@ export default function ReturningUserHome({
           </View>
         )}
         {/* ── 1. WELCOME ── */}
-        <Animated.View entering={FadeInDown.duration(400).springify()} style={s.welcomeSection}>
+        <Animated.View entering={FadeInDown.duration(350)} style={s.welcomeSection}>
           <Text style={s.welcomeKicker}>WELCOME BACK</Text>
           <Text style={s.welcomeTitle}>What are you up to?</Text>
         </Animated.View>
@@ -187,7 +192,9 @@ export default function ReturningUserHome({
                       try {
                         await discardDraftTrip(draft.id);
                         onRefresh?.();
-                      } catch {}
+                      } catch {
+                        Alert.alert('Error', 'Something went wrong. Please try again.');
+                      }
                     }}
                     activeOpacity={0.7}
                   >
@@ -204,7 +211,9 @@ export default function ReturningUserHome({
                           await archiveTrip(draft.id);
                           onRefresh?.();
                         }
-                      } catch {}
+                      } catch {
+                        Alert.alert('Error', 'Something went wrong. Please try again.');
+                      }
                     }}
                     activeOpacity={0.7}
                   >
@@ -241,10 +250,25 @@ export default function ReturningUserHome({
               <Text style={s.actionBtnText}>Plan a{'\n'}Trip</Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity style={s.actionBtn} onPress={() => router.push('/join-trip' as never)} activeOpacity={0.7}>
+            <Plus size={16} color={colors.text} />
+            <Text style={s.actionBtnText}>Join a{'\n'}Trip</Text>
+          </TouchableOpacity>
         </Animated.View>
 
         {/* ── 2b. DAILY TRACKER ── */}
         {dailyTrackerSlot}
+
+        {/* ── 2c. PLANNING-ONLY HERO ── */}
+        {allRecentTrips.length === 0 && quickTrips.length === 0 && draftTrips.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(120).duration(400)} style={s.planningHero}>
+            <Text style={s.planningEmoji}>{'\u{2708}\u{FE0F}'}</Text>
+            <Text style={s.planningTitle}>Your first trip is taking shape</Text>
+            <Text style={s.planningSub}>
+              Finish planning to unlock budget tracking, packing lists, and group coordination.
+            </Text>
+          </Animated.View>
+        )}
 
         {/* ── 3. RECENT TRIPS ── */}
         {allRecentTrips.length > 0 && (
@@ -261,7 +285,7 @@ export default function ReturningUserHome({
                 const flag = COUNTRY_FLAGS[t.countryCode ?? ''] ?? '\u{1F30D}';
                 const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
                 return (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     key={t.id}
                     style={s.albumCard}
                     onPress={() => onTripPress(t.id)}
@@ -274,20 +298,19 @@ export default function ReturningUserHome({
                           {
                             text: 'Archive',
                             onPress: async () => {
-                              try { await archiveTrip(t.id); onRefresh?.(); } catch {}
+                              try { await archiveTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); }
                             },
                           },
                           {
                             text: 'Delete',
                             style: 'destructive',
                             onPress: async () => {
-                              try { await softDeleteTrip(t.id); onRefresh?.(); } catch {}
+                              try { await softDeleteTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); }
                             },
                           },
                         ],
                       );
                     }}
-                    activeOpacity={0.8}
                   >
                     <TripCollage tripId={t.id} width={ALBUM_W} height={ALBUM_H} />
                     <View style={s.albumOverlay} />
@@ -305,24 +328,31 @@ export default function ReturningUserHome({
                         </View>
                       )}
                     </View>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 );
               })}
               {/* Quick trips inline with a badge */}
               {quickTrips.slice(0, 4).map((qt) => (
-                <TouchableOpacity
+                <AnimatedPressable
                   key={`qt-${qt.id}`}
                   style={s.albumCard}
                   onPress={() => onQuickTripPress(qt.id)}
-                  activeOpacity={0.8}
+                  onLongPress={() => {
+                    Alert.alert(
+                      qt.placeName || qt.title || 'Quick Trip',
+                      'What would you like to do?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: () => onQuickTripPress(qt.id),
+                        },
+                      ],
+                    );
+                  }}
                 >
-                  {qt.coverPhotoUrl ? (
-                    <Image source={{ uri: qt.coverPhotoUrl }} style={{ width: ALBUM_W, height: ALBUM_H }} />
-                  ) : (
-                    <View style={[s.albumCardBg, { backgroundColor: colors.card2 }]}>
-                      <Text style={{ fontSize: 32 }}>{'\u{1F4F8}'}</Text>
-                    </View>
-                  )}
+                  <TripCollage quickTripId={qt.id} width={ALBUM_W} height={ALBUM_H} />
                   <View style={s.albumOverlay} />
                   <View style={s.albumBadge}><Text style={s.albumBadgeText}>Quick Trip</Text></View>
                   <View style={s.albumInfo}>
@@ -331,7 +361,7 @@ export default function ReturningUserHome({
                       {formatDatePHT(qt.createdAt)}
                     </Text>
                   </View>
-                </TouchableOpacity>
+                </AnimatedPressable>
               ))}
             </ScrollView>
           </Animated.View>
@@ -352,11 +382,34 @@ export default function ReturningUserHome({
                 const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
                 const flag = COUNTRY_FLAGS[t.countryCode ?? ''];
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={t.id}
                     style={s.tripCard}
                     onPress={() => onUpcomingTripPress?.(t.id)}
-                    activeOpacity={0.7}
+                    onLongPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      Alert.alert(
+                        t.destination ?? t.name ?? 'Trip',
+                        'What would you like to do?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Archive',
+                            onPress: async () => {
+                              try { await archiveTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); }
+                            },
+                          },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: async () => {
+                              try { await softDeleteTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); }
+                            },
+                          },
+                        ],
+                      );
+                    }}
+                    delayLongPress={400}
                   >
                     <View style={[s.tripThumb, s.tripThumbFallback]}>
                       {flag ? (
@@ -373,7 +426,25 @@ export default function ReturningUserHome({
                         {formatDatePHT(t.startDate)} {'\u2013'} {formatDatePHT(t.endDate)} {'\u00B7'} {nights} nights
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                    <Pressable
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        Alert.alert(
+                          t.destination ?? t.name ?? 'Trip',
+                          'What would you like to do?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Archive', onPress: async () => { try { await archiveTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); } } },
+                            { text: 'Delete', style: 'destructive', onPress: async () => { try { await softDeleteTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); } } },
+                          ],
+                        );
+                      }}
+                      hitSlop={10}
+                      style={s.tripDeleteBtn}
+                    >
+                      <X size={16} color={colors.text3} />
+                    </Pressable>
+                  </Pressable>
                 );
               })}
             </View>
@@ -395,11 +466,34 @@ export default function ReturningUserHome({
                 const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
                 const flag = COUNTRY_FLAGS[t.countryCode ?? ''];
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={t.id}
                     style={[s.tripCard, { borderColor: colors.accentBorder }]}
                     onPress={() => onUpcomingTripPress?.(t.id)}
-                    activeOpacity={0.7}
+                    onLongPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      Alert.alert(
+                        t.destination ?? t.name ?? 'Trip',
+                        'What would you like to do?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Archive',
+                            onPress: async () => {
+                              try { await archiveTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); }
+                            },
+                          },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: async () => {
+                              try { await softDeleteTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); }
+                            },
+                          },
+                        ],
+                      );
+                    }}
+                    delayLongPress={400}
                   >
                     <View style={[s.tripThumb, s.tripThumbFallback, { backgroundColor: colors.accentBg }]}>
                       {flag ? (
@@ -416,7 +510,25 @@ export default function ReturningUserHome({
                         {formatDatePHT(t.startDate)} {'\u2013'} {formatDatePHT(t.endDate)} {'\u00B7'} {nights} nights
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                    <Pressable
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        Alert.alert(
+                          t.destination ?? t.name ?? 'Trip',
+                          'What would you like to do?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Archive', onPress: async () => { try { await archiveTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); } } },
+                            { text: 'Delete', style: 'destructive', onPress: async () => { try { await softDeleteTrip(t.id); onRefresh?.(); } catch { Alert.alert('Error', 'Something went wrong. Please try again.'); } } },
+                          ],
+                        );
+                      }}
+                      hitSlop={10}
+                      style={s.tripDeleteBtn}
+                    >
+                      <X size={16} color={colors.text3} />
+                    </Pressable>
+                  </Pressable>
                 );
               })}
             </View>
@@ -447,7 +559,9 @@ export default function ReturningUserHome({
                             try {
                               await archiveTrip(t.id);
                               onRefresh?.();
-                            } catch {}
+                            } catch {
+                              Alert.alert('Error', 'Something went wrong. Please try again.');
+                            }
                           },
                         },
                         {
@@ -457,7 +571,9 @@ export default function ReturningUserHome({
                             try {
                               await discardDraftTrip(t.id);
                               onRefresh?.();
-                            } catch {}
+                            } catch {
+                              Alert.alert('Error', 'Something went wrong. Please try again.');
+                            }
                           },
                         },
                       ],
@@ -486,7 +602,9 @@ export default function ReturningUserHome({
                               try {
                                 await discardDraftTrip(t.id);
                                 onRefresh?.();
-                              } catch {}
+                              } catch {
+                                Alert.alert('Error', 'Something went wrong. Please try again.');
+                              }
                             },
                           },
                         ],
@@ -502,6 +620,7 @@ export default function ReturningUserHome({
             </View>
           </Animated.View>
         )}
+
 
         {/* ── 6. SAVED FOR NEXT TIME ── */}
         {savedPlaces.length > 0 && (
@@ -528,10 +647,8 @@ export default function ReturningUserHome({
           </Animated.View>
         )}
 
-        {/* (View all trips CTA removed — album strip is sufficient) */}
-
-        {/* ── 8. NO UPCOMING TRIPS CTA ── */}
-        {!hasUpcoming && (
+        {/* ── 7. NO UPCOMING TRIPS CTA ── */}
+        {!hasUpcoming && allRecentTrips.length === 0 && quickTrips.length === 0 && (
           <Animated.View entering={FadeInDown.delay(280).duration(400)} style={s.ctaCard}>
             <Calendar size={28} color={colors.text3} strokeWidth={1.5} />
             <Text style={s.ctaTitle}>No upcoming trips</Text>
@@ -599,6 +716,14 @@ const getStyles = (colors: ThemeColors) =>
     resumeDest: {
       fontSize: 13, color: colors.text2,
     },
+    planningHero: {
+      marginHorizontal: 16, padding: 20, borderRadius: 16,
+      backgroundColor: colors.accentBg, borderWidth: 1, borderColor: colors.accentBorder,
+      alignItems: 'center', gap: 8,
+    },
+    planningEmoji: { fontSize: 32 },
+    planningTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' },
+    planningSub: { fontSize: 13, color: colors.text2, textAlign: 'center', lineHeight: 19 },
     resumeBtns: {
       flexDirection: 'row', gap: 8,
     },
@@ -648,6 +773,9 @@ const getStyles = (colors: ThemeColors) =>
     sectionKicker: {
       fontSize: 10, fontWeight: '700', color: colors.text3,
       letterSpacing: 1.4, textTransform: 'uppercase',
+    },
+    sectionAction: {
+      fontSize: 12, fontWeight: '600', color: colors.accent,
     },
     seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     seeAllText: { fontSize: 13, fontWeight: '600', color: colors.accent },
@@ -707,6 +835,11 @@ const getStyles = (colors: ThemeColors) =>
     tripDest: { fontSize: 15, fontWeight: '700', color: colors.text },
     tripCountry: { fontSize: 13, fontWeight: '400', color: colors.text3 },
     tripMeta: { fontSize: 11, color: colors.text3, marginTop: 2 },
+    tripDeleteBtn: {
+      width: 32, height: 32, borderRadius: 10,
+      backgroundColor: colors.card2, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 1, borderColor: colors.border,
+    },
 
     // Drafts
     draftRow: {

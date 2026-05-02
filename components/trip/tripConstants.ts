@@ -37,6 +37,9 @@ export interface PastTripDisplay {
   miles: number;
   rating: number;
   hasMemory?: boolean;
+  heroImageUrl?: string;
+  isDraft?: boolean;
+  lifecycleStatus?: 'Planning' | 'Active' | 'Completed' | 'Draft' | 'Archived';
 }
 
 // ---------- CONSTANTS ----------
@@ -46,23 +49,37 @@ export const FILE_COLORS = ['#a64d1e', '#c66a36', '#b8892b', '#d9a441', '#8a5a2b
 
 // ---------- MAPPERS ----------
 
+function safeTime(v: string | undefined | null): string {
+  if (!v || typeof v !== 'string') return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '—';
+  return formatTimePHT(v);
+}
+
+function safeDate(v: string | undefined | null): string {
+  if (!v || typeof v !== 'string') return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '—';
+  return formatDatePHT(v);
+}
+
 export function mapFlightToDisplay(f: Flight): FlightDisplayData {
-  const code = f.flightNumber.split(' ')[0] ?? '';
-  const num = f.flightNumber.split(' ')[1] ?? f.flightNumber;
+  const code = f.flightNumber?.split(' ')[0] ?? '';
+  const num = f.flightNumber?.split(' ')[1] ?? f.flightNumber ?? '';
   return {
     dir: f.direction,
-    airline: f.airline,
+    airline: f.airline ?? '',
     code,
     num,
     ref: f.bookingRef ?? '',
     logo: f.direction === 'Outbound' ? themeColors.text2 : themeColors.danger,
-    date: formatDatePHT(f.departTime),
-    dep: formatTimePHT(f.departTime),
-    arr: formatTimePHT(f.arriveTime),
-    from: f.from,
-    fromCity: f.from,
-    to: f.to,
-    toCity: f.to,
+    date: safeDate(f.departTime),
+    dep: safeTime(f.departTime),
+    arr: safeTime(f.arriveTime),
+    from: f.from ?? '—',
+    fromCity: f.from ?? '',
+    to: f.to ?? '—',
+    toCity: f.to ?? '',
     dur: '',
     bags: f.baggage ? [{ who: f.passenger ?? '', bag: f.baggage }] : [],
     status: 'Confirmed',

@@ -84,6 +84,7 @@ export default function GroupChatScreen() {
       await sendChatMessage({
         tripId,
         senderName: myName,
+        senderUserId: user?.id,
         message: msg,
       });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -95,19 +96,28 @@ export default function GroupChatScreen() {
     }
   }, [text, tripId, sending, myName]);
 
+  const goToProfile = useCallback((userId?: string) => {
+    if (!userId) return;
+    router.push(`/profile/${userId}` as never);
+  }, [router]);
+
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     const isMe = item.senderName === myName;
     return (
       <View style={[styles.msgRow, isMe && styles.msgRowMe]}>
         {!isMe && (
-          <View style={styles.avatar}>
+          <Pressable onPress={() => goToProfile(item.senderUserId)} style={styles.avatar}>
             <Text style={styles.avatarText}>
               {item.senderName.charAt(0).toUpperCase()}
             </Text>
-          </View>
+          </Pressable>
         )}
         <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
-          {!isMe && <Text style={styles.senderName}>{item.senderName}</Text>}
+          {!isMe && (
+            <Pressable onPress={() => goToProfile(item.senderUserId)}>
+              <Text style={styles.senderName}>{item.senderName}</Text>
+            </Pressable>
+          )}
           <Text style={[styles.msgText, isMe && styles.msgTextMe]}>{item.message}</Text>
           <Text style={[styles.msgTime, isMe && styles.msgTimeMe]}>
             {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -148,8 +158,8 @@ export default function GroupChatScreen() {
 
       {/* Input */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <View style={styles.inputBar}>
           <TextInput

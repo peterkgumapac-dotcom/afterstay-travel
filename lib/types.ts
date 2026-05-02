@@ -61,6 +61,11 @@ export interface TripFile {
   id: string;
   fileName: string;
   fileUrl?: string;
+  storagePath?: string;
+  contentType?: string;
+  sizeBytes?: number;
+  uploadedBy?: string;
+  previewError?: string;
   type: TripFileType;
   notes?: string;
   printRequired: boolean;
@@ -76,6 +81,7 @@ export interface Flight {
   departTime: string; // ISO
   arriveTime: string; // ISO
   bookingRef?: string;
+  seatNumber?: string;
   baggage?: string;
   passenger?: string;
 }
@@ -87,6 +93,8 @@ export interface GroupMember {
   userId?: string;
   flightId?: string;
   checkedBaggage?: boolean;
+  sharesAccommodation?: boolean;
+  travelNotes?: string;
   phone?: string;
   email?: string;
   profilePhoto?: string;
@@ -187,7 +195,7 @@ export interface WeatherDay {
 
 export type MomentTag = 'Beach' | 'Food' | 'Sunset' | 'Group' | 'Activity' | 'Hotel' | 'Scenery' | 'Night';
 
-export type MomentVisibility = 'shared' | 'private' | 'album';
+export type MomentVisibility = 'shared' | 'private' | 'album' | 'public';
 
 export interface Moment {
   id: string;
@@ -201,6 +209,104 @@ export interface Moment {
   date: string;
   tags: MomentTag[];
   visibility?: MomentVisibility;
+  isPublic?: boolean;
+  likesCount?: number;
+  commentsCount?: number;
+  dayNumber?: number;
+  latitude?: number;
+  longitude?: number;
+}
+
+export type FeedFilter = 'recent' | 'trending' | 'nearby' | 'friends';
+
+export interface FeedPage {
+  moments: Moment[];
+  nextOffset: number | null;
+}
+
+// ── Feed Posts (multi-type newsfeed) ──────────────────────────
+export type FeedPostType = 'photo' | 'text' | 'trip_summary' | 'budget' | 'recommendation' | 'trip_invite' | 'carousel' | 'collage' | 'story_reference';
+
+export type LayoutType = 'single' | 'carousel' | 'polaroid_stack' | 'grid';
+
+export interface PostMedia {
+  id: string;
+  mediaUrl: string;
+  storagePath: string;
+  mediaType: string;
+  width?: number;
+  height?: number;
+  orderIndex: number;
+}
+
+export interface FeedPost {
+  id: string;
+  userId: string;
+  type: FeedPostType;
+  caption?: string;
+  momentId?: string;
+  tripId?: string;
+  photoUrl?: string;
+  locationName?: string;
+  latitude?: number;
+  longitude?: number;
+  metadata: Record<string, unknown>;
+  layoutType?: LayoutType;
+  media?: PostMedia[];
+  likesCount: number;
+  commentsCount: number;
+  saveCount: number;
+  shareCount: number;
+  isPublic: boolean;
+  createdAt: string;
+  userName?: string;
+  userAvatar?: string;
+  tripName?: string;
+  dayNumber?: number;
+  viewerHasLiked?: boolean;
+  viewerHasSaved?: boolean;
+}
+
+export interface Story {
+  id: string;
+  userId: string;
+  mediaUrl: string;
+  storagePath: string;
+  caption?: string;
+  placeId?: string;
+  locationName?: string;
+  visibility: string;
+  createdAt: string;
+  expiresAt: string;
+  userName?: string;
+  userAvatar?: string;
+  viewed?: boolean;
+}
+
+export interface StoryView {
+  userId: string;
+  storyId: string;
+  viewedAt: string;
+}
+
+export interface PostTag {
+  id: string;
+  postId: string;
+  taggedUserId: string;
+  taggedByUserId: string;
+  userName?: string;
+  userAvatar?: string;
+  createdAt: string;
+}
+
+export interface FeedPostComment {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  text: string;
+  createdAt: string;
 }
 
 export type AlbumMemberRole = 'owner' | 'contributor' | 'viewer' | 'surprise';
@@ -383,6 +489,61 @@ export interface ConciergeResultPlace {
 
 // ── Expense targeting (budget screen) ──────────────────────────────
 
+// ── Companion System ─────────────────────────────────────────────
+
+// ── Moment Comments ──────────────────────────────────────────────
+
+export interface MomentComment {
+  id: string;
+  momentId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  text: string;
+  createdAt: string;
+}
+
+// ── Companion System ─────────────────────────────────────────────
+
+export type CompanionStatus = 'none' | 'pending' | 'companion';
+
+export interface CompanionPrivacy {
+  showStats: boolean;
+  showSharedMoments: boolean;
+  showPastTrips: boolean;
+  showUpcomingTrips: boolean;
+  showSocials: boolean;
+}
+
+export interface CompanionProfile {
+  id: string;
+  fullName: string;
+  avatarUrl?: string;
+  handle?: string;
+  bio?: string;
+  homeBase?: string;
+  profileVisibility?: 'public' | 'companions' | 'private';
+  publicStatsEnabled?: boolean;
+  profileBadges?: string[];
+  phone?: string;
+  socials?: {
+    instagram?: string;
+    tiktok?: string;
+    x?: string;
+    facebook?: string;
+  };
+  companionStatus: CompanionStatus;
+  companionPrivacy: CompanionPrivacy;
+  mutualTripCount: number;
+  lifetimeStats?: LifetimeStats;
+}
+
+export interface FollowState {
+  isFollowing: boolean;
+  followersCount: number;
+  followingCount: number;
+}
+
 export type ExpenseTarget =
   | { type: 'trip'; tripId?: string }
   | { type: 'quick-trip'; quickTripId: string }
@@ -398,6 +559,9 @@ export interface UnifiedExpenseHistoryItem {
   source: 'trip' | 'quick-trip' | 'standalone' | 'daily';
   sourceLabel?: string;
   sourceId?: string;
+  paidBy?: string;
+  splitType?: string;
+  placeName?: string;
 }
 
 // ── Daily Expense Tracker ────────────────────────────────────────────
@@ -423,6 +587,15 @@ export interface DailyExpensePeriodSummary {
   average: number;
   byCategory: Record<string, number>;
   count: number;
+}
+
+export interface DailyTrackerSettings {
+  weeklyBudget?: number;
+  monthlyBudget?: number;
+  income?: number;
+  currency?: string;
+  weeklyReport?: boolean;
+  trackedCategories?: DailyExpenseCategory[];
 }
 
 // ── Savings Goal ─────────────────────────────────────────────────────
@@ -453,3 +626,12 @@ export interface SavingsEntry {
 }
 
 export type SavingsMilestone = 25 | 50 | 75 | 100;
+
+export interface DestinationOverview {
+  summary: string;
+  highlights: string[];
+  budgetRange: { budget: string; mid: string; luxury: string };
+  bestMonths: string;
+  weatherNote: string;
+  gettingThere: string;
+}

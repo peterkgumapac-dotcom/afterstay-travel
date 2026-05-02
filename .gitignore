@@ -41,3 +41,4 @@ android/
 # typescript
 *.tsbuildinfo
 expo.env
+.design/

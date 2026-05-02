@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,18 +30,21 @@ import {
 } from '@/components/discover/DiscoverPlaceCard';
 import { type TrendingItem } from '@/components/discover/TrendingCard';
 import MiniLoader from '@/components/loader/MiniLoader';
-import PlaceDetailSheet from '@/components/discover/PlaceDetailSheet';
-import AIConcierge from '@/components/discover/AIConcierge';
-import StaysTab from '@/components/discover/StaysTab';
+const PlaceDetailSheet = React.lazy(() => import('@/components/discover/PlaceDetailSheet'));
+const AIConcierge = React.lazy(() => import('@/components/discover/AIConcierge'));
+const StaysTab = React.lazy(() => import('@/components/discover/StaysTab'));
 import { useTheme } from '@/constants/ThemeContext';
-import { generateItinerary, type ItineraryDay, type PlannerScope, type PlannerPace } from '@/lib/anthropic';
+import type { ItineraryDay, PlannerScope, PlannerPace } from '@/lib/anthropic';
 import { distanceFromPoint, formatDistance } from '@/lib/distance';
 import { mapNearbyToDiscoverPlace, mapSavedToDiscoverPlace } from '@/components/discover/shared';
 import { MS_PER_DAY } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
-import ExploreMap from '@/components/discover/ExploreMap';
+const ExploreMap = React.lazy(() => import('@/components/discover/ExploreMap'));
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { searchNearby, placeAutocomplete, getPlaceLocation, type NearbyPlace } from '@/lib/google-places';
+import { searchNearby, searchNearbyPage, placeAutocomplete, getPlaceLocation, type NearbyPlace } from '@/lib/google-places';
+import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS } from '@/lib/category-config';
+import { searchMultiCategory } from '@/lib/multi-category-search';
+import DestinationCard from '@/components/discover/DestinationCard';
 import {
   addPlace,
   getActiveTrip,
@@ -53,11 +56,16 @@ import {
   notifyGroupOfRecommendation,
 } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
-import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
+const GroupVotingSheet = React.lazy(() => import('@/components/discover/GroupVotingSheet'));
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
+import DiscoverModeSwitch, { type DiscoverMode } from '@/components/discover/DiscoverModeSwitch';
+import { PAPER } from '@/components/feed/feedTheme';
+const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
 
+const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
+const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'places' | 'stays' | 'concierge' | 'saved';
@@ -70,19 +78,7 @@ type FilterState = {
   maxPrice: number;
 };
 
-// Map UI category IDs to Google Places API types/keywords
-const CATEGORY_SEARCH_MAP: Record<string, { type?: string; keyword?: string }> = {
-  beach: { keyword: 'beach' },
-  food: { type: 'restaurant', keyword: 'food' },
-  activity: { keyword: 'water sports activities tours' },
-  nightlife: { type: 'bar', keyword: 'nightlife bar club' },
-  photo: { keyword: 'viewpoint scenic photo spot' },
-  wellness: { type: 'spa', keyword: 'spa wellness massage yoga' },
-  coffee: { type: 'cafe', keyword: 'coffee cafe espresso' },
-  atm: { type: 'atm', keyword: 'atm cash withdraw money changer' },
-  shopping: { type: 'store', keyword: 'shopping mall market souvenir' },
-  landmark: { type: 'tourist_attraction', keyword: 'landmark monument attraction viewpoint' },
-};
+// CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS imported from @/lib/category-config
 
 // Map Google Places types to display labels
 function resolveTypeLabel(types: string[]): string {
@@ -172,13 +168,19 @@ const PLACE_CATEGORY_CHIPS = [
   'Food',
   'Coffee',
   'Activity',
+  'Nightlife',
+  'Wellness',
+  'Date Night',
+  'Rainy Day',
+  'Worth the Drive',
+  'Budget Friendly',
   'Shopping',
   'ATM',
   'Landmark',
 ] as const;
 
 const DEFAULT_FILTERS: FilterState = {
-  minRating: 0,
+  minRating: 4.0,
   openNow: false,
   nearby: false,
   maxPrice: 3,
@@ -321,7 +323,7 @@ function getTopPicksByCategory(places: readonly DiscoverPlace[], distFn: (lat?: 
     .map(cat => {
       const matches = [...places]
         .filter(cat.match)
-        .filter(p => p.r >= 3.5 && p.img)
+        .filter(p => p.r >= 4.0 && p.img)
         .map(p => ({ p, dist: distFn(p.lat, p.lng) }))
         .filter(x => x.dist > 0 && x.dist < 50)
         .sort((a, b) => a.dist - b.dist)
@@ -379,6 +381,56 @@ const TopPicksSection = React.memo(function TopPicksSection({
   );
 });
 
+const TopPicksByCategorySection = React.memo(function TopPicksByCategorySection({
+  places,
+  onExplore,
+  distFn,
+}: {
+  places: readonly DiscoverPlace[];
+  onExplore: (placeId: string | undefined, name: string) => void;
+  distFn: (lat?: number, lng?: number) => number;
+}) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  const categories = useMemo(() => getTopPicksByCategory(places, distFn), [places, distFn]);
+  if (categories.length === 0) return null;
+
+  return (
+    <View style={{ gap: 16 }}>
+      {categories.map((cat) => (
+        <View key={cat.key} style={styles.topPicksSection}>
+          <Text style={styles.topPicksTitle}>{cat.label}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            {cat.places.map((p) => (
+              <TouchableOpacity
+                key={p.placeId ?? p.n}
+                style={styles.topPickCard}
+                activeOpacity={0.7}
+                onPress={() => onExplore(p.placeId, p.n)}
+                accessibilityRole="button"
+                accessibilityLabel={p.n}
+              >
+                {p.img ? (
+                  <Image source={{ uri: p.img }} style={styles.topPickImage} />
+                ) : (
+                  <View style={[styles.topPickImage, { alignItems: 'center', justifyContent: 'center' }]}>
+                    <Map size={24} color={colors.text3} />
+                  </View>
+                )}
+                <Text style={styles.topPickLabel}>{friendlyCategory(p.t).toUpperCase()}</Text>
+                <Text style={styles.topPickName} numberOfLines={1}>{p.n}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 10 }}>
+                  <Text style={{ fontSize: 10, color: colors.warn }}>{'★'} {p.r}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      ))}
+    </View>
+  );
+});
+
 // ── Main screen ─────────────────────────────────────────────────────────
 
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
@@ -398,6 +450,36 @@ function DiscoverScreenInner() {
   const { segment, isTestMode, mockData } = useUserSegment();
   const testModeRef = useRef(isTestMode);
   testModeRef.current = isTestMode;
+
+  // Discover mode: explore_moments vs plan (places/stays)
+  const [discoverMode, setDiscoverMode] = useState<DiscoverMode>('explore_moments');
+  // Restore persisted mode
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      cacheGet<string>(DISCOVER_MODE_CACHE_KEY, 0),
+      cacheGet<boolean>(EXPLORE_MOMENTS_LAUNCH_KEY, 0),
+    ]).then(([v, hasSeenExploreLaunch]) => {
+      if (!mounted) return;
+      if (!hasSeenExploreLaunch) {
+        setDiscoverMode('explore_moments');
+        cacheSet(DISCOVER_MODE_CACHE_KEY, 'explore_moments');
+        cacheSet(EXPLORE_MOMENTS_LAUNCH_KEY, true);
+        return;
+      }
+      if (v === 'explore_moments' || v === 'plan') {
+        setDiscoverMode(v as DiscoverMode);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  const handleModeChange = useCallback((m: DiscoverMode) => {
+    setDiscoverMode(m);
+    cacheSet(DISCOVER_MODE_CACHE_KEY, m);
+    cacheSet(EXPLORE_MOMENTS_LAUNCH_KEY, true);
+  }, []);
 
   const [tab, setTab] = useState<TabId>(segment === 'returning' || segment === 'new' ? 'stays' : 'places');
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
@@ -426,6 +508,8 @@ function DiscoverScreenInner() {
   const [places, setPlaces] = useState<readonly DiscoverPlace[]>([]);
   const [placesLoading, setPlacesLoading] = useState(false);
   const [placesError, setPlacesError] = useState<string | null>(null);
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>();
+  const [loadingMore, setLoadingMore] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
   const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
@@ -614,6 +698,19 @@ function DiscoverScreenInner() {
           const lng = trip.hotelLng ?? trip.longitude;
           if (lat != null && lng != null) {
             setTripCoords({ lat, lng });
+          } else if (trip.destination) {
+            // No coords on trip — geocode the destination name
+            try {
+              const autoResults = await placeAutocomplete(trip.destination);
+              if (autoResults.length > 0) {
+                const loc = await getPlaceLocation(autoResults[0].placeId);
+                if (loc && !cancelled) {
+                  setTripCoords({ lat: loc.lat, lng: loc.lng });
+                }
+              }
+            } catch {
+              if (__DEV__) console.warn('[DiscoverScreen] geocode destination failed');
+            }
           }
           setTripBudget(trip.budgetLimit ?? 0);
           setTripBudgetCurrency(trip.costCurrency ?? 'PHP');
@@ -672,7 +769,7 @@ function DiscoverScreenInner() {
   }, [tab, tripId, loadSavedPlaces]);
 
   // Search places via Google Places API
-  const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false) => {
+  const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false, radius?: number) => {
     // If no coords but user typed a keyword, auto-geocode it as a destination
     if (!effectiveCoords && keyword?.trim()) {
       setPlacesLoading(true);
@@ -688,7 +785,9 @@ function DiscoverScreenInner() {
             return;
           }
         }
-      } catch {}
+      } catch (err) {
+        if (__DEV__) console.warn('[Discover] place autocomplete failed:', err);
+      }
       setPlacesLoading(false);
       setPlaces([]);
       return;
@@ -710,7 +809,8 @@ function DiscoverScreenInner() {
     setPlacesLoading(true);
     setPlacesError(null);
     try {
-      const results = await searchNearby(type, keyword, effectiveCoords) ?? [];
+      const { places: results, nextPageToken: token } = await searchNearby(type, keyword, effectiveCoords, radius ?? DEFAULT_SEARCH_RADIUS);
+      setNextPageToken(token);
       if (results.length > 0) {
         const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords ?? undefined));
         placesCache.current[cacheKey] = mapped;
@@ -719,7 +819,41 @@ function DiscoverScreenInner() {
         setPlaces([]);
         setPlacesError('No results found nearby.');
       }
-    } catch {
+    } catch (err) {
+      if (__DEV__) console.warn('[Discover] searchPlaces failed:', err);
+      setPlaces([]);
+      setPlacesError('Could not load places.');
+    } finally {
+      setPlacesLoading(false);
+      setRefreshing(false);
+    }
+  }, [effectiveCoords]);
+
+  // Load curated multi-category mix for the "All" chip
+  const loadAllView = useCallback(async (skipCache = false) => {
+    if (!effectiveCoords) { setPlaces([]); return; }
+
+    const cacheKey = `all_multi_${effectiveCoords.lat}_${effectiveCoords.lng}`;
+    if (!skipCache && placesCache.current[cacheKey]) {
+      setPlaces(placesCache.current[cacheKey]);
+      return;
+    }
+
+    setPlacesLoading(true);
+    setPlacesError(null);
+    try {
+      const { places: results } = await searchMultiCategory(effectiveCoords);
+      if (results.length > 0) {
+        const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords));
+        placesCache.current[cacheKey] = mapped;
+        setPlaces(mapped);
+      } else {
+        setPlaces([]);
+        setPlacesError('No results found nearby.');
+      }
+      setNextPageToken(undefined);
+    } catch (err) {
+      if (__DEV__) console.warn('[Discover] loadAllView failed:', err);
       setPlaces([]);
       setPlacesError('Could not load places.');
     } finally {
@@ -732,13 +866,14 @@ function DiscoverScreenInner() {
   useEffect(() => {
     if (tab !== 'places') return;
     if (placeCategoryChip === 'All') {
-      searchPlaces();
+      loadAllView();
     } else {
       const chipKey = placeCategoryChip.toLowerCase();
       const searchConfig = CATEGORY_SEARCH_MAP[chipKey];
-      searchPlaces(searchConfig?.keyword ?? chipKey, searchConfig?.type);
+      const categoryRadius = CATEGORY_RADIUS_MAP[chipKey] ?? DEFAULT_SEARCH_RADIUS;
+      searchPlaces(searchConfig?.keyword ?? chipKey, searchConfig?.type, false, categoryRadius);
     }
-  }, [placeCategoryChip, tab, searchPlaces]);
+  }, [placeCategoryChip, tab, searchPlaces, loadAllView]);
 
   // Debounced search input
   useEffect(() => {
@@ -746,7 +881,7 @@ function DiscoverScreenInner() {
     if (!q.trim()) {
       // Reset to category-based search when query is cleared
       if (placeCategoryChip === 'All') {
-        searchPlaces();
+        loadAllView();
       }
       return;
     }
@@ -780,6 +915,7 @@ function DiscoverScreenInner() {
         try {
           await savePlace(existingPlace.id, !existingPlace.saved);
         } catch {
+          Alert.alert('Error', 'Something went wrong. Please try again.');
           setSaved((s) => {
             const next = new Set(s);
             if (existingPlace.saved) next.add(name);
@@ -807,6 +943,7 @@ function DiscoverScreenInner() {
               saved: true,
             });
           } catch {
+            Alert.alert('Error', 'Something went wrong. Please try again.');
             setSaved((s) => { const next = new Set(s); next.delete(name); return next; });
           }
         }
@@ -832,6 +969,7 @@ function DiscoverScreenInner() {
           const { getWishlist } = await import('@/lib/supabase');
           setWishlistItems(await getWishlist());
         } catch {
+          Alert.alert('Error', 'Something went wrong. Please try again.');
           setSaved((s) => { const next = new Set(s); next.delete(name); return next; });
         }
       }
@@ -868,6 +1006,7 @@ function DiscoverScreenInner() {
           setShowVotingSheet(true);
         }
       } catch {
+        Alert.alert('Error', 'Something went wrong. Please try again.');
         setRecommended((s) => {
           const next = new Set(s);
           next.delete(name);
@@ -894,6 +1033,7 @@ function DiscoverScreenInner() {
             saved: true,
           });
         } catch {
+          Alert.alert('Error', 'Something went wrong. Please try again.');
           setRecommended((s) => {
             const next = new Set(s);
             next.delete(name);
@@ -927,29 +1067,34 @@ function DiscoverScreenInner() {
   const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
 
 
-  // Pre-compute distances, filter nearby, sort by nearest first.
+  // Pre-compute distances, filter nearby, sort by quality-weighted score.
   const placesWithDistance = useMemo(() => {
-    const withDist = filteredPlaces.map((p) => ({
-      place: p,
-      distanceKm: getDistanceKm(p.lat, p.lng),
-    }));
+    const withDist = filteredPlaces.map((p) => {
+      const distanceKm = getDistanceKm(p.lat, p.lng);
+      const qualityScore = (p.r ?? 0) * Math.log10(Math.max(p.totalRatings ?? 1, 1));
+      const blendedScore = qualityScore - (distanceKm * 0.3);
+      return { place: p, distanceKm, blendedScore };
+    });
     const nearbyRadius = travelMode === 'car' ? 10 : 2;
     const filtered = filters.nearby
       ? withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= nearbyRadius)
       : withDist;
     return filtered.sort((a, b) => {
-      // Open places first, then by distance
+      // Open places first, then by quality score descending
       const openA = a.place.openNow ? 0 : 1;
       const openB = b.place.openNow ? 0 : 1;
       if (openA !== openB) return openA - openB;
-      return a.distanceKm - b.distanceKm;
+      return b.blendedScore - a.blendedScore;
     });
-  }, [filteredPlaces, getDistanceKm, filters.nearby]);
+  }, [filteredPlaces, getDistanceKm, filters.nearby, travelMode]);
 
   // Stable filter callbacks — prevent FilterChip re-renders
   const toggleOpenNow = useCallback(() => setFilters((f) => ({ ...f, openNow: !f.openNow })), []);
   const toggleNearby = useCallback(() => setFilters((f) => ({ ...f, nearby: !f.nearby })), []);
-  const toggleRating = useCallback(() => setFilters((f) => ({ ...f, minRating: f.minRating >= 4.5 ? 0 : 4.5 })), []);
+  const toggleRating = useCallback(() => setFilters((f) => {
+    const next = f.minRating === 0 ? 4.0 : f.minRating === 4.0 ? 4.5 : 0;
+    return { ...f, minRating: next };
+  }), []);
   const toggleShowFilters = useCallback(() => setShowFilters((s) => !s), []);
 
   const handleExplore = useCallback((placeId: string | undefined, name: string) => {
@@ -994,27 +1139,42 @@ function DiscoverScreenInner() {
     : undefined;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={[styles.safe, discoverMode === 'explore_moments' && { backgroundColor: PAPER.ivory }]} edges={['top']}>
       {/* Top bar */}
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.title}>Discover</Text>
-          {effectiveDest ? <Text style={styles.subtitle}>{effectiveDest}</Text> : null}
+          <Text style={[styles.title, discoverMode === 'explore_moments' && { color: PAPER.inkDark }]}>Discover</Text>
+          {effectiveDest && discoverMode !== 'explore_moments' ? <Text style={styles.subtitle}>{effectiveDest}</Text> : null}
         </View>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          accessibilityLabel="Filters"
-          accessibilityRole="button"
-          activeOpacity={0.7}
-          onPress={() => {
-            setTab('places');
-            setShowFilters((s) => !s);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }}
-        >
-          <SlidersHorizontal size={16} color={colors.text} strokeWidth={1.8} />
-        </TouchableOpacity>
+        {discoverMode !== 'explore_moments' && (
+          <TouchableOpacity
+            style={styles.iconBtn}
+            accessibilityLabel="Filters"
+            accessibilityRole="button"
+            activeOpacity={0.7}
+            onPress={() => {
+              setTab('places');
+              setShowFilters((s) => !s);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+          >
+            <SlidersHorizontal size={16} color={colors.text} strokeWidth={1.8} />
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Mode switch: Explore Moments / Find Places & Food */}
+      <DiscoverModeSwitch mode={discoverMode} onModeChange={handleModeChange} />
+
+      {/* ═══════ EXPLORE MOMENTS MODE ═══════ */}
+      {discoverMode === 'explore_moments' && (
+        <Suspense fallback={<MiniLoader />}>
+          <ExploreMomentsFeed />
+        </Suspense>
+      )}
+
+      {/* ═══════ PLAN MODE (existing Discover) ═══════ */}
+      {discoverMode === 'plan' && <>
 
       {/* Destination search — shown when no active trip */}
       {!tripId && (
@@ -1061,6 +1221,22 @@ function DiscoverScreenInner() {
         </View>
       )}
 
+      {/* Destination overview — AI-generated insights for trip discovery */}
+      {!tripId && exploreDest ? (
+        <>
+          <DestinationCard destination={exploreDest} coords={exploreCoords} />
+          <TouchableOpacity
+            style={{ marginHorizontal: 16, marginTop: 10, marginBottom: 4, backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}
+            onPress={() => router.push({ pathname: '/onboarding', params: { destination: exploreDest } } as never)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
+              Plan a trip to {exploreDest}
+            </Text>
+          </TouchableOpacity>
+        </>
+      ) : null}
+
       {/* Segmented control */}
       <View style={styles.segWrapper}>
         <View style={styles.seg}>
@@ -1104,9 +1280,14 @@ function DiscoverScreenInner() {
               onRefresh={() => {
                 setRefreshing(true);
                 placesCache.current = {};
-                const chipKey = placeCategoryChip.toLowerCase();
-                const search = CATEGORY_SEARCH_MAP[chipKey];
-                searchPlaces(search?.keyword, search?.type, true);
+                if (placeCategoryChip === 'All') {
+                  loadAllView(true);
+                } else {
+                  const chipKey = placeCategoryChip.toLowerCase();
+                  const search = CATEGORY_SEARCH_MAP[chipKey];
+                  const categoryRadius = CATEGORY_RADIUS_MAP[chipKey] ?? DEFAULT_SEARCH_RADIUS;
+                  searchPlaces(search?.keyword, search?.type, true, categoryRadius);
+                }
               }}
               tintColor={colors.accent}
             />
@@ -1275,7 +1456,10 @@ function DiscoverScreenInner() {
 
               {/* Top Picks */}
               {placeCategoryChip === 'All' && !q && (
-                <TopPicksSection places={places} onExplore={handleExplore} distFn={getDistanceKm} />
+                <>
+                  <TopPicksSection places={places} onExplore={handleExplore} distFn={getDistanceKm} />
+                  <TopPicksByCategorySection places={places} onExplore={handleExplore} distFn={getDistanceKm} />
+                </>
               )}
 
               {/* Results count */}
@@ -1312,6 +1496,40 @@ function DiscoverScreenInner() {
                   Show more ({placesWithDistance.length - visibleCount} remaining)
                 </Text>
               </TouchableOpacity>
+            ) : nextPageToken ? (
+              <TouchableOpacity
+                style={styles.showMoreBtn}
+                disabled={loadingMore}
+                onPress={async () => {
+                  setLoadingMore(true);
+                  try {
+                    // Google requires ~2s before page token is valid
+                    await new Promise((r) => setTimeout(r, 2000));
+                    const { places: more, nextPageToken: token } = await searchNearbyPage(nextPageToken);
+                    setNextPageToken(token);
+                    if (more.length > 0) {
+                      const mapped = more.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords ?? undefined));
+                      setPlaces((prev) => [...prev, ...mapped]);
+                      setVisibleCount((c) => c + more.length);
+                    }
+                  } catch (err) {
+                    if (__DEV__) console.warn('[Discover] load more failed:', err);
+                    setNextPageToken(undefined);
+                  } finally {
+                    setLoadingMore(false);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                {loadingMore ? (
+                  <ActivityIndicator size="small" color={colors.accent} />
+                ) : (
+                  <ChevronDown size={16} color={colors.accent} strokeWidth={2} />
+                )}
+                <Text style={styles.showMoreText}>
+                  {loadingMore ? 'Loading more places...' : 'Load more places'}
+                </Text>
+              </TouchableOpacity>
             ) : null
           }
         />
@@ -1326,6 +1544,7 @@ function DiscoverScreenInner() {
         >
           {/* ═══════ AI CONCIERGE TAB ═══════ */}
           {tab === 'concierge' && (
+            <Suspense fallback={<MiniLoader />}>
             <AIConcierge
               tripId={tripId}
               tripDest={tripDest}
@@ -1342,6 +1561,7 @@ function DiscoverScreenInner() {
               }}
               onOpenDetail={handleExplore}
             />
+            </Suspense>
           )}
 
           {/* ═══════ SAVED / WISHLIST TAB ═══════ */}
@@ -1582,6 +1802,7 @@ function DiscoverScreenInner() {
 
       {/* ═══════ STAYS TAB (own ScrollView — outside parent) ═══════ */}
       {tab === 'stays' && (
+        <Suspense fallback={<MiniLoader />}>
         <StaysTab
           tripCoords={tripCoords}
           tripId={tripId}
@@ -1593,9 +1814,12 @@ function DiscoverScreenInner() {
           onSave={toggleSave}
           onExplore={handleExplore}
         />
+        </Suspense>
       )}
 
       {/* Full-screen map */}
+      {showMapModal && (
+      <Suspense fallback={null}>
       <ExploreMap
         visible={showMapModal}
         places={filteredPlaces}
@@ -1610,7 +1834,11 @@ function DiscoverScreenInner() {
         onSaveToggle={toggleSave}
         getDistanceKm={getDistanceKm}
       />
+      </Suspense>
+      )}
 
+      {showDetail && (
+      <Suspense fallback={null}>
       <PlaceDetailSheet
         visible={showDetail}
         placeId={detailPlaceId}
@@ -1623,6 +1851,10 @@ function DiscoverScreenInner() {
         }}
         isRecommended={recommended.has(detailPlaceName)}
       />
+      </Suspense>
+      )}
+      {showVotingSheet && (
+      <Suspense fallback={null}>
       <GroupVotingSheet
         visible={showVotingSheet}
         onClose={() => setShowVotingSheet(false)}
@@ -1635,6 +1867,10 @@ function DiscoverScreenInner() {
           );
         }}
       />
+      </Suspense>
+      )}
+
+      </>}
     </SafeAreaView>
   );
 }

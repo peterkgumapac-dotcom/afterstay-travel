@@ -11,13 +11,14 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  KeyboardAvoidingView,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Check, ChevronRight, FolderPlus, Lock, Plus, Users, X, AlertCircle, Loader } from 'lucide-react-native';
+import { Check, ChevronRight, FolderPlus, Globe, Lock, Plus, Users, X, AlertCircle, Loader } from 'lucide-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -25,7 +26,10 @@ import { radius, spacing } from '@/constants/theme';
 import { CONFIG } from '@/lib/config';
 import { placeAutocomplete } from '@/lib/google-places';
 import { addMoment, addPersonalPhoto, getActiveTrip } from '@/lib/supabase';
+import { createExplorePost } from '@/lib/moments/exploreMomentsService';
 import { useAuth } from '@/lib/auth';
+import { invalidateHomeCache } from '@/hooks/useTabHomeData';
+import { invalidateCache } from '@/lib/tabDataCache';
 import type { MomentTag, MomentVisibility } from '@/lib/types';
 import CaptureDestinationSheet, { type CaptureDestination } from '@/components/shared/CaptureDestinationSheet';
 
@@ -34,11 +38,31 @@ type PhotoStatus = 'pending' | 'uploading' | 'done' | 'error';
 interface PhotoItem {
   uri: string;
   status: PhotoStatus;
+  mediaType?: 'image' | 'video';
 }
 
 const ALL_TAGS: readonly MomentTag[] = [
   'Beach', 'Food', 'Sunset', 'Group', 'Activity', 'Hotel', 'Scenery', 'Night',
 ];
+
+const SINGLE_PHOTO_UPLOAD_TIMEOUT_MS = 210_000;
+const PUBLIC_POST_BASE_TIMEOUT_MS = 90_000;
+const PUBLIC_POST_PER_PHOTO_TIMEOUT_MS = 150_000;
+
+function isVideoPhoto(photo: PhotoItem): boolean {
+  if (photo.mediaType === 'video') return true;
+  return /\.(mp4|mov|avi|webm|m4v)(\?|#|$)/i.test(photo.uri);
+}
+
+function withUploadTimeout<T>(promise: Promise<T>, ms = 60_000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error('Upload timed out. Please check your connection and try again.')), ms);
+      promise.finally(() => clearTimeout(timer)).catch(() => clearTimeout(timer));
+    }),
+  ]);
+}
 
 export default function AddMomentScreen() {
   const router = useRouter();
@@ -56,34 +80,23 @@ export default function AddMomentScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
+  const [uploadStage, setUploadStage] = useState('');
   const [scope, setScope] = useState<MomentVisibility>('private');
+  const [isPublic, setIsPublic] = useState(false);
   const [locationSuggestions, setLocationSuggestions] = useState<{ placeId: string; description: string }[]>([]);
   const locationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Capture routing state
   const { user } = useAuth();
+  const userId = user?.id?.trim();
   const [destination, setDestination] = useState<CaptureDestination | null>(
     paramTripId ? { type: 'trip', tripId: paramTripId, tripName: '' } : null,
   );
   const [showDestSheet, setShowDestSheet] = useState(false);
   const [activeTripName, setActiveTripName] = useState('');
+  const didAutoPickRef = useRef(false);
 
-  // On mount: detect active trip, then pick images
-  useEffect(() => {
-    (async () => {
-      if (!paramTripId) {
-        const active = await getActiveTrip().catch(() => null);
-        if (active) {
-          setDestination({ type: 'trip', tripId: active.id, tripName: active.name });
-          setActiveTripName(active.name);
-        }
-        // If no active trip and no param, we'll show the sheet after picking photos
-      }
-      pickImages();
-    })();
-  }, []);
-
-  const pickImages = async () => {
+  const pickImages = useCallback(async (resolvedDestination = destination) => {
     if (Platform.OS === 'ios') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -108,12 +121,13 @@ export default function AddMomentScreen() {
 
     const newPhotos: PhotoItem[] = result.assets.map((a) => ({
       uri: a.uri,
+      mediaType: a.type === 'video' ? 'video' : 'image',
       status: 'pending' as const,
     }));
     setPhotos((prev) => [...prev, ...newPhotos]);
 
     // If no destination set (no active trip, no param), show the routing sheet
-    if (!destination && !paramTripId) {
+    if (!resolvedDestination && !paramTripId) {
       setShowDestSheet(true);
     }
 
@@ -137,7 +151,26 @@ export default function AddMomentScreen() {
         }
       }
     }
-  };
+  }, [destination, location, paramTripId, photos.length, router]);
+
+  // On mount: detect active trip, then pick images
+  useEffect(() => {
+    if (didAutoPickRef.current) return;
+    didAutoPickRef.current = true;
+    (async () => {
+      let resolvedDestination = destination;
+      if (!paramTripId) {
+        const active = await getActiveTrip().catch(() => null);
+        if (active) {
+          resolvedDestination = { type: 'trip', tripId: active.id, tripName: active.name };
+          setDestination(resolvedDestination);
+          setActiveTripName(active.name);
+        }
+        // If no active trip and no param, we'll show the sheet after picking photos
+      }
+      pickImages(resolvedDestination);
+    })();
+  }, [destination, paramTripId, pickImages]);
 
   const removePhoto = (uri: string) => {
     setPhotos((prev) => prev.filter((p) => p.uri !== uri));
@@ -150,10 +183,32 @@ export default function AddMomentScreen() {
   };
 
   const handleUploadAll = useCallback(async () => {
+    if (uploading) return;
     if (photos.length === 0) return;
+
+    // Validate destination exists
+    const hasDestination = !!destination || !!paramTripId;
+    if (!hasDestination) {
+      Alert.alert('Choose a destination', 'Select where to save your photos before uploading.');
+      setShowDestSheet(true);
+      return;
+    }
+
+    // Validate userId for personal album
+    if (destination?.type === 'personal' && !userId) {
+      Alert.alert('Sign in required', 'Please sign in before uploading to your personal album.');
+      return;
+    }
+
     setUploading(true);
+    setUploadStage('Preparing photos...');
     const pending = photos.filter((p) => p.status !== 'done');
     setUploadProgress({ done: 0, total: pending.length });
+    if (pending.length === 0) {
+      setUploading(false);
+      router.back();
+      return;
+    }
 
     // Mark all as uploading
     setPhotos((prev) =>
@@ -161,83 +216,140 @@ export default function AddMomentScreen() {
     );
 
     let successCount = photos.filter((p) => p.status === 'done').length;
+    let completedThisRun = 0;
     let lastErrors: string[] = [];
-    const BATCH_SIZE = 3;
+    const BATCH_SIZE = 1;
 
-    // Upload in parallel batches of 3
-    for (let i = 0; i < pending.length; i += BATCH_SIZE) {
-      const batch = pending.slice(i, i + BATCH_SIZE);
-      const results = await Promise.allSettled(
-        batch.map(async (photo) => {
-          if (destination?.type === 'personal' && user?.id) {
-            await addPersonalPhoto({
-              userId: user.id,
-              localUri: photo.uri,
-              location: location || undefined,
-              caption: caption || undefined,
-              takenAt: date,
-              tags,
-            });
-          } else if (destination?.type === 'quick-trip') {
-            // Navigate to quick-trip-create with photos — handled in onSelect
-            // This path shouldn't reach here; it redirects before upload
-            return photo.uri;
-          } else {
-            const tripId = destination?.type === 'trip' ? destination.tripId : paramTripId;
-            await addMoment({
-              caption: caption || '',
-              localUri: photo.uri,
-              location: location || undefined,
-              takenBy: takenBy || undefined,
-              date,
-              tags,
-              visibility: scope,
-              ...(tripId ? { tripId } : {}),
-            });
-          }
-          return photo.uri;
-        }),
-      );
-
-      const errors: string[] = [];
-      for (let j = 0; j < results.length; j++) {
-        const result = results[j];
-        if (result.status === 'fulfilled') {
-          setPhotos((prev) =>
-            prev.map((p) => p.uri === result.value ? { ...p, status: 'done' } : p),
-          );
-          successCount++;
-        } else {
-          const failedUri = batch[j]?.uri;
-          if (failedUri) {
-            setPhotos((prev) =>
-              prev.map((p) => p.uri === failedUri ? { ...p, status: 'error' } : p),
-            );
-          }
-          const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
-          errors.push(reason);
-          // eslint-disable-next-line no-console
-          console.error('[add-moment] upload failed:', reason);
+    try {
+      if (isPublic) {
+        if (pending.some(isVideoPhoto)) {
+          throw new Error('Public Explore moments support photos only right now. Save videos to a Trip Album instead.');
         }
+        const tripId = destination?.type === 'trip' ? destination.tripId : paramTripId;
+        setUploadStage('Uploading public post...');
+        await withUploadTimeout(
+          createExplorePost({
+            caption: caption.trim() || undefined,
+            locationName: location.trim() || undefined,
+            tripId,
+            localMediaUris: pending.map((photo) => photo.uri),
+          }),
+          PUBLIC_POST_BASE_TIMEOUT_MS + pending.length * PUBLIC_POST_PER_PHOTO_TIMEOUT_MS,
+        );
+        completedThisRun = pending.length;
+        successCount = photos.length;
+        setPhotos((prev) => prev.map((p) => p.status === 'uploading' ? { ...p, status: 'done' } : p));
+        setUploadProgress({ done: completedThisRun, total: pending.length });
+        if (tripId) {
+          invalidateCache(`moments:${tripId}`);
+          invalidateCache(`home:moments:${tripId}`);
+        }
+        invalidateHomeCache();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.back();
+        return;
       }
-      lastErrors = errors;
-      setUploadProgress({ done: successCount - (photos.length - pending.length), total: pending.length });
-    }
 
-    setUploading(false);
+      // Upload one at a time. It is slower, but much more reliable on mobile
+      // connections and avoids one stuck request making the whole UI look frozen.
+      for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+        const batch = pending.slice(i, i + BATCH_SIZE);
+        setUploadStage(`Uploading photo ${i + 1} of ${pending.length}...`);
+        const results = await Promise.allSettled(
+          batch.map(async (photo) => {
+            if (destination?.type === 'personal') {
+              if (!userId) {
+                throw new Error('Missing user ID for personal album upload.');
+              }
+              setUploadStage(`Saving to Personal Album ${i + 1} of ${pending.length}...`);
+              await withUploadTimeout(
+                addPersonalPhoto({
+                  userId,
+                  localUri: photo.uri,
+                  location: location || undefined,
+                  caption: caption || undefined,
+                  takenAt: date,
+                  tags,
+                }),
+                SINGLE_PHOTO_UPLOAD_TIMEOUT_MS,
+              );
+            } else if (destination?.type === 'quick-trip') {
+              throw new Error('Quick Trip photo upload is being routed through Quick Trip creation. Please choose Personal Album or a Trip for now.');
+            } else {
+              const tripId = destination?.type === 'trip' ? destination.tripId : paramTripId;
+              setUploadStage(`Saving to Trip Album ${i + 1} of ${pending.length}...`);
+              await withUploadTimeout(
+                addMoment({
+                  caption: caption || '',
+                  localUri: photo.uri,
+                  location: location || undefined,
+                  takenBy: takenBy || undefined,
+                  date,
+                  tags,
+                  visibility: scope,
+                  isPublic,
+                  ...(tripId ? { tripId } : {}),
+                }),
+                SINGLE_PHOTO_UPLOAD_TIMEOUT_MS,
+              );
+            }
+            return photo.uri;
+          }),
+        );
 
-    if (successCount === photos.length) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      const errDetail = lastErrors.length > 0 ? `\n\nError: ${lastErrors[0]}` : '';
-      Alert.alert(
-        'Partial upload',
-        `${successCount} of ${photos.length} uploaded. Tap "Upload" to retry failed ones.${errDetail}`,
+        const errors: string[] = [];
+        for (let j = 0; j < results.length; j++) {
+          const result = results[j];
+          completedThisRun++;
+          if (result.status === 'fulfilled') {
+            setPhotos((prev) =>
+              prev.map((p) => p.uri === result.value ? { ...p, status: 'done' } : p),
+            );
+            successCount++;
+          } else {
+            const failedUri = batch[j]?.uri;
+            if (failedUri) {
+              setPhotos((prev) =>
+                prev.map((p) => p.uri === failedUri ? { ...p, status: 'error' } : p),
+              );
+            }
+            const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+            errors.push(reason);
+            // eslint-disable-next-line no-console
+            console.error('[add-moment] upload failed:', reason);
+          }
+        }
+        if (errors.length > 0) lastErrors = errors;
+        setUploadProgress({ done: completedThisRun, total: pending.length });
+      }
+
+      if (successCount === photos.length) {
+        const tripId = destination?.type === 'trip' ? destination.tripId : paramTripId;
+        if (tripId) {
+          invalidateCache(`moments:${tripId}`);
+          invalidateCache(`home:moments:${tripId}`);
+        }
+        invalidateHomeCache();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.back();
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        const errDetail = lastErrors.length > 0 ? `\n\nError: ${lastErrors[0]}` : '';
+        Alert.alert(
+          'Partial upload',
+          `${successCount} of ${photos.length} uploaded. Tap "Upload" to retry failed ones.${errDetail}`,
+        );
+      }
+    } catch (error: any) {
+      setPhotos((prev) =>
+        prev.map((p) => p.status === 'uploading' ? { ...p, status: 'error' } : p),
       );
+      Alert.alert('Upload failed', error?.message ?? 'Something went wrong while uploading. Please try again.');
+    } finally {
+      setUploading(false);
+      setUploadStage('');
     }
-  }, [photos, caption, location, tags, takenBy, date, scope, paramTripId, router]);
+  }, [uploading, photos, caption, location, tags, takenBy, date, scope, isPublic, destination, userId, paramTripId, router]);
 
   const renderPhoto = ({ item }: { item: PhotoItem }) => (
     <Animated.View entering={FadeIn.duration(200)} style={styles.photoThumb}>
@@ -284,6 +396,7 @@ export default function AddMomentScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <FlatList
         data={[]}
         renderItem={null}
@@ -328,7 +441,7 @@ export default function AddMomentScreen() {
                 <View key={item.uri}>{renderPhoto({ item })}</View>
               ))}
               {/* Add more button */}
-              <Pressable style={styles.addMoreBtn} onPress={pickImages}>
+              <Pressable style={styles.addMoreBtn} onPress={() => { pickImages(); }}>
                 <Plus size={20} color={colors.text3} strokeWidth={1.8} />
                 <Text style={styles.addMoreText}>Add</Text>
               </Pressable>
@@ -362,7 +475,7 @@ export default function AddMomentScreen() {
               <View style={{ gap: 6 }}>
                 {/* Just me */}
                 <Pressable
-                  onPress={() => setScope('private')}
+                  onPress={() => { setScope('private'); setIsPublic(false); }}
                   style={[
                     styles.scopeRow,
                     {
@@ -385,7 +498,7 @@ export default function AddMomentScreen() {
 
                 {/* The trip group */}
                 <Pressable
-                  onPress={() => setScope('shared')}
+                  onPress={() => { setScope('shared'); setIsPublic(false); }}
                   style={[
                     styles.scopeRow,
                     {
@@ -406,10 +519,34 @@ export default function AddMomentScreen() {
                   </View>
                 </Pressable>
 
+                {/* Public — visible to everyone */}
+                <Pressable
+                  onPress={() => { setScope('shared'); setIsPublic(true); }}
+                  style={[
+                    styles.scopeRow,
+                    {
+                      borderColor: isPublic ? colors.accent : colors.border,
+                      backgroundColor: isPublic ? colors.accentBg : colors.card,
+                    },
+                  ]}
+                >
+                  <View style={[styles.scopeIcon, { backgroundColor: isPublic ? colors.success : colors.card2 }]}>
+                    <Globe size={16} color={isPublic ? colors.onBlack : colors.text3} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.scopeTitle, { color: colors.text }]}>Public</Text>
+                    <Text style={[styles.scopeSub, { color: colors.text3 }]}>Anyone on Afterstay can see it.</Text>
+                  </View>
+                  <View style={[styles.scopeCheck, isPublic ? { backgroundColor: colors.accent, borderColor: colors.accent } : { borderColor: colors.border2 }]}>
+                    {isPublic && <Check size={11} color={colors.onBlack} strokeWidth={3} />}
+                  </View>
+                </Pressable>
+
                 {/* Custom album — routes to album creator */}
                 <Pressable
                   onPress={() => {
                     setScope('album');
+                    setIsPublic(false);
                     router.push('/new-album' as never);
                   }}
                   style={[
@@ -573,9 +710,12 @@ export default function AddMomentScreen() {
                   ? `Uploading ${uploadProgress.done}/${uploadProgress.total}...`
                   : doneCount > 0
                     ? `Upload ${photos.length - doneCount} remaining`
-                    : `Add ${photos.length} to ${scope === 'private' ? 'private' : scope === 'album' ? 'album' : 'the group'}`}
+                    : `Add ${photos.length} to ${isPublic ? 'public' : scope === 'private' ? 'private' : scope === 'album' ? 'album' : 'the group'}`}
               </Text>
             </Pressable>
+            {uploading && uploadStage ? (
+              <Text style={styles.uploadStage}>{uploadStage}</Text>
+            ) : null}
           </>
         }
       />
@@ -600,6 +740,7 @@ export default function AddMomentScreen() {
           }
         }}
       />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -822,4 +963,10 @@ const getStyles = (colors: ThemeColors) =>
     },
     uploadBtnDisabled: { opacity: 0.6 },
     uploadBtnText: { color: colors.ink, fontSize: 15, fontWeight: '700' },
+    uploadStage: {
+      marginTop: 8,
+      fontSize: 12,
+      color: colors.text3,
+      textAlign: 'center',
+    },
   });

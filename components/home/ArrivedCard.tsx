@@ -48,6 +48,11 @@ export function ArrivedCard({
   const bounceStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: bounceY.value }],
   }));
+  const subtitle = [
+    hotelName ? `Check-in at ${hotelName}` : null,
+    distance || null,
+    travelTime || null,
+  ].filter(Boolean).join(' \u00B7 ');
 
   return (
     <LinearGradient
@@ -79,9 +84,7 @@ export function ArrivedCard({
         <View style={styles.headerText}>
           <Text style={styles.eyebrow}>Welcome to {destination}</Text>
           <Text style={styles.display}>You've arrived</Text>
-          <Text style={styles.subtitle}>
-            Check-in at {hotelName} {'\u00B7'} {distance} {'\u00B7'} {travelTime}
-          </Text>
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
       </View>
 

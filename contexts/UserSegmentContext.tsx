@@ -7,14 +7,14 @@
  * relying on local cache or the stale profile.userSegment field.
  */
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { ProfileCompletionSheet } from '@/components/shared/ProfileCompletionSheet';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '@/lib/auth';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
   deriveUserStatus,
-  refreshUserStatus,
   type UserStatus,
 } from '@/lib/userStatus';
 import { getLifetimeStats, getProfile, type Profile } from '@/lib/supabase';
@@ -42,8 +42,25 @@ export async function getSegmentOverride(): Promise<MockKey | null> {
   const val = await AsyncStorage.getItem(DEV_OVERRIDE_KEY);
   if (!val) return null;
   // Validate it's a known mock key
-  const valid = ['new', 'planning', 'active:upcoming', 'active:inflight', 'active:arrived', 'active:active', 'returning'];
-  if (valid.includes(val)) return val as MockKey;
+  const valid: MockKey[] = [
+    'new',
+    'profile:missing',
+    'profile:incomplete',
+    'planning:draft',
+    'planning:no_hotel',
+    'planning:ready',
+    'active:upcoming',
+    'active:inflight',
+    'active:arrived',
+    'active:active',
+    'completed:recent',
+    'returning',
+    'history:quick',
+    'cache:empty',
+  ];
+  if ((valid as string[]).includes(val)) return val as MockKey;
+  // Legacy: bare 'planning' → 'planning:draft'
+  if (val === 'planning') return 'planning:draft';
   // Legacy: bare 'active' → 'active:active'
   if (val === 'active') return 'active:active';
   return null;
@@ -104,32 +121,60 @@ function toSegment(status: UserStatus): UserSegment {
   return status === 'completed' ? 'returning' : status;
 }
 
+function userCacheKey(base: string, userId: string): string {
+  return `${base}:${userId}`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getProfileWithRetry(userId: string): Promise<Profile | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const profile = await getProfile(userId).catch(() => null);
+    if (profile) return profile;
+    if (attempt < 2) await delay(350);
+  }
+  return null;
+}
+
 // ── Provider ─────────────────────────────────────────────────────────
 
 export function UserSegmentProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [state, setState] = useState<Omit<UserSegmentState, 'refresh'>>(defaultState);
+  const [freshProfileChecked, setFreshProfileChecked] = useState(false);
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
     if (!user?.id) {
+      setFreshProfileChecked(false);
       setState({ ...defaultState, loading: false });
       return;
     }
 
+    const userId = user.id;
+    setFreshProfileChecked(false);
+    setState((prev) => (
+      prev.profile && prev.profile.id !== userId
+        ? { ...defaultState, loading: true }
+        : { ...prev, loading: true }
+    ));
+
     // 1. Instant from cache
     const [cachedProfile, cachedSegment, cachedTrip] = await Promise.all([
-      cacheGet<Profile>(CK_PROFILE),
-      cacheGet<UserSegment>(CK_SEGMENT),
-      cacheGet<Trip>(CK_ACTIVE),
+      cacheGet<Profile>(userCacheKey(CK_PROFILE, userId)),
+      cacheGet<UserSegment>(userCacheKey(CK_SEGMENT, userId)),
+      cacheGet<Trip>(userCacheKey(CK_ACTIVE, userId)),
     ]);
+    const scopedCachedProfile = cachedProfile?.id === userId ? cachedProfile : null;
 
     if (cachedSegment && mounted.current) {
       setState((prev) => ({
         ...prev,
         segment: cachedSegment,
-        profile: cachedProfile ?? prev.profile,
-        activeTrip: cachedTrip ?? prev.activeTrip,
+        profile: scopedCachedProfile ?? prev.profile,
+        activeTrip: cachedTrip !== undefined ? cachedTrip : prev.activeTrip,
         loading: false,
       }));
     }
@@ -137,9 +182,10 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
     // 2. Fresh from server — derive from actual trip data
     try {
       const [result, profile] = await Promise.all([
-        deriveUserStatus(user.id),
-        getProfile(user.id).catch(() => null),
+        deriveUserStatus(userId),
+        getProfileWithRetry(userId),
       ]);
+      const resolvedProfile = profile ?? scopedCachedProfile ?? null;
 
       const realSegment = toSegment(result.status);
 
@@ -162,16 +208,17 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
       // Fetch lifetime stats for returning users
       let lifetimeStats: LifetimeStats | null = null;
       if (realSegment !== 'new') {
-        lifetimeStats = await getLifetimeStats(user.id).catch(() => null);
+        lifetimeStats = await getLifetimeStats(userId).catch(() => null);
       }
 
       if (!mounted.current) return;
+      setFreshProfileChecked(true);
 
       // When dev override is active, replace trip data with mock data
       let mockData: MockSegmentData | null = null;
       let activeTrip = result.activeTrip;
       let pastTrips = result.completedTrips;
-      let draftTrips = result.planningTrips;
+      let draftTrips = result.draftTrips;
       let finalStats = lifetimeStats;
 
       if (isTestMode && mockKey) {
@@ -184,7 +231,7 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
       setState({
         segment,
-        profile,
+        profile: resolvedProfile,
         activeTrip,
         pastTrips,
         draftTrips,
@@ -197,15 +244,16 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
       // Update cache
       await Promise.all([
-        profile ? cacheSet(CK_PROFILE, profile) : Promise.resolve(),
-        cacheSet(CK_SEGMENT, segment),
+        resolvedProfile ? cacheSet(userCacheKey(CK_PROFILE, userId), resolvedProfile) : Promise.resolve(),
+        cacheSet(userCacheKey(CK_SEGMENT, userId), segment),
         result.activeTrip
-          ? cacheSet(CK_ACTIVE, result.activeTrip)
-          : cacheSet(CK_ACTIVE, null),
+          ? cacheSet(userCacheKey(CK_ACTIVE, userId), result.activeTrip)
+          : cacheSet(userCacheKey(CK_ACTIVE, userId), null),
       ]);
     } catch (err) {
       if (__DEV__) console.warn('[UserSegment] load failed:', err);
       if (mounted.current) {
+        setFreshProfileChecked(false);
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -214,7 +262,7 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
         }));
       }
     }
-  }, [user?.id]);
+  }, [user?.id, user?.email]);
 
   useEffect(() => {
     mounted.current = true;
@@ -227,7 +275,25 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
     refresh: load,
   };
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  const needsHandle = freshProfileChecked && !state.loading && !!user && !state.isTestMode && (!state.profile || !state.profile.handle);
+  const displayName = state.profile?.fullName ?? user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? '';
+
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      {needsHandle && (
+        <ProfileCompletionSheet
+          visible={true}
+          userId={user!.id}
+          displayName={displayName}
+          onComplete={() => {
+            // Refresh profile to pick up new handle
+            load();
+          }}
+        />
+      )}
+    </Ctx.Provider>
+  );
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────

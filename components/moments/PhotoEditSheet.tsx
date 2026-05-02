@@ -2,8 +2,11 @@ import * as Haptics from 'expo-haptics';
 import { X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -48,48 +51,52 @@ export function PhotoEditSheet({ visible, moment, onSave, onClose }: PhotoEditSh
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.sheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: colors.text }]}>Edit Details</Text>
-            <Pressable onPress={onClose} hitSlop={12}>
-              <X size={20} color={colors.text3} strokeWidth={2} />
-            </Pressable>
-          </View>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <Pressable style={[styles.sheet, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
+            <ScrollView bounces={false} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={styles.header}>
+                <Text style={[styles.title, { color: colors.text }]}>Edit Details</Text>
+                <Pressable onPress={onClose} hitSlop={12}>
+                  <X size={20} color={colors.text3} strokeWidth={2} />
+                </Pressable>
+              </View>
 
-          <View style={styles.field}>
-            <Text style={[styles.label, { color: colors.text3 }]}>CAPTION</Text>
-            <TextInput
-              value={caption}
-              onChangeText={setCaption}
-              placeholder="Add a caption..."
-              placeholderTextColor={colors.text3}
-              style={[styles.input, { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border }]}
-              multiline
-              maxLength={200}
-            />
-          </View>
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: colors.text3 }]}>CAPTION</Text>
+                <TextInput
+                  value={caption}
+                  onChangeText={setCaption}
+                  placeholder="Add a caption..."
+                  placeholderTextColor={colors.text3}
+                  style={[styles.input, { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border }]}
+                  multiline
+                  maxLength={200}
+                />
+              </View>
 
-          <View style={styles.field}>
-            <Text style={[styles.label, { color: colors.text3 }]}>LOCATION</Text>
-            <TextInput
-              value={location}
-              onChangeText={setLocation}
-              placeholder="Where was this taken?"
-              placeholderTextColor={colors.text3}
-              style={[styles.input, { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border }]}
-              maxLength={100}
-            />
-          </View>
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: colors.text3 }]}>LOCATION</Text>
+                <TextInput
+                  value={location}
+                  onChangeText={setLocation}
+                  placeholder="Where was this taken?"
+                  placeholderTextColor={colors.text3}
+                  style={[styles.input, { color: colors.text, backgroundColor: colors.bg, borderColor: colors.border }]}
+                  maxLength={100}
+                />
+              </View>
 
-          <Pressable
-            onPress={handleSave}
-            style={[styles.saveBtn, { backgroundColor: colors.accent }]}
-          >
-            <Text style={[styles.saveBtnText, { color: colors.bg }]}>Save</Text>
+              <Pressable
+                onPress={handleSave}
+                style={[styles.saveBtn, { backgroundColor: colors.accent }]}
+              >
+                <Text style={[styles.saveBtnText, { color: colors.bg }]}>Save</Text>
+              </Pressable>
+            </ScrollView>
           </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

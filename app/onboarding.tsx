@@ -1,11 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Linking,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   ArrowRight, Bus, Camera, Car, CheckCircle, ChevronLeft, CircleHelp,
-  FileText, Flame, Hotel, Landmark, Leaf, MapPin, Moon, Music,
+  FileText, Flame, Hotel, Landmark, Leaf, MapPin, Music,
   Plane, Ship, UtensilsCrossed, Users, Waves, Wifi,
 } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -32,16 +32,96 @@ import { compressImage } from '@/lib/compressImage';
 import {
   addFlight,
   createTrip,
+  getFlights,
+  getTripById,
   joinTripByCode,
+  replaceTripFlights,
   saveDraftTrip,
+  updateMyTripMemberPreferences,
   updateProfile,
 } from '@/lib/supabase';
 import { scanTripDocuments } from '@/lib/anthropic';
+import { getPrimaryBookerFlights } from '@/lib/flightSharing';
+import { placeAutocomplete, type AutocompleteResult } from '@/lib/google-places';
+import {
+  clearOnboardingScanReview,
+  completeOnboarding,
+  getOnboardingProgress,
+  getOnboardingScanReview,
+  saveOnboardingScanReview,
+  setOnboardingProgress,
+} from '@/lib/onboardingProgress';
 import { formatDatePHT, MS_PER_DAY } from '@/lib/utils';
-import type { Trip } from '@/lib/types';
+import type { Flight, Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type Path = null | 'plan' | 'upload' | 'invited';
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms);
+      promise.finally(() => clearTimeout(timer)).catch(() => clearTimeout(timer));
+    }),
+  ]);
+}
+
+function airportCode(value?: string) {
+  if (!value) return '';
+  return value.match(/\(([A-Z]{3})\)/i)?.[1]?.toUpperCase()
+    ?? value.match(/\b[A-Z]{3}\b/i)?.[0]?.toUpperCase()
+    ?? '';
+}
+
+function normalizeScanFlights<T extends { flights?: any[]; startDate?: string; endDate?: string; destination?: string }>(scan: T): T {
+  if (!scan.flights?.length) return scan;
+  const sorted = [...scan.flights].sort((a, b) =>
+    new Date(a.departTime || 8640000000000000).getTime() -
+    new Date(b.departTime || 8640000000000000).getTime(),
+  );
+  const routeKey = (f: any) => `${airportCode(f.from) || String(f.from ?? '').toLowerCase()}-${airportCode(f.to) || String(f.to ?? '').toLowerCase()}`;
+  const reverseKey = (f: any) => `${airportCode(f.to) || String(f.to ?? '').toLowerCase()}-${airportCode(f.from) || String(f.from ?? '').toLowerCase()}`;
+  const normalized = sorted.map((flight, index) => {
+    let direction = /return|inbound|back|homebound/i.test(flight.direction ?? '') ? 'Return' : 'Outbound';
+    const departDay = flight.departTime?.slice?.(0, 10);
+    if (scan.startDate && departDay === scan.startDate) direction = 'Outbound';
+    if (scan.endDate && departDay === scan.endDate) direction = 'Return';
+    if (sorted.slice(0, index).some((other) => routeKey(other) === reverseKey(flight))) direction = 'Return';
+    return { ...flight, direction };
+  });
+  const returnCount = normalized.filter((f) => f.direction === 'Return').length;
+  if (normalized.length >= 2 && returnCount === 0) {
+    normalized[0] = { ...normalized[0], direction: 'Outbound' };
+    normalized[normalized.length - 1] = { ...normalized[normalized.length - 1], direction: 'Return' };
+  }
+  return { ...scan, flights: normalized };
+}
+
+function planDatesFromWhen(when?: string): { startDate: string; endDate: string } {
+  const today = new Date();
+  let start: Date;
+  switch (when) {
+    case 'This month':
+      start = new Date(today.getTime() + 14 * MS_PER_DAY);
+      break;
+    case 'Next month':
+      start = new Date(today.getFullYear(), today.getMonth() + 1, 15);
+      break;
+    case 'In 2–3 months':
+      start = new Date(today.getTime() + 75 * MS_PER_DAY);
+      break;
+    case 'Later this year':
+      start = new Date(today.getFullYear(), Math.min(today.getMonth() + 4, 11), 15);
+      break;
+    default:
+      start = new Date(today.getTime() + 60 * MS_PER_DAY);
+  }
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: new Date(start.getTime() + 7 * MS_PER_DAY).toISOString().slice(0, 10),
+  };
+}
 
 // ── Shared components ────────────────────────────────────────────────
 
@@ -150,7 +230,7 @@ function Input({
 
 // ── Path Picker (root) ───────────────────────────────────────────────
 
-function PathPicker({ onPick, onBack, onSkip, name, colors }: { onPick: (p: Path) => void; onBack?: () => void; onSkip: () => void; name: string; colors: ThemeColors }) {
+function PathPicker({ onPick, onBack, onSkip, name, colors }: { onPick: (p: Exclude<Path, null>) => void; onBack?: () => void; onSkip: () => void; name: string; colors: ThemeColors }) {
   const paths = [
     { id: 'upload' as const, kicker: 'A', label: "I've already booked", sub: 'Drop in your confirmation screenshots — we\'ll read them and set up your trip.', icon: FileText },
     { id: 'invited' as const, kicker: 'B', label: 'Someone invited me', sub: 'Trip details are already waiting. Just enter your invite code.', icon: Users },
@@ -208,22 +288,74 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
   const [step, setStep] = useState(0);
   const [dest, setDest] = useState('');
   const [vibes, setVibes] = useState<string[]>([]);
-  const [transport, setTransport] = useState('');
+  const [transport, setTransport] = useState<string | undefined>(undefined);
   const [when, setWhen] = useState('');
   const [travelers, setTravelers] = useState(2);
+  const [destSuggestions, setDestSuggestions] = useState<AutocompleteResult[]>([]);
+  const [destSearching, setDestSearching] = useState(false);
+  const destTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleDestinationChange = useCallback((text: string) => {
+    setDest(text);
+    if (destTimer.current) clearTimeout(destTimer.current);
+    if (text.trim().length < 2) {
+      setDestSuggestions([]);
+      setDestSearching(false);
+      return;
+    }
+    destTimer.current = setTimeout(async () => {
+      setDestSearching(true);
+      try {
+        const results = await placeAutocomplete(text);
+        const trimmed = text.trim();
+        const next = results.slice(0, 5);
+        setDestSuggestions(next.length > 0
+          ? next
+          : [{ placeId: `manual:${trimmed}`, description: `Use "${trimmed}"` }]);
+      } catch {
+        const trimmed = text.trim();
+        setDestSuggestions([{ placeId: `manual:${trimmed}`, description: `Use "${trimmed}"` }]);
+      } finally {
+        setDestSearching(false);
+      }
+    }, 300);
+  }, []);
+
+  const selectDestination = useCallback((suggestion: AutocompleteResult) => {
+    Keyboard.dismiss();
+    const destination = suggestion.placeId.startsWith('manual:')
+      ? suggestion.description.replace(/^Use\s+"/, '').replace(/"$/, '')
+      : suggestion.description;
+    setDest(destination);
+    setDestSuggestions([]);
+  }, []);
+
+  useEffect(() => {
+    setOnboardingProgress({
+      stage: 'planning_started',
+      path: 'plan',
+      meta: { step },
+    }, user?.id).catch(() => {});
+  }, [step, user?.id]);
 
   const handleBackOut = useCallback(async () => {
     if (dest.trim()) {
       try {
         const draftId = await saveDraftTrip({
           destination: dest.trim(),
-          transport: transport || undefined,
+          transport: transport === 'unknown' ? undefined : transport,
           vibes: vibes.length > 0 ? vibes : undefined,
           when: when || undefined,
           travelers,
         });
         await cacheSet('draft:trip_id', draftId);
         await cacheSet('onboarding_complete', true);
+        await setOnboardingProgress({
+          stage: 'planning_draft',
+          path: 'plan',
+          tripId: draftId,
+          meta: { destination: dest.trim(), step },
+        }, user?.id);
         if (user?.id) await updateProfile(user.id, { onboardedAt: new Date().toISOString() }).catch(() => {});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace('/(tabs)/home' as never);
@@ -233,14 +365,14 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
       }
     }
     onBack();
-  }, [dest, vibes, transport, when, travelers, onBack, router]);
+  }, [dest, vibes, transport, when, travelers, step, onBack, router, user?.id]);
 
   const TRANSPORT: { id: string; label: string; Icon: typeof Plane; sub: string }[] = [
     { id: 'plane', label: 'Flying', Icon: Plane, sub: 'Taking a flight' },
     { id: 'car', label: 'Driving', Icon: Car, sub: 'Road trip or rental' },
     { id: 'bus', label: 'Bus / Coach', Icon: Bus, sub: 'Bus or coach' },
     { id: 'ferry', label: 'Ferry / Boat', Icon: Ship, sub: 'By sea' },
-    { id: '', label: 'Not sure yet', Icon: CircleHelp, sub: 'I\'ll figure it out later' },
+    { id: 'unknown', label: 'Not sure yet', Icon: CircleHelp, sub: 'I\'ll figure it out later' },
   ];
 
   const VIBES: { id: string; label: string; Icon: typeof Plane }[] = [
@@ -256,17 +388,44 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
 
   if (step === 0) {
     return (
-      <ScrollView contentContainerStyle={shared.scrollContent}>
+      <ScrollView contentContainerStyle={shared.scrollContent} keyboardShouldPersistTaps="handled">
         <BrandRow step={1} of={4} colors={colors} />
         <Header onBack={handleBackOut} kicker="Plan — 1 of 4" title="Where are you dreaming of?" sub="A city, country, or just a feeling." colors={colors} />
         <View style={shared.section}>
           <FieldLabel label="Destination" colors={colors} />
-          <Input value={dest} onChange={setDest} placeholder="Lisbon, Kyoto, somewhere warm…" colors={colors} autoFocus />
+          <Input value={dest} onChange={handleDestinationChange} placeholder="Lisbon, Kyoto, somewhere warm…" colors={colors} autoFocus />
+          {destSearching && destSuggestions.length === 0 && (
+            <View style={[shared.searchingRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={[shared.searchingText, { color: colors.text3 }]}>Searching destinations...</Text>
+            </View>
+          )}
+          {destSuggestions.length > 0 && (
+            <View style={[shared.suggestionBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {destSuggestions.map((suggestion) => (
+                <TouchableOpacity
+                  key={suggestion.placeId}
+                  onPress={() => selectDestination(suggestion)}
+                  style={[shared.suggestionRow, { borderBottomColor: colors.border }]}
+                  activeOpacity={0.75}
+                >
+                  <MapPin size={14} color={colors.accent} strokeWidth={1.8} />
+                  <Text style={[shared.suggestionText, { color: colors.text2 }]} numberOfLines={1}>
+                    {suggestion.description}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <View style={shared.chipRow}>
             {DESTS.map(s => (
               <TouchableOpacity
                 key={s}
-                onPress={() => setDest(s)}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setDest(s);
+                  setDestSuggestions([]);
+                }}
                 style={[shared.chip, { backgroundColor: dest === s ? colors.accentBg : colors.card, borderColor: dest === s ? colors.accentBorder : colors.border }]}
               >
                 <Text style={[shared.chipText, { color: dest === s ? colors.accent : colors.text2 }]}>{s}</Text>
@@ -284,7 +443,7 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
 
   if (step === 1) {
     return (
-      <ScrollView contentContainerStyle={shared.scrollContent}>
+      <ScrollView contentContainerStyle={shared.scrollContent} keyboardShouldPersistTaps="handled">
         <BrandRow step={2} of={4} colors={colors} />
         <Header onBack={() => setStep(0)} kicker="Plan — 2 of 4" title="What's the shape of this trip?" sub="Pick whatever feels right. Multi-select is fine." colors={colors} />
         <View style={shared.section}>
@@ -315,7 +474,7 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
 
   if (step === 2) {
     return (
-      <ScrollView contentContainerStyle={shared.scrollContent}>
+      <ScrollView contentContainerStyle={shared.scrollContent} keyboardShouldPersistTaps="handled">
         <BrandRow step={3} of={4} colors={colors} />
         <Header onBack={() => setStep(1)} kicker="Plan — 3 of 4" title="How are you getting there?" sub="This helps us show the right features for your trip." colors={colors} />
         <View style={shared.section}>
@@ -346,7 +505,7 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
   }
 
   return (
-    <ScrollView contentContainerStyle={shared.scrollContent}>
+    <ScrollView contentContainerStyle={shared.scrollContent} keyboardShouldPersistTaps="handled">
       <BrandRow step={4} of={4} colors={colors} />
       <Header onBack={() => setStep(2)} kicker="Plan — 4 of 4" title="When, and with whom?" sub="Rough dates work. You can refine everything later." colors={colors} />
       <View style={shared.section}>
@@ -398,10 +557,31 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
 // ── Branch B: Upload bookings ────────────────────────────────────────
 
 function UploadFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (data: any) => void; colors: ThemeColors }) {
+  const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [images, setImages] = useState<string[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<any>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [progress, savedScan] = await Promise.all([
+        getOnboardingProgress(user?.id),
+        getOnboardingScanReview<any>(user?.id),
+      ]);
+      if (cancelled) return;
+      if (progress?.stage === 'upload_review' && savedScan) {
+        setScanned(savedScan);
+        setStep(1);
+        return;
+      }
+      await setOnboardingProgress({ stage: 'upload_started', path: 'upload' }, user?.id);
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const CHECKLIST = [
     { icon: Plane, title: 'Flight confirmations', sub: 'Booking emails, boarding passes.' },
@@ -445,7 +625,13 @@ function UploadFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (d
           return { base64, mimeType: 'image/jpeg' };
         }),
       );
-      const result = await scanTripDocuments(prepared);
+      const result = normalizeScanFlights(await withTimeout(
+        scanTripDocuments(prepared),
+        60_000,
+        'Scanning timed out. Try one clearer screenshot, or crop closer to the itinerary.',
+      ));
+      await saveOnboardingScanReview(result, user?.id);
+      await setOnboardingProgress({ stage: 'upload_review', path: 'upload' }, user?.id);
       setScanned(result);
       setScanning(false);
       setStep(1); // Show review screen
@@ -469,6 +655,21 @@ function UploadFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (d
 
   // Step 1 — review scanned results (must be before step 0 return)
   if (step === 1 && scanned) {
+    const flightsFound = scanned.flights ?? [];
+    const createFromScan = () => {
+      if (flightsFound.length === 0) {
+        Alert.alert(
+          'No flights found',
+          'This scan did not detect any flight segments. If your booking has outbound or return flights, rescan before creating the trip.',
+          [
+            { text: 'Rescan', onPress: () => { clearOnboardingScanReview(user?.id).catch(() => {}); setOnboardingProgress({ stage: 'upload_started', path: 'upload' }, user?.id).catch(() => {}); setStep(0); setScanned(null); } },
+            { text: 'Create without flights', style: 'destructive', onPress: () => onDone({ kind: 'upload', scanned }) },
+          ],
+        );
+        return;
+      }
+      onDone({ kind: 'upload', scanned });
+    };
     const rows = [
       { label: 'Destination', val: scanned.destination },
       { label: 'Dates', val: scanned.startDate && scanned.endDate ? `${formatDatePHT(scanned.startDate)} – ${formatDatePHT(scanned.endDate)}` : 'Not found' },
@@ -486,7 +687,12 @@ function UploadFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (d
       <ScrollView contentContainerStyle={shared.scrollContent}>
         <BrandRow step={2} of={2} colors={colors} />
         <Header
-          onBack={() => { setStep(0); setScanned(null); }}
+          onBack={() => {
+            clearOnboardingScanReview(user?.id).catch(() => {});
+            setOnboardingProgress({ stage: 'upload_started', path: 'upload' }, user?.id).catch(() => {});
+            setStep(0);
+            setScanned(null);
+          }}
           kicker="Upload — 2 of 2"
           title="Here's what we found."
           sub="Review the details we extracted from your screenshots."
@@ -505,10 +711,10 @@ function UploadFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (d
             ))}
           </View>
 
-          {scanned.flights?.length > 0 && (
+          {flightsFound.length > 0 ? (
             <>
               <FieldLabel label="Flights found" colors={colors} />
-              {scanned.flights.map((f: any, i: number) => (
+              {flightsFound.map((f: any, i: number) => (
                 <View key={i} style={[shared.checkItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <View style={[shared.checkIcon, { backgroundColor: colors.accentBg, borderColor: colors.accentBorder }]}>
                     <Plane size={16} color={colors.accent} strokeWidth={1.8} />
@@ -520,13 +726,23 @@ function UploadFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (d
                 </View>
               ))}
             </>
+          ) : (
+            <View style={[shared.checkItem, { backgroundColor: colors.accentBg, borderColor: colors.accentBorder }]}>
+              <View style={[shared.checkIcon, { backgroundColor: colors.card, borderColor: colors.accentBorder }]}>
+                <Plane size={16} color={colors.accent} strokeWidth={1.8} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[shared.checkTitle, { color: colors.text }]}>No flights found</Text>
+                <Text style={[shared.checkSub, { color: colors.text2 }]}>If this is a round trip, rescan with the full flight details visible.</Text>
+              </View>
+            </View>
           )}
 
-          <PrimaryBtn onPress={() => onDone({ kind: 'upload', scanned })} colors={colors}>
+          <PrimaryBtn onPress={createFromScan} colors={colors}>
             <Text style={[shared.primaryText, { color: colors.onBlack }]}>Create my trip</Text>
             <ArrowRight size={14} color={colors.onBlack} strokeWidth={2} />
           </PrimaryBtn>
-          <GhostBtn label="Rescan" onPress={() => { setStep(0); setScanned(null); setImages([]); }} />
+          <GhostBtn label="Rescan" onPress={() => { clearOnboardingScanReview(user?.id).catch(() => {}); setOnboardingProgress({ stage: 'upload_started', path: 'upload' }, user?.id).catch(() => {}); setStep(0); setScanned(null); setImages([]); }} />
         </View>
       </ScrollView>
     );
@@ -589,10 +805,44 @@ function InvitedFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (
   const [flightNum, setFlightNum] = useState('');
   const [airline, setAirline] = useState('');
   const [checkedBag, setCheckedBag] = useState<boolean | null>(null);
+  const [sharesStay, setSharesStay] = useState(true);
+  const [flightMode, setFlightMode] = useState<'same' | 'different' | 'later'>('later');
+  const [groupFlights, setGroupFlights] = useState<Flight[]>([]);
+  const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
+  const [bookingRef, setBookingRef] = useState('');
+  const [seatNumber, setSeatNumber] = useState('');
   const { user } = useAuth();
   const name = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? '';
 
   const AIRLINES = ['Philippine Airlines', 'Cebu Pacific', 'AirAsia', 'Other'];
+  const primaryBookerFlights = useMemo(() => getPrimaryBookerFlights(groupFlights), [groupFlights]);
+  const selectedGroupFlight = primaryBookerFlights.find((f) => f.id === selectedFlightId) ?? primaryBookerFlights[0];
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const progress = await getOnboardingProgress(user?.id);
+      if (cancelled) return;
+      if (progress?.stage === 'invited_joined_needs_details' && progress.tripId) {
+        const [trip, flights] = await Promise.all([
+          getTripById(progress.tripId),
+          getFlights(progress.tripId).catch(() => [] as Flight[]),
+        ]);
+        if (cancelled || !trip) return;
+        const primaryFlights = getPrimaryBookerFlights(flights);
+        setTripInfo(trip);
+        setGroupFlights(primaryFlights);
+        setSelectedFlightId(primaryFlights[0]?.id ?? null);
+        if (primaryFlights.length > 0) setFlightMode('same');
+        setStep(1);
+        return;
+      }
+      await setOnboardingProgress({ stage: 'invited_code', path: 'invited' }, user?.id);
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const handleJoin = async () => {
     if (!code.trim()) return;
@@ -600,6 +850,16 @@ function InvitedFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (
     try {
       const result = await joinTripByCode(code.trim(), name);
       setTripInfo(result.trip);
+      const flights = await getFlights(result.tripId).catch(() => [] as Flight[]);
+      const primaryFlights = getPrimaryBookerFlights(flights);
+      setGroupFlights(primaryFlights);
+      setSelectedFlightId(primaryFlights[0]?.id ?? null);
+      if (primaryFlights.length > 0) setFlightMode('same');
+      await setOnboardingProgress({
+        stage: 'invited_joined_needs_details',
+        path: 'invited',
+        tripId: result.tripId,
+      }, user?.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setStep(1);
     } catch (e: any) {
@@ -641,7 +901,7 @@ function InvitedFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (
   return (
     <ScrollView contentContainerStyle={shared.scrollContent} keyboardShouldPersistTaps="handled">
       <BrandRow step={2} of={2} colors={colors} />
-      <Header onBack={() => setStep(0)} kicker="Invited — 2 of 2" title="You're on the list." sub="Review the shared trip, then add your flight." colors={colors} />
+      <Header onBack={() => setStep(0)} kicker="Invited — 2 of 2" title="You're on the list." sub="Confirm what's shared, then add only your personal details." colors={colors} />
       <View style={shared.section}>
         {/* Trip card */}
         <View style={[shared.tripCard, { backgroundColor: colors.accentBg, borderColor: colors.accentBorder }]}>
@@ -667,21 +927,82 @@ function InvitedFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (
           ))}
         </View>
 
-        {/* Flight */}
-        <View style={{ height: 10 }} />
-        <FieldLabel label="Your flight (optional)" colors={colors} />
-        <View style={shared.chipRow}>
-          {AIRLINES.map(a => (
+        <FieldLabel label="Shared stay" colors={colors} />
+        <View style={shared.bagRow}>
+          {[
+            { id: true, label: 'Same hotel / apartment' },
+            { id: false, label: 'I have my own stay' },
+          ].map(o => (
             <TouchableOpacity
-              key={a}
-              onPress={() => setAirline(a)}
-              style={[shared.chip, { backgroundColor: airline === a ? colors.accentBg : colors.card, borderColor: airline === a ? colors.accentBorder : colors.border }]}
+              key={String(o.id)}
+              onPress={() => setSharesStay(o.id)}
+              style={[shared.bagBtn, { backgroundColor: sharesStay === o.id ? colors.accentBg : colors.card, borderColor: sharesStay === o.id ? colors.accent : colors.border }]}
             >
-              <Text style={[shared.chipText, { color: airline === a ? colors.accent : colors.text2 }]}>{a}</Text>
+              <Text style={[shared.bagText, { color: sharesStay === o.id ? colors.accent : colors.text2 }]}>{o.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
-        <Input value={flightNum} onChange={setFlightNum} placeholder="5J 891" prefix="#" colors={colors} />
+
+        {/* Flight */}
+        <View style={{ height: 10 }} />
+        <FieldLabel label="Flight details" colors={colors} />
+        <View style={shared.bagRow}>
+          {[
+            ...(primaryBookerFlights.length > 0 ? [{ id: 'same' as const, label: 'Same as primary booker' }] : []),
+            { id: 'different' as const, label: 'Different flight' },
+            { id: 'later' as const, label: 'Add later' },
+          ].map(o => (
+            <TouchableOpacity
+              key={o.id}
+              onPress={() => setFlightMode(o.id)}
+              style={[shared.bagBtn, { backgroundColor: flightMode === o.id ? colors.accentBg : colors.card, borderColor: flightMode === o.id ? colors.accent : colors.border }]}
+            >
+              <Text style={[shared.bagText, { color: flightMode === o.id ? colors.accent : colors.text2 }]}>{o.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {flightMode === 'same' && selectedGroupFlight && (
+          <>
+            <Text style={[shared.helperText, { color: colors.text3 }]}>
+              Use the organizer's flight times and route, then add your own confirmation number or seat if you need it.
+            </Text>
+            <View style={shared.chipRow}>
+              {primaryBookerFlights.map((f) => (
+                <TouchableOpacity
+                  key={f.id}
+                  onPress={() => setSelectedFlightId(f.id)}
+                  style={[shared.chip, { backgroundColor: selectedGroupFlight.id === f.id ? colors.accentBg : colors.card, borderColor: selectedGroupFlight.id === f.id ? colors.accentBorder : colors.border }]}
+                >
+                  <Text style={[shared.chipText, { color: selectedGroupFlight.id === f.id ? colors.accent : colors.text2 }]}>
+                    {f.direction} · {f.airline ? `${f.airline} ` : ''}{f.flightNumber}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Input value={bookingRef} onChange={setBookingRef} placeholder="Your confirmation number (optional)" colors={colors} />
+            <Input value={seatNumber} onChange={setSeatNumber} placeholder="Seat number (optional)" colors={colors} />
+          </>
+        )}
+
+        {flightMode === 'different' && (
+          <>
+            <View style={shared.chipRow}>
+              {AIRLINES.map(a => (
+                <TouchableOpacity
+                  key={a}
+                  onPress={() => setAirline(a)}
+                  style={[shared.chip, { backgroundColor: airline === a ? colors.accentBg : colors.card, borderColor: airline === a ? colors.accentBorder : colors.border }]}
+                >
+                  <Text style={[shared.chipText, { color: airline === a ? colors.accent : colors.text2 }]}>{a}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Input value={flightNum} onChange={setFlightNum} placeholder="5J 891" prefix="#" colors={colors} />
+            <Input value={bookingRef} onChange={setBookingRef} placeholder="Confirmation number (optional)" colors={colors} />
+            <Input value={seatNumber} onChange={setSeatNumber} placeholder="Seat number (optional)" colors={colors} />
+          </>
+        )}
 
         <FieldLabel label="Checked baggage" colors={colors} />
         <View style={shared.bagRow}>
@@ -700,13 +1021,25 @@ function InvitedFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (
         </View>
 
         <PrimaryBtn
-          onPress={() => onDone({ kind: 'invited', tripId: tripInfo?.id, flightNum, airline, checkedBag })}
+          onPress={() => onDone({
+            kind: 'invited',
+            tripId: tripInfo?.id,
+            sharesStay,
+            flightMode,
+            sharedFlight: selectedGroupFlight,
+            sharedFlights: primaryBookerFlights,
+            flightNum,
+            airline,
+            bookingRef,
+            seatNumber,
+            checkedBag,
+          })}
           colors={colors}
         >
           <Text style={[shared.primaryText, { color: colors.onBlack }]}>Join the trip</Text>
           <ArrowRight size={14} color={colors.onBlack} strokeWidth={2} />
         </PrimaryBtn>
-        <GhostBtn label="I'll add my flight later" onPress={() => onDone({ kind: 'invited', tripId: tripInfo?.id, skipped: true })} />
+        <GhostBtn label="I'll add my flight later" onPress={() => onDone({ kind: 'invited', tripId: tripInfo?.id, sharesStay, flightMode: 'later', skipped: true })} />
       </View>
     </ScrollView>
   );
@@ -724,6 +1057,33 @@ export default function OnboardingScreen() {
 
   const [path, setPath] = useState<Path>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const progress = await getOnboardingProgress(user?.id);
+      if (cancelled || !progress || progress.status !== 'in_progress') return;
+      if (progress.path) setPath(progress.path);
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  const choosePath = useCallback((nextPath: Exclude<Path, null>) => {
+    setPath(nextPath);
+    const stage = nextPath === 'plan'
+      ? 'planning_started'
+      : nextPath === 'upload'
+        ? 'upload_started'
+        : 'invited_code';
+    setOnboardingProgress({ stage, path: nextPath }, user?.id).catch(() => {});
+  }, [user?.id]);
+
+  const backToPathPicker = useCallback(() => {
+    setPath(null);
+    setOnboardingProgress({ stage: 'path_picker', path: undefined }, user?.id).catch(() => {});
+  }, [user?.id]);
+
   const finish = useCallback(async (payload: any) => {
     try {
       // Clear old cache before setting up new trip
@@ -731,15 +1091,17 @@ export default function OnboardingScreen() {
       await cacheSet('trip:phase:override', null);
 
       if (payload.kind === 'plan') {
-        const today = new Date();
-        const startDate = new Date(today.getTime() + 30 * MS_PER_DAY).toISOString().slice(0, 10);
-        const endDate = new Date(today.getTime() + 37 * MS_PER_DAY).toISOString().slice(0, 10);
+        const { startDate, endDate } = planDatesFromWhen(payload.when);
         await createTrip({
           name: `Trip to ${payload.dest}`,
           destination: payload.dest,
           startDate,
           endDate,
-          transport: payload.transport || undefined,
+          transport: payload.transport === 'unknown' ? undefined : payload.transport || undefined,
+          vibes: Array.isArray(payload.vibes) ? payload.vibes : undefined,
+          members: payload.travelers > 1
+            ? Array.from({ length: payload.travelers - 1 }, (_, i) => `Traveler ${i + 2}`)
+            : undefined,
         });
       } else if (payload.kind === 'upload' && payload.scanned) {
         const s = payload.scanned;
@@ -763,27 +1125,78 @@ export default function OnboardingScreen() {
           costCurrency: s.costCurrency,
           transport: s.flights?.length > 0 ? 'plane' : undefined,
         });
-        // Insert scanned flights
-        if (s.flights?.length > 0) {
-          for (const f of s.flights) {
-            await addFlight({
-              tripId,
+        // Save scanned flights in one replace operation so round-trip details
+        // and rescan-safe column fallbacks are preserved.
+        const scannedFlights = (s.flights ?? []).filter((f: any) => String(f.flightNumber ?? '').trim().length > 0);
+        if (scannedFlights.length > 0) {
+          await replaceTripFlights(
+            tripId,
+            scannedFlights.map((f: any) => ({
               direction: f.direction || 'Outbound',
               flightNumber: f.flightNumber,
               airline: f.airline,
-            }).catch(() => {}); // Don't block trip creation on flight insert failure
-          }
+              fromCity: f.from,
+              toCity: f.to,
+              departTime: f.departTime,
+              arriveTime: f.arriveTime,
+              bookingRef: f.bookingRef,
+              passenger: f.passenger,
+            })),
+          );
         }
-      } else if (payload.kind === 'invited' && !payload.skipped && payload.flightNum && payload.tripId) {
-        await addFlight({
-          tripId: payload.tripId,
-          direction: 'Outbound',
-          flightNumber: payload.flightNum,
-          airline: payload.airline || undefined,
-        });
+        await clearOnboardingScanReview(user?.id);
+      } else if (payload.kind === 'invited' && payload.tripId) {
+        await updateMyTripMemberPreferences(payload.tripId, {
+          sharesAccommodation: payload.sharesStay !== false,
+          travelNotes: payload.sharesStay === false ? 'Has separate accommodation' : 'Confirmed shared accommodation',
+        }).catch(() => {});
+
+        if (payload.flightMode === 'same') {
+          const sharedFlights = Array.isArray(payload.sharedFlights) && payload.sharedFlights.length > 0
+            ? payload.sharedFlights as Flight[]
+            : payload.sharedFlight
+              ? [payload.sharedFlight as Flight]
+              : [];
+          const failures: string[] = [];
+          for (const sharedFlight of sharedFlights) {
+            try {
+              await addFlight({
+                tripId: payload.tripId,
+                direction: sharedFlight.direction,
+                flightNumber: sharedFlight.flightNumber,
+                airline: sharedFlight.airline || undefined,
+                fromCity: sharedFlight.from || undefined,
+                toCity: sharedFlight.to || undefined,
+                departTime: sharedFlight.departTime || undefined,
+                arriveTime: sharedFlight.arriveTime || undefined,
+                bookingRef: payload.bookingRef || undefined,
+                seatNumber: payload.seatNumber || undefined,
+                passenger: firstName,
+              });
+            } catch (error: any) {
+              failures.push(error?.message ?? sharedFlight.flightNumber ?? 'Flight save failed');
+            }
+          }
+          if (failures.length > 0) {
+            Alert.alert(
+              'Trip joined, but flight details need a retry',
+              'Your shared stay choice was saved. We could not copy every flight detail, so add or rescan flights from the trip screen.',
+            );
+          }
+        } else if (payload.flightMode === 'different' && payload.flightNum) {
+          await addFlight({
+            tripId: payload.tripId,
+            direction: 'Outbound',
+            flightNumber: payload.flightNum,
+            airline: payload.airline || undefined,
+            bookingRef: payload.bookingRef || undefined,
+            seatNumber: payload.seatNumber || undefined,
+            passenger: firstName,
+          });
+        }
       }
 
-      await cacheSet('onboarding_complete', true);
+      await completeOnboarding(user?.id);
       if (user?.id) {
         await updateProfile(user.id, { onboardedAt: new Date().toISOString() }).catch(() => {});
       }
@@ -792,14 +1205,16 @@ export default function OnboardingScreen() {
     } catch (e: any) {
       Alert.alert('Something went wrong', e?.message ?? 'Could not set up your trip. Please try again.');
     }
-  }, [router]);
+  }, [firstName, router, user?.id]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
-      {!path && <PathPicker onPick={setPath} onBack={() => router.back()} onSkip={() => { cacheSet('onboarding_complete', true); if (user?.id) updateProfile(user.id, { onboardedAt: new Date().toISOString() }).catch(() => {}); router.replace('/(tabs)/home' as never); }} name={firstName} colors={colors} />}
-      {path === 'plan' && <PlanFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
-      {path === 'upload' && <UploadFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
-      {path === 'invited' && <InvitedFlow onBack={() => setPath(null)} onDone={finish} colors={colors} />}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      {!path && <PathPicker onPick={choosePath} onBack={() => router.back()} onSkip={() => { completeOnboarding(user?.id, true).catch(() => {}); if (user?.id) updateProfile(user.id, { onboardedAt: new Date().toISOString() }).catch(() => {}); router.replace('/(tabs)/home' as never); }} name={firstName} colors={colors} />}
+      {path === 'plan' && <PlanFlow onBack={backToPathPicker} onDone={finish} colors={colors} />}
+      {path === 'upload' && <UploadFlow onBack={backToPathPicker} onDone={finish} colors={colors} />}
+      {path === 'invited' && <InvitedFlow onBack={backToPathPicker} onDone={finish} colors={colors} />}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -838,6 +1253,11 @@ const shared = StyleSheet.create({
   inputBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, borderWidth: 1, borderRadius: 12, height: 50 },
   inputPrefix: { fontSize: 14, fontWeight: '600', paddingRight: 8, borderRightWidth: 1 },
   input: { flex: 1, fontSize: 15, fontWeight: '500', letterSpacing: -0.15 },
+  searchingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 14, marginTop: -4 },
+  searchingText: { fontSize: 13, fontWeight: '600' },
+  suggestionBox: { borderWidth: 1, borderRadius: 14, overflow: 'hidden', marginTop: -4 },
+  suggestionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, paddingHorizontal: 12, borderBottomWidth: 1 },
+  suggestionText: { flex: 1, fontSize: 13, fontWeight: '500' },
 
   // Path cards
   cards: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 16, gap: 12 },
@@ -848,6 +1268,7 @@ const shared = StyleSheet.create({
   pathSub: { fontSize: 12, lineHeight: 17 },
   pathArrow: { width: 28, height: 28, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   hint: { paddingHorizontal: 22, paddingBottom: 12, textAlign: 'center', fontSize: 11.5, lineHeight: 17 },
+  helperText: { fontSize: 12, lineHeight: 17 },
   skipBtn: { alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16, marginBottom: 32 },
   skipText: { fontSize: 13, fontWeight: '500', letterSpacing: -0.1 },
 

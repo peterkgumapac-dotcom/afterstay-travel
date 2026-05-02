@@ -1,9 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as Linking from 'expo-linking';
 import { router as expoRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from './secureStorage';
 import { clearTripLocalData, setCacheUserId } from './cache';
+import { clearGoogleSession } from './googleAuth';
 import { supabase, clearTripCache } from './supabase';
+import { clearTabDataCache, setTabDataCacheUserId } from './tabDataCache';
 import type { Session, User } from '@supabase/supabase-js';
+import * as Crypto from 'expo-crypto';
 
 interface AuthContextType {
   user: User | null;
@@ -11,23 +16,9 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithMagicLink: (email: string) => Promise<{ error: string | null }>;
-  signInAsDemo: () => void;
   signOut: () => Promise<void>;
 }
 
-const HARDCODED_USER = {
-  id: 'demo-user-001',
-  email: 'demo@afterstay.travel',
-  user_metadata: { name: 'Demo Traveler' },
-} as unknown as User;
-
-const HARDCODED_SESSION = {
-  access_token: 'demo-token',
-  refresh_token: 'demo-refresh',
-  expires_in: 3600,
-  token_type: 'bearer',
-  user: HARDCODED_USER,
-} as unknown as Session;
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
@@ -35,9 +26,65 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signIn: async () => ({ error: null }),
   signInWithMagicLink: async () => ({ error: null }),
-  signInAsDemo: () => {},
   signOut: async () => {},
 });
+
+/**
+ * One-time migration: move Supabase auth session from AsyncStorage to SecureStore.
+ * After migration, the key is deleted from AsyncStorage so this only runs once.
+ */
+const SUPABASE_SESSION_KEY = 'sb-' + (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').replace(/https?:\/\//, '').split('.')[0] + '-auth-token';
+
+async function migrateSessionToSecureStore(): Promise<void> {
+  try {
+    const existing = await AsyncStorage.getItem(SUPABASE_SESSION_KEY);
+    if (!existing) return;
+    // Already migrated if SecureStore has the key
+    const inSecure = await secureStorage.getItem(SUPABASE_SESSION_KEY);
+    if (inSecure) {
+      await AsyncStorage.removeItem(SUPABASE_SESSION_KEY);
+      return;
+    }
+    await secureStorage.setItem(SUPABASE_SESSION_KEY, existing);
+    await AsyncStorage.removeItem(SUPABASE_SESSION_KEY);
+  } catch {
+    // Non-fatal — worst case user re-authenticates
+  }
+}
+
+function applyAccountScope(s: Session | null): void {
+  const userId = s?.user?.id;
+  setCacheUserId(userId);
+  setTabDataCacheUserId(userId);
+}
+
+async function ensureSessionProfile(s: Session | null): Promise<void> {
+  const user = s?.user;
+  if (!user?.id) return;
+
+  const { getProfile, ensureProfile } = await import('./supabase');
+  const existing = await getProfile(user.id).catch(() => null);
+  if (existing) return;
+
+  const name =
+    user.user_metadata?.name ||
+    user.user_metadata?.full_name ||
+    user.email?.split('@')[0] ||
+    'Traveler';
+
+  await ensureProfile(user.id, name).catch(async (err) => {
+    if (__DEV__) console.warn('[auth] ensureProfile failed, retrying:', err);
+    await ensureProfile(user.id, name).catch(() => {});
+  });
+}
+
+async function clearAccountState(): Promise<void> {
+  clearTripCache();
+  clearTabDataCache();
+  await clearTripLocalData();
+  setCacheUserId(undefined);
+  setTabDataCacheUserId(undefined);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -46,10 +93,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 3000);
 
-    supabase.auth.getSession()
-      .then(({ data: { session: s } }) => {
+    migrateSessionToSecureStore().then(() => supabase.auth.getSession())
+      .then(async ({ data: { session: s } }) => {
+        applyAccountScope(s);
+        await ensureSessionProfile(s);
         setSession(s);
-        setCacheUserId(s?.user?.id);
       })
       .catch(() => {
         // Ignore — stay on login screen
@@ -62,21 +110,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, s) => {
-        setSession(s);
-        setCacheUserId(s?.user?.id);
-        // Auto-create profile on first sign-in
-        if ((_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') && s?.user?.id) {
-          const { getProfile, ensureProfile } = await import('./supabase');
-          const existing = await getProfile(s.user.id).catch(() => null);
-          if (!existing) {
-            const name = s.user.user_metadata?.name || s.user.user_metadata?.full_name || s.user.email?.split('@')[0] || 'Traveler';
-            await ensureProfile(s.user.id, name).catch(() => {});
-          }
-        }
         if (_event === 'SIGNED_OUT') {
-          clearTripCache();
-          await clearTripLocalData();
+          await clearAccountState();
+          setSession(null);
+          return;
         }
+
+        applyAccountScope(s);
+        await ensureSessionProfile(s);
+        setSession(s);
       },
     );
 
@@ -88,6 +130,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const handleDeepLink = async (url: string) => {
       // OAuth callback: afterstay://auth/callback?code=...
       if (url.includes('auth/callback')) {
+        // Validate CSRF state parameter
+        const stateMatch = url.match(/[?&]state=([^&#]+)/);
+        if (stateMatch) {
+          const returnedState = decodeURIComponent(stateMatch[1]);
+          const savedState = await secureStorage.getItem('oauth_state');
+          await secureStorage.removeItem('oauth_state');
+          if (!savedState || returnedState !== savedState) {
+            if (__DEV__) console.warn('[auth] OAuth state mismatch — possible CSRF');
+            return;
+          }
+        }
+
         const codeMatch = url.match(/[?&]code=([^&#]+)/);
         if (codeMatch) {
           await supabase.auth.exchangeCodeForSession(codeMatch[1]);
@@ -130,6 +184,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (!error) {
       const { data } = await supabase.auth.getSession();
+      applyAccountScope(data.session);
+      await ensureSessionProfile(data.session);
       setSession(data.session);
     }
     return { error: error?.message ?? null };
@@ -140,17 +196,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: error?.message ?? null };
   };
 
-  const signInAsDemo = () => {
-    setSession(HARDCODED_SESSION);
-  };
-
   const signOut = async () => {
-    // Clear Google Sign-In cached account so picker shows on next login
-    try {
-      const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
-      await GoogleSignin.revokeAccess().catch(() => {});
-      await GoogleSignin.signOut();
-    } catch { /* not signed in via Google or module unavailable */ }
+    await clearGoogleSession();
+    await clearAccountState();
     await supabase.auth.signOut();
     setSession(null);
   };
@@ -164,7 +212,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         signIn,
         signInWithMagicLink,
-        signInAsDemo,
         signOut,
       },
     },
@@ -174,4 +221,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   return useContext(AuthContext);
+}
+
+/**
+ * Generate and store a CSRF state parameter before initiating an OAuth flow.
+ * Pass the returned state as the `state` query param in the authorization URL.
+ */
+export async function generateOAuthState(): Promise<string> {
+  const state = Crypto.randomUUID();
+  await secureStorage.setItem('oauth_state', state);
+  return state;
 }

@@ -150,6 +150,7 @@ function PhotoItemComponent({
             <CachedImage
               remoteUrl={moment.photo}
               style={StyleSheet.absoluteFillObject}
+              blurhash={moment.blurhash}
             />
           ) : (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1a1a1a' }]} />

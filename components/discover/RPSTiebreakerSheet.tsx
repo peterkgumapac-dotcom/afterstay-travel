@@ -188,7 +188,7 @@ export default function RPSTiebreakerSheet({
 
           {/* Result state */}
           {isSettled ? (
-            <Animated.View entering={ZoomIn.springify()} style={s.resultWrap}>
+            <Animated.View entering={ZoomIn.duration(250)} style={s.resultWrap}>
               <Text style={s.resultEmoji}>
                 {gameState.winnerVote === '👍 Yes' ? '🎉' : '👋'}
               </Text>
@@ -208,7 +208,7 @@ export default function RPSTiebreakerSheet({
                   return (
                     <Animated.View
                       key={m.id}
-                      entering={FadeInDown.delay(i * 120).springify()}
+                      entering={FadeInDown.delay(i * 120).duration(250)}
                       style={[s.moveRevealRow, isWinner && s.moveRevealWinner]}
                     >
                       <View style={[s.moveAvatar, { backgroundColor: MEMBER_COLORS[i % MEMBER_COLORS.length] }]}>

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,20 +10,30 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
   ArrowLeft,
   Calendar,
+  Coffee,
+  Dumbbell,
+  Heart,
   MapPin,
   Plus,
   Receipt,
+  Sparkles,
   Trash2,
+  User,
   Users,
+  UtensilsCrossed,
   Wallet,
 } from 'lucide-react-native';
 
+import { BentoLayout } from '@/components/moments/BentoLayout';
+import { PhotoCarousel } from '@/components/moments/PhotoCarousel';
+import type { MomentDisplay } from '@/components/moments/types';
 import SwipeableExpenseRow from '@/components/budget/SwipeableExpenseRow';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import {
@@ -35,7 +45,11 @@ import {
   deleteQuickTripExpense,
   deleteQuickTrip,
 } from '@/lib/quickTrips';
-import { CATEGORY_EMOJI, type QuickTrip, type QuickTripPhoto, type QuickTripCompanion, type QuickTripExpense } from '@/lib/quickTripTypes';
+import { CATEGORY_ICON, type QuickTrip, type QuickTripPhoto, type QuickTripCompanion, type QuickTripExpense } from '@/lib/quickTripTypes';
+
+const ICON_MAP: Record<string, React.ElementType> = {
+  Users, Heart, Coffee, User, UtensilsCrossed, Dumbbell, Sparkles,
+};
 import { formatCurrency, formatDatePHT } from '@/lib/utils';
 
 export default function QuickTripDetailScreen() {
@@ -49,6 +63,23 @@ export default function QuickTripDetailScreen() {
   const [photos, setPhotos] = useState<QuickTripPhoto[]>([]);
   const [companions, setCompanions] = useState<QuickTripCompanion[]>([]);
   const [expenses, setExpenses] = useState<QuickTripExpense[]>([]);
+
+  // Photo album state
+  const [carouselVisible, setCarouselVisible] = useState(false);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+
+  const momentDisplays: MomentDisplay[] = useMemo(() =>
+    photos.map((p) => ({
+      id: p.id,
+      photo: p.photoUrl,
+      caption: '',
+      date: p.exifTakenAt ?? trip?.occurredAt ?? '',
+      location: trip?.placeName ?? '',
+      tags: [],
+      visibility: 'shared' as const,
+    })),
+    [photos, trip],
+  );
 
   // Add expense form
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -110,7 +141,7 @@ export default function QuickTripDetailScreen() {
         onPress: async () => {
           if (!quickTripId) return;
           await deleteQuickTrip(quickTripId);
-          router.back();
+          router.canGoBack() ? router.back() : router.replace('/(tabs)/trip' as never);
         },
       },
     ]);
@@ -131,7 +162,7 @@ export default function QuickTripDetailScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
           <Text style={styles.emptyText}>Quick trip not found</Text>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtnAlt}>
+          <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/trip' as never)} style={styles.backBtnAlt}>
             <Text style={styles.backBtnAltText}>Go back</Text>
           </TouchableOpacity>
         </View>
@@ -139,14 +170,15 @@ export default function QuickTripDetailScreen() {
     );
   }
 
-  const emoji = CATEGORY_EMOJI[trip.category] ?? '\u2728';
+  const iconName = CATEGORY_ICON[trip.category] ?? 'Sparkles';
+  const CatIcon = ICON_MAP[iconName] ?? Sparkles;
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/trip' as never)} style={styles.backBtn}>
             <ArrowLeft size={20} color={colors.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
@@ -154,19 +186,44 @@ export default function QuickTripDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Photo carousel */}
-        {photos.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
-            {photos.map((p) => (
-              <Image key={p.id} source={{ uri: p.photoUrl }} style={styles.carouselImage} />
-            ))}
-          </ScrollView>
+        {/* Photo album */}
+        {momentDisplays.length > 0 && (
+          <View style={styles.albumSection}>
+            <BentoLayout
+              items={momentDisplays}
+              onOpen={(m) => {
+                const idx = momentDisplays.findIndex((d) => d.id === m.id);
+                setCarouselIndex(idx >= 0 ? idx : 0);
+                setCarouselVisible(true);
+              }}
+              selectedIds={new Set()}
+              onToggleSelect={() => {}}
+              selectMode={false}
+              onLongPress={() => {}}
+            />
+          </View>
         )}
+
+        {/* Fullscreen photo viewer */}
+        <Modal
+          visible={carouselVisible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={() => setCarouselVisible(false)}
+        >
+          <PhotoCarousel
+            moments={momentDisplays}
+            initialIndex={carouselIndex}
+            people={{}}
+            onClose={() => setCarouselVisible(false)}
+          />
+        </Modal>
 
         {/* Title + meta */}
         <View style={styles.titleSection}>
           <View style={styles.catPill}>
-            <Text style={styles.catEmoji}>{emoji}</Text>
+            <CatIcon size={14} color={colors.accent} strokeWidth={2} />
             <Text style={styles.catLabel}>{trip.category}</Text>
           </View>
           <Text style={styles.title}>{trip.title}</Text>
@@ -302,8 +359,7 @@ const getStyles = (colors: ThemeColors) =>
       borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
     },
 
-    carousel: { marginBottom: 20, marginHorizontal: -20, paddingHorizontal: 20 },
-    carouselImage: { width: 200, height: 150, borderRadius: 16, marginRight: 10 },
+    albumSection: { marginBottom: 20, marginHorizontal: -20 },
 
     titleSection: { marginBottom: 24 },
     catPill: {

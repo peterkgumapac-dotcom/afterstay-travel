@@ -114,7 +114,7 @@ export default function StaysTab({
     setLoading(true);
     setError(null);
     try {
-      const results = await searchNearby(type, keyword, coords, 5000);
+      const { places: results } = await searchNearby(type, keyword, coords, 5000);
       if (results.length > 0) {
         const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, coords));
         if (cache.current.size >= 20) {

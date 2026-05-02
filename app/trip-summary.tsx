@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
-  Image,
   ScrollView,
   Share,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 
 const SCREEN_W = Dimensions.get('window').width;
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -75,17 +75,20 @@ const PhotoGrid = React.memo(function PhotoGrid({
   moments,
   onPressMore,
   styles,
+  colors,
 }: {
   moments: Moment[];
   onPressMore: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   styles: any;
+  colors: ThemeColors;
 }) {
   const { photos, remaining } = useMemo(() => {
     const photosWithUrl = moments.filter((m) => resolvePhotoUrl(m.photo));
-    const step = Math.max(1, Math.floor(photosWithUrl.length / 11));
+    // Spread evenly across trip for variety
+    const step = Math.max(1, Math.floor(photosWithUrl.length / 7));
     const grid: Moment[] = [];
-    for (let idx = 0; idx < photosWithUrl.length && grid.length < 11; idx += step) {
+    for (let idx = 0; idx < photosWithUrl.length && grid.length < 7; idx += step) {
       grid.push(photosWithUrl[idx]);
     }
     return {
@@ -94,16 +97,51 @@ const PhotoGrid = React.memo(function PhotoGrid({
     };
   }, [moments]);
 
+  if (photos.length === 0) {
+    return (
+      <TouchableOpacity style={styles.emptyMoments} onPress={onPressMore} activeOpacity={0.7}>
+        <Camera size={28} color={colors.text3} />
+        <Text style={styles.emptyMomentsTitle}>{moments.length} moment{moments.length !== 1 ? 's' : ''}</Text>
+        <Text style={styles.emptyMomentsText}>No photos yet — tap to add</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  // Bento layout: hero (large) + smaller tiles
+  const hero = photos[0];
+  const rest = photos.slice(1);
+  const heroUri = resolvePhotoUrl(hero.photo)!;
+
   return (
-    <View style={styles.photoGrid}>
-      {photos.map((m) => (
-        <Image key={m.id} source={{ uri: resolvePhotoUrl(m.photo)! }} style={styles.gridThumb} resizeMode="cover" />
-      ))}
-      {remaining > 0 && (
-        <TouchableOpacity style={styles.gridMore} onPress={onPressMore} activeOpacity={0.7}>
-          <Text style={styles.gridMoreText}>+{remaining}</Text>
-        </TouchableOpacity>
-      )}
+    <View style={styles.bentoWrap}>
+      {/* Large hero photo */}
+      <TouchableOpacity onPress={onPressMore} activeOpacity={0.85} style={styles.bentoHero}>
+        <Image source={{ uri: heroUri }} style={styles.bentoHeroImg} contentFit="cover" transition={200} />
+        {hero.location && (
+          <View style={styles.bentoLocBadge}>
+            <MapPin size={10} color="#fff" />
+            <Text style={styles.bentoLocText} numberOfLines={1}>{hero.location}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {/* Smaller tiles — 3 column grid */}
+      <View style={styles.bentoSmallRow}>
+        {rest.map((m) => {
+          const uri = resolvePhotoUrl(m.photo);
+          return uri ? (
+            <TouchableOpacity key={m.id} onPress={onPressMore} activeOpacity={0.85} style={styles.bentoSmall}>
+              <Image source={{ uri }} style={styles.bentoSmallImg} contentFit="cover" transition={200} />
+            </TouchableOpacity>
+          ) : null;
+        })}
+        {remaining > 0 && (
+          <TouchableOpacity style={styles.bentoMore} onPress={onPressMore} activeOpacity={0.7}>
+            <Text style={styles.bentoMoreNum}>+{remaining}</Text>
+            <Text style={styles.bentoMoreLabel}>more</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 });
@@ -457,7 +495,7 @@ export default function TripSummaryScreen() {
               </TouchableOpacity>
             </View>
 
-            <PhotoGrid moments={moments} onPressMore={handlePlayReel} styles={styles} />
+            <PhotoGrid moments={moments} onPressMore={handlePlayReel} styles={styles} colors={colors} />
 
             {topTags.length > 0 && (
               <View style={styles.tagsRow}>
@@ -764,21 +802,55 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.accent,
     },
 
-    // Photo grid — 3 columns
-    photoGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 3,
+    // Bento photo gallery
+    bentoWrap: {
+      gap: 4,
       marginBottom: 16,
     },
-    gridThumb: {
-      width: (SCREEN_W - 40 - 6) / 3,
+    bentoHero: {
+      width: '100%',
+      aspectRatio: 16 / 9,
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
+    bentoHeroImg: {
+      width: '100%',
+      height: '100%',
+    },
+    bentoLocBadge: {
+      position: 'absolute',
+      bottom: 10,
+      left: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
+    bentoLocText: {
+      fontSize: 10,
+      fontWeight: '600',
+      color: '#fff',
+      maxWidth: 120,
+    },
+    bentoSmallRow: {
+      flexDirection: 'row',
+      gap: 4,
+    },
+    bentoSmall: {
+      flex: 1,
       aspectRatio: 1,
       borderRadius: 10,
-      backgroundColor: colors.card2,
+      overflow: 'hidden',
     },
-    gridMore: {
-      width: (SCREEN_W - 40 - 6) / 3,
+    bentoSmallImg: {
+      width: '100%',
+      height: '100%',
+    },
+    bentoMore: {
+      flex: 1,
       aspectRatio: 1,
       borderRadius: 10,
       backgroundColor: colors.card2,
@@ -787,10 +859,36 @@ const getStyles = (colors: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    gridMoreText: {
-      fontSize: 18,
+    bentoMoreNum: {
+      fontSize: 20,
       fontWeight: '700',
       color: colors.text2,
+    },
+    bentoMoreLabel: {
+      fontSize: 10,
+      color: colors.text3,
+      marginTop: 1,
+    },
+    // Empty moments state
+    emptyMoments: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 32,
+      backgroundColor: colors.card,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 6,
+    },
+    emptyMomentsTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.text,
+      marginTop: 4,
+    },
+    emptyMomentsText: {
+      fontSize: 12,
+      color: colors.text3,
     },
 
     // Superlatives

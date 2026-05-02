@@ -1,12 +1,26 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { QueryClientProvider } from '@tanstack/react-query';
+import * as Sentry from '@sentry/react-native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
+
+// Initialize Sentry — DSN from EAS environment variable
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    debug: __DEV__,
+    enabled: !__DEV__,
+    tracesSampleRate: 0.2,
+    enableAutoSessionTracking: true,
+  });
+}
 
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
@@ -15,9 +29,9 @@ import { UserSegmentProvider } from '@/contexts/UserSegmentContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useBackgroundTasks } from '@/hooks/useBackgroundTasks';
 import { useAppUpdates } from '@/hooks/useAppUpdates';
-import { useUserStatus } from '@/hooks/useUserStatus';
 import { verifyConfig } from '@/lib/config';
 import { queryClient } from '@/lib/queryClient';
+import { refreshAllWidgets } from '@/widgets/refresh';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -29,8 +43,7 @@ SplashScreen.preventAutoHideAsync();
 
 function RootLayoutInner() {
   const { mode, colors: c } = useTheme();
-  const { user, loading: authLoading } = useAuth();
-  const { isLoading: statusLoading } = useUserStatus();
+  const { loading: authLoading } = useAuth();
   usePushNotifications();
   useBackgroundTasks();
   useAppUpdates();
@@ -48,7 +61,7 @@ function RootLayoutInner() {
     },
   };
 
-  if (authLoading || (user && statusLoading)) {
+  if (authLoading) {
     return (
       <NavThemeProvider value={navTheme}>
         <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
@@ -89,6 +102,10 @@ function RootLayoutInner() {
           options={{ presentation: 'modal', title: 'Add Moment', headerShown: true, animation: 'slide_from_bottom', animationDuration: 250 }}
         />
         <Stack.Screen
+          name="compose-moment"
+          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom', animationDuration: 250 }}
+        />
+        <Stack.Screen
           name="add-member"
           options={{ presentation: 'modal', title: 'Add Member', headerShown: true }}
         />
@@ -103,6 +120,10 @@ function RootLayoutInner() {
         <Stack.Screen
           name="join-trip"
           options={{ presentation: 'modal', title: 'Join Trip', headerShown: true }}
+        />
+        <Stack.Screen
+          name="profile/[userId]"
+          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom', animationDuration: 250 }}
         />
         <Stack.Screen
           name="group-chat"
@@ -157,6 +178,10 @@ function RootLayoutInner() {
           options={{ presentation: 'modal', title: 'Notifications', headerShown: false }}
         />
         <Stack.Screen
+          name="create-post"
+          options={{ presentation: 'modal', title: 'New Post', headerShown: false }}
+        />
+        <Stack.Screen
           name="trip-memory"
           options={{ presentation: 'modal', title: 'Trip Memory', headerShown: false }}
         />
@@ -168,15 +193,29 @@ function RootLayoutInner() {
           name="album-detail"
           options={{ presentation: 'modal', title: 'Album', headerShown: false }}
         />
+        <Stack.Screen
+          name="welcome"
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="trip-wrapped"
+          options={{ presentation: 'fullScreenModal', headerShown: false, animation: 'fade' }}
+        />
       </Stack>
     </NavThemeProvider>
   );
 }
 
 
-export default function RootLayout() {
+function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    CrimsonPro_400Regular: require('@expo-google-fonts/crimson-pro/400Regular/CrimsonPro_400Regular.ttf'),
+    CrimsonPro_400Regular_Italic: require('@expo-google-fonts/crimson-pro/400Regular_Italic/CrimsonPro_400Regular_Italic.ttf'),
+    CrimsonPro_600SemiBold: require('@expo-google-fonts/crimson-pro/600SemiBold/CrimsonPro_600SemiBold.ttf'),
+    CrimsonPro_600SemiBold_Italic: require('@expo-google-fonts/crimson-pro/600SemiBold_Italic/CrimsonPro_600SemiBold_Italic.ttf'),
+    CrimsonPro_700Bold: require('@expo-google-fonts/crimson-pro/700Bold/CrimsonPro_700Bold.ttf'),
+    CrimsonPro_700Bold_Italic: require('@expo-google-fonts/crimson-pro/700Bold_Italic/CrimsonPro_700Bold_Italic.ttf'),
   });
 
   useEffect(() => {
@@ -190,6 +229,18 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded) SplashScreen.hideAsync();
   }, [loaded]);
+
+  // Refresh Android widgets when app comes to foreground
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && next === 'active') {
+        refreshAllWidgets();
+      }
+      appState.current = next;
+    });
+    return () => sub.remove();
+  }, []);
 
   if (!loaded) return null;
 
@@ -207,3 +258,5 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default SENTRY_DSN ? Sentry.wrap(RootLayout) : RootLayout;

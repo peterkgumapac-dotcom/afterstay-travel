@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AlertTriangle, Pencil, Upload } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import type { FlightDisplayData, ThemeColors } from './tripConstants';
@@ -20,16 +22,55 @@ function getTerminalInfo(airline: string, iata: string): string | null {
   return null;
 }
 
-export function MiniFlightCard({ f, colors }: MiniFlightCardProps) {
+export function MiniFlightCard({ f, colors, tripId }: MiniFlightCardProps & { tripId?: string }) {
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const router = useRouter();
   const depTerminal = getTerminalInfo(f.airline, f.from);
   const arrTerminal = getTerminalInfo(f.airline, f.to);
+  const isIncomplete = f.dep === '—' || f.arr === '—' || f.from === '—' || f.to === '—';
 
   const copyRef = () => {
+    if (!f.ref) return;
     Clipboard.setStringAsync(f.ref);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert('Copied', `Booking ref ${f.ref} copied to clipboard`);
   };
+
+  if (isIncomplete) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={[styles.logo, { backgroundColor: f.logo }]}>
+              <Text style={styles.logoText}>{f.code}</Text>
+            </View>
+            <View>
+              <Text style={styles.dirLabel}>{f.dir}</Text>
+              <Text style={styles.flightInfo}>
+                {f.airline} · {f.code} {f.num}
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <AlertTriangle size={16} color={colors.warn ?? '#e2b361'} strokeWidth={2} />
+          <Text style={{ color: colors.text2, fontSize: 13, fontWeight: '600' }}>
+            Incomplete flight details
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.accent, paddingVertical: 9, paddingHorizontal: 14, borderRadius: 10 }}
+            onPress={() => router.push({ pathname: '/scan-trip', params: { mode: 'flight', tripId } } as never)}
+            activeOpacity={0.7}
+          >
+            <Upload size={14} color="#fff" strokeWidth={2} />
+            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Re-scan</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.card}>
@@ -46,9 +87,11 @@ export function MiniFlightCard({ f, colors }: MiniFlightCardProps) {
             </Text>
           </View>
         </View>
-        <TouchableOpacity onPress={copyRef} activeOpacity={0.7}>
-          <Text style={styles.refText}>Ref {f.ref} {'\u2398'}</Text>
-        </TouchableOpacity>
+        {f.ref ? (
+          <TouchableOpacity onPress={copyRef} activeOpacity={0.7}>
+            <Text style={styles.refText}>Ref {f.ref} {'\u2398'}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* Route */}

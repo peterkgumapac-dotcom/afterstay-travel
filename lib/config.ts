@@ -1,8 +1,9 @@
-// Mutable hotel coords — updated at runtime from the active trip
-const _hotelCoords = { lat: 11.9710, lng: 121.9215 };
+// Mutable hotel coords — updated at runtime from the active trip.
+// Defaults to 0,0 (no location) — set via setHotelCoords() when trip loads.
+const _hotelCoords = { lat: 0, lng: 0 };
 
 export const CONFIG = {
-  GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY || '',
+  GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY || '',
   SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
   SUPABASE_KEY: process.env.EXPO_PUBLIC_SUPABASE_KEY || '',
   WEATHER_KEY: process.env.EXPO_PUBLIC_WEATHER_API_KEY || '',

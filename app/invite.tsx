@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { Copy, Mail, MessageCircle, Send, Share2, Users } from 'lucide-react-native';
+import { Copy, Mail, MessageCircle, Send, Users } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -53,9 +53,10 @@ export default function InviteScreen() {
   // Auto-generate code on mount
   useEffect(() => { generateCode(); }, [generateCode]);
 
-  const inviteLink = code ? `https://afterstay.travel/join/${code}` : '';
+  const inviteLink = code ? `afterstay://join-trip?code=${code}` : '';
+  const webInviteLink = code ? `https://afterstay.travel/join/${code}` : '';
   const shareMessage = code
-    ? `Join my trip to ${tripName} on AfterStay! Use invite code: ${code}\n\nOr open: ${inviteLink}`
+    ? `Join my trip to ${tripName} on AfterStay!\n\nInvite code: ${code}\n\nOpen AfterStay and tap Join a trip, or use this link: ${webInviteLink}`
     : '';
 
   const handleShare = async () => {
@@ -65,22 +66,13 @@ export default function InviteScreen() {
 
   const handleMessenger = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const encoded = encodeURIComponent(inviteLink);
-    // Try Facebook Messenger deep link first, fallback to web
+    const encoded = encodeURIComponent(webInviteLink);
     const messengerUrl = `fb-messenger://share?link=${encoded}`;
     const canOpen = await Linking.canOpenURL(messengerUrl);
     if (canOpen) {
       await Linking.openURL(messengerUrl);
     } else {
-      // Fallback: use m.me share dialog or generic share
-      const webFallback = `https://www.facebook.com/dialog/send?link=${encoded}&app_id=afterstay&redirect_uri=${encoded}`;
-      const canOpenWeb = await Linking.canOpenURL(webFallback);
-      if (canOpenWeb) {
-        await Linking.openURL(webFallback);
-      } else {
-        // Final fallback: system share sheet
-        await Share.share({ message: shareMessage });
-      }
+      await Share.share({ message: shareMessage });
     }
   };
 
@@ -90,7 +82,8 @@ export default function InviteScreen() {
     const body = encodeURIComponent(
       `Hey!\n\nI'd love for you to join my trip to ${tripName} on AfterStay.\n\n` +
       `Use this invite code: ${code}\n\n` +
-      `Or tap this link to join: ${inviteLink}\n\n` +
+      `Or tap this link to join: ${webInviteLink}\n\n` +
+      `If the app is installed, open: ${inviteLink}\n\n` +
       `See you there!`
     );
     const mailUrl = `mailto:?subject=${subject}&body=${body}`;
@@ -141,12 +134,12 @@ export default function InviteScreen() {
             {/* QR code */}
             <View style={styles.qrWrap}>
               <QRCode
-                value={inviteLink}
+                value={webInviteLink}
                 size={160}
                 backgroundColor="transparent"
                 color={colors.text}
               />
-              <Text style={styles.qrHint}>Scan to join</Text>
+              <Text style={styles.qrHint}>Scan to open the invite</Text>
             </View>
 
             {/* Share actions */}
@@ -183,8 +176,8 @@ export default function InviteScreen() {
                 <Text style={styles.historyTitle}>Previous invites</Text>
                 {history.slice(1).map((inv) => {
                   const expired = new Date(inv.expiresAt) < new Date();
-                  const status = inv.used ? 'Used' : expired ? 'Expired' : 'Active';
-                  const statusColor = inv.used ? colors.success : expired ? colors.danger : colors.accent;
+                  const status = expired ? 'Expired' : 'Active';
+                  const statusColor = expired ? colors.danger : colors.accent;
                   return (
                     <View key={inv.id} style={styles.historyRow}>
                       <Text style={styles.historyCode}>{inv.code}</Text>

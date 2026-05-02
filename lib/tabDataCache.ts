@@ -13,10 +13,27 @@ const promiseCache = new Map<string, Promise<unknown>>();
 const timestampCache = new Map<string, number>();
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let cacheUserId: string | undefined;
 
 export interface CacheOptions {
   ttlMs?: number;
   forceRefresh?: boolean;
+}
+
+export function setTabDataCacheUserId(userId: string | undefined): void {
+  if (cacheUserId === userId) return;
+  clearTabDataCache();
+  cacheUserId = userId;
+}
+
+export function clearTabDataCache(): void {
+  dataCache.clear();
+  promiseCache.clear();
+  timestampCache.clear();
+}
+
+function scopedKey(key: string): string {
+  return cacheUserId ? `${cacheUserId}:${key}` : `anon:${key}`;
 }
 
 export function getCachedPromise<T>(
@@ -25,21 +42,22 @@ export function getCachedPromise<T>(
   options: CacheOptions = {}
 ): Promise<T> {
   const { ttlMs = DEFAULT_TTL_MS, forceRefresh = false } = options;
+  const cacheKey = scopedKey(key);
 
   if (forceRefresh) {
-    dataCache.delete(key);
-    promiseCache.delete(key);
-    timestampCache.delete(key);
+    dataCache.delete(cacheKey);
+    promiseCache.delete(cacheKey);
+    timestampCache.delete(cacheKey);
   }
 
   // Return existing promise if inflight
-  if (promiseCache.has(key)) {
-    return promiseCache.get(key) as Promise<T>;
+  if (promiseCache.has(cacheKey)) {
+    return promiseCache.get(cacheKey) as Promise<T>;
   }
 
   // Check cached data freshness
-  const cached = dataCache.get(key) as T | undefined;
-  const ts = timestampCache.get(key);
+  const cached = dataCache.get(cacheKey) as T | undefined;
+  const ts = timestampCache.get(cacheKey);
   if (cached !== undefined && ts !== undefined && Date.now() - ts < ttlMs) {
     return Promise.resolve(cached);
   }
@@ -47,31 +65,32 @@ export function getCachedPromise<T>(
   // Create new promise
   const promise = fetcher()
     .then((data) => {
-      dataCache.set(key, data);
-      timestampCache.set(key, Date.now());
-      promiseCache.delete(key);
+      dataCache.set(cacheKey, data);
+      timestampCache.set(cacheKey, Date.now());
+      promiseCache.delete(cacheKey);
       return data;
     })
     .catch((err) => {
-      promiseCache.delete(key);
+      promiseCache.delete(cacheKey);
       throw err;
     });
 
-  promiseCache.set(key, promise);
+  promiseCache.set(cacheKey, promise);
   return promise as Promise<T>;
 }
 
 export function getCachedData<T>(key: string): T | undefined {
-  return dataCache.get(key) as T | undefined;
+  return dataCache.get(scopedKey(key)) as T | undefined;
 }
 
 export function setCachedData<T>(key: string, data: T): void {
-  dataCache.set(key, data);
-  timestampCache.set(key, Date.now());
+  const cacheKey = scopedKey(key);
+  dataCache.set(cacheKey, data);
+  timestampCache.set(cacheKey, Date.now());
 }
 
 export function hasCachedData(key: string): boolean {
-  return dataCache.has(key);
+  return dataCache.has(scopedKey(key));
 }
 
 export function invalidateCache(keyPattern?: string): void {

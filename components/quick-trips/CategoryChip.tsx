@@ -1,7 +1,12 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Users, Heart, Coffee, User, UtensilsCrossed, Dumbbell, Sparkles } from 'lucide-react-native';
 import { QUICK_TRIP_CATEGORIES, type QuickTripCategory } from '@/lib/quickTripTypes';
 import type { useTheme } from '@/constants/ThemeContext';
+
+const ICON_MAP: Record<string, React.ElementType> = {
+  Users, Heart, Coffee, User, UtensilsCrossed, Dumbbell, Sparkles,
+};
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
@@ -18,6 +23,7 @@ export default function CategoryChipSelector({ selected, onSelect, colors }: Cat
     <View style={styles.row}>
       {QUICK_TRIP_CATEGORIES.map((c) => {
         const active = selected === c.key;
+        const Icon = ICON_MAP[c.icon] ?? Sparkles;
         return (
           <TouchableOpacity
             key={c.key}
@@ -25,7 +31,7 @@ export default function CategoryChipSelector({ selected, onSelect, colors }: Cat
             onPress={() => onSelect(c.key)}
             activeOpacity={0.7}
           >
-            <Text style={styles.emoji}>{c.emoji}</Text>
+            <Icon size={14} color={active ? colors.accent : colors.text3} strokeWidth={2} />
             <Text style={[styles.label, active && styles.labelActive]}>{c.label}</Text>
           </TouchableOpacity>
         );

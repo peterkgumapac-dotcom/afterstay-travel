@@ -27,7 +27,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const ACTION_WIDTH = 80;
 const SNAP_THRESHOLD = -ACTION_WIDTH * 1.2;
 const FULL_OPEN = -ACTION_WIDTH * 3;
-const SPRING_CONFIG = { damping: 20, stiffness: 250 };
+const SPRING_CONFIG = { damping: 34, stiffness: 250 };
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);

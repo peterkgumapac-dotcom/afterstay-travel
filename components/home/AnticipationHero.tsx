@@ -20,13 +20,26 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 import { useTheme } from '@/constants/ThemeContext';
+import { findPlacePhoto } from '@/lib/google-places';
+import { cacheGet, cacheSet } from '@/lib/cache';
 import type { GroupMember } from '@/lib/types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const HERO_H = 320;
 const SLIDE_DURATION = 4500; // 4.5s per slide
+const DEST_PHOTO_TIMEOUT_MS = 10000;
 
 const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
+
+function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), DEST_PHOTO_TIMEOUT_MS);
+    promise
+      .then(resolve)
+      .catch(() => resolve(fallback))
+      .finally(() => clearTimeout(timer));
+  });
+}
 
 interface Props {
   photos: string[];
@@ -53,6 +66,7 @@ export const AnticipationHero: React.FC<Props> = ({
   const styles = useMemo(() => getStyles(colors), [colors]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextIndex, setNextIndex] = useState(1);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
   const fadeAnim = useSharedValue(0);
 
   // Ken Burns scale animation
@@ -73,9 +87,71 @@ export const AnticipationHero: React.FC<Props> = ({
     transform: [{ scale: kenBurnsScale.value }],
   }));
 
+  useEffect(() => {
+    setFailedUrls(new Set());
+    setCurrentIndex(0);
+    setNextIndex(1);
+  }, [photos, destination]);
+
+  const visiblePhotos = useMemo(
+    () => photos.filter((url) => !failedUrls.has(url)),
+    [photos, failedUrls],
+  );
+
+  // Fetch destination photo when no hotel photos are available, or when hotel images fail.
+  const [destPhoto, setDestPhoto] = useState<string | null>(null);
+  useEffect(() => {
+    if (visiblePhotos.length > 0 || !destination) return;
+    let cancelled = false;
+    const cacheKey = `dest_photo:${destination.trim().toLowerCase()}`;
+    setDestPhoto(null);
+    (async () => {
+      const cached = await cacheGet<string>(cacheKey, 24 * 60 * 60 * 1000);
+      if (cached) { if (!cancelled) setDestPhoto(cached); return; }
+      const queries = [
+        `${destination} travel destination`,
+        `${destination} landmark`,
+        `${destination} hotel exterior`,
+        `${destination} tourism`,
+        destination,
+      ];
+      for (const query of queries) {
+        const url = await withTimeout(findPlacePhoto(query), null);
+        if (url && !cancelled) {
+          setDestPhoto(url);
+          await cacheSet(cacheKey, url);
+          return;
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [destination, visiblePhotos.length]);
+
+  const heroPhotos = useMemo(
+    () => visiblePhotos.length > 0 ? visiblePhotos : destPhoto && !failedUrls.has(destPhoto) ? [destPhoto] : [],
+    [destPhoto, failedUrls, visiblePhotos],
+  );
+
+  const handleImageError = useCallback((url?: string | null) => {
+    if (!url) return;
+    if (__DEV__) console.warn('[AnticipationHero] image failed:', url);
+    setFailedUrls((prev) => {
+      if (prev.has(url)) return prev;
+      const next = new Set(prev);
+      next.add(url);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (heroPhotos.length === 0) return;
+    setCurrentIndex((i) => Math.min(i, heroPhotos.length - 1));
+    setNextIndex((i) => heroPhotos.length > 1 ? i % heroPhotos.length : 0);
+  }, [heroPhotos.length]);
+
   // Photo cross-fade
   useEffect(() => {
-    if (photos.length <= 1) return;
+    if (heroPhotos.length <= 1) return;
     let timeout: ReturnType<typeof setTimeout>;
     const interval = setInterval(() => {
       fadeAnim.value = withTiming(1, {
@@ -83,13 +159,13 @@ export const AnticipationHero: React.FC<Props> = ({
         easing: Easing.inOut(Easing.ease),
       });
       timeout = setTimeout(() => {
-        setCurrentIndex((p) => (p + 1) % photos.length);
-        setNextIndex((p) => (p + 2) % photos.length);
+        setCurrentIndex((p) => (p + 1) % heroPhotos.length);
+        setNextIndex((p) => (p + 2) % heroPhotos.length);
         fadeAnim.value = 0;
       }, 900);
     }, SLIDE_DURATION);
     return () => { clearInterval(interval); clearTimeout(timeout); };
-  }, [photos.length, fadeAnim]);
+  }, [heroPhotos.length, fadeAnim]);
 
   const fadeStyle = useAnimatedStyle(() => ({
     opacity: fadeAnim.value,
@@ -99,25 +175,45 @@ export const AnticipationHero: React.FC<Props> = ({
     (i: number) => {
       Haptics.selectionAsync();
       setCurrentIndex(i);
-      setNextIndex((i + 1) % photos.length);
+      setNextIndex((i + 1) % heroPhotos.length);
     },
-    [photos.length],
+    [heroPhotos.length],
   );
+  const canUseDestPhoto = !!destPhoto && !failedUrls.has(destPhoto);
 
-  if (photos.length === 0) {
-    // No hotel photos — show destination name over gradient
+  if (heroPhotos.length === 0) {
+    // No hotel photos — show destination photo or gradient fallback
     return (
       <View style={styles.outerWrap}>
         <View style={[styles.container, { backgroundColor: colors.card }]}>
-          <LinearGradient
-            colors={[colors.accentDim, colors.bg]}
-            style={StyleSheet.absoluteFill}
-          />
+          {canUseDestPhoto ? (
+            <>
+              <Animated.View style={[StyleSheet.absoluteFill, kenBurnsStyle]}>
+                <Image
+                  source={{ uri: destPhoto }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                  onError={() => handleImageError(destPhoto)}
+                />
+              </Animated.View>
+              <LinearGradient
+                colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']}
+                style={StyleSheet.absoluteFill}
+              />
+            </>
+          ) : (
+            <LinearGradient
+              colors={[colors.accentDim, colors.bg]}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
           <View style={styles.emptyHero}>
-            <Text style={styles.emptyDestination}>{destination || 'Your Trip'}</Text>
-            <Text style={styles.emptyDateRange}>{dateRange}</Text>
+            <Text style={[styles.emptyDestination, canUseDestPhoto && { textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }]}>
+              {destination || 'Your Trip'}
+            </Text>
+            <Text style={[styles.emptyDateRange, canUseDestPhoto && { color: 'rgba(255,255,255,0.85)' }]}>{dateRange}</Text>
             {hotelName ? (
-              <Text style={styles.emptyHotel}>{hotelName}</Text>
+              <Text style={[styles.emptyHotel, canUseDestPhoto && { color: 'rgba(255,255,255,0.7)' }]}>{hotelName}</Text>
             ) : null}
           </View>
         </View>
@@ -131,20 +227,22 @@ export const AnticipationHero: React.FC<Props> = ({
         {/* Current photo with Ken Burns */}
         <Animated.View style={[StyleSheet.absoluteFill, kenBurnsStyle]}>
           <Image
-            source={{ uri: photos[currentIndex] }}
+            source={{ uri: heroPhotos[currentIndex] }}
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
+            onError={() => handleImageError(heroPhotos[currentIndex])}
           />
         </Animated.View>
 
         {/* Next photo fading in */}
-        {photos.length > 1 && (
+        {heroPhotos.length > 1 && (
           <Animated.View style={[StyleSheet.absoluteFill, fadeStyle]}>
             <Animated.View style={[StyleSheet.absoluteFill, kenBurnsStyle]}>
               <Image
-                source={{ uri: photos[nextIndex] }}
+                source={{ uri: heroPhotos[nextIndex] }}
                 style={StyleSheet.absoluteFill}
                 resizeMode="cover"
+                onError={() => handleImageError(heroPhotos[nextIndex])}
               />
             </Animated.View>
           </Animated.View>
@@ -164,7 +262,7 @@ export const AnticipationHero: React.FC<Props> = ({
 
         {/* Pagination dots — top right, bar style */}
         <View style={styles.dots}>
-          {photos.map((_, i) => (
+          {heroPhotos.map((_, i) => (
             <Pressable key={i} onPress={() => handleDotPress(i)} hitSlop={8}>
               <View
                 style={[
@@ -193,11 +291,11 @@ export const AnticipationHero: React.FC<Props> = ({
           </View>
 
           {/* Hotel name */}
-          <Text style={styles.hotelName}>{hotelName}</Text>
+          <Text style={styles.hotelName}>{hotelName || destination || 'Your Trip'}</Text>
 
           {/* Room info */}
-          {roomInfo && (
-            <Text style={styles.roomInfo}>{roomInfo}</Text>
+          {(roomInfo || (!hotelName && dateRange)) && (
+            <Text style={styles.roomInfo}>{roomInfo || dateRange}</Text>
           )}
 
           {/* Group member avatars */}

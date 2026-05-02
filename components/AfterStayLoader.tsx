@@ -1,98 +1,52 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
-  withTiming,
-  withDelay,
   withSequence,
+  withTiming,
   Easing,
 } from 'react-native-reanimated';
-import Svg, { Circle, Path } from 'react-native-svg';
-import { useTheme } from '@/constants/ThemeContext';
-import { spacing } from '@/constants/theme';
 
-const AnimatedSvgGroup = Animated.createAnimatedComponent(View);
+const APP_ICON = require('@/assets/icon/afterstay-icon.png');
 
-interface AfterStayLoaderProps {
-  readonly message?: string;
-}
+type AfterStayLoaderProps = {
+  message?: string;
+};
 
 export default function AfterStayLoader({ message }: AfterStayLoaderProps) {
-  const { colors } = useTheme();
-  const rotation = useSharedValue(0);
-  const markScale = useSharedValue(0.85);
-  const markOpacity = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(0.7);
 
   useEffect(() => {
-    // Spinning ring
-    rotation.value = withRepeat(
-      withTiming(360, { duration: 1600, easing: Easing.bezier(0.5, 0.1, 0.5, 0.9) }),
+    scale.value = withRepeat(
+      withSequence(
+        withTiming(1.06, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+      ),
       -1,
-      false,
     );
-    // Mark entrance — scale in like prototype
-    markScale.value = withTiming(1, { duration: 700, easing: Easing.bezier(0.2, 0.9, 0.2, 1) });
-    markOpacity.value = withTiming(1, { duration: 700, easing: Easing.bezier(0.2, 0.9, 0.2, 1) });
-  }, [rotation, markScale, markOpacity]);
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.7, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+    );
+  }, []);
 
-  const spinStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
-
-  const markEntrance = useAnimatedStyle(() => ({
-    transform: [{ scale: markScale.value }],
-    opacity: markOpacity.value,
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
   }));
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      {/* Radial gradient glow behind mark */}
-      <View style={styles.glowOuter}>
-        <View style={[styles.glow, { backgroundColor: colors.accent }]} />
-      </View>
-
-      {/* Mark with entrance animation */}
-      <Animated.View style={[styles.markWrapper, markEntrance]}>
-        {/* Static ring + triangle + zigzag */}
-        <Svg width={72} height={72} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill}>
-          <Circle cx={32} cy={32} r={29} stroke={colors.accent} strokeWidth={2.2} fill="none" opacity={0.18} />
-          <Path
-            d="M32 12 L52 48 L12 48 Z"
-            stroke={colors.accent}
-            strokeWidth={2.4}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <Path
-            d="M19 40 L24 40 L27 33 L31 46 L35 30 L38 40 L45 40"
-            stroke={colors.accent}
-            strokeWidth={2.2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </Svg>
-        {/* Spinning ring */}
-        <AnimatedSvgGroup style={[StyleSheet.absoluteFill, spinStyle]}>
-          <Svg width={72} height={72} viewBox="0 0 64 64" fill="none">
-            <Circle
-              cx={32} cy={32} r={29}
-              stroke={colors.accent}
-              strokeWidth={2.2}
-              fill="none"
-              strokeLinecap="round"
-              strokeDasharray="45 200"
-            />
-          </Svg>
-        </AnimatedSvgGroup>
+    <View style={styles.container}>
+      <Animated.View style={animStyle}>
+        <Image source={APP_ICON} style={styles.icon} />
       </Animated.View>
-
-      {message ? (
-        <Text style={[styles.message, { color: colors.text2 }]}>{message}</Text>
-      ) : null}
+      {message ? <Text style={styles.message}>{message}</Text> : null}
     </View>
   );
 }
@@ -100,28 +54,21 @@ export default function AfterStayLoader({ message }: AfterStayLoaderProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.lg,
-  },
-  glowOuter: {
-    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0f0d0b',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  glow: {
-    width: 280,
-    height: 200,
-    borderRadius: 140,
-    opacity: 0.18,
-  },
-  markWrapper: {
-    width: 72,
-    height: 72,
+  icon: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
   },
   message: {
-    fontSize: 14,
+    color: '#f7efe3',
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 18,
+    paddingHorizontal: 32,
     textAlign: 'center',
-    paddingHorizontal: spacing.xxl,
   },
 });

@@ -2,22 +2,66 @@
 // The API key stays server-side. Client sends structured payloads.
 
 import { supabase } from './supabase';
+import { CONFIG } from './config';
 import type { AIRecommendation, TripMemoryStats, TripMemoryVibe } from './types';
 
 // ── Proxy helper ──────────────────────────────────────────────────────
 
 async function callProxy(action: string, payload: Record<string, unknown>): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('ai-proxy', {
-    body: { action, payload },
-  });
-  if (error) {
-    const msg = typeof error === 'object' && 'message' in error ? (error as { message: string }).message : String(error);
+  const maxAttempts = action === 'trip-scan' ? 2 : 1;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error('Please sign in again before using AI features.');
+
+    const response = await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/ai-proxy`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: CONFIG.SUPABASE_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action, payload }),
+    });
+    const bodyText = await response.text();
+    let data: { text?: string; error?: unknown; message?: unknown; providerStatus?: unknown } = {};
+    try {
+      data = bodyText ? JSON.parse(bodyText) : {};
+    } catch {
+      data = { error: bodyText };
+    }
+
+    if (response.ok) return data?.text ?? '';
+
+    const msg = formatProxyError(response.status, data, bodyText);
+    lastError = new Error(msg);
+    if (attempt < maxAttempts && /overload|rate.?limit|timeout|temporar|529|500|502|503|504/i.test(msg)) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      continue;
+    }
     if (msg.includes('credit balance is too low')) {
       throw new Error('AI credits exhausted. Please try again later.');
     }
     throw new Error(`AI error: ${msg}`);
   }
-  return data?.text ?? '';
+
+  throw lastError instanceof Error ? lastError : new Error('AI error: request failed');
+}
+
+function formatProxyError(
+  status: number,
+  data: { error?: unknown; message?: unknown; providerStatus?: unknown },
+  rawBody: string,
+): string {
+  const detail = typeof data.error === 'string'
+    ? data.error
+    : typeof data.message === 'string'
+      ? data.message
+      : rawBody || 'Edge Function returned an error';
+  const providerStatus = data.providerStatus ? ` provider ${String(data.providerStatus)},` : '';
+  return `${status}:${providerStatus} ${detail}`;
 }
 
 // ── JSON extraction helpers ───────────────────────────────────────────
@@ -317,6 +361,7 @@ export interface ScannedTripDetails {
     departTime: string;
     arriveTime: string;
     bookingRef?: string;
+    passenger?: string;
   }[];
   members?: string[];
 }
@@ -357,7 +402,8 @@ Return ONLY a JSON object (no prose, no code fences):
       "to": "Kalibo (KLO)",
       "departTime": "2026-04-20T06:00:00+08:00",
       "arriveTime": "2026-04-20T07:05:00+08:00",
-      "bookingRef": "XYZ789"
+      "bookingRef": "XYZ789",
+      "passenger": "Peter"
     }
   ],
   "members": ["Peter", "Jane"]
@@ -366,8 +412,15 @@ Return ONLY a JSON object (no prose, no code fences):
 Rules:
 - Extract as much as you can from the images. Leave fields empty/null if not found.
 - Dates must be YYYY-MM-DD format. Times must include timezone offset (+08:00 for Philippines).
-- If multiple flights found, include all of them with correct direction (Outbound or Return).
-- If you see passenger names, list them in "members".
+- Scan every image from top to bottom and include every flight segment/card you can see.
+- For round-trip or return itineraries, include BOTH the outbound and return flights. Do not stop after the first segment.
+- If multiple flights are shown, include all of them with correct direction (Outbound or Return). Example: MNL → MPH on the trip start date is Outbound; MPH → MNL on the trip end date is Return.
+- If a screenshot shows route headers like "MNL - MPH" and "MPH - MNL", create two separate flight objects, one for each header.
+- Example: a Flight Details screenshot showing "MNL - MPH" on 31 May 2026 with "FLIGHT NO. 5J 911" and "MPH - MNL" on 3 Jun 2026 with "FLIGHT NO. 5J 900" must return exactly two flights: 5J 911 as Outbound and 5J 900 as Return.
+- Booking app flight detail pages often show two stacked sections such as "MNL - MPH" and "MPH - MNL" with "Hide details"; treat each visible section as its own flight even when they share the same passenger or booking reference.
+- If the first section is outbound and a later section reverses the route, the later reversed section must be direction "Return".
+- Do not merge round-trip details into one flight object. Preserve departure/arrival times separately for the outbound and return legs.
+- If you see passenger names, list them in "members". If a passenger name is clearly attached to a flight, also include it on that flight as "passenger".
 - Cost should be numeric (no currency symbol). Currency as ISO code.
 - Default currency to PHP if not specified.`;
 

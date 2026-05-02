@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft,
   Bed,
@@ -18,6 +18,8 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,6 +35,7 @@ import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { elevation, radius, spacing, typography } from '@/constants/theme';
 import {
   getActiveTrip,
+  getTripById,
   getChecklist,
   getExpenses,
   getFlights,
@@ -52,6 +55,7 @@ import type {
   Trip,
 } from '@/lib/types';
 import { safeParse, MS_PER_DAY } from '@/lib/utils';
+import { inferFlightLeg, sortFlightsByTime } from '@/lib/tripState';
 
 // ---------- helpers ----------
 
@@ -173,13 +177,13 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function CopyRow({
   label,
   value,
-  notionKey,
+  fieldKey,
   tripId,
   onUpdate,
 }: {
   label: string;
   value: string;
-  notionKey?: string;
+  fieldKey?: string;
   tripId?: string;
   onUpdate?: (newValue: string) => void;
 }) {
@@ -194,10 +198,10 @@ function CopyRow({
   };
 
   const handleSave = async () => {
-    if (!notionKey || !tripId) return;
+    if (!fieldKey || !tripId) return;
     setSaving(true);
     try {
-      await updateTripProperty(tripId, notionKey, draft);
+      await updateTripProperty(tripId, fieldKey, draft);
       onUpdate?.(draft);
       setEditing(false);
       Alert.alert('Saved!', `${label} updated successfully.`);
@@ -236,10 +240,10 @@ function CopyRow({
     );
   }
 
-  if (!value && !notionKey) return null;
+  if (!value && !fieldKey) return null;
 
   return (
-    <Pressable onPress={notionKey ? () => { setDraft(value); setEditing(true); } : undefined} style={styles.infoRow}>
+    <Pressable onPress={fieldKey ? () => { setDraft(value); setEditing(true); } : undefined} style={styles.infoRow}>
       <Text style={styles.infoLabel}>{label}</Text>
       <View style={styles.copyRow}>
         <Text style={[styles.infoValue, !value && styles.emptyValue]}>
@@ -258,13 +262,13 @@ function CopyRow({
 function EditableInfoRow({
   label,
   value,
-  notionKey,
+  fieldKey,
   tripId,
   onUpdate,
 }: {
   label: string;
   value: string;
-  notionKey: string;
+  fieldKey: string;
   tripId: string;
   onUpdate?: (newValue: string) => void;
 }) {
@@ -277,7 +281,7 @@ function EditableInfoRow({
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateTripProperty(tripId, notionKey, draft);
+      await updateTripProperty(tripId, fieldKey, draft);
       onUpdate?.(draft);
       setEditing(false);
       Alert.alert('Saved!', `${label} updated successfully.`);
@@ -341,6 +345,8 @@ export default function TripOverviewScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const params = useLocalSearchParams<{ tripId?: string }>();
+  const tripId = typeof params.tripId === 'string' ? params.tripId : undefined;
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -348,7 +354,7 @@ export default function TripOverviewScreen() {
   const load = useCallback(async () => {
     try {
       setError(undefined);
-      const trip = await getActiveTrip();
+      const trip = tripId ? await getTripById(tripId) : await getActiveTrip();
       if (!trip) {
         setError('No active trip found.');
         return;
@@ -367,7 +373,7 @@ export default function TripOverviewScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tripId]);
 
   useEffect(() => {
     load();
@@ -376,6 +382,10 @@ export default function TripOverviewScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
+        <TouchableOpacity style={styles.backPill} onPress={() => router.back()} activeOpacity={0.75}>
+          <ChevronLeft size={18} color={colors.text} />
+          <Text style={styles.backPillText}>Back</Text>
+        </TouchableOpacity>
         <ActivityIndicator color={colors.green2} />
         <Text style={styles.loadingText}>Loading overview...</Text>
       </SafeAreaView>
@@ -385,6 +395,10 @@ export default function TripOverviewScreen() {
   if (error || !data) {
     return (
       <SafeAreaView style={styles.center}>
+        <TouchableOpacity style={styles.backPill} onPress={() => router.back()} activeOpacity={0.75}>
+          <ChevronLeft size={18} color={colors.text} />
+          <Text style={styles.backPillText}>Back</Text>
+        </TouchableOpacity>
         <Text style={styles.errorTitle}>Could not load overview</Text>
         <Text style={styles.errorText}>{error ?? 'Unknown error'}</Text>
         <Pressable style={styles.retryBtn} onPress={() => { setLoading(true); load(); }}>
@@ -401,8 +415,10 @@ export default function TripOverviewScreen() {
   };
 
   // derived
-  const outbound = flights.find(f => f.direction === 'Outbound');
-  const returnFlight = flights.find(f => f.direction === 'Return');
+  const orderedFlights = sortFlightsByTime(flights).map((flight) => ({
+    flight,
+    leg: inferFlightLeg(flight, flights),
+  }));
   const packedCount = packing.filter(p => p.packed).length;
   const packPct = packing.length > 0 ? Math.round((packedCount / packing.length) * 100) : 0;
   const doneCount = checklist.filter(c => c.done).length;
@@ -428,7 +444,13 @@ export default function TripOverviewScreen() {
         <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginLeft: 10 }}>Trip Overview</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+      >
         {/* Header */}
         <SimpleCard>
           <Text style={styles.destination}>{trip.destination || trip.name}</Text>
@@ -440,51 +462,58 @@ export default function TripOverviewScreen() {
           </View>
         </SimpleCard>
 
+        <Pressable
+          style={styles.scanDetailsBtn}
+          onPress={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
+        >
+          <View style={styles.scanDetailsIcon}>
+            <ClipboardList size={18} color={colors.accent} strokeWidth={2} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.scanDetailsTitle}>Rescan booking details</Text>
+            <Text style={styles.scanDetailsSub}>
+              Replace hotel, dates, and outbound/return flights from new screenshots.
+            </Text>
+          </View>
+        </Pressable>
+
         {/* Accommodation */}
         {trip.accommodation ? (
           <CollapsibleCard icon={<Bed size={18} color={colors.purple} />} title="Accommodation">
             <Text style={styles.accomName}>{trip.accommodation}</Text>
             {trip.address ? <Text style={styles.accomAddress}>{trip.address}</Text> : null}
             <View style={styles.divider} />
-            <EditableInfoRow label="Check-in" value={trip.checkIn ?? ''} notionKey="Check-in Time" tripId={trip.id} onUpdate={v => updateField('checkIn', v)} />
-            <EditableInfoRow label="Check-out" value={trip.checkOut ?? ''} notionKey="Check-out Time" tripId={trip.id} onUpdate={v => updateField('checkOut', v)} />
-            <EditableInfoRow label="Room" value={trip.roomType} notionKey="Room Type" tripId={trip.id} onUpdate={v => updateField('roomType', v)} />
-            <CopyRow label="Booking ref" value={trip.bookingRef ?? ''} notionKey="Booking Ref" tripId={trip.id} onUpdate={v => updateField('bookingRef', v)} />
-            <CopyRow label="WiFi" value={trip.wifiSsid ?? ''} notionKey="WiFi Network" tripId={trip.id} onUpdate={v => updateField('wifiSsid', v)} />
-            <CopyRow label="Password" value={trip.wifiPassword ?? ''} notionKey="WiFi Password" tripId={trip.id} onUpdate={v => updateField('wifiPassword', v)} />
-            <CopyRow label="Door code" value={trip.doorCode ?? ''} notionKey="Door Code" tripId={trip.id} onUpdate={v => updateField('doorCode', v)} />
+            <EditableInfoRow label="Check-in" value={trip.checkIn ?? ''} fieldKey="Check-in Time" tripId={trip.id} onUpdate={v => updateField('checkIn', v)} />
+            <EditableInfoRow label="Check-out" value={trip.checkOut ?? ''} fieldKey="Check-out Time" tripId={trip.id} onUpdate={v => updateField('checkOut', v)} />
+            <EditableInfoRow label="Room" value={trip.roomType} fieldKey="Room Type" tripId={trip.id} onUpdate={v => updateField('roomType', v)} />
+            <CopyRow label="Booking ref" value={trip.bookingRef ?? ''} fieldKey="Booking Ref" tripId={trip.id} onUpdate={v => updateField('bookingRef', v)} />
+            <CopyRow label="WiFi" value={trip.wifiSsid ?? ''} fieldKey="WiFi Network" tripId={trip.id} onUpdate={v => updateField('wifiSsid', v)} />
+            <CopyRow label="Password" value={trip.wifiPassword ?? ''} fieldKey="WiFi Password" tripId={trip.id} onUpdate={v => updateField('wifiPassword', v)} />
+            <CopyRow label="Door code" value={trip.doorCode ?? ''} fieldKey="Door Code" tripId={trip.id} onUpdate={v => updateField('doorCode', v)} />
           </CollapsibleCard>
         ) : null}
 
         {/* Flights */}
         {flights.length > 0 ? (
           <CollapsibleCard icon={<Plane size={18} color={colors.blue} />} title="Flights">
-            {outbound ? (
-              <View style={styles.flightRow}>
-                <Text style={styles.flightDir}>OUT</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.flightRoute}>
-                    {outbound.from} → {outbound.to}
+            {orderedFlights.map(({ flight, leg }, index) => (
+              <View key={flight.id} style={[styles.flightRow, index > 0 && { marginTop: spacing.sm }]}>
+                <Text style={[
+                  styles.flightDir,
+                  leg === 'return' && { backgroundColor: colors.amber + '20', color: colors.amber },
+                ]}>
+                  {leg === 'return' ? 'RET' : 'OUT'}
+                </Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.flightRoute} numberOfLines={1}>
+                    {flight.from} → {flight.to}
                   </Text>
-                  <Text style={styles.flightMeta}>
-                    {outbound.flightNumber}  ·  {formatDate(outbound.departTime)} {formatTime(outbound.departTime)}
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-            {returnFlight ? (
-              <View style={[styles.flightRow, { marginTop: spacing.sm }]}>
-                <Text style={[styles.flightDir, { backgroundColor: colors.amber + '20', color: colors.amber }]}>RET</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.flightRoute}>
-                    {returnFlight.from} → {returnFlight.to}
-                  </Text>
-                  <Text style={styles.flightMeta}>
-                    {returnFlight.flightNumber}  ·  {formatDate(returnFlight.departTime)} {formatTime(returnFlight.departTime)}
+                  <Text style={styles.flightMeta} numberOfLines={1}>
+                    {flight.flightNumber}  ·  {formatDate(flight.departTime)} {formatTime(flight.departTime)}
                   </Text>
                 </View>
               </View>
-            ) : null}
+            ))}
           </CollapsibleCard>
         ) : null}
 
@@ -560,6 +589,7 @@ export default function TripOverviewScreen() {
           </CollapsibleCard>
         ) : null}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -577,6 +607,25 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: spacing.lg,
   },
   loadingText: { color: colors.text2, fontSize: 13 },
+  backPill: {
+    position: 'absolute',
+    top: 18,
+    left: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  backPillText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   errorTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
   errorText: { color: colors.text2, fontSize: 13, textAlign: 'center' },
   retryBtn: {
@@ -628,6 +677,36 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.pill,
   },
   countdownText: { color: colors.green2, fontSize: 14, fontWeight: '700' },
+  scanDetailsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    ...elevation.card,
+  },
+  scanDetailsIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanDetailsTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  scanDetailsSub: {
+    color: colors.text2,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
 
   // accommodation
   accomName: { color: colors.text, fontSize: 16, fontWeight: '600' },

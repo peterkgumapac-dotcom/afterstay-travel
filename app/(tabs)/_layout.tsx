@@ -15,11 +15,15 @@ import { useUserSegment } from '@/contexts/UserSegmentContext';
 interface TabBarVisibilityContextValue {
   visible: boolean;
   setVisible: (v: boolean) => void;
+  fabVisible: boolean;
+  setFabVisible: (v: boolean) => void;
 }
 
 const TabBarVisibilityContext = createContext<TabBarVisibilityContextValue>({
   visible: true,
   setVisible: () => {},
+  fabVisible: true,
+  setFabVisible: () => {},
 });
 
 export function useTabBarVisibility(): TabBarVisibilityContextValue {
@@ -49,10 +53,11 @@ const TAB_LABELS: Record<string, string> = {
 export default function TabLayout() {
   const { colors } = useTheme();
   const [tabBarVisible, setTabBarVisible] = useState(true);
+  const [fabVisible, setFabVisible] = useState(true);
 
   const visibilityValue = useMemo(
-    () => ({ visible: tabBarVisible, setVisible: setTabBarVisible }),
-    [tabBarVisible],
+    () => ({ visible: tabBarVisible, setVisible: setTabBarVisible, fabVisible, setFabVisible }),
+    [tabBarVisible, fabVisible],
   );
 
   return (
@@ -133,7 +138,7 @@ export default function TabLayout() {
         </NativeTabs>
 
         {/* Global FAB — rendered above native tabs */}
-        {tabBarVisible && <FloatingActionButton />}
+        {tabBarVisible && fabVisible && <FloatingActionButton />}
         <TestModeBanner />
       </TabBarVisibilityContext.Provider>
   );

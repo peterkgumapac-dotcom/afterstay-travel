@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { useRouter } from 'expo-router';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { useTheme } from '@/constants/ThemeContext';
+import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
 
 interface Props {
   userName: string;
@@ -25,6 +26,11 @@ export default function ProfileRow({
   const router = useRouter();
   const firstName = userName.split(' ')[0];
   const initial = firstName.charAt(0).toUpperCase();
+
+  const goToSettings = () => {
+    if (__DEV__) console.log('[ProfileRow] Settings tapped');
+    router.push('/settings');
+  };
 
   return (
     <View style={styles.row}>
@@ -64,18 +70,18 @@ export default function ProfileRow({
             after
             <Text style={styles.brandAccent}>stay</Text>
           </Text>
-          <Text style={styles.subtitle}>
+          <Text style={styles.subtitle} numberOfLines={1}>
             Hey {firstName} {'\u00B7'} {tripLabel}
           </Text>
         </View>
       </View>
 
-      {/* Right: bell + avatar */}
+      {/* Right: bell + avatar (opens settings) */}
       <View style={styles.rightSide}>
-        <Pressable
+        {/* Notifications bell */}
+        <AnimatedPressable
           onPress={onBellPress}
           style={styles.iconButton}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityLabel="Notifications"
           accessibilityRole="button"
         >
@@ -96,15 +102,16 @@ export default function ProfileRow({
             />
           </Svg>
           {notificationCount > 0 && (
-            <View style={styles.badge}>
+            <View style={styles.badge} pointerEvents="none">
               <Text style={styles.badgeText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
             </View>
           )}
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/(tabs)/settings')}
+        </AnimatedPressable>
+
+        {/* Avatar — opens settings */}
+        <AnimatedPressable
+          onPress={goToSettings}
           style={styles.avatarButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityLabel="Profile"
           accessibilityRole="button"
         >
@@ -115,7 +122,7 @@ export default function ProfileRow({
               <Text style={styles.avatarInitial}>{initial}</Text>
             </View>
           )}
-        </Pressable>
+        </AnimatedPressable>
       </View>
     </View>
   );
@@ -135,6 +142,8 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
+      flex: 1,
+      marginRight: 8,
     },
     brandTextCol: {
       flexDirection: 'column',
@@ -164,16 +173,16 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       gap: 8,
     },
     iconButton: {
-      width: 36,
-      height: 36,
+      width: 44,
+      height: 44,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: 18,
+      borderRadius: 22,
     },
     badge: {
       position: 'absolute',
-      top: 4,
-      right: 2,
+      top: 6,
+      right: 4,
       minWidth: 16,
       height: 16,
       borderRadius: 8,
@@ -189,18 +198,20 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       lineHeight: 12,
     },
     avatarButton: {
-      width: 32,
-      height: 32,
+      width: 44,
+      height: 44,
       borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     avatar: {
-      width: 32,
-      height: 32,
+      width: 36,
+      height: 36,
       borderRadius: 999,
     },
     avatarFallback: {
-      width: 32,
-      height: 32,
+      width: 36,
+      height: 36,
       borderRadius: 999,
       backgroundColor: colors.accent,
       alignItems: 'center',
@@ -208,7 +219,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     },
     avatarInitial: {
       color: '#fff',
-      fontSize: 12,
+      fontSize: 14,
       fontWeight: '600',
     },
   });

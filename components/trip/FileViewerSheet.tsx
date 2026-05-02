@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +16,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '@/constants/ThemeContext';
+import { getTripFilePreviewUrl } from '@/lib/supabase';
 import type { TripFile } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
@@ -34,8 +35,8 @@ function getExtension(url: string): string {
   return dot >= 0 ? cleaned.slice(dot + 1).toLowerCase() : '';
 }
 
-function isImage(url: string): boolean {
-  return IMAGE_EXTENSIONS.includes(getExtension(url));
+function isImage(url: string, contentType?: string): boolean {
+  return (contentType ?? '').startsWith('image/') || IMAGE_EXTENSIONS.includes(getExtension(url));
 }
 
 export default function FileViewerSheet({ visible, file, onClose }: FileViewerSheetProps) {
@@ -43,9 +44,39 @@ export default function FileViewerSheet({ visible, file, onClose }: FileViewerSh
   const styles = useMemo(() => getStyles(colors), [colors]);
   const [downloading, setDownloading] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
+  const [resolvedUrl, setResolvedUrl] = useState('');
+  const [resolvingUrl, setResolvingUrl] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
-  const fileUrl = file?.fileUrl ?? '';
-  const isImg = fileUrl ? isImage(fileUrl) : false;
+  const fileUrl = resolvedUrl || file?.fileUrl || '';
+  const isImg = fileUrl ? isImage(fileUrl, file?.contentType) : false;
+
+  const resolvePreviewUrl = useCallback(async () => {
+    if (!file?.storagePath) {
+      setPreviewError(file?.previewError ?? null);
+      return;
+    }
+    setResolvingUrl(true);
+    setPreviewError(null);
+    try {
+      const signedUrl = await getTripFilePreviewUrl(file.storagePath);
+      setResolvedUrl(signedUrl);
+    } catch (err) {
+      setResolvedUrl('');
+      setPreviewError(err instanceof Error ? err.message : 'Preview link could not be created.');
+    } finally {
+      setResolvingUrl(false);
+    }
+  }, [file?.previewError, file?.storagePath]);
+
+  useEffect(() => {
+    setImageLoading(true);
+    setResolvedUrl('');
+    setPreviewError(file?.previewError ?? null);
+    if (visible && file?.storagePath) {
+      resolvePreviewUrl();
+    }
+  }, [file?.fileUrl, file?.id, file?.previewError, file?.storagePath, resolvePreviewUrl, visible]);
 
   const handleDownload = useCallback(async () => {
     if (!fileUrl) return;
@@ -53,10 +84,11 @@ export default function FileViewerSheet({ visible, file, onClose }: FileViewerSh
     try {
       const ext = getExtension(fileUrl) || 'pdf';
       const safeName = (file?.fileName ?? 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
-      const localUri = `${FileSystem.documentDirectory}${safeName}.${ext}`;
+      const outputName = safeName.toLowerCase().endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`;
+      const localUri = `${FileSystem.documentDirectory}${outputName}`;
 
       const { uri } = await FileSystem.downloadAsync(fileUrl, localUri);
-      Alert.alert('Downloaded', `Saved to device as ${safeName}.${ext}`, [
+      Alert.alert('Downloaded', `Saved to device as ${outputName}`, [
         { text: 'OK' },
         {
           text: 'Open',
@@ -76,7 +108,8 @@ export default function FileViewerSheet({ visible, file, onClose }: FileViewerSh
       // Download first, then share
       const ext = getExtension(fileUrl) || 'pdf';
       const safeName = (file?.fileName ?? 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
-      const localUri = `${FileSystem.cacheDirectory}${safeName}.${ext}`;
+      const outputName = safeName.toLowerCase().endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`;
+      const localUri = `${FileSystem.cacheDirectory}${outputName}`;
 
       await FileSystem.downloadAsync(fileUrl, localUri);
       await Sharing.shareAsync(localUri);
@@ -119,23 +152,44 @@ export default function FileViewerSheet({ visible, file, onClose }: FileViewerSh
                   style={styles.previewImage}
                   resizeMode="contain"
                   onLoadEnd={() => setImageLoading(false)}
+                  onError={() => setImageLoading(false)}
                 />
               </View>
             ) : (
               <View style={styles.noPreview}>
-                <Text style={styles.noPreviewTitle}>
-                  {getExtension(fileUrl).toUpperCase() || 'FILE'}
-                </Text>
+                {resolvingUrl ? (
+                  <ActivityIndicator color={colors.accent} size="large" />
+                ) : (
+                  <Text style={styles.noPreviewTitle}>
+                    {(getExtension(fileUrl) || file.contentType?.split('/').pop() || 'FILE').toUpperCase()}
+                  </Text>
+                )}
                 <Text style={styles.noPreviewSub}>
-                  Tap "Open" to view this document
+                  {previewError
+                    ? `Preview unavailable: ${previewError}`
+                    : fileUrl
+                      ? 'Tap "Open" to view this document'
+                      : resolvingUrl
+                        ? 'Preparing private preview link...'
+                        : 'Preview link is still being prepared'}
                 </Text>
+                {!fileUrl && file.storagePath && !resolvingUrl ? (
+                  <TouchableOpacity style={styles.retryBtn} onPress={resolvePreviewUrl} activeOpacity={0.75}>
+                    <Text style={styles.retryText}>Try again</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
           </View>
 
           {/* Action buttons */}
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.actionBtn} onPress={handleDownload} activeOpacity={0.7} disabled={downloading}>
+            <TouchableOpacity
+              style={[styles.actionBtn, (!fileUrl || downloading || resolvingUrl) && styles.actionBtnDisabled]}
+              onPress={handleDownload}
+              activeOpacity={0.7}
+              disabled={!fileUrl || downloading || resolvingUrl}
+            >
               {downloading ? (
                 <ActivityIndicator size="small" color={colors.accent} />
               ) : (
@@ -144,12 +198,22 @@ export default function FileViewerSheet({ visible, file, onClose }: FileViewerSh
               <Text style={styles.actionText}>Download</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionBtn} onPress={handleShare} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={[styles.actionBtn, (!fileUrl || resolvingUrl) && styles.actionBtnDisabled]}
+              onPress={handleShare}
+              activeOpacity={0.7}
+              disabled={!fileUrl || resolvingUrl}
+            >
               <Share2 size={18} color={colors.accent} />
               <Text style={styles.actionText}>Share</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionBtn} onPress={handleOpenExternal} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={[styles.actionBtn, (!fileUrl || resolvingUrl) && styles.actionBtnDisabled]}
+              onPress={handleOpenExternal}
+              activeOpacity={0.7}
+              disabled={!fileUrl || resolvingUrl}
+            >
               <ExternalLink size={18} color={colors.accent} />
               <Text style={styles.actionText}>Open</Text>
             </TouchableOpacity>
@@ -234,6 +298,23 @@ const getStyles = (colors: ThemeColors) =>
     noPreviewSub: {
       fontSize: 13,
       color: colors.text3,
+      textAlign: 'center',
+      paddingHorizontal: 18,
+      lineHeight: 18,
+    },
+    retryBtn: {
+      marginTop: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    retryText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.accent,
     },
     actions: {
       flexDirection: 'row',
@@ -253,6 +334,9 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
+    },
+    actionBtnDisabled: {
+      opacity: 0.45,
     },
     actionText: {
       fontSize: 13,

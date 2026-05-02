@@ -21,11 +21,19 @@ interface Entry<T> {
   v: T;
 }
 
-export async function cacheGet<T>(key: string): Promise<T | undefined> {
+/** Default TTL: 30 minutes. Pass 0 to skip expiry check. */
+const DEFAULT_TTL_MS = 30 * 60 * 1000;
+
+export async function cacheGet<T>(key: string, ttlMs: number = DEFAULT_TTL_MS): Promise<T | undefined> {
   try {
     const raw = await AsyncStorage.getItem(scopedKey(key));
     if (!raw) return undefined;
     const entry = JSON.parse(raw) as Entry<T>;
+    if (ttlMs > 0 && Date.now() - entry.t > ttlMs) {
+      // Expired — remove stale entry
+      AsyncStorage.removeItem(scopedKey(key)).catch(() => {});
+      return undefined;
+    }
     return entry.v;
   } catch {
     return undefined;

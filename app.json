@@ -47,7 +47,11 @@
       "expo-background-task",
       "@react-native-community/datetimepicker",
       "@react-native-google-signin/google-signin",
-      "./plugins/withPackagingFix"
+      "./plugins/withPackagingFix",
+      ["expo-notifications", {
+        "icon": "./assets/icon/afterstay-notification.png",
+        "color": "#D8AB7A"
+      }]
     ],
     "updates": {
       "url": "https://u.expo.dev/a804380e-5c0d-425e-ac2b-7c07b8b81fd4",

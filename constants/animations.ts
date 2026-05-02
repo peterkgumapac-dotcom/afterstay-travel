@@ -13,19 +13,22 @@ export const colors = {
   goldenGlow: '#d8ab7a',
 } as const;
 
+// Critically-damped springs — Apple-style, no overshoot.
+// damping ratio ≥ 1.0 for all presets (critically or over-damped).
 export const springPresets = {
-  SNAPPY: { stiffness: 500, damping: 30, mass: 0.8 },
-  GENTLE: { stiffness: 300, damping: 25, mass: 1 },
-  BOUNCY: { stiffness: 400, damping: 15, mass: 1 },
-  SLOW: { stiffness: 200, damping: 20, mass: 1.2 },
-  // Named presets for specific interactions
-  GRID_ENTER: { stiffness: 400, damping: 25, mass: 1 },
-  CAROUSEL_SNAP: { stiffness: 300, damping: 30, mass: 0.8 },
-  DISMISS: { stiffness: 400, damping: 25, mass: 1 },
-  SHARED_ELEMENT: { stiffness: 500, damping: 35, mass: 1 },
-  SHEET_REVEAL: { stiffness: 500, damping: 35, mass: 1 },
-  HEART_BURST: { stiffness: 400, damping: 15, mass: 1 },
-  CHECK_POP: { stiffness: 500, damping: 20, mass: 0.8 },
+  SNAPPY: { stiffness: 500, damping: 40, mass: 0.8 },
+  GENTLE: { stiffness: 300, damping: 35, mass: 1 },
+  BOUNCY: { stiffness: 400, damping: 38, mass: 1 },       // no longer bouncy despite name
+  SLOW: { stiffness: 200, damping: 30, mass: 1.2 },
+  GRID_ENTER: { stiffness: 400, damping: 38, mass: 1 },
+  CAROUSEL_SNAP: { stiffness: 400, damping: 38, mass: 0.8 },
+  DISMISS: { stiffness: 400, damping: 38, mass: 1 },
+  SHARED_ELEMENT: { stiffness: 500, damping: 44, mass: 1 },
+  SHEET_REVEAL: { stiffness: 500, damping: 44, mass: 1 },
+  HEART_BURST: { stiffness: 400, damping: 15, mass: 1 },   // keep playful
+  CHECK_POP: { stiffness: 500, damping: 42, mass: 0.8 },
+  PRESS: { stiffness: 600, damping: 44, mass: 0.8 },
+  TILT_RELEASE: { stiffness: 300, damping: 34, mass: 1 },
 } as const;
 
 export const durations = {
@@ -54,6 +57,9 @@ export const thresholds = {
 } as const;
 
 export const scales = {
+  pressDown: 0.97,
+  tiltMaxDeg: 3,
+  tiltPerspective: 1200,
   carouselAdjacent: 0.85,
   carouselAdjacentOpacity: 0.5,
   carouselOvershoot: 1.05,

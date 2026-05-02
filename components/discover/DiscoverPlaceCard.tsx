@@ -43,6 +43,7 @@ export interface DiscoverPlace {
   lng?: number;
   totalRatings?: number;
   types?: string[];
+  summary?: string;
 }
 
 interface DiscoverPlaceCardProps {
@@ -130,6 +131,11 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
 
         {/* Name */}
         <Text style={styles.name} numberOfLines={1}>{place.n}</Text>
+
+        {/* Editorial summary — "why go" */}
+        {place.summary ? (
+          <Text style={styles.summary} numberOfLines={1}>{place.summary}</Text>
+        ) : null}
 
         {/* Rating · travel time · distance */}
         <View style={styles.metaRow}>
@@ -316,6 +322,11 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 14,
       fontWeight: '600',
       color: colors.text,
+    },
+    summary: {
+      fontSize: 11,
+      color: colors.text3,
+      marginTop: 1,
     },
     metaRow: {
       flexDirection: 'row',

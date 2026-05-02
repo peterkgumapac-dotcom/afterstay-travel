@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,18 +25,23 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
-import { ArrowLeft, Archive, CheckCircle, Map, MoreHorizontal, Pencil, Share2, X } from 'lucide-react-native';
+import { ArrowLeft, Archive, CheckCircle, Map, MoreHorizontal, Pencil, Settings, Share2, Trash2, X } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import AddTripSheet from '@/components/summary/AddTripSheet';
+import ShareTravelStats from '@/components/profile/ShareTravelStats';
+import { PETER_DATA, AARON_DATA } from '@/components/profile/TravelConstellationMap';
 import EmptyState from '@/components/shared/EmptyState';
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 import { OverviewTab } from '@/components/trip/OverviewTab';
+import { mapFlightToDisplay, type FlightDisplayData } from '@/components/trip/tripConstants';
 import { SummaryTab } from '@/components/trip/SummaryTab';
 import { EssentialsTab } from '@/components/trip/EssentialsTab';
+import FileViewerSheet from '@/components/trip/FileViewerSheet';
 import { useTheme } from '@/constants/ThemeContext';
 import { colors as themeColors } from '@/constants/theme';
 import {
@@ -56,11 +61,14 @@ import {
   updateMemberPhone,
   updateMemberPhoto,
   updateTripProperty,
+  createInviteCode,
+  removeGroupMember,
   finishTrip,
   archiveTrip,
   discardDraftTrip,
   softDeleteTrip,
   restoreTrip,
+  getProfile,
 } from '@/lib/supabase';
 import {
   getActiveTripPromise,
@@ -77,7 +85,8 @@ import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
-import { formatDatePHT, formatTimePHT } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
+import { formatDatePHT, formatTimePHT, safeParse } from '@/lib/utils';
 import type {
   Flight,
   GroupMember,
@@ -104,47 +113,7 @@ type TabKey = (typeof TAB_KEYS)[number];
 const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
 const FILE_COLORS = ['#a64d1e', '#c66a36', '#b8892b', '#d9a441', '#8a5a2b'];
 
-interface FlightDisplayData {
-  dir: string;
-  airline: string;
-  code: string;
-  num: string;
-  ref: string;
-  logo: string;
-  date: string;
-  dep: string;
-  arr: string;
-  from: string;
-  fromCity: string;
-  to: string;
-  toCity: string;
-  dur: string;
-  bags: { who: string; bag: string }[];
-  status: string;
-}
-
-function mapFlightToDisplay(f: Flight): FlightDisplayData {
-  const code = f.flightNumber.split(' ')[0] ?? '';
-  const num = f.flightNumber.split(' ')[1] ?? f.flightNumber;
-  return {
-    dir: f.direction,
-    airline: f.airline,
-    code,
-    num,
-    ref: f.bookingRef ?? '',
-    logo: f.direction === 'Outbound' ? themeColors.text2 : themeColors.danger,
-    date: formatDatePHT(f.departTime),
-    dep: formatTimePHT(f.departTime),
-    arr: formatTimePHT(f.arriveTime),
-    from: f.from,
-    fromCity: f.from,
-    to: f.to,
-    toCity: f.to,
-    dur: '',
-    bags: f.baggage ? [{ who: f.passenger ?? '', bag: f.baggage }] : [],
-    status: 'Confirmed',
-  };
-}
+// FlightDisplayData + mapFlightToDisplay imported from tripConstants (safe null guards)
 
 interface PackingGroup {
   [category: string]: { t: string; by: string; d: boolean; id: string }[];
@@ -172,6 +141,7 @@ interface PastTripDisplay {
   rating: number;
   hasMemory?: boolean;
   isDraft?: boolean;
+  lifecycleStatus?: 'Planning' | 'Active' | 'Completed' | 'Draft' | 'Archived';
 }
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -199,6 +169,8 @@ function mapTripToPastDisplay(t: Trip): PastTripDisplay {
     miles: 0,
     rating: 0,
     hasMemory: t.status === 'Completed',
+    isDraft: t.isDraft,
+    lifecycleStatus: t.isDraft ? 'Draft' : t.archivedAt ? 'Archived' : t.status,
   };
 }
 
@@ -672,20 +644,21 @@ const fullFlightStyles = (colors: ThemeColors) =>
 
 // ---------- MAIN SCREEN ----------
 
-import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
-
 export default function TripScreenWithBoundary() {
   return (
     <TabErrorBoundary name="Trip">
-      <TripScreen />
+      <TripScreenMemo />
     </TabErrorBoundary>
   );
 }
+
+const TripScreenMemo = React.memo(TripScreen);
 
 function TripScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { user } = useAuth();
   const { isTestMode, mockData } = useUserSegment();
   const testModeRef = useRef(isTestMode);
   testModeRef.current = isTestMode;
@@ -712,9 +685,15 @@ function TripScreen() {
   }, [loading, trip]);
 
   const [membersData, setMembersData] = useState<GroupMember[]>([]);
+  const isPrimary = useMemo(() => {
+    if (!user?.id || membersData.length === 0) return true; // default to primary for safety
+    const me = membersData.find((m) => m.userId === user.id);
+    return me?.role === 'Primary';
+  }, [user?.id, membersData]);
   const [flightsData, setFlightsData] = useState<Flight[]>([]);
   const [packingItems, setPackingItems] = useState<PackingItem[]>([]);
   const [filesData, setFilesData] = useState<TripFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<TripFile | null>(null);
   const [activeTripSpent, setActiveTripSpent] = useState(0);
   const [pastTripsData, setPastTripsData] = useState<Trip[]>([]);
   const [draftTripsData, setDraftTripsData] = useState<Trip[]>([]);
@@ -782,8 +761,8 @@ function TripScreen() {
       // Load lifetime data + expense summary for active trip
       const [stats, highlights, allTrips, expSummary, qTrips] = await Promise.all([
         getLifetimeStatsPromise(force).catch(() => null),
-        getHighlights('').catch(() => [] as Highlight[]),
-        getAllTripsPromise(force).catch(() => [] as Trip[]),
+        getHighlights(user?.id ?? '').catch(() => [] as Highlight[]),
+        getAllTripsPromise(force, true).catch(() => [] as Trip[]),
         getExpenseSummaryPromise(undefined, force).catch(() => ({ total: 0, byCategory: {}, count: 0 })),
         getQuickTripsPromise(force).catch(() => [] as QuickTrip[]),
       ]);
@@ -794,7 +773,7 @@ function TripScreen() {
 
       // Separate trips by lifecycle status
       const drafts = allTrips.filter((t) => t.isDraft === true && !t.deletedAt);
-      const archived = allTrips.filter((t) => t.archivedAt != null && !t.deletedAt);
+      const archived = allTrips.filter((t) => t.archivedAt != null || t.deletedAt != null);
       const nonDrafts = allTrips.filter((t) => !t.isDraft && !t.deletedAt);
 
       setDraftTripsData(drafts);
@@ -821,15 +800,79 @@ function TripScreen() {
     }
   }, []);
 
-  const onRefresh = () => {
+  const refreshEssentialsData = useCallback(async (tripId: string) => {
+    const [pk, tf] = await Promise.all([
+      getPackingList(tripId).catch(() => [] as PackingItem[]),
+      getTripFiles(tripId).catch(() => [] as TripFile[]),
+    ]);
+    setPackingItems(pk);
+    setFilesData(tf);
+  }, []);
+
+  const refreshOverviewData = useCallback(async () => {
+    const t = await getActiveTripPromise(true);
+    setTrip(t);
+    if (!t) {
+      setMembersData([]);
+      setFlightsData([]);
+      return;
+    }
+    const [ms, fs] = await Promise.all([
+      getGroupMembers(t.id).catch(() => [] as GroupMember[]),
+      getFlights(t.id).catch(() => [] as Flight[]),
+    ]);
+    setMembersData(ms);
+    setFlightsData(fs);
+  }, []);
+
+  const refreshSummaryData = useCallback(async () => {
+    const [stats, highlights, allTrips, expSummary, qTrips] = await Promise.all([
+      getLifetimeStatsPromise(true).catch(() => null),
+      getHighlights(user?.id ?? '').catch(() => [] as Highlight[]),
+      getAllTripsPromise(true, true).catch(() => [] as Trip[]),
+      getExpenseSummaryPromise(undefined, true).catch(() => ({ total: 0, byCategory: {}, count: 0 })),
+      getQuickTripsPromise(true).catch(() => [] as QuickTrip[]),
+    ]);
+    if (stats) setLifetimeStats(stats);
+    setHighlightsData(highlights);
+    setActiveTripSpent(expSummary.total);
+    setQuickTripsData(qTrips);
+    const drafts = allTrips.filter((t) => t.isDraft === true && !t.deletedAt);
+    const archived = allTrips.filter((t) => t.archivedAt != null || t.deletedAt != null);
+    const nonDrafts = allTrips.filter((t) => !t.isDraft && !t.deletedAt);
+    setDraftTripsData(drafts);
+    setArchivedTripsData(archived);
+    setPastTripsData(nonDrafts);
+  }, [user?.id]);
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    load({ force: true });
-  };
+    try {
+      if (activeTab === 'essentials' && trip?.id) {
+        await refreshEssentialsData(trip.id);
+      } else if (activeTab === 'summary') {
+        await refreshSummaryData();
+      } else {
+        await refreshOverviewData();
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [activeTab, refreshEssentialsData, refreshOverviewData, refreshSummaryData, trip?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab !== 'essentials' || !trip?.id || testModeRef.current) return;
+      refreshEssentialsData(trip.id).catch((e) => {
+        if (__DEV__) console.warn('[TripScreen] essentials focus refresh failed:', e);
+      });
+    }, [activeTab, refreshEssentialsData, trip?.id]),
+  );
 
   useEffect(() => {
     // Cache-first: restore cached data instantly if available
     const cachedTrip = getActiveTripCached();
-    const cachedAllTrips = getAllTripsCached();
+    const cachedAllTrips = getAllTripsCached(true);
     const cachedQuickTrips = getQuickTripsCached();
     const cachedStats = getLifetimeStatsCached();
     if (cachedTrip !== undefined) {
@@ -838,7 +881,7 @@ function TripScreen() {
     }
     if (cachedAllTrips) {
       const drafts = cachedAllTrips.filter((t) => t.isDraft === true && !t.deletedAt);
-      const archived = cachedAllTrips.filter((t) => t.archivedAt != null && !t.deletedAt);
+      const archived = cachedAllTrips.filter((t) => t.archivedAt != null || t.deletedAt != null);
       const nonDrafts = cachedAllTrips.filter((t) => !t.isDraft && !t.deletedAt);
       setDraftTripsData(drafts);
       setArchivedTripsData(archived);
@@ -959,9 +1002,29 @@ function TripScreen() {
     }
   }, [trip?.hotelPhotos]);
 
-  // Button handlers
+  // Profile name for share card
+  const [profileName, setProfileName] = useState<string | null>(null);
+  const [profileHandle, setProfileHandle] = useState<string | undefined>();
+  const [profileAvatar, setProfileAvatar] = useState<string | undefined>();
+  useEffect(() => {
+    if (user?.id) {
+      getProfile(user.id).then(p => {
+        if (p?.fullName) setProfileName(p.fullName.split(' ')[0]);
+        if (p?.handle) setProfileHandle(p.handle);
+        if (p?.avatarUrl) setProfileAvatar(p.avatarUrl);
+      }).catch(() => {});
+    }
+  }, [user?.id]);
+
+  // Share
+  const [shareStatsVisible, setShareStatsVisible] = useState(false);
   const handleShare = () => {
-    Share.share({ message: `Check out our trip to ${trip?.destination ?? 'somewhere amazing'}!` });
+    if (effectiveTab === 'summary') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setShareStatsVisible(true);
+    } else {
+      Share.share({ message: `Check out our trip to ${trip?.destination ?? 'somewhere amazing'}!` });
+    }
   };
 
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -972,8 +1035,9 @@ function TripScreen() {
   };
 
   const handleEditTrip = () => {
+    if (!trip) return;
     setShowMoreMenu(false);
-    router.push('/trip-overview');
+    router.push({ pathname: '/trip-overview', params: { tripId: trip.id } } as never);
   };
 
   const handleFinishTrip = () => {
@@ -1016,7 +1080,7 @@ function TripScreen() {
             if (!trip) return;
             try {
               await archiveTrip(trip.id);
-              router.replace('/(tabs)/home');
+              load({ force: true });
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not archive trip');
             }
@@ -1051,7 +1115,7 @@ function TripScreen() {
   const handleSoftDelete = (tripId: string) => {
     Alert.alert(
       'Delete trip?',
-      'You can restore this from Archived for 30 days.',
+      'It will move to Archived where you can restore it later.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1068,6 +1132,13 @@ function TripScreen() {
         },
       ],
     );
+  };
+
+  const handleDeleteCurrentTrip = () => {
+    if (!trip) return;
+    const tripId = trip.id;
+    setShowMoreMenu(false);
+    handleSoftDelete(tripId);
   };
 
   const handleRestore = (tripId: string) => {
@@ -1117,6 +1188,16 @@ function TripScreen() {
     router.push('/invite');
   };
 
+  const handleCalendarInviteAll = () => {
+    if (!trip) return;
+    const url = buildTripCalendarUrl({
+      trip,
+      flights: flightsData,
+      members: membersData,
+    });
+    Linking.openURL(url).catch(() => {});
+  };
+
   const handleMemberEdit = (member: GroupMember) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditMember(member);
@@ -1140,17 +1221,52 @@ function TripScreen() {
       Linking.openURL(url).catch(() => {});
     } else if (action === 'invite') {
       setEditMember(null);
-      const msg = `Join our trip on AfterStay! Download the app and use your invite code to see all the trip details.`;
-      const target = member.phone
-        ? `sms:${member.phone}?body=${encodeURIComponent(msg)}`
-        : member.email
-          ? `mailto:${member.email}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(msg)}`
-          : null;
-      if (target) {
-        Linking.openURL(target).catch(() => {});
-      } else {
-        router.push('/invite');
+      if (!trip) return;
+      try {
+        const inviteCode = await createInviteCode(trip.id);
+        const webLink = `https://afterstay.travel/join/${inviteCode}`;
+        const deepLink = `afterstay://join-trip?code=${inviteCode}`;
+        const msg =
+          `Join our trip to ${trip.destination || trip.name} on AfterStay.\n\n` +
+          `Invite code: ${inviteCode}\n\n` +
+          `Tap to join: ${webLink}\n\n` +
+          `If the app is installed, open: ${deepLink}`;
+        const target = member.phone
+          ? `sms:${member.phone}?body=${encodeURIComponent(msg)}`
+          : member.email
+            ? `mailto:${member.email}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(msg)}`
+            : null;
+        if (target) {
+          Linking.openURL(target).catch(() => {});
+        } else {
+          Share.share({ message: msg }).catch(() => router.push('/invite'));
+        }
+      } catch (e: any) {
+        Alert.alert('Could not create invite', e?.message ?? 'Please try again.');
       }
+    } else if (action === 'remove') {
+      setEditMember(null);
+      if (!isPrimary || member.role === 'Primary') return;
+      Alert.alert(
+        'Remove from trip?',
+        `${member.name} will lose access to this trip, shared photos, places, and expenses.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await removeGroupMember(member.id);
+                setMembersData((prev) => prev.filter((m) => m.id !== member.id));
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } catch (e: any) {
+                Alert.alert('Could not remove member', e?.message ?? 'Please try again.');
+              }
+            },
+          },
+        ],
+      );
     } else if (action === 'photo') {
       setEditMember(null);
       if (Platform.OS === 'ios') {
@@ -1238,13 +1354,14 @@ function TripScreen() {
         setPackingItems(updated);
       }
     } catch {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
       // Revert on failure
       setPackingItems((prev) => prev.filter((it) => it.id !== tempId));
     }
   };
 
   const handleUpload = () => {
-    router.push('/add-file');
+    router.push({ pathname: '/add-file', params: trip?.id ? { tripId: trip.id } : {} } as never);
   };
 
   const handleDownload = async (fileUrl: string) => {
@@ -1256,7 +1373,12 @@ function TripScreen() {
   };
 
   // Show full empty state only when there are truly no trips at all
-  const hasAnyTrips = pastTripsData.length > 0 || quickTripsData.length > 0;
+  const hasAnyTrips =
+    !!trip ||
+    pastTripsData.length > 0 ||
+    archivedTripsData.length > 0 ||
+    quickTripsData.length > 0 ||
+    draftTripsData.length > 0;
   if (!trip && !loading && !hasAnyTrips) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -1315,17 +1437,34 @@ function TripScreen() {
           </View>
         </View>
 
-        {/* Active trip pill (overview only) */}
-        {trip && effectiveTab === 'overview' && (
-          <View style={styles.pillWrapper}>
-            <View style={styles.activePill}>
-              <PulsingDot color={colors.accent} />
-              <Text style={styles.activePillText}>
-                LIVE · {destLabel.toUpperCase() || 'TRIP'} · {dateRangeLabel.toUpperCase()}
-              </Text>
+        {/* Trip status pill (overview only) — uses dates, not DB status */}
+        {trip && effectiveTab === 'overview' && (() => {
+          const now = new Date();
+          const start = safeParse(trip.startDate);
+          const end = safeParse(trip.endDate);
+          const isActive = now >= start && now <= end;
+          const isUpcoming = now < start;
+          if (isActive) return (
+            <View style={styles.pillWrapper}>
+              <View style={styles.activePill}>
+                <PulsingDot color={colors.accent} />
+                <Text style={styles.activePillText}>
+                  LIVE · {destLabel.toUpperCase() || 'TRIP'} · {dateRangeLabel.toUpperCase()}
+                </Text>
+              </View>
             </View>
-          </View>
-        )}
+          );
+          if (isUpcoming) return (
+            <View style={styles.pillWrapper}>
+              <View style={[styles.activePill, { backgroundColor: colors.accentBg }]}>
+                <Text style={[styles.activePillText, { color: colors.accent }]}>
+                  UPCOMING · {destLabel.toUpperCase() || 'TRIP'} · {dateRangeLabel.toUpperCase()}
+                </Text>
+              </View>
+            </View>
+          );
+          return null;
+        })()}
 
         {/* Segmented control — always visible */}
           <View style={styles.segWrapper}>
@@ -1368,8 +1507,13 @@ function TripScreen() {
             colors={colors}
             onMemberEdit={handleMemberEdit}
             onMemberChat={handleMemberChat}
+            onMemberProfile={(m) => {
+              if (m.userId) router.push({ pathname: '/profile/[userId]', params: { userId: m.userId } } as never);
+            }}
             onInvite={handleInvite}
             onAddMember={() => router.push('/add-member')}
+            onCalendarInvite={handleCalendarInviteAll}
+            isPrimary={isPrimary}
             onLoad={load}
           />
         ) : (
@@ -1399,10 +1543,16 @@ function TripScreen() {
             quickTrips={quickTripsData}
             colors={colors}
             onAddTrip={() => setAddOpen(true)}
-            onTripPress={(tripId) => router.push({ pathname: '/trip-recap', params: { tripId } } as never)}
+            onTripPress={(tripId, cardStatus) => {
+              const pathname = cardStatus === 'past' || cardStatus === 'archived'
+                ? '/trip-recap'
+                : '/trip-overview';
+              router.push({ pathname, params: { tripId } } as never);
+            }}
             onQuickTripPress={(id) => router.push({ pathname: '/quick-trip-detail', params: { quickTripId: id } } as never)}
             onAddQuickTrip={() => router.push('/quick-trip-create' as never)}
             onDeleteTrip={handleSoftDelete}
+            onDeleteDraft={handleDeleteDraft}
             onArchiveTrip={handleArchiveIncoming}
             onEditTrip={(tripId) => router.push({ pathname: '/trip-overview', params: { tripId } } as never)}
             onRestoreTrip={handleRestore}
@@ -1426,6 +1576,7 @@ function TripScreen() {
             onAddItem={handleAddPackingItem}
             onUpload={handleUpload}
             onDownload={handleDownload}
+            onFilePress={setSelectedFile}
           />
         ) : (
           <EmptyState
@@ -1443,6 +1594,12 @@ function TripScreen() {
 
       {/* Add trip bottom sheet */}
       <AddTripSheet open={addOpen} onClose={() => setAddOpen(false)} />
+
+      <FileViewerSheet
+        visible={!!selectedFile}
+        file={selectedFile}
+        onClose={() => setSelectedFile(null)}
+      />
 
       {/* Member edit sheet */}
       <Modal
@@ -1482,6 +1639,11 @@ function TripScreen() {
                     <Text style={styles.sheetBtnText}>Edit Phone</Text>
                     {editMember.phone && <Text style={styles.sheetBtnMeta}>{editMember.phone}</Text>}
                   </Pressable>
+                  {isPrimary && editMember.role !== 'Primary' && (
+                    <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('remove')}>
+                      <Text style={[styles.sheetBtnText, { color: colors.danger }]}>Remove from Trip</Text>
+                    </Pressable>
+                  )}
                 </View>
                 <Pressable style={styles.sheetClose} onPress={() => setEditMember(null)}>
                   <Text style={styles.sheetCloseText}>Cancel</Text>
@@ -1523,40 +1685,84 @@ function TripScreen() {
         <Pressable style={styles.menuOverlay} onPress={() => setShowMoreMenu(false)}>
           <Pressable style={styles.menuSheet} onPress={() => {}}>
             <View style={styles.menuHandle}><View style={styles.menuHandleBar} /></View>
-            <Text style={styles.menuTitle}>{trip?.destination ?? 'Trip Options'}</Text>
-            {trip?.startDate && (
-              <Text style={styles.menuSubtitle}>{trip.startDate} – {trip.endDate}</Text>
+            <View style={styles.menuHeaderRow}>
+              <View style={styles.menuHeaderCopy}>
+                <Text style={styles.menuTitle} numberOfLines={1}>{trip?.destination ?? 'Trip Options'}</Text>
+                {trip?.startDate && (
+                  <Text style={styles.menuSubtitle}>
+                    {formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.menuCloseIcon}
+                onPress={() => setShowMoreMenu(false)}
+                activeOpacity={0.7}
+                accessibilityLabel="Close trip options"
+              >
+                <X size={18} color={colors.text2} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.menuDivider} />
+
+            {isPrimary && (
+              <TouchableOpacity style={styles.menuRow} onPress={handleEditTrip} activeOpacity={0.7}>
+                <View style={[styles.menuIconWrap, { backgroundColor: colors.accentBg }]}>
+                  <Pencil size={18} color={colors.accent} />
+                </View>
+                <View style={styles.menuRowText}>
+                  <Text style={styles.menuRowTitle}>Edit Trip Details</Text>
+                  <Text style={styles.menuRowSub}>Update accommodation, dates, and info</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {isPrimary && (
+              <TouchableOpacity style={styles.menuRow} onPress={handleFinishTrip} activeOpacity={0.7}>
+                <View style={[styles.menuIconWrap, { backgroundColor: 'rgba(45,106,46,0.15)' }]}>
+                  <CheckCircle size={18} color="#2d6a2e" />
+                </View>
+                <View style={styles.menuRowText}>
+                  <Text style={styles.menuRowTitle}>Finish Trip</Text>
+                  <Text style={styles.menuRowSub}>Complete your trip and generate a memory</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {isPrimary && (
+              <TouchableOpacity style={styles.menuRow} onPress={handleArchiveTrip} activeOpacity={0.7}>
+                <View style={[styles.menuIconWrap, { backgroundColor: 'rgba(196,85,74,0.12)' }]}>
+                  <Archive size={18} color={colors.danger} />
+                </View>
+                <View style={styles.menuRowText}>
+                  <Text style={[styles.menuRowTitle, { color: colors.danger }]}>Archive Trip</Text>
+                  <Text style={styles.menuRowSub}>Move to past trips without a memory</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            {isPrimary && (
+              <TouchableOpacity style={styles.menuRow} onPress={handleDeleteCurrentTrip} activeOpacity={0.7}>
+                <View style={[styles.menuIconWrap, { backgroundColor: 'rgba(196,85,74,0.12)' }]}>
+                  <Trash2 size={18} color={colors.danger} />
+                </View>
+                <View style={styles.menuRowText}>
+                  <Text style={[styles.menuRowTitle, { color: colors.danger }]}>Delete Trip</Text>
+                  <Text style={styles.menuRowSub}>Move to Archived so you can restore it later</Text>
+                </View>
+              </TouchableOpacity>
             )}
 
             <View style={styles.menuDivider} />
 
-            <TouchableOpacity style={styles.menuRow} onPress={handleEditTrip} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.menuRow} onPress={() => { setShowMoreMenu(false); router.push('/settings'); }} activeOpacity={0.7}>
               <View style={[styles.menuIconWrap, { backgroundColor: colors.accentBg }]}>
-                <Pencil size={18} color={colors.accent} />
+                <Settings size={18} color={colors.accent} />
               </View>
               <View style={styles.menuRowText}>
-                <Text style={styles.menuRowTitle}>Edit Trip Details</Text>
-                <Text style={styles.menuRowSub}>Update accommodation, dates, and info</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.menuRow} onPress={handleFinishTrip} activeOpacity={0.7}>
-              <View style={[styles.menuIconWrap, { backgroundColor: 'rgba(45,106,46,0.15)' }]}>
-                <CheckCircle size={18} color="#2d6a2e" />
-              </View>
-              <View style={styles.menuRowText}>
-                <Text style={styles.menuRowTitle}>Finish Trip</Text>
-                <Text style={styles.menuRowSub}>Complete your trip and generate a memory</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.menuRow} onPress={handleArchiveTrip} activeOpacity={0.7}>
-              <View style={[styles.menuIconWrap, { backgroundColor: 'rgba(196,85,74,0.12)' }]}>
-                <Archive size={18} color={colors.danger} />
-              </View>
-              <View style={styles.menuRowText}>
-                <Text style={[styles.menuRowTitle, { color: colors.danger }]}>Archive Trip</Text>
-                <Text style={styles.menuRowSub}>Move to past trips without a memory</Text>
+                <Text style={styles.menuRowTitle}>Settings</Text>
+                <Text style={styles.menuRowSub}>Profile, notifications, app updates</Text>
               </View>
             </TouchableOpacity>
 
@@ -1566,11 +1772,21 @@ function TripScreen() {
               onPress={() => setShowMoreMenu(false)}
               activeOpacity={0.7}
             >
-              <Text style={styles.menuCancelText}>Cancel</Text>
+              <Text style={styles.menuCancelText}>Back</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Share Travel Stats sheet */}
+      <ShareTravelStats
+        visible={shareStatsVisible}
+        data={pastTripsData.length > 0 ? AARON_DATA : PETER_DATA}
+        displayName={profileName ?? 'My'}
+        handle={profileHandle}
+        avatarUrl={profileAvatar}
+        onClose={() => setShareStatsVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -2162,8 +2378,11 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.canvas,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
       paddingHorizontal: 20,
       paddingBottom: 36,
+      maxHeight: '88%',
     },
     menuHandle: {
       alignItems: 'center',
@@ -2175,6 +2394,25 @@ const getStyles = (colors: ThemeColors) =>
       height: 4,
       borderRadius: 2,
       backgroundColor: colors.text3,
+    },
+    menuHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    menuHeaderCopy: {
+      flex: 1,
+      minWidth: 0,
+    },
+    menuCloseIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     menuTitle: {
       fontSize: 18,

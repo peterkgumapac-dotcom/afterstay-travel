@@ -23,7 +23,7 @@ import {
   ListPlus,
   Share2,
 } from 'lucide-react-native';
-import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, SlideOutDown } from 'react-native-reanimated';
 import {
   Canvas,
   Image as SkiaImage,
@@ -33,13 +33,18 @@ import {
   Blur,
   Fill,
   Rect,
+  Circle,
+  vec,
+  RadialGradient,
 } from '@shopify/react-native-skia';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { formatDatePHT } from '@/lib/utils';
 import { FilmFilterStrip } from './FilmFilterStrip';
 import { CaptionOverlay, type CaptionMode } from './CaptionOverlay';
+import { AdjustmentStrip } from './AdjustmentStrip';
 import { FILM_FILTERS, type FilmFilter } from '@/hooks/useFilmFilters';
+import { usePhotoAdjustments, DEFAULT_ADJUSTMENTS, type AdjustmentValues } from '@/hooks/usePhotoAdjustments';
 import type { MomentDisplay } from './types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -57,6 +62,7 @@ const EXPORT_QUALITY = 100;
 interface QueueItem {
   momentId: string;
   filterId: string;
+  adjustments: AdjustmentValues;
   captionMode: CaptionMode;
   captionText: string;
 }
@@ -83,6 +89,15 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
   const [exportProgress, setExportProgress] = useState('');
   const [toast, setToast] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
+
+  const {
+    values: adjustments,
+    setValue: setAdjustment,
+    resetAll: resetAdjustments,
+    combinedMatrix,
+    vignetteIntensity,
+    grainIntensity,
+  } = usePhotoAdjustments(activeFilter.matrix);
 
   const canvasRef = useCanvasRef();
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -209,6 +224,7 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
         {
           momentId: moment.id,
           filterId: activeFilter.id,
+          adjustments: { ...adjustments },
           captionMode,
           captionText: captionMode === 'custom' ? customCaption : '',
         },
@@ -221,10 +237,11 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
     if (!isLastPhoto) {
       setCurrentIdx((i) => i + 1);
       setActiveFilter(FILM_FILTERS[0]);
+      resetAdjustments();
       setCaptionMode('auto');
       setCustomCaption('');
     }
-  }, [moment, activeFilter, captionMode, customCaption, queue.length, isLastPhoto, showToast]);
+  }, [moment, activeFilter, adjustments, captionMode, customCaption, queue.length, isLastPhoto, showToast, resetAdjustments]);
 
   // ── Queue: export all ─────────────────────────────────────────────────────
 
@@ -251,9 +268,12 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
 
       setExportProgress(`Saving ${i + 1} of ${queue.length}...`);
 
-      // Switch canvas to this photo + filter
+      // Switch canvas to this photo + filter + adjustments
       setCurrentIdx(moments.indexOf(m));
       setActiveFilter(FILM_FILTERS.find((f) => f.id === item.filterId) ?? FILM_FILTERS[0]);
+      Object.entries(item.adjustments).forEach(([k, v]) => {
+        setAdjustment(k as keyof AdjustmentValues, v);
+      });
 
       // Wait for Skia to load the image and render — useImage is async.
       // We poll the canvas ref for a valid snapshot up to 2s.
@@ -324,7 +344,14 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
 
         {/* ── Photo preview ───────────────────────────────────────────── */}
         <View style={s.previewWrap}>
-          <SkiaPhoto photoUri={photoUri} filter={activeFilter} canvasRef={canvasRef} />
+          <SkiaPhoto
+            photoUri={photoUri}
+            matrix={combinedMatrix}
+            softness={activeFilter.softness}
+            vignetteAmount={vignetteIntensity}
+            grainAmount={Math.max(activeFilter.grain, grainIntensity)}
+            canvasRef={canvasRef}
+          />
 
           {activeFilter.letterbox && (
             <>
@@ -366,8 +393,16 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
             onSelect={handleFilterSelect}
           />
 
-          {/* Step 2: Add Caption */}
-          <StepLabel step={2} title="Add Caption" colors={colors} />
+          {/* Step 2: Adjust */}
+          <StepLabel step={2} title="Adjust" colors={colors} />
+          <AdjustmentStrip
+            values={adjustments}
+            onValueChange={setAdjustment}
+            onResetAll={resetAdjustments}
+          />
+
+          {/* Step 3: Add Caption */}
+          <StepLabel step={3} title="Add Caption" colors={colors} />
           <CaptionOverlay
             mode={captionMode}
             onModeChange={setCaptionMode}
@@ -377,8 +412,8 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
             date={moment.date}
           />
 
-          {/* Step 3: Save / Queue */}
-          <StepLabel step={3} title={isBatchMode ? 'Queue & Export' : 'Save & Share'} colors={colors} />
+          {/* Step 4: Save / Queue */}
+          <StepLabel step={4} title={isBatchMode ? 'Queue & Export' : 'Save & Share'} colors={colors} />
 
           {isBatchMode ? (
             /* ── Batch mode: Add to Queue + Export All ── */
@@ -406,10 +441,15 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
                       const qItem = queue.find((q) => q.momentId === moments[i].id);
                       if (qItem) {
                         setActiveFilter(FILM_FILTERS.find((f) => f.id === qItem.filterId) ?? FILM_FILTERS[0]);
+                        // Restore per-slider adjustments from queue
+                        Object.entries(qItem.adjustments).forEach(([k, v]) => {
+                          setAdjustment(k as keyof AdjustmentValues, v);
+                        });
                         setCaptionMode(qItem.captionMode);
                         setCustomCaption(qItem.captionText);
                       } else {
                         setActiveFilter(FILM_FILTERS[0]);
+                        resetAdjustments();
                         setCaptionMode('auto');
                         setCustomCaption('');
                       }
@@ -485,7 +525,7 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
         {/* ── Toast ────────────────────────────────────────────────────── */}
         {toast && (
           <Animated.View
-            entering={SlideInDown.springify().damping(18).stiffness(200)}
+            entering={FadeInDown.duration(250)}
             exiting={FadeOut.duration(200)}
             style={[s.toast, { bottom: insets.bottom + 16 }]}
           >
@@ -552,11 +592,17 @@ const stepStyles = StyleSheet.create({
 
 function SkiaPhoto({
   photoUri,
-  filter,
+  matrix,
+  softness,
+  vignetteAmount,
+  grainAmount,
   canvasRef,
 }: {
   photoUri: string;
-  filter: FilmFilter;
+  matrix: number[];
+  softness: number;
+  vignetteAmount: number;
+  grainAmount: number;
   canvasRef: ReturnType<typeof useCanvasRef>;
 }) {
   const skiaImage = useImage(photoUri);
@@ -572,12 +618,22 @@ function SkiaPhoto({
         width={SCREEN_W}
         height={PHOTO_H}
       >
-        <ColorMatrix matrix={filter.matrix} />
-        {filter.softness > 0 && <Blur blur={filter.softness} />}
+        <ColorMatrix matrix={matrix} />
+        {softness > 0 && <Blur blur={softness} />}
       </SkiaImage>
 
-      {filter.grain > 0 && (
-        <Rect x={0} y={0} width={SCREEN_W} height={PHOTO_H} opacity={filter.grain * 0.15}>
+      {vignetteAmount > 0 && (
+        <Circle cx={SCREEN_W / 2} cy={PHOTO_H / 2} r={SCREEN_W * 0.7}>
+          <RadialGradient
+            c={vec(SCREEN_W / 2, PHOTO_H / 2)}
+            r={SCREEN_W * 0.7}
+            colors={['transparent', `rgba(0,0,0,${vignetteAmount * 0.7})`]}
+          />
+        </Circle>
+      )}
+
+      {grainAmount > 0 && (
+        <Rect x={0} y={0} width={SCREEN_W} height={PHOTO_H} opacity={grainAmount * 0.15}>
           <Fill color="rgba(128,128,128,0.3)" />
         </Rect>
       )}

@@ -47,7 +47,7 @@ async function enrichWithPlaces(
   // Search Google Places for each suggestion name in parallel
   const enrichments = await Promise.allSettled(
     suggestions.map(async (s) => {
-      const results = await searchNearby(undefined, s.name, coords, 5000);
+      const { places: results } = await searchNearby(undefined, s.name, coords, 5000);
       // Find a result whose name closely matches
       const match = results.find(
         (r) => r.name.toLowerCase().includes(s.name.toLowerCase().split(' ')[0])
@@ -124,7 +124,7 @@ export async function runConciergeSearch(input: {
   const whatKey = input.what as ConciergeWhat;
   const searchParams = WHAT_TO_SEARCH[whatKey];
   if (searchParams) {
-    const nearby = await searchNearby(
+    const { places: nearby } = await searchNearby(
       searchParams.type, searchParams.keyword, input.coords, 3000,
     );
     const nearbyMap = new Map(nearby.map((n) => [n.name.toLowerCase(), n]));

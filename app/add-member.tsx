@@ -5,18 +5,19 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
-  View,
 } from 'react-native';
 
 import FormField from '@/components/FormField';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { addGroupMember } from '@/lib/supabase';
+import { addGroupMember, createInviteCode, getActiveTrip } from '@/lib/supabase';
 
 export default function AddMemberScreen() {
   const router = useRouter();
@@ -28,17 +29,66 @@ export default function AddMemberScreen() {
   const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const sendInvite = async (targetEmail?: string, targetPhone?: string) => {
+    const trip = await getActiveTrip();
+    if (!trip) return Alert.alert('No active trip', 'Create or select a trip before inviting members.');
+    const inviteCode = await createInviteCode(trip.id);
+    const webLink = `https://afterstay.travel/join/${inviteCode}`;
+    const deepLink = `afterstay://join-trip?code=${inviteCode}`;
+    const message =
+      `Join my trip to ${trip.destination || trip.name} on AfterStay.\n\n` +
+      `Invite code: ${inviteCode}\n\n` +
+      `Tap to join: ${webLink}\n\n` +
+      `If the app is installed, open: ${deepLink}`;
+
+    try {
+      if (targetPhone) {
+        await Linking.openURL(`sms:${targetPhone}?body=${encodeURIComponent(message)}`);
+      } else if (targetEmail) {
+        await Linking.openURL(
+          `mailto:${targetEmail}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(message)}`,
+        );
+      } else {
+        await Share.share({ message });
+      }
+    } catch {
+      await Share.share({ message });
+    }
+  };
+
   const save = async () => {
     if (!name.trim()) return Alert.alert('Name is required');
+    const trimmedEmail = email.trim();
+    const trimmedPhone = phone.trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return Alert.alert('Invalid email', 'Please enter a valid email address.');
+    }
+    if (trimmedPhone && !/^\+?[\d\s\-()]{7,}$/.test(trimmedPhone)) {
+      return Alert.alert('Invalid phone', 'Please enter a valid phone number.');
+    }
     setSubmitting(true);
     try {
       await addGroupMember({
         name: name.trim(),
-        email: email.trim() || undefined,
-        phone: phone.trim() || undefined,
+        email: trimmedEmail || undefined,
+        phone: trimmedPhone || undefined,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      Alert.alert(
+        'Member added',
+        trimmedEmail || trimmedPhone
+          ? 'Send them an invite code now so they can join with their own account.'
+          : 'They are on the trip list. You can share an invite code next.',
+        [
+          { text: 'Later', style: 'cancel', onPress: () => router.back() },
+          {
+            text: 'Send invite',
+            onPress: () => {
+              void sendInvite(trimmedEmail || undefined, trimmedPhone || undefined).finally(() => router.back());
+            },
+          },
+        ],
+      );
     } catch (e: any) {
       Alert.alert('Failed to add member', e?.message ?? 'Unknown error');
     } finally {
@@ -52,8 +102,8 @@ export default function AddMemberScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Add Member</Text>
-        <Text style={styles.subtitle}>Add someone to your trip group</Text>
+        <Text style={styles.title}>Add or invite member</Text>
+        <Text style={styles.subtitle}>Add someone to the trip, then send them a code to join with their own account.</Text>
 
         <FormField
           label="Name"

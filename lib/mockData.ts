@@ -21,36 +21,68 @@ import type {
 export type MockTripPhase = 'upcoming' | 'inflight' | 'arrived' | 'active';
 
 /** Full mock key: non-active segments + active sub-phases */
-export type MockKey = Exclude<UserSegment, 'active'> | `active:${MockTripPhase}`;
+export type MockKey =
+  | 'new'
+  | 'profile:missing'
+  | 'profile:incomplete'
+  | 'planning:draft'
+  | 'planning:no_hotel'
+  | 'planning:ready'
+  | `active:${MockTripPhase}`
+  | 'completed:recent'
+  | 'returning'
+  | 'history:quick'
+  | 'cache:empty';
 
 export const MOCK_KEYS: MockKey[] = [
   'new',
-  'planning',
+  'profile:missing',
+  'profile:incomplete',
+  'planning:draft',
+  'planning:no_hotel',
+  'planning:ready',
   'active:upcoming',
   'active:inflight',
   'active:arrived',
   'active:active',
+  'completed:recent',
   'returning',
+  'history:quick',
+  'cache:empty',
 ];
 
 export const MOCK_LABELS: Record<MockKey, string> = {
   new: 'New User',
-  planning: 'Planning (Draft Trip)',
+  'profile:missing': 'Profile Missing',
+  'profile:incomplete': 'Profile Incomplete',
+  'planning:draft': 'Planning (Draft Trip)',
+  'planning:no_hotel': 'Planning (No Hotel)',
+  'planning:ready': 'Planning (Ready)',
   'active:upcoming': 'Active — Upcoming (flight in 5 days)',
   'active:inflight': 'Active — In Flight (on the plane)',
   'active:arrived': 'Active — Just Arrived (landed 1hr ago)',
   'active:active': 'Active — At Destination (day 3)',
+  'completed:recent': 'Completed — Recent',
   returning: 'Returning (completed trips)',
+  'history:quick': 'History Only',
+  'cache:empty': 'Empty Cache Recovery',
 };
 
 export const MOCK_DESCRIPTIONS: Record<MockKey, string> = {
   new: 'First-time user, no trips created',
-  planning: 'Has a draft "Tokyo Spring Trip" in progress',
+  'profile:missing': 'Signed in before profile row exists',
+  'profile:incomplete': 'Profile exists but handle is missing',
+  'planning:draft': 'Has a draft "Tokyo Spring Trip" in progress',
+  'planning:no_hotel': 'Trip exists, accommodation still missing',
+  'planning:ready': 'Trip has destination, dates, flights, and stay details',
   'active:upcoming': 'Bali trip booked, outbound flight in 5 days',
   'active:inflight': 'Currently on PR 535 MNL → DPS',
   'active:arrived': 'Just landed in Bali, heading to hotel',
   'active:active': 'Day 3 in Bali, exploring Seminyak',
+  'completed:recent': 'Trip ended within the last 24 hours',
   returning: 'Your real completed trips and stats',
+  'history:quick': 'Imported or completed trips, no active plan',
+  'cache:empty': 'Fresh install with no local cached data',
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -230,6 +262,27 @@ const PLANNING_TRIP: Trip = {
   countryCode: 'JP',
 };
 
+const PLANNING_NO_HOTEL_TRIP: Trip = {
+  ...PLANNING_TRIP,
+  id: uuid(4),
+  isDraft: false,
+  accommodation: '',
+  address: '',
+  roomType: '',
+  checkIn: undefined,
+  checkOut: undefined,
+  hotelPhone: undefined,
+  bookingRef: undefined,
+  hotelLat: undefined,
+  hotelLng: undefined,
+};
+
+const PLANNING_READY_TRIP: Trip = {
+  ...PLANNING_TRIP,
+  id: uuid(5),
+  isDraft: false,
+};
+
 const PLANNING_MEMBERS: GroupMember[] = [
   { id: uuid(10), name: 'You', role: 'Primary', profilePhoto: undefined },
   { id: uuid(11), name: 'Rina', role: 'Member', profilePhoto: undefined },
@@ -257,6 +310,16 @@ const PAST_TRIP: Trip = {
   countryCode: 'PH',
   totalSpent: 28500,
   totalNights: 7,
+};
+
+const RECENT_PAST_TRIP: Trip = {
+  ...PAST_TRIP,
+  id: uuid(6),
+  name: 'Cebu Weekend',
+  destination: 'Cebu, Philippines',
+  startDate: daysFromNow(-4),
+  endDate: daysFromNow(0),
+  nights: 4,
 };
 
 const PAST_MOMENTS: Moment[] = [
@@ -313,11 +376,53 @@ export function parseMockKey(key: MockKey): { segment: UserSegment; phase?: Mock
   if (key.startsWith('active:')) {
     return { segment: 'active', phase: key.split(':')[1] as MockTripPhase };
   }
-  return { segment: key as UserSegment };
+  if (key.startsWith('planning:')) {
+    return { segment: 'planning' };
+  }
+  if (key === 'completed:recent' || key === 'history:quick' || key === 'returning') {
+    return { segment: 'returning' };
+  }
+  return { segment: 'new' };
 }
 
 export function getMockDataForKey(key: MockKey): MockSegmentData {
   const { segment, phase } = parseMockKey(key);
+
+  if (key === 'planning:no_hotel') {
+    return {
+      ...EMPTY,
+      trip: PLANNING_NO_HOTEL_TRIP,
+      members: PLANNING_MEMBERS,
+    };
+  }
+
+  if (key === 'planning:ready') {
+    return {
+      ...EMPTY,
+      trip: PLANNING_READY_TRIP,
+      flights: makeFlights('upcoming'),
+      members: PLANNING_MEMBERS,
+      places: PLACES.slice(0, 2),
+      packing: PACKING.slice(0, 3),
+    };
+  }
+
+  if (key === 'completed:recent') {
+    return {
+      ...EMPTY,
+      pastTrips: [RECENT_PAST_TRIP],
+      moments: PAST_MOMENTS.slice(0, 1),
+      lifetimeStats: { ...RETURNING_STATS, totalTrips: 1, totalNights: 4, totalMoments: 1 },
+    };
+  }
+
+  if (key === 'history:quick') {
+    return {
+      ...EMPTY,
+      pastTrips: [PAST_TRIP],
+      lifetimeStats: { ...RETURNING_STATS, totalTrips: 1, totalNights: 7 },
+    };
+  }
 
   switch (segment) {
     case 'new':
@@ -369,6 +474,11 @@ export function getMockDataForKey(key: MockKey): MockSegmentData {
 
 /** @deprecated Use getMockDataForKey with MockKey instead */
 export function getMockDataForSegment(segment: UserSegment): MockSegmentData {
-  const key: MockKey = segment === 'active' ? 'active:active' : segment;
+  const key: MockKey =
+    segment === 'active'
+      ? 'active:active'
+      : segment === 'planning'
+        ? 'planning:draft'
+        : segment;
   return getMockDataForKey(key);
 }

@@ -15,6 +15,8 @@ export interface MomentDisplay extends Moment {
   favoriteCount?: number;
   /** Whether the current user has favorited this moment */
   isFavorited?: boolean;
+  /** Number of comments on this moment */
+  commentCount?: number;
 }
 
 /** People map keyed by initial or full name. */

@@ -39,7 +39,7 @@ const SLIDE_DUR = 2500;
 const END_HOLD = 2000;
 const END_FADE = 1000;
 
-const SPRING_LAND = { damping: 14, stiffness: 90 };
+const SPRING_LAND = { damping: 20, stiffness: 90 };
 
 export interface RecapPhoto { uri: string; placeName?: string }
 interface Props { photos: RecapPhoto[]; dayLabel: string; visible: boolean; onClose: () => void }

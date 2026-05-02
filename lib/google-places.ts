@@ -1,8 +1,13 @@
-// Google Places API client — classic (legacy) endpoints.
+// Google Places API client — proxied through Supabase Edge Function.
+// The API key is server-side only; client never sees it.
 
-import { CONFIG } from './config';
+import { supabase } from './supabase';
 
-const API_KEY = CONFIG.GOOGLE_MAPS_KEY;
+const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place';
+const PUBLIC_PLACES_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ||
+  process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY ||
+  '';
 
 export interface PlaceSearchResult {
   place_id: string;
@@ -15,47 +20,138 @@ export interface PlaceSearchResult {
   lng: number;
 }
 
-function getPhotoUrl(photoRef: string, maxWidth: number = 800): string {
-  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photo_reference=${photoRef}&key=${API_KEY}`;
+async function callProxy<T>(action: string, payload: Record<string, unknown>): Promise<T | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    if (__DEV__) console.warn(`[places-proxy] No auth session for action: ${action}`);
+    return null;
+  }
+
+  try {
+    const url = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/places-proxy`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ action, payload }),
+    });
+    if (!res.ok) {
+      if (__DEV__) {
+        const body = await res.text().catch(() => '');
+        console.warn(`[places-proxy] ${action} failed (${res.status}): ${body}`);
+      }
+      return null;
+    }
+    return res.json();
+  } catch (err) {
+    if (__DEV__) console.warn(`[places-proxy] ${action} error:`, err);
+    return null;
+  }
+}
+
+async function resolvePhotoUrl(photoRef: string, maxWidth = 800): Promise<string | null> {
+  const result = await callProxy<{ url: string }>('photo', { photoReference: photoRef, maxWidth });
+  if (result?.url) return result.url;
+  if (!PUBLIC_PLACES_KEY) return null;
+  const params = new URLSearchParams({
+    maxwidth: String(maxWidth),
+    photo_reference: photoRef,
+    key: PUBLIC_PLACES_KEY,
+  });
+  return `${PLACES_BASE}/photo?${params.toString()}`;
+}
+
+async function directSearch(query: string, fields?: string): Promise<any | null> {
+  if (!PUBLIC_PLACES_KEY) return null;
+  try {
+    const params = new URLSearchParams({
+      input: query,
+      inputtype: 'textquery',
+      fields: fields || 'place_id,name,formatted_address,rating,user_ratings_total,photos,geometry',
+      key: PUBLIC_PLACES_KEY,
+    });
+    const res = await fetch(`${PLACES_BASE}/findplacefromtext/json?${params.toString()}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch (err) {
+    if (__DEV__) console.warn('[google-places] direct search failed:', err);
+    return null;
+  }
+}
+
+async function directPlaceLocation(placeId: string): Promise<any | null> {
+  if (!PUBLIC_PLACES_KEY) return null;
+  try {
+    const params = new URLSearchParams({
+      place_id: placeId,
+      fields: 'name,geometry',
+      key: PUBLIC_PLACES_KEY,
+    });
+    const res = await fetch(`${PLACES_BASE}/details/json?${params.toString()}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch (err) {
+    if (__DEV__) console.warn('[google-places] direct place location failed:', err);
+    return null;
+  }
+}
+
+async function directAutocomplete(
+  input: string,
+  locationBias?: { lat: number; lng: number },
+): Promise<any | null> {
+  if (!PUBLIC_PLACES_KEY) return null;
+  try {
+    const params = new URLSearchParams({
+      input,
+      key: PUBLIC_PLACES_KEY,
+    });
+    if (locationBias) {
+      params.set('location', `${locationBias.lat},${locationBias.lng}`);
+      params.set('radius', '50000');
+    }
+    const res = await fetch(`${PLACES_BASE}/autocomplete/json?${params.toString()}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch (err) {
+    if (__DEV__) console.warn('[google-places] direct autocomplete failed:', err);
+    return null;
+  }
 }
 
 // Pick the best exterior/place photo — avoid food close-ups and product shots.
-// Google Places photos are ordered: index 0 is typically the main/cover photo
-// chosen by Google (usually exterior or interior overview). Later indices are
-// more likely user-uploaded food or product close-ups.
-function pickBestPhoto(photos: any[] | undefined): string | null {
+function pickBestPhotoRef(photos: any[] | undefined): string | null {
   if (!photos || photos.length === 0) return null;
-
-  // Prefer the first landscape photo — index 0–2 are most likely storefront/exterior.
-  // Landscape aspect ratio strongly correlates with establishment shots vs food close-ups.
   const candidates = photos.slice(0, 5);
-  const landscape = candidates.find(
-    (p: any) => (p.width ?? 0) > (p.height ?? 0),
-  );
-  // Fall back to the very first photo (Google's chosen cover) rather than
-  // picking a random wide one from deeper in the array.
+  const landscape = candidates.find((p: any) => (p.width ?? 0) > (p.height ?? 0));
   const best = landscape ?? photos[0];
-  return best?.photo_reference ? getPhotoUrl(best.photo_reference, 1200) : null;
+  return best?.photo_reference ?? null;
+}
+
+async function resolvePhotos(photos: any[] | undefined, count = 1, maxWidth = 1200): Promise<string[]> {
+  if (!photos || photos.length === 0) return [];
+  const refs = photos
+    .slice(0, count)
+    .map((p: any) => p.photo_reference)
+    .filter(Boolean) as string[];
+  const urls = await Promise.all(refs.map((ref) => resolvePhotoUrl(ref, maxWidth)));
+  return urls.filter((u): u is string => u !== null);
 }
 
 export async function searchPlace(
   query: string,
   location?: string,
 ): Promise<PlaceSearchResult | null> {
-  if (!API_KEY) return null;
-
-  const encodedQuery = encodeURIComponent(location ? `${query} ${location}` : query);
-  const fields = 'place_id,name,formatted_address,rating,user_ratings_total,photos,geometry';
-  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodedQuery}&inputtype=textquery&fields=${fields}&key=${API_KEY}`;
-
-  const res = await fetch(url);
-  if (!res.ok) return null;
-
-  const data = await res.json();
+  const fullQuery = location ? `${query} ${location}` : query;
+  const data = await callProxy<any>('search', { query: fullQuery })
+    ?? await directSearch(fullQuery);
   const candidate = data?.candidates?.[0];
   if (!candidate) return null;
 
-  const photo_url = pickBestPhoto(candidate.photos);
+  const bestRef = pickBestPhotoRef(candidate.photos);
+  const photo_url = bestRef ? await resolvePhotoUrl(bestRef, 1200) : null;
 
   return {
     place_id: candidate.place_id ?? '',
@@ -74,34 +170,25 @@ export async function findPlacePhoto(name: string, location?: string): Promise<s
   return result?.photo_url ?? null;
 }
 
-/** Fetch multiple destination photos for the hero slideshow.
- *  Returns up to `count` photo URLs for a destination query (e.g. "Boracay, Philippines").
- *  Falls back to an empty array if the API returns nothing. */
 export async function fetchDestinationPhotos(
   destination: string,
-  count: number = 6,
+  count = 6,
 ): Promise<string[]> {
-  if (!API_KEY || !destination) return [];
-
-  const encodedQuery = encodeURIComponent(destination);
-  const fields = 'photos';
-  const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodedQuery}&inputtype=textquery&fields=${fields}&key=${API_KEY}`;
-
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return [];
-
-    const data = await res.json();
+  if (!destination) return [];
+  const queries = [
+    `${destination} travel destination`,
+    `${destination} landmark`,
+    `${destination} beach city skyline`,
+    destination,
+  ];
+  for (const query of queries) {
+    const data = await callProxy<any>('search', { query, fields: 'photos' })
+      ?? await directSearch(query, 'photos');
     const photos: any[] = data?.candidates?.[0]?.photos ?? [];
-    if (photos.length === 0) return [];
-
-    return photos
-      .slice(0, count)
-      .map((p: any) => p.photo_reference ? getPhotoUrl(p.photo_reference, 1200) : null)
-      .filter((url): url is string => url !== null);
-  } catch {
-    return [];
+    const urls = await resolvePhotos(photos, count, 1200);
+    if (urls.length > 0) return urls;
   }
+  return [];
 }
 
 export interface NearbyPlace {
@@ -116,6 +203,12 @@ export interface NearbyPlace {
   open_now?: boolean;
   photo_url: string | null;
   types: string[];
+  editorial_summary?: string;
+}
+
+export interface NearbySearchResult {
+  places: NearbyPlace[];
+  nextPageToken?: string;
 }
 
 export interface PlaceDetails {
@@ -136,65 +229,68 @@ export async function searchNearby(
   type?: string,
   keyword?: string,
   coords?: { lat: number; lng: number },
-  radius = 1500,
-): Promise<NearbyPlace[]> {
-  if (!API_KEY || !coords) return [];
-  const lat = coords.lat;
-  const lng = coords.lng;
-  const params = new URLSearchParams({
-    location: `${lat},${lng}`,
-    radius: String(radius),
-    key: API_KEY,
+  radius = 5000,
+): Promise<NearbySearchResult> {
+  if (!coords) return { places: [] };
+  const data = await callProxy<any>('nearby', {
+    lat: coords.lat,
+    lng: coords.lng,
+    radius,
+    type,
+    keyword,
   });
-  if (type) params.append('type', type);
-  if (keyword) params.append('keyword', keyword);
+  if (!data?.results) return { places: [] };
 
-  const allResults: NearbyPlace[] = [];
-  let url: string | null = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}`;
+  const places: NearbyPlace[] = (data.results as any[]).map((place: any) => ({
+    place_id: place.place_id,
+    name: place.name,
+    rating: place.rating ?? 0,
+    total_ratings: place.user_ratings_total ?? 0,
+    price_level: place.price_level,
+    address: place.vicinity ?? '',
+    lat: place.geometry?.location?.lat ?? 0,
+    lng: place.geometry?.location?.lng ?? 0,
+    open_now: place.opening_hours?.open_now,
+    photo_url: place.resolved_photo_url ?? null,
+    types: place.types ?? [],
+    editorial_summary: place.editorial_summary ?? undefined,
+  }));
 
-  // Fetch 1 page (20 results) to save API tokens
-  for (let page = 0; page < 1 && url; page++) {
-    const res: Response = await fetch(url);
-    if (!res.ok) break;
-    const data: any = await res.json();
+  return { places, nextPageToken: data.next_page_token ?? undefined };
+}
 
-    const mapped = (data.results ?? []).map((place: any) => ({
-      place_id: place.place_id,
-      name: place.name,
-      rating: place.rating ?? 0,
-      total_ratings: place.user_ratings_total ?? 0,
-      price_level: place.price_level,
-      address: place.vicinity ?? '',
-      lat: place.geometry?.location?.lat ?? 0,
-      lng: place.geometry?.location?.lng ?? 0,
-      open_now: place.opening_hours?.open_now,
-      photo_url: pickBestPhoto(place.photos),
-      types: place.types ?? [],
-    }));
-    allResults.push(...mapped);
+/** Fetch the next page of nearby results using a page token. */
+export async function searchNearbyPage(
+  pageToken: string,
+): Promise<NearbySearchResult> {
+  const data = await callProxy<any>('nearby', { pagetoken: pageToken, lat: 0, lng: 0 });
+  if (!data?.results) return { places: [] };
 
-    // Google requires a short delay before fetching next page
-    if (data.next_page_token) {
-      await new Promise((r) => setTimeout(r, 1500));
-      url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${data.next_page_token}&key=${API_KEY}`;
-    } else {
-      url = null;
-    }
-  }
+  const places: NearbyPlace[] = (data.results as any[]).map((place: any) => ({
+    place_id: place.place_id,
+    name: place.name,
+    rating: place.rating ?? 0,
+    total_ratings: place.user_ratings_total ?? 0,
+    price_level: place.price_level,
+    address: place.vicinity ?? '',
+    lat: place.geometry?.location?.lat ?? 0,
+    lng: place.geometry?.location?.lng ?? 0,
+    open_now: place.opening_hours?.open_now,
+    photo_url: place.resolved_photo_url ?? null,
+    types: place.types ?? [],
+    editorial_summary: place.editorial_summary ?? undefined,
+  }));
 
-  return allResults;
+  return { places, nextPageToken: data.next_page_token ?? undefined };
 }
 
 export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | null> {
-  if (!API_KEY) return null;
-  const fields = 'name,rating,formatted_phone_number,formatted_address,opening_hours,reviews,photos,website,url,price_level,editorial_summary';
-  const res = await fetch(
-    `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=${fields}&key=${API_KEY}`
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  const r = data.result;
+  const data = await callProxy<any>('details', { placeId });
+  const r = data?.result;
   if (!r) return null;
+
+  const photoUrls = await resolvePhotos(r.photos, 6, 600);
+
   return {
     name: r.name,
     rating: r.rating ?? 0,
@@ -207,7 +303,7 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
       text: rv.text,
       relative_time_description: rv.relative_time_description,
     })),
-    photos: (r.photos ?? []).slice(0, 6).map((p: any) => getPhotoUrl(p.photo_reference, 600)),
+    photos: photoUrls,
     website: r.website,
     url: r.url,
     price_level: r.price_level,
@@ -215,16 +311,10 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
   };
 }
 
-// ── Place location (lightweight — just name + coords) ───────────────────
-
 export async function getPlaceLocation(placeId: string): Promise<{ name: string; lat: number; lng: number } | null> {
-  if (!API_KEY) return null;
-  const res = await fetch(
-    `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,geometry&key=${API_KEY}`
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  const r = data.result;
+  const data = await callProxy<any>('location', { placeId })
+    ?? await directPlaceLocation(placeId);
+  const r = data?.result;
   if (!r?.geometry?.location) return null;
   return {
     name: r.name,
@@ -244,81 +334,21 @@ export async function placeAutocomplete(
   input: string,
   locationBias?: { lat: number; lng: number },
 ): Promise<AutocompleteResult[]> {
-  if (!API_KEY || !input.trim()) return [];
-  const params = new URLSearchParams({
-    input: input.trim(),
-    key: API_KEY,
-  });
-  if (locationBias) {
-    params.append('location', `${locationBias.lat},${locationBias.lng}`);
-    params.append('radius', '5000');
-  }
+  if (!input.trim()) return [];
   try {
-    const res: Response = await fetch(
-      `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
-    );
-    if (!res.ok) return [];
-    const data: any = await res.json();
-    return (data.predictions ?? []).map((p: any) => ({
+    const proxyData = await callProxy<any>('autocomplete', {
+      input: input.trim(),
+      lat: locationBias?.lat,
+      lng: locationBias?.lng,
+    });
+    const data = proxyData?.predictions?.length
+      ? proxyData
+      : await directAutocomplete(input.trim(), locationBias) ?? proxyData;
+    return (data?.predictions ?? []).filter((p: any) => p?.place_id && p?.description).map((p: any) => ({
       placeId: p.place_id,
       description: p.description,
     }));
   } catch {
     return [];
   }
-}
-
-export async function enrichRecommendations<T extends { name: string }>(
-  recs: T[],
-): Promise<
-  (T & {
-    photoUri: string | null;
-    googleMapsUri: string | null;
-    googlePlaceId: string | null;
-    totalRatings: number;
-    lat: number;
-    lng: number;
-  })[]
-> {
-  if (!API_KEY) {
-    return recs.map(r => ({
-      ...r,
-      photoUri: null,
-      googleMapsUri: null,
-      googlePlaceId: null,
-      totalRatings: 0,
-      lat: 0,
-      lng: 0,
-    }));
-  }
-
-  const results = await Promise.allSettled(
-    recs.map(rec => searchPlace(rec.name)),
-  );
-
-  return recs.map((rec, i) => {
-    const result = results[i];
-    if (result.status === 'fulfilled' && result.value) {
-      const v = result.value;
-      const googleMapsUri = `https://www.google.com/maps/place/?q=place_id:${v.place_id}`;
-      return {
-        ...rec,
-        photoUri: v.photo_url,
-        googleMapsUri,
-        googlePlaceId: v.place_id,
-        totalRatings: v.total_ratings,
-        lat: v.lat,
-        lng: v.lng,
-      };
-    }
-    return {
-      ...rec,
-      photoUri: null,
-      googleMapsUri: null,
-      googlePlaceId: null,
-      totalRatings: 0,
-      lat: 0,
-      lng: 0,
-    };
-  });
 }

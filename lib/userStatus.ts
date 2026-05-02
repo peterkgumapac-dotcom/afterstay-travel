@@ -13,6 +13,10 @@ export type UserStatus =
 const CACHE_KEY = '@user_status';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+function cacheKeyForUser(userId: string): string {
+  return `${CACHE_KEY}:${userId}`;
+}
+
 export interface StatusResult {
   status: UserStatus;
   activeTrip: Trip | null;
@@ -36,7 +40,7 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) {
       const delay = attempt === 1 ? 800 : 1500;
-      console.log(`[deriveUserStatus] attempt ${attempt + 1}/${3} after ${delay}ms delay`);
+      if (__DEV__) console.log(`[deriveUserStatus] attempt ${attempt + 1}/${3} after ${delay}ms delay`);
       await new Promise((r) => setTimeout(r, delay));
     }
 
@@ -44,28 +48,31 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
       // Ensure Supabase auth is ready before querying
       const { data: authData, error: authError } = await supabase.auth.getUser();
       if (authError || !authData.user) {
-        console.log(`[deriveUserStatus] auth not ready on attempt ${attempt + 1}`);
+        if (__DEV__) console.log(`[deriveUserStatus] auth not ready on attempt ${attempt + 1}`);
         lastError = authError ?? new Error('Auth not ready');
         continue;
       }
 
       const trips = await getAllUserTrips(userId);
-      console.log(`[deriveUserStatus] attempt ${attempt + 1}: ${trips.length} trips`);
+      if (__DEV__) console.log(`[deriveUserStatus] attempt ${attempt + 1}: ${trips.length} trips`);
 
-      if (trips.length === 0 && attempt < 2) {
-        // Might be auth race — retry
+      if (trips.length === 0 && attempt === 0) {
+        // Might be auth race on first attempt only — retry once
         continue;
       }
 
+      const bySoonestStart = (a: Trip, b: Trip) =>
+        new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+
       const activeTrips = trips.filter(
         (t) => t.status === 'Active' && !t.deletedAt && !t.archivedAt,
-      );
+      ).sort(bySoonestStart);
       const activeTrip = activeTrips[0] || null;
 
       const planningTrips = trips.filter(
         (t) =>
           t.status === 'Planning' && !t.deletedAt && !t.archivedAt && !t.isDraft,
-      );
+      ).sort(bySoonestStart);
 
       const draftTrips = trips.filter(
         (t) => t.isDraft === true && !t.deletedAt,
@@ -95,9 +102,11 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
         status = 'new';
       }
 
+      const currentTrip = activeTrip || planningTrips[0] || null;
+
       const result: StatusResult = {
         status,
-        activeTrip,
+        activeTrip: currentTrip,
         completedTrips,
         planningTrips,
         draftTrips,
@@ -107,21 +116,21 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
 
       // Cache for offline fallback
       await AsyncStorage.setItem(
-        CACHE_KEY,
-        JSON.stringify({ ...result, cachedAt: Date.now() }),
+        cacheKeyForUser(userId),
+        JSON.stringify({ ...result, userId, cachedAt: Date.now() }),
       );
 
-      console.log(`[deriveUserStatus] final status: ${status}`);
+      if (__DEV__) console.log(`[deriveUserStatus] final status: ${status}`);
       return result;
     } catch (error) {
-      console.log(`[deriveUserStatus] attempt ${attempt + 1} error:`, error);
+      if (__DEV__) console.log(`[deriveUserStatus] attempt ${attempt + 1} error:`, error);
       lastError = error as Error;
     }
   }
 
   // All attempts failed — fallback to cache or 'new'
-  console.log('[deriveUserStatus] all attempts failed, falling back');
-  const cached = await getCachedStatus();
+  if (__DEV__) console.log('[deriveUserStatus] all attempts failed, falling back');
+  const cached = await getCachedStatus(userId);
   if (cached) {
     return { ...cached, isLoading: false, error: lastError };
   }
@@ -136,11 +145,12 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
   };
 }
 
-async function getCachedStatus(): Promise<StatusResult | null> {
+async function getCachedStatus(userId: string): Promise<StatusResult | null> {
   try {
-    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    const raw = await AsyncStorage.getItem(cacheKeyForUser(userId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    if (parsed.userId && parsed.userId !== userId) return null;
     if (Date.now() - parsed.cachedAt > CACHE_TTL) return null;
     return parsed;
   } catch {
@@ -150,6 +160,6 @@ async function getCachedStatus(): Promise<StatusResult | null> {
 
 /** Force a refresh — call after trip creation / completion / archive. */
 export async function refreshUserStatus(userId: string): Promise<StatusResult> {
-  await AsyncStorage.removeItem(CACHE_KEY);
+  await AsyncStorage.removeItem(cacheKeyForUser(userId));
   return deriveUserStatus(userId);
 }

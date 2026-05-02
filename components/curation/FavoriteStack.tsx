@@ -18,7 +18,7 @@ const STACK_VISIBLE = 3;
 const CARD_SIZE = 28;
 const OFFSET = 4;
 
-const BOUNCE_SPRING = { damping: 8, stiffness: 300, mass: 0.6 };
+const BOUNCE_SPRING = { damping: 22, stiffness: 300, mass: 0.6 };
 
 /**
  * Top-right stack showing "count/max" with mini photo placeholders.

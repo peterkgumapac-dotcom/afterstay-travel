@@ -9,7 +9,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-20250514';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -98,6 +98,12 @@ Deno.serve(async (req) => {
         break;
 
       case 'trip-scan':
+        if (!Array.isArray(payload.imageBlocks) || payload.imageBlocks.length === 0) {
+          return new Response(JSON.stringify({ error: 'No screenshots provided for trip scan' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
         anthropicBody = {
           model: MODEL,
           max_tokens: 2048,
@@ -149,8 +155,22 @@ Deno.serve(async (req) => {
 
     if (!res.ok) {
       const body = await res.text();
-      const status = body.includes('credit balance is too low') ? 402 : res.status;
-      return new Response(JSON.stringify({ error: body }), {
+      let message = body;
+      let providerType: unknown;
+      try {
+        const parsed = JSON.parse(body) as { error?: { message?: string; type?: unknown } | string };
+        if (typeof parsed.error === 'string') message = parsed.error;
+        else if (parsed.error?.message) message = parsed.error.message;
+        providerType = typeof parsed.error === 'object' ? parsed.error?.type : undefined;
+      } catch {
+        // Keep raw body for non-JSON provider errors.
+      }
+      const status = /credit balance is too low/i.test(message) ? 402 : res.status;
+      return new Response(JSON.stringify({
+        error: message,
+        providerStatus: res.status,
+        providerType,
+      }), {
         status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -164,7 +184,8 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
+    const message = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

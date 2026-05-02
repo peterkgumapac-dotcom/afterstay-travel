@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronDown, Zap } from 'lucide-react-native';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ChevronDown, Zap } from 'lucide-react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MomentsTab } from '@/components/moments/MomentsTab';
@@ -16,8 +16,20 @@ import { formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 import type { QuickTrip, QuickTripPhoto } from '@/lib/quickTripTypes';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
+const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
+const TAB_LOAD_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), TAB_LOAD_TIMEOUT_MS);
+    promise
+      .then(resolve)
+      .catch(() => resolve(fallback))
+      .finally(() => clearTimeout(timer));
+  });
+}
 
 export default function MomentsScreenWithBoundary() {
   return (
@@ -34,8 +46,10 @@ function MomentsScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
   const { activeTrip: segActiveTrip, pastTrips: segPastTrips, segment, isTestMode } = useUserSegment();
-  const activeTrip = segActiveTrip ?? null;
+  const [extraActiveTrip, setExtraActiveTrip] = useState<Trip | null>(null);
   const [extraPastTrips, setExtraPastTrips] = useState<Trip[]>([]);
+  const [loadingTrips, setLoadingTrips] = useState(!isTestMode);
+  const activeTrip = segActiveTrip ?? extraActiveTrip;
   const pastTrips = segPastTrips.length > 0 ? segPastTrips : extraPastTrips;
 
   const [quickTrips, setQuickTrips] = useState<QuickTrip[]>([]);
@@ -48,7 +62,49 @@ function MomentsScreen() {
   const [qtCarouselVisible, setQtCarouselVisible] = useState(false);
   const [qtCarouselIndex, setQtCarouselIndex] = useState(0);
 
-  // Fetch trips + quick trips
+  // Fetch trips + quick trips. Moments cannot rely only on UserSegmentContext here,
+  // because brand-new accounts often hydrate trip state a beat later than the tab.
+  useEffect(() => {
+    if (isTestMode) {
+      setLoadingTrips(false);
+      return;
+    }
+    let cancelled = false;
+
+    const applyTrips = (all: Trip[]) => {
+      const visible = all.filter((tr) => !tr.deletedAt && !tr.archivedAt);
+      const active = visible.find((tr) => !tr.isDraft && (tr.status === 'Active' || tr.status === 'Planning')) ?? null;
+      const completed = visible.filter((tr) => tr.status === 'Completed');
+      if (cancelled) return;
+      setExtraActiveTrip(active);
+      setExtraPastTrips(completed);
+      if (!segActiveTrip && active) {
+        setSelectedTripId((prev) => prev ?? active.id);
+        setSelectedType('trip');
+      } else if (completed.length > 0) {
+        setSelectedTripId((prev) => prev ?? completed[0].id);
+        setSelectedType('trip');
+      }
+    };
+
+    const cachedAll = getAllTripsCached();
+    if (cachedAll) {
+      applyTrips(cachedAll);
+    } else {
+      setLoadingTrips(true);
+    }
+
+    withTimeout(getAllTripsPromise(true), [] as Trip[])
+      .then(applyTrips)
+      .finally(() => { if (!cancelled) setLoadingTrips(false); });
+
+    // Always fetch quick trips
+    withTimeout(getQuickTrips(), [] as QuickTrip[])
+      .then((trips) => { if (!cancelled) setQuickTrips(trips); })
+
+    return () => { cancelled = true; };
+  }, [isTestMode, segActiveTrip]);
+
   useEffect(() => {
     if (activeTrip) {
       setSelectedTripId(activeTrip.id);
@@ -56,23 +112,8 @@ function MomentsScreen() {
     } else if (pastTrips.length > 0) {
       setSelectedTripId((prev) => prev ?? pastTrips[0].id);
       setSelectedType('trip');
-    } else if (!isTestMode) {
-      const cachedAll = getAllTripsCached();
-      if (cachedAll) {
-        const completed = cachedAll.filter((tr) => tr.status === 'Completed');
-        setExtraPastTrips(completed);
-        if (completed.length > 0) { setSelectedTripId(completed[0].id); setSelectedType('trip'); }
-      }
-      getAllTripsPromise(true).catch(() => [] as Trip[]).then((all) => {
-        const completed = all.filter((tr) => tr.status === 'Completed');
-        setExtraPastTrips(completed);
-        if (completed.length > 0) setSelectedTripId((prev) => prev ?? completed[0].id);
-      });
     }
-
-    // Always fetch quick trips
-    getQuickTrips().then(setQuickTrips).catch(() => {});
-  }, [activeTrip, pastTrips, isTestMode]);
+  }, [activeTrip, pastTrips]);
 
   // Fetch photos when a quick trip is selected
   useEffect(() => {
@@ -98,6 +139,7 @@ function MomentsScreen() {
     : selectedTrip ? `${formatDatePHT((selectedTrip as Trip).startDate)} – ${formatDatePHT((selectedTrip as Trip).endDate)}` : '';
 
   const hasPicker = activeTrip === null && (pastTrips.length > 0 || quickTrips.length > 0);
+  const waitingForTrips = loadingTrips && activeTrip === null && pastTrips.length === 0 && quickTrips.length === 0;
   const hasAny = activeTrip !== null || pastTrips.length > 0 || quickTrips.length > 0;
 
   // Quick trip moment displays for BentoLayout
@@ -118,14 +160,11 @@ function MomentsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
-          <ArrowLeft size={22} color={colors.text} />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Moments</Text>
-        <View style={{ width: 22 }} />
       </View>
 
       {/* Trip picker */}
+      <>
       {hasPicker && (
         <View style={styles.pickerWrap}>
           <TouchableOpacity
@@ -198,28 +237,53 @@ function MomentsScreen() {
         </View>
       )}
 
-      {/* No trips at all */}
-      {!hasAny && (
+      {waitingForTrips && (
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyTitle}>Your travel memories start here</Text>
-          <Text style={styles.emptyText}>
-            Plan a trip or capture a quick trip to start building your photo gallery and travel story.
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-            <TouchableOpacity
-              style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.accent, borderRadius: 12 }}
-              onPress={() => router.push('/onboarding')}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Plan a Trip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
-              onPress={() => router.push('/quick-trip-create' as never)}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Quick Trip</Text>
-            </TouchableOpacity>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={[styles.emptyText, { marginTop: 12 }]}>Loading your memories...</Text>
+        </View>
+      )}
+
+      {/* No trips — inspiration + explore feed */}
+      {!waitingForTrips && !hasAny && (
+        <View style={{ flex: 1 }}>
+          {/* Inspiration CTA */}
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>Your travel memories start here</Text>
+            <Text style={styles.emptyText}>
+              Plan a trip to start building your photo gallery, or browse what other travelers are sharing.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity
+                style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.accent, borderRadius: 12 }}
+                onPress={() => router.push('/onboarding')}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Plan a Trip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
+                onPress={() => router.push('/quick-trip-create' as never)}
+                activeOpacity={0.7}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Quick Trip</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Explore feed — see what others are sharing */}
+          <View style={{ flex: 1, marginTop: 8 }}>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: colors.text3 }}>
+                EXPLORE
+              </Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text, marginTop: 2 }}>
+                See what travelers are sharing
+              </Text>
+            </View>
+            <React.Suspense fallback={<View style={{ padding: 40, alignItems: 'center' }}><Text style={{ color: colors.text3 }}>Loading...</Text></View>}>
+              <ExploreMomentsFeed />
+            </React.Suspense>
           </View>
         </View>
       )}
@@ -267,9 +331,11 @@ function MomentsScreen() {
           </Modal>
         </View>
       )}
+      </>
     </View>
   );
 }
+
 
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,10 +19,12 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import FormField from '@/components/FormField';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { joinTripByCode, addFlight } from '@/lib/supabase';
+import { joinTripByCode, addFlight, getFlights, updateMyTripMemberPreferences } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
+import { cacheSet } from '@/lib/cache';
+import { getPrimaryBookerFlights } from '@/lib/flightSharing';
 import { formatDatePHT } from '@/lib/utils';
-import type { Trip } from '@/lib/types';
+import type { Flight, Trip } from '@/lib/types';
 
 type Phase = 'code' | 'welcome' | 'flight';
 
@@ -44,7 +48,20 @@ export default function JoinTripScreen() {
   const [airline, setAirline] = useState('');
   const [departTime, setDepartTime] = useState('');
   const [arriveTime, setArriveTime] = useState('');
+  const [groupFlights, setGroupFlights] = useState<Flight[]>([]);
+  const [bookingRef, setBookingRef] = useState('');
+  const [seatNumber, setSeatNumber] = useState('');
+  const [sharesStay, setSharesStay] = useState(true);
   const [savingFlight, setSavingFlight] = useState(false);
+  const primaryBookerFlights = useMemo(() => getPrimaryBookerFlights(groupFlights), [groupFlights]);
+
+  const saveSharingPreference = async () => {
+    if (!tripInfo) return;
+    await updateMyTripMemberPreferences(tripInfo.id, {
+      sharesAccommodation: sharesStay,
+      travelNotes: sharesStay ? 'Confirmed shared accommodation' : 'Has separate accommodation',
+    }).catch(() => {});
+  };
 
   const handleJoin = async () => {
     if (!code.trim()) return Alert.alert('Enter an invite code');
@@ -54,6 +71,8 @@ export default function JoinTripScreen() {
     try {
       const result = await joinTripByCode(code.trim(), name.trim());
       setTripInfo(result.trip);
+      const flights = await getFlights(result.tripId).catch(() => [] as Flight[]);
+      setGroupFlights(flights);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase('welcome');
     } catch (e: any) {
@@ -67,6 +86,7 @@ export default function JoinTripScreen() {
     if (!flightNumber.trim() || !tripInfo) return;
     setSavingFlight(true);
     try {
+      await saveSharingPreference();
       await addFlight({
         tripId: tripInfo.id,
         direction: 'Outbound',
@@ -74,9 +94,12 @@ export default function JoinTripScreen() {
         airline: airline.trim() || undefined,
         departTime: departTime.trim() || undefined,
         arriveTime: arriveTime.trim() || undefined,
+        bookingRef: bookingRef.trim() || undefined,
+        seatNumber: seatNumber.trim() || undefined,
         passenger: name,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await cacheSet('onboarding_complete', true);
       router.replace('/(tabs)/home' as never);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to save flight');
@@ -85,8 +108,49 @@ export default function JoinTripScreen() {
     }
   };
 
-  const handleSkipFlight = () => {
+  const handleSkipFlight = async () => {
+    if (tripInfo) await saveSharingPreference();
+    await cacheSet('onboarding_complete', true);
     router.replace('/(tabs)/home' as never);
+  };
+
+  const handleUseSharedDetails = async () => {
+    if (!tripInfo) return;
+    setSavingFlight(true);
+    try {
+      await saveSharingPreference();
+
+      const results = await Promise.allSettled(primaryBookerFlights.map((sharedFlight) => addFlight({
+        tripId: tripInfo.id,
+        direction: sharedFlight.direction,
+        flightNumber: sharedFlight.flightNumber,
+        airline: sharedFlight.airline || undefined,
+        fromCity: sharedFlight.from || undefined,
+        toCity: sharedFlight.to || undefined,
+        departTime: sharedFlight.departTime || undefined,
+        arriveTime: sharedFlight.arriveTime || undefined,
+        bookingRef: bookingRef.trim() || undefined,
+        seatNumber: seatNumber.trim() || undefined,
+        passenger: name,
+      })));
+      const failed = results.filter((result) => result.status === 'rejected');
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await cacheSet('onboarding_complete', true);
+      if (failed.length > 0) {
+        Alert.alert(
+          'Trip joined',
+          'Your shared stay choice was saved, but some copied flight details need a retry from the trip screen.',
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)/home' as never) }],
+        );
+        return;
+      }
+      router.replace('/(tabs)/home' as never);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to save trip details');
+    } finally {
+      setSavingFlight(false);
+    }
   };
 
   // ── Phase: Enter code ──
@@ -143,7 +207,8 @@ export default function JoinTripScreen() {
   if (phase === 'welcome' && tripInfo) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.content}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Animated.View entering={FadeInDown.duration(400)} style={styles.header}>
             <View style={[styles.iconCircle, { backgroundColor: 'rgba(79,179,114,0.15)' }]}>
               <CheckCircle size={28} color="#4fb372" strokeWidth={1.8} />
@@ -166,12 +231,73 @@ export default function JoinTripScreen() {
           </Animated.View>
 
           <Animated.View entering={FadeInDown.duration(350).delay(300)}>
+            <View style={styles.sharedPanel}>
+              <Text style={styles.sharedTitle}>What are you sharing?</Text>
+              <Text style={styles.sharedSub}>
+                This helps the trip owner know who needs separate stay details.
+              </Text>
+              <View style={styles.choiceRow}>
+                <Pressable
+                  style={[styles.choiceBtn, sharesStay && styles.choiceBtnActive]}
+                  onPress={() => setSharesStay(true)}
+                >
+                  <Text style={[styles.choiceText, sharesStay && styles.choiceTextActive]}>
+                    Same hotel / apartment
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.choiceBtn, !sharesStay && styles.choiceBtnActive]}
+                  onPress={() => setSharesStay(false)}
+                >
+                  <Text style={[styles.choiceText, !sharesStay && styles.choiceTextActive]}>
+                    I have my own stay
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            {primaryBookerFlights.length > 0 && (
+              <View style={styles.sharedPanel}>
+                <Text style={styles.sharedTitle}>
+                  Same flights as the primary booker?
+                </Text>
+                <Text style={styles.sharedSub}>
+                  {primaryBookerFlights.length > 1
+                    ? `${primaryBookerFlights.length} organizer flight legs will be added with the same times.`
+                    : `${primaryBookerFlights[0].airline ? `${primaryBookerFlights[0].airline} ` : ''}${primaryBookerFlights[0].flightNumber} will be added with the same time.`}
+                </Text>
+                <FormField
+                  label="Your Confirmation Number (optional)"
+                  placeholder="e.g. ABC123"
+                  value={bookingRef}
+                  onChangeText={setBookingRef}
+                />
+                <FormField
+                  label="Your Seat (optional)"
+                  placeholder="e.g. 12A"
+                  value={seatNumber}
+                  onChangeText={setSeatNumber}
+                />
+              </View>
+            )}
+            <Pressable
+              style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]}
+              onPress={handleUseSharedDetails}
+              disabled={savingFlight}
+            >
+              {savingFlight ? (
+                <ActivityIndicator color={colors.ink} />
+              ) : (
+                <Text style={styles.primaryText}>
+                  {primaryBookerFlights.length > 1 ? 'Use organizer flights' : primaryBookerFlights.length > 0 ? 'Use organizer flight' : 'Save shared details'}
+                </Text>
+              )}
+            </Pressable>
             <Pressable
               style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]}
               onPress={() => setPhase('flight')}
             >
               <Plane size={16} color={colors.ink} strokeWidth={2} />
-              <Text style={styles.primaryText}>Add my flight details</Text>
+              <Text style={styles.primaryText}>Add different flight</Text>
             </Pressable>
           </Animated.View>
 
@@ -181,6 +307,7 @@ export default function JoinTripScreen() {
             </Pressable>
           </Animated.View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -188,6 +315,7 @@ export default function JoinTripScreen() {
   // ── Phase: Add flight ──
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Text style={styles.title}>Your flight</Text>
@@ -221,6 +349,18 @@ export default function JoinTripScreen() {
           value={arriveTime}
           onChangeText={setArriveTime}
         />
+        <FormField
+          label="Confirmation Number (optional)"
+          placeholder="e.g. ABC123"
+          value={bookingRef}
+          onChangeText={setBookingRef}
+        />
+        <FormField
+          label="Seat (optional)"
+          placeholder="e.g. 12A"
+          value={seatNumber}
+          onChangeText={setSeatNumber}
+        />
 
         <Pressable
           style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.8 }]}
@@ -238,6 +378,7 @@ export default function JoinTripScreen() {
           <Text style={styles.cancelText}>Skip</Text>
         </Pressable>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -318,5 +459,51 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       fontSize: 12,
       color: colors.text3,
       marginTop: spacing.xs,
+    },
+    sharedPanel: {
+      gap: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    sharedTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    sharedSub: {
+      fontSize: 12,
+      color: colors.text3,
+      textAlign: 'center',
+    },
+    choiceRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: spacing.xs,
+    },
+    choiceBtn: {
+      flex: 1,
+      minHeight: 48,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    choiceBtnActive: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentBg,
+    },
+    choiceText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text2,
+      textAlign: 'center',
+      lineHeight: 16,
+    },
+    choiceTextActive: {
+      color: colors.accent,
     },
   });

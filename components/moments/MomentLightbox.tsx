@@ -16,9 +16,9 @@ import { CachedImage } from '@/components/CachedImage';
 import Animated, {
   type SharedValue,
   FadeIn,
+  FadeInDown,
   FadeOut,
-  SlideInDown,
-  SlideOutDown,
+  FadeOutDown,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -423,8 +423,8 @@ export function MomentLightbox({
           >
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuVisible(false)} />
             <Animated.View
-              entering={SlideInDown.duration(280).damping(24)}
-              exiting={SlideOutDown.duration(200)}
+              entering={FadeInDown.duration(280)}
+              exiting={FadeOutDown.duration(200)}
               style={[styles.menuSheet, { paddingBottom: insets.bottom + 20 }]}
             >
               <View style={styles.menuHandle} />

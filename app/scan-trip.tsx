@@ -18,14 +18,143 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useLocalSearchParams } from 'expo-router';
+
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { scanTripDocuments, type ScannedTripDetails } from '@/lib/anthropic';
 import { compressImage } from '@/lib/compressImage';
-import { createTrip } from '@/lib/supabase';
+import { createTrip, finalizeDraftTrip, updateTripFromScan, replaceTripFlights, updateHotelCoordinates } from '@/lib/supabase';
+import { clearTripLocalData } from '@/lib/cache';
+import { invalidateHomeCache } from '@/hooks/useTabHomeData';
+import { invalidateTripCache } from '@/lib/tabDataCache';
+import { searchPlace } from '@/lib/google-places';
 
-type Phase = 'upload' | 'scanning' | 'review' | 'error';
+type Phase = 'upload' | 'scanning' | 'review' | 'saving' | 'error';
+
+type ScannedFlight = NonNullable<ScannedTripDetails['flights']>[number];
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms);
+      promise.finally(() => clearTimeout(timer)).catch(() => clearTimeout(timer));
+    }),
+  ]);
+}
+
+function scanErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (/request entity too large|payload too large|body size|413/i.test(message)) {
+    return 'Those screenshots are too large to scan. Try one clearer screenshot, or crop closer to the flight/hotel details.';
+  }
+  if (/edge function returned a non-2xx|non-2xx status/i.test(message)) {
+    return 'The trip scanner hit a server error before it could read the itinerary. Please try again with one clearer screenshot.';
+  }
+  if (/AI service not configured|missing auth|unauthorized/i.test(message)) {
+    return 'The trip scanner is not available for this session. Please sign out and back in, then try again.';
+  }
+  if (/schema cache|arrive_time|arrival_time|departure_time|depart_time/i.test(message)) {
+    return 'The flight table schema is still refreshing. Please try again in a minute.';
+  }
+  if (/timed out/i.test(message)) {
+    return message;
+  }
+  return message || 'Something went wrong while saving your trip.';
+}
+
+function airportCode(value?: string) {
+  if (!value) return '';
+  const paren = value.match(/\(([A-Z]{3})\)/i)?.[1];
+  if (paren) return paren.toUpperCase();
+  const standalone = value.match(/\b[A-Z]{3}\b/i)?.[0];
+  return standalone ? standalone.toUpperCase() : '';
+}
+
+function dayPart(value?: string) {
+  return value?.slice(0, 10) ?? '';
+}
+
+function routeKey(flight: ScannedFlight) {
+  return `${airportCode(flight.from) || flight.from?.toLowerCase()}-${airportCode(flight.to) || flight.to?.toLowerCase()}`;
+}
+
+function reverseRouteKey(flight: ScannedFlight) {
+  return `${airportCode(flight.to) || flight.to?.toLowerCase()}-${airportCode(flight.from) || flight.from?.toLowerCase()}`;
+}
+
+function mentionsDestination(value: string | undefined, destination: string | undefined) {
+  if (!value || !destination) return false;
+  const haystack = value.toLowerCase();
+  return destination
+    .toLowerCase()
+    .split(/[\s,()/-]+/)
+    .filter((part) => part.length >= 4)
+    .some((part) => haystack.includes(part));
+}
+
+function canonicalDirection(value?: string): 'Outbound' | 'Return' {
+  const direction = (value ?? '').trim().toLowerCase();
+  if (['return', 'inbound', 'arrival', 'arrive', 'back', 'homebound'].some((token) => direction.includes(token))) {
+    return 'Return';
+  }
+  return 'Outbound';
+}
+
+function normalizeScannedFlights(result: ScannedTripDetails): ScannedTripDetails {
+  const flights = result.flights;
+  if (!flights?.length) return result;
+
+  const sorted = [...flights].sort((a, b) => {
+    const at = a.departTime ? new Date(a.departTime).getTime() : Number.POSITIVE_INFINITY;
+    const bt = b.departTime ? new Date(b.departTime).getTime() : Number.POSITIVE_INFINITY;
+    return at - bt;
+  });
+
+  const normalized = sorted.map((flight, index) => {
+    let direction = canonicalDirection(flight.direction);
+    const departDay = dayPart(flight.departTime);
+
+    if (result.startDate && departDay === result.startDate) {
+      direction = 'Outbound';
+    } else if (result.endDate && departDay === result.endDate) {
+      direction = 'Return';
+    } else if (
+      mentionsDestination(flight.from, result.destination) &&
+      !mentionsDestination(flight.to, result.destination)
+    ) {
+      direction = 'Return';
+    } else if (
+      mentionsDestination(flight.to, result.destination) &&
+      !mentionsDestination(flight.from, result.destination)
+    ) {
+      direction = 'Outbound';
+    }
+
+    const hasReverseEarlier = sorted
+      .slice(0, index)
+      .some((other) => routeKey(other) === reverseRouteKey(flight));
+    if (hasReverseEarlier) direction = 'Return';
+
+    return { ...flight, direction };
+  });
+
+  const outboundCount = normalized.filter((f) => canonicalDirection(f.direction) === 'Outbound').length;
+  const returnCount = normalized.filter((f) => canonicalDirection(f.direction) === 'Return').length;
+  if (normalized.length >= 2 && returnCount === 0 && outboundCount === normalized.length) {
+    normalized[0] = { ...normalized[0], direction: 'Outbound' };
+    normalized[normalized.length - 1] = { ...normalized[normalized.length - 1], direction: 'Return' };
+  }
+
+  return { ...result, flights: normalized };
+}
+
+function looksLikeMultiDayTrip(result: ScannedTripDetails): boolean {
+  if (!result.startDate || !result.endDate) return false;
+  return result.startDate !== result.endDate;
+}
 
 const TIPS = [
   { icon: Plane, text: 'Flight booking confirmation with dates, times, and flight numbers' },
@@ -45,11 +174,23 @@ export default function ScanTripScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const params = useLocalSearchParams<{ tripId?: string }>();
+  const existingTripId = params.tripId ?? null;
+  const isUpdateMode = !!existingTripId;
 
   const [phase, setPhase] = useState<Phase>('upload');
   const [images, setImages] = useState<{ uri: string; base64?: string }[]>([]);
   const [result, setResult] = useState<ScannedTripDetails | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
+
+  const resetForRescan = useCallback((clearImages = false) => {
+    setResult(null);
+    setErrorMsg('');
+    setStatusMessage('');
+    if (clearImages) setImages([]);
+    setPhase('upload');
+  }, []);
 
   const pickImages = useCallback(async () => {
     if (Platform.OS === 'ios') {
@@ -89,50 +230,216 @@ export default function ScanTripScreen() {
   const handleScan = useCallback(async () => {
     if (images.length === 0) return;
     setPhase('scanning');
+    setStatusMessage('Preparing screenshots...');
 
     try {
       const prepared = await Promise.all(
         images.map(async (img) => {
-          const compressed = await compressImage(img.uri, 1200, 0.7);
+          const compressed = await compressImage(img.uri, 1000, 0.6);
           const base64 = await FileSystem.readAsStringAsync(compressed, {
             encoding: 'base64' as any,
           });
           return { base64, mimeType: 'image/jpeg' };
         }),
       );
+      const estimatedBytes = prepared.reduce((sum, img) => sum + Math.ceil(img.base64.length * 0.75), 0);
+      if (estimatedBytes > 4_500_000) {
+        throw new Error('Payload too large for trip scan');
+      }
 
-      const scanned = await scanTripDocuments(prepared);
+      setStatusMessage('Reading booking details...');
+      const scanned = normalizeScannedFlights(await withTimeout(
+        scanTripDocuments(prepared),
+        60_000,
+        'Scanning timed out. Please try one clearer screenshot or crop closer to the itinerary.',
+      ));
       setResult(scanned);
       setPhase('review');
+      setStatusMessage('');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
-      setErrorMsg(e?.message ?? 'Failed to scan documents.');
+      setErrorMsg(scanErrorMessage(e) || 'Failed to scan documents.');
       setPhase('error');
     }
   }, [images]);
 
-  const handleConfirm = useCallback(async () => {
-    if (!result) return;
+  // Geocode hotel/destination to get lat/lng — non-blocking, best-effort
+  const geocodeHotel = useCallback(async (tripId: string, accommodation?: string, address?: string, destination?: string) => {
+    const query = accommodation
+      ? `${accommodation} ${address ?? destination ?? ''}`.trim()
+      : address ?? destination;
+    if (!query) return;
     try {
-      await createTrip({
-        name: `Trip to ${result.destination}`,
-        destination: result.destination,
-        startDate: result.startDate,
-        endDate: result.endDate,
-        members: result.members,
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
-    } catch (e: any) {
-      Alert.alert('Failed to create trip', e?.message ?? 'Unknown error');
+      const place = await searchPlace(query);
+      if (place?.lat && place?.lng) {
+        await updateHotelCoordinates(tripId, place.lat, place.lng);
+      }
+    } catch {
+      // Non-critical — coordinates are a nice-to-have
     }
-  }, [result, router]);
+  }, []);
+
+  const finishTripUpdate = useCallback(async (tripId: string) => {
+    invalidateTripCache(tripId);
+    invalidateHomeCache();
+    await clearTripLocalData();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.back();
+  }, [router]);
+
+  const saveScannedTrip = useCallback(async () => {
+    if (!result) return;
+    setPhase('saving');
+    setStatusMessage(isUpdateMode ? 'Saving updated trip details...' : 'Creating your trip...');
+    try {
+      if (isUpdateMode && existingTripId) {
+        await withTimeout(
+          updateTripFromScan(existingTripId, result),
+          20_000,
+          'Updating trip details timed out. Please check your connection and try again.',
+        );
+
+        // Replace scanned flights so re-scanning an itinerary updates outbound/return
+        // details instead of stacking duplicates from old screenshots.
+        if (result.flights && result.flights.length > 0) {
+          setStatusMessage('Replacing flight itinerary...');
+          await withTimeout(
+            replaceTripFlights(
+              existingTripId,
+              result.flights.map((f) => ({
+                direction: f.direction,
+                flightNumber: f.flightNumber,
+                airline: f.airline,
+                fromCity: f.from,
+                toCity: f.to,
+                departTime: f.departTime,
+                arriveTime: f.arriveTime,
+                bookingRef: f.bookingRef,
+                passenger: f.passenger,
+              })),
+            ),
+            25_000,
+            'Replacing flights timed out. Please try again in a moment.',
+          );
+        }
+        await finalizeDraftTrip(existingTripId).catch(() => {});
+
+        geocodeHotel(existingTripId, result.accommodation, result.address, result.destination).catch(() => {});
+        setStatusMessage('Refreshing trip...');
+        await finishTripUpdate(existingTripId);
+      } else {
+        // Create new trip
+        const newTripId = await withTimeout(
+          createTrip({
+            name: `Trip to ${result.destination}`,
+            destination: result.destination,
+            startDate: result.startDate,
+            endDate: result.endDate,
+            members: result.members,
+            accommodation: result.accommodation,
+            address: result.address,
+            checkIn: result.checkIn,
+            checkOut: result.checkOut,
+            roomType: result.roomType,
+            bookingRef: result.bookingRef,
+            cost: result.cost,
+            costCurrency: result.costCurrency,
+          }),
+          25_000,
+          'Creating trip timed out. Please check your connection and try again.',
+        );
+
+        // Save scanned flights in one batch so round-trip itineraries do not
+        // get partially saved if outbound succeeds before return.
+        if (result.flights && result.flights.length > 0) {
+          setStatusMessage('Saving flight itinerary...');
+          await withTimeout(
+            replaceTripFlights(
+              newTripId,
+              result.flights.map((f) => ({
+                direction: f.direction,
+                flightNumber: f.flightNumber,
+                airline: f.airline,
+                fromCity: f.from,
+                toCity: f.to,
+                departTime: f.departTime,
+                arriveTime: f.arriveTime,
+                bookingRef: f.bookingRef,
+                passenger: f.passenger,
+              })),
+            ),
+            25_000,
+            'Saving flights timed out. Please try again in a moment.',
+          );
+        }
+
+        // Geocode hotel address to set coordinates
+        geocodeHotel(newTripId, result.accommodation, result.address, result.destination).catch(() => {});
+        setStatusMessage('Refreshing trip...');
+        await finishTripUpdate(newTripId);
+      }
+    } catch (e: any) {
+      setPhase('review');
+      setStatusMessage('');
+      Alert.alert(isUpdateMode ? 'Failed to update trip' : 'Failed to create trip', scanErrorMessage(e));
+    }
+  }, [result, isUpdateMode, existingTripId, geocodeHotel, finishTripUpdate]);
+
+  const handleConfirm = useCallback(() => {
+    if (!result) return;
+
+    if (!result.flights?.length) {
+      Alert.alert(
+        'No flights found',
+        'This scan did not detect any flight segments. If your itinerary has outbound or return flights, add a clearer screenshot before saving.',
+        [
+          { text: 'Rescan', onPress: () => resetForRescan(false) },
+          {
+            text: 'Save without flights',
+            style: 'destructive',
+            onPress: () => {
+              void saveScannedTrip();
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    if (result.flights.length === 1 && looksLikeMultiDayTrip(result)) {
+      Alert.alert(
+        'Only one flight found',
+        'This looks like a multi-day trip, but the scan found only one flight. If your screenshot includes a return flight, add or replace the screenshot before saving.',
+        [
+          { text: 'Add screenshots', onPress: () => resetForRescan(false) },
+          {
+            text: 'Save one-way',
+            style: 'destructive',
+            onPress: () => {
+              void saveScannedTrip();
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    void saveScannedTrip();
+  }, [result, resetForRescan, saveScannedTrip]);
 
   // ── Scanning phase ──
   if (phase === 'scanning') {
     return (
       <SafeAreaView style={styles.safe}>
-        <AfterStayLoader message="Scanning your trip documents..." />
+        <AfterStayLoader message={statusMessage || 'Scanning your trip documents...'} />
+      </SafeAreaView>
+    );
+  }
+
+  if (phase === 'saving') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <AfterStayLoader message={statusMessage || (isUpdateMode ? 'Updating your trip...' : 'Creating your trip...')} />
       </SafeAreaView>
     );
   }
@@ -156,11 +463,14 @@ export default function ScanTripScreen() {
 
   // ── Review phase ──
   if (phase === 'review' && result) {
+    const flightsFound = result.flights ?? [];
+    const hasFlights = flightsFound.length > 0;
+
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.title}>Trip detected</Text>
-          <Text style={styles.subtitle}>Review and confirm the details</Text>
+          <Text style={styles.title}>{isUpdateMode ? 'Details found' : 'Trip detected'}</Text>
+          <Text style={styles.subtitle}>{isUpdateMode ? 'Review and update your trip' : 'Review and confirm the details'}</Text>
 
           <View style={styles.reviewCard}>
             <ReviewRow label="Destination" value={result.destination} colors={colors} />
@@ -179,27 +489,61 @@ export default function ScanTripScreen() {
             )}
           </View>
 
-          {result.flights && result.flights.length > 0 && (
+          {hasFlights ? (
             <>
-              <Text style={[styles.sectionLabel, { color: colors.text3 }]}>FLIGHTS</Text>
-              {result.flights.map((f, i) => (
+              <Text style={[styles.sectionLabel, { color: colors.text3 }]}>
+                {flightsFound.length > 1 ? `FLIGHTS (${flightsFound.length})` : 'ONE FLIGHT FOUND'}
+              </Text>
+              {flightsFound.length === 1 && looksLikeMultiDayTrip(result) ? (
+                <View style={styles.missingFlightCard}>
+                  <View style={styles.missingFlightIcon}>
+                    <Plane size={18} color={colors.accent} strokeWidth={1.9} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.missingFlightTitle}>Return flight may be missing</Text>
+                    <Text style={styles.missingFlightText}>
+                      For screenshots like MNL - MPH plus MPH - MNL, both sections should appear here before saving.
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+              {flightsFound.map((f, i) => (
                 <View key={`${f.flightNumber}-${i}`} style={styles.reviewCard}>
                   <ReviewRow label="Flight" value={`${f.airline ?? ''} ${f.flightNumber}`.trim()} colors={colors} />
                   <ReviewRow label="Route" value={`${f.from} → ${f.to}`} colors={colors} />
                   <ReviewRow label="Direction" value={f.direction} colors={colors} />
+                  <ReviewRow label="Depart" value={f.departTime} colors={colors} />
+                  <ReviewRow label="Arrive" value={f.arriveTime} colors={colors} />
                   {f.bookingRef && <ReviewRow label="Booking ref" value={f.bookingRef} colors={colors} />}
                 </View>
               ))}
             </>
+          ) : (
+            <View style={styles.missingFlightCard}>
+              <View style={styles.missingFlightIcon}>
+                <Plane size={18} color={colors.accent} strokeWidth={1.9} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.missingFlightTitle}>No flights found</Text>
+                <Text style={styles.missingFlightText}>
+                  If this booking has outbound and return flights, add or replace screenshots before saving.
+                </Text>
+              </View>
+            </View>
           )}
 
           <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
-            <Text style={styles.confirmText}>Create trip</Text>
+            <Text style={styles.confirmText}>{isUpdateMode ? 'Update trip' : 'Create trip'}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => setPhase('upload')} style={styles.backBtn}>
-            <Text style={styles.backBtnText}>Rescan</Text>
-          </TouchableOpacity>
+          <View style={styles.reviewActionRow}>
+            <TouchableOpacity onPress={() => resetForRescan(false)} style={styles.secondaryBtn}>
+              <Text style={styles.secondaryBtnText}>Add screenshots</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => resetForRescan(true)} style={styles.secondaryBtn}>
+              <Text style={styles.secondaryBtnText}>Replace all</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </SafeAreaView>
     );
@@ -384,6 +728,16 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       alignItems: 'center',
     },
     confirmText: { fontSize: 15, fontWeight: '700', color: colors.ink },
+    secondaryBtn: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      paddingVertical: 12,
+      borderRadius: radius.md,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { fontSize: 13, fontWeight: '700', color: colors.text },
     backBtn: { alignItems: 'center', paddingVertical: spacing.md },
     backBtnText: { fontSize: 14, color: colors.text2 },
     retryBtn: {
@@ -410,5 +764,38 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       fontWeight: '700',
       letterSpacing: 1.2,
       textTransform: 'uppercase',
+    },
+    missingFlightCard: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      borderRadius: radius.lg,
+      padding: spacing.lg,
+    },
+    missingFlightIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+    },
+    missingFlightTitle: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
+      marginBottom: 3,
+    },
+    missingFlightText: {
+      color: colors.text2,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    reviewActionRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
     },
   });

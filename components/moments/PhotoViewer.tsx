@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Dimensions, Pressable } from 'react-native';
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Heart, Share2, Download, MoreHorizontal } from 'lucide-react-native';
+import { ChevronLeft, Heart, Share2, Download, MoreHorizontal, Users, Lock } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { CachedImage } from '@/components/CachedImage';
 import { PhotoCarousel } from './PhotoCarousel';
@@ -126,6 +126,25 @@ export function PhotoViewer({
           />
         </Pressable>
 
+        {/* Visibility toggle: Group (shared) vs Just Me (private) */}
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            if (current && onAction) onAction('archive', current);
+          }}
+          style={[
+            styles.bottomBtn,
+            current?.visibility === 'shared' && styles.bottomBtnActive,
+          ]}
+          accessibilityLabel={current?.visibility === 'shared' ? 'Shared with group' : 'Private'}
+        >
+          {current?.visibility === 'shared' ? (
+            <Users size={20} color="#d8ab7a" strokeWidth={2} />
+          ) : (
+            <Lock size={20} color="#fff" strokeWidth={2} />
+          )}
+        </Pressable>
+
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
@@ -139,7 +158,7 @@ export function PhotoViewer({
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
-            if (current && onAction) onAction('reel', current);
+            if (current && onAction) onAction('download-hd', current);
           }}
           style={styles.bottomBtn}
         >
@@ -214,5 +233,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bottomBtnActive: {
+    backgroundColor: 'rgba(216,171,122,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(216,171,122,0.4)',
   },
 });

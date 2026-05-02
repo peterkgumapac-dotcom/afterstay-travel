@@ -8,10 +8,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
 import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
+import { updateTripProperty } from '@/lib/supabase';
+import { formatDatePHT } from '@/lib/utils';
+import type { Trip } from '@/lib/types';
 
 interface Tile {
   id: string;
@@ -21,75 +23,48 @@ interface Tile {
 }
 
 interface Props {
-  tiles?: Tile[];
+  trip?: Trip | null;
 }
 
-const DEFAULT_TILES: Tile[] = [
-  { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: '3:00 PM' },
-  { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: '12:00 PM' },
-  { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: 'Not set' },
-  { id: 'door', iconName: 'door', label: 'Door code', value: '\u2014' },
-];
-
-const HINT_MAP: Record<string, string> = {
-  checkin: 'Apr 20',
-  checkout: 'Apr 27',
-  wifi: 'Add on arrival',
-  door: 'Add on arrival',
+// Map tile IDs to trip fields and updateTripProperty keys
+const TILE_TO_TRIP_KEY: Record<string, string> = {
+  checkin: 'Check-in Time',
+  checkout: 'Check-out Time',
+  wifi: 'WiFi Network',
+  door: 'Door Code',
 };
 
-const QUICK_ACCESS_KEY = 'quickAccess_v1';
+function buildTilesFromTrip(trip?: Trip | null): Tile[] {
+  return [
+    { id: 'checkin', iconName: 'checkin', label: 'Check-in', value: trip?.checkIn || 'Not set' },
+    { id: 'checkout', iconName: 'checkout', label: 'Checkout', value: trip?.checkOut || 'Not set' },
+    { id: 'wifi', iconName: 'wifi', label: 'WiFi', value: trip?.wifiSsid || 'Not set' },
+    { id: 'door', iconName: 'door', label: 'Door code', value: trip?.doorCode || '\u2014' },
+  ];
+}
 
-export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
+function buildHints(trip?: Trip | null): Record<string, string> {
+  return {
+    checkin: trip?.startDate ? formatDatePHT(trip.startDate) : '',
+    checkout: trip?.endDate ? formatDatePHT(trip.endDate) : '',
+    wifi: trip?.wifiSsid ? '' : 'Add on arrival',
+    door: trip?.doorCode ? '' : 'Add on arrival',
+  };
+}
+
+export const QuickAccessGrid: React.FC<Props> = ({ trip }) => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const mStyles = getModalStyles(colors);
-  const [tiles, setTiles] = useState<Tile[]>(() => {
-    if (!initialTiles) return DEFAULT_TILES;
-    const order = ['checkin', 'checkout', 'wifi', 'door'];
-    return order.map(
-      (id) =>
-        initialTiles.find((t) => t.id === id) ??
-        DEFAULT_TILES.find((t) => t.id === id)!,
-    );
-  });
+  const [tiles, setTiles] = useState<Tile[]>(() => buildTilesFromTrip(trip));
   const [editingTile, setEditingTile] = useState<Tile | null>(null);
   const [draft, setDraft] = useState('');
-  const [loaded, setLoaded] = useState(false);
+  const hints = useMemo(() => buildHints(trip), [trip]);
 
+  // Sync tiles when trip data changes
   React.useEffect(() => {
-    AsyncStorage.getItem(QUICK_ACCESS_KEY).then((saved) => {
-      if (saved) {
-        try {
-          setTiles(JSON.parse(saved));
-        } catch {
-          // ignore
-        }
-      }
-      setLoaded(true);
-    });
-  }, []);
-
-  React.useEffect(() => {
-    if (!loaded) return;
-    AsyncStorage.getItem(QUICK_ACCESS_KEY).then((saved) => {
-      if (!saved && initialTiles) {
-        const order = ['checkin', 'checkout', 'wifi', 'door'];
-        setTiles(
-          order.map(
-            (id) =>
-              initialTiles.find((t) => t.id === id) ??
-              DEFAULT_TILES.find((t) => t.id === id)!,
-          ),
-        );
-      }
-    });
-  }, [initialTiles, loaded]);
-
-  const save = async (next: Tile[]) => {
-    await AsyncStorage.setItem(QUICK_ACCESS_KEY, JSON.stringify(next));
-    setTiles(next);
-  };
+    setTiles(buildTilesFromTrip(trip));
+  }, [trip?.checkIn, trip?.checkOut, trip?.wifiSsid, trip?.doorCode]);
 
   const openEdit = (tile: Tile) => {
     Haptics.selectionAsync();
@@ -101,19 +76,19 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
 
   const saveEdit = async () => {
     if (!editingTile) return;
+    const newValue = draft.trim() || (editingTile.id === 'door' ? '\u2014' : 'Not set');
     const next = tiles.map((t) =>
-      t.id === editingTile.id
-        ? {
-            ...t,
-            value:
-              draft.trim() ||
-              (editingTile.id === 'door' ? '\u2014' : 'Not set'),
-          }
-        : t,
+      t.id === editingTile.id ? { ...t, value: newValue } : t,
     );
-    await save(next);
+    setTiles(next);
     setEditingTile(null);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Persist to trip in Supabase
+    const tripKey = TILE_TO_TRIP_KEY[editingTile.id];
+    if (tripKey && trip?.id && newValue !== 'Not set' && newValue !== '\u2014') {
+      updateTripProperty(trip.id, tripKey, newValue).catch(() => {});
+    }
   };
 
   const showValue = (t: Tile) => {
@@ -123,6 +98,24 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
 
   const isMuted = (t: Tile) =>
     t.value === 'Not set' || t.value === '\u2014';
+
+  // If all tiles are blank, show a compact prompt
+  const allBlank = tiles.every(isMuted);
+  if (allBlank) {
+    return (
+      <View style={styles.section}>
+        <View style={styles.blankCard}>
+          <Text style={styles.blankTitle}>Stay details</Text>
+          <Text style={styles.blankSub}>
+            Check-in time, WiFi, and door code will appear here once added.
+          </Text>
+          <TouchableOpacity style={styles.blankBtn} onPress={() => openEdit(tiles[0])} activeOpacity={0.7}>
+            <Text style={styles.blankBtnText}>Add check-in time</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.section}>
@@ -154,7 +147,7 @@ export const QuickAccessGrid: React.FC<Props> = ({ tiles: initialTiles }) => {
             >
               {showValue(tile)}
             </Text>
-            <Text style={styles.tileHint}>{HINT_MAP[tile.id] ?? ''}</Text>
+            <Text style={styles.tileHint}>{hints[tile.id] ?? ''}</Text>
           </AnimatedPressable>
         ))}
       </View>
@@ -239,6 +232,40 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       color: colors.text3,
       fontSize: 10.5,
       marginTop: 2,
+    },
+    blankCard: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 16,
+      padding: 18,
+      alignItems: 'center',
+      gap: 6,
+    },
+    blankTitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    blankSub: {
+      fontSize: 12,
+      color: colors.text3,
+      textAlign: 'center',
+      lineHeight: 17,
+    },
+    blankBtn: {
+      marginTop: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      backgroundColor: colors.accentBg,
+    },
+    blankBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.accent,
     },
   });
 

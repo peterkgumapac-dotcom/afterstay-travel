@@ -3,28 +3,31 @@ import * as Haptics from 'expo-haptics';
 import { useIsFocused } from '@react-navigation/native';
 import {
   Alert,
+  Image,
   View,
   Text,
-  RefreshControl,
   ScrollView,
   TouchableOpacity,
   Pressable,
   ActivityIndicator,
   StyleSheet,
+  Share,
 } from 'react-native';
-import { Film as FilmIcon, Star, Trash2, X as XIcon } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import { Camera, Compass, Eye, EyeOff } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
-import { getMoments, getGroupMembers, getMomentFavorites, toggleFavorite, toggleMomentVisibility as toggleVisibility, promoteMomentsToGroup, batchFavorite } from '@/lib/supabase';
+import { useTabBarVisibility } from '@/app/(tabs)/_layout';
+const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
+import { getMoments, getGroupMembers, getMomentFavorites, getCommentCounts, toggleFavorite, toggleMomentVisibility as toggleVisibility, setMomentVisibility, batchSetMomentVisibility, batchDeleteMoments, getDismissedMomentIds, dismissMoment, undismissMoment, batchDismissMoments, saveGroupPhotoToPrivate } from '@/lib/supabase';
+import CommentSheet from './CommentSheet';
 import {
   getMomentsPromise,
   getGroupMembersPromise,
   getMomentsCached,
   getGroupMembersCached,
-} from '@/hooks/useMoments';
-import { cachePhotoMeta, getCachedPhotosByTrip, setOfflineFavorite, getOfflineFavorites } from '@/lib/cache/sqliteCache';
+} from '@/hooks/useTabMoments';
+import { cachePhotoMeta, getCachedPhotosByTrip } from '@/lib/cache/sqliteCache';
 import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Moment, GroupMember, MomentVisibility } from '@/lib/types';
@@ -32,17 +35,29 @@ import type { MomentDisplay, PeopleMap } from './types';
 import { PersonChips } from './PersonChips';
 import { ScopeChips } from './ScopeChips';
 import type { ScopeFilter } from './ScopeChips';
-import { DaySectionHeader } from './DaySectionHeader';
-import { DayRail } from './DayRail';
 import { AlbumsGrid } from './AlbumsGrid';
 import { BentoLayout } from './BentoLayout';
-import { MomentLightbox } from './MomentLightbox';
-import { PhotoActionSheet } from './PhotoActionSheet';
+import { PhotoCarousel } from './PhotoCarousel';
 import { PhotoEditSheet } from './PhotoEditSheet';
 import { FilmEditor } from './FilmEditor';
 import { PhotoGridPicker } from './PhotoGridPicker';
+import { BatchActionBar, type BatchAction } from './BatchActionBar';
+import { PolaroidCollage } from './PolaroidCollage';
+
+const MOMENTS_LOAD_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), MOMENTS_LOAD_TIMEOUT_MS);
+    promise
+      .then(resolve)
+      .catch(() => resolve(fallback))
+      .finally(() => clearTimeout(timer));
+  });
+}
 import { CurationLightbox } from '@/components/curation/CurationLightbox';
-import { Modal } from 'react-native';
+import { Modal, RefreshControl } from 'react-native';
+import type { PhotoAction } from './PhotoActionsSheet';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -81,6 +96,7 @@ function buildMomentDisplays(
   people: PeopleMap,
   currentUserId: string | undefined,
   favorites: MomentFavoriteMap,
+  commentCounts?: Record<string, number>,
 ): MomentDisplay[] {
   return moments.map((m) => {
     const authorKey = m.takenBy ? m.takenBy.charAt(0).toUpperCase() : '';
@@ -95,6 +111,7 @@ function buildMomentDisplays(
       isMine: !!(currentUserId && (m.userId === currentUserId || !m.userId)),
       favoriteCount: fav?.count ?? 0,
       isFavorited: !!(currentUserId && fav?.userIds.includes(currentUserId)),
+      commentCount: m.id ? (commentCounts?.[m.id] ?? 0) : 0,
     };
   });
 }
@@ -120,47 +137,6 @@ function computeScopeCounts(moments: MomentDisplay[]): Record<ScopeFilter, numbe
   return counts;
 }
 
-/** Build day entries for the DayRail from date keys. */
-function buildDayEntries(dayCounts: Record<string, number>): { key: string; dayNum: string; count: number }[] {
-  return Object.keys(dayCounts)
-    .sort((a, b) => b.localeCompare(a))
-    .map((key) => {
-      const d = new Date(key + 'T00:00:00+08:00');
-      return {
-        key,
-        dayNum: String(d.getDate()),
-        count: dayCounts[key],
-      };
-    });
-}
-
-/** Group moments by day for section headers. */
-function groupByDay(moments: MomentDisplay[]): { date: string; label: string; sub: string; moments: MomentDisplay[] }[] {
-  const groups: Record<string, MomentDisplay[]> = {};
-  moments.forEach((m) => {
-    if (!groups[m.date]) groups[m.date] = [];
-    groups[m.date].push(m);
-  });
-
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-
-  return Object.keys(groups)
-    .sort((a, b) => b.localeCompare(a))
-    .map((date) => {
-      let label: string;
-      if (date === today) label = 'Today';
-      else if (date === yesterday) label = 'Yesterday';
-      else label = formatDatePHT(date);
-
-      // Build sub from unique locations
-      const locations = [...new Set(groups[date].map((m) => m.place ?? m.location).filter(Boolean))];
-      const sub = locations.slice(0, 2).join(' · ') || `${groups[date].length} moments`;
-
-      return { date, label, sub, moments: groups[date] };
-    });
-}
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -171,6 +147,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const router = useRouter();
   const s = useMemo(() => getStyles(colors), [colors]);
 
+  const loadRef = useRef<((silent?: boolean) => Promise<void>) | null>(null);
   const [rawMoments, setRawMoments] = useState<Moment[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -178,14 +155,12 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   const [tabMode, setTabMode] = useState<TabMode>('trip');
   const [activePerson, setActivePerson] = useState<string | null>(null);
+  const [showContributors, setShowContributors] = useState(false);
   const [activeScope, setActiveScope] = useState<ScopeFilter>('all');
-  const [activeDayRail, setActiveDayRail] = useState<string | null>(null);
   const [favoriteMap, setFavoriteMap] = useState<MomentFavoriteMap>({});
+  const [commentCountMap, setCommentCountMap] = useState<Record<string, number>>({});
+  const [commentMomentId, setCommentMomentId] = useState<string | null>(null);
 
-  const [openIdx, setOpenIdx] = useState<number | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const selectMode = selectedIds.size > 0;
-  const [actionMomentId, setActionMomentId] = useState<string | null>(null);
   const [editMomentId, setEditMomentId] = useState<string | null>(null);
   const [filmMoments, setFilmMoments] = useState<MomentDisplay[] | null>(null);
   const [filmInitIdx, setFilmInitIdx] = useState(0);
@@ -194,56 +169,25 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [curatedDays, setCuratedDays] = useState<Set<string>>(new Set());
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
 
-  const actionMoment = actionMomentId ? rawMoments.find((m) => m.id === actionMomentId) ?? null : null;
+  // Bento grid selection + carousel state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [collageVisible, setCollageVisible] = useState(false);
+  const [carouselVisible, setCarouselVisible] = useState(false);
+  const [carouselIndex, setCarouselIndex] = useState(0);
+
+  // Per-user dismissals (hide/show group photos)
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [showHidden, setShowHidden] = useState(false);
+
+  // Hide FAB when select mode is active
+  const { setFabVisible } = useTabBarVisibility();
+  useEffect(() => {
+    setFabVisible(!selectMode);
+    return () => setFabVisible(true);
+  }, [selectMode, setFabVisible]);
+
   const editMoment = editMomentId ? rawMoments.find((m) => m.id === editMomentId) ?? null : null;
-
-  // Action handlers
-  const handleToggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const handleLongPress = useCallback((id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSelectedIds(new Set([id]));
-  }, []);
-
-  const handleActionShare = useCallback(async () => {
-    if (!actionMoment) return;
-    const { Share } = await import('react-native');
-    Share.share({
-      message: [actionMoment.caption, actionMoment.location].filter(Boolean).join(' — '),
-      url: actionMoment.photo,
-    });
-  }, [actionMoment]);
-
-  const handleActionEdit = useCallback(() => {
-    if (actionMomentId) setEditMomentId(actionMomentId);
-  }, [actionMomentId]);
-
-  const handleActionSelectMultiple = useCallback(() => {
-    if (actionMomentId) setSelectedIds(new Set([actionMomentId]));
-  }, [actionMomentId]);
-
-  const handleActionDelete = useCallback(() => {
-    if (!actionMomentId) return;
-    const id = actionMomentId;
-    Alert.alert('Delete photo?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          const { deletePage } = await import('@/lib/supabase');
-          try { await deletePage(id); } catch (err) { if (__DEV__) console.warn('[Moments] operation failed:', err); }
-          setRawMoments((prev) => prev.filter((m) => m.id !== id));
-        },
-      },
-    ]);
-  }, [actionMomentId]);
 
   const handleEditSave = useCallback(async (id: string, updates: { caption?: string; location?: string }) => {
     try {
@@ -257,57 +201,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       );
     } catch (err) { if (__DEV__) console.warn('[Moments] edit failed:', err); }
   }, []);
-
-  const handleDeleteSelected = useCallback(async () => {
-    const count = selectedIds.size;
-    Alert.alert(
-      `Delete ${count} photo${count > 1 ? 's' : ''}?`,
-      'This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const { deletePage } = await import('@/lib/supabase');
-            for (const id of selectedIds) {
-              try { await deletePage(id); } catch (err) { if (__DEV__) console.warn('[Moments] operation failed:', err); }
-            }
-            setRawMoments((prev) => prev.filter((m) => !selectedIds.has(m.id)));
-            setSelectedIds(new Set());
-          },
-        },
-      ],
-    );
-  }, [selectedIds]);
-
-  const handlePromoteToGroup = useCallback(async () => {
-    const ids = [...selectedIds];
-    try {
-      await promoteMomentsToGroup(ids);
-      setRawMoments((prev) =>
-        prev.map((m) => ids.includes(m.id) ? { ...m, visibility: 'shared' as MomentVisibility } : m),
-      );
-      setSelectedIds(new Set());
-    } catch (err) { if (__DEV__) console.warn('[Moments] promote failed:', err); }
-  }, [selectedIds]);
-
-  const handleBatchFavorite = useCallback(async () => {
-    const ids = [...selectedIds];
-    try {
-      await batchFavorite(ids);
-      const newMap = { ...favoriteMap };
-      ids.forEach((id) => {
-        if (!newMap[id]) newMap[id] = { count: 0, userIds: [] };
-        if (user?.id && !newMap[id].userIds.includes(user.id)) {
-          newMap[id].count++;
-          newMap[id].userIds.push(user.id);
-        }
-      });
-      setFavoriteMap(newMap);
-      setSelectedIds(new Set());
-    } catch (err) { if (__DEV__) console.warn('[Moments] batch fav failed:', err); }
-  }, [selectedIds, favoriteMap, user]);
 
   const handleFavorite = useCallback(async (momentId: string) => {
     try {
@@ -339,6 +232,137 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       );
     } catch (err) { if (__DEV__) console.warn('[Moments] visibility toggle failed:', err); }
   }, []);
+
+  const handleSetVisibility = useCallback(async (momentId: string, vis: 'shared' | 'private' | 'album') => {
+    try {
+      await setMomentVisibility(momentId, vis);
+      setRawMoments((prev) =>
+        prev.map((m) => m.id === momentId ? { ...m, visibility: vis } : m),
+      );
+    } catch (err) { if (__DEV__) console.warn('[Moments] set visibility failed:', err); }
+  }, []);
+
+  const handlePhotoAction = useCallback((action: PhotoAction, moment: MomentDisplay) => {
+    if (action === 'share') {
+      Share.share({
+        message: [moment.caption, moment.location].filter(Boolean).join(' — '),
+        url: moment.photo,
+      });
+    } else if (action === 'share-hd') {
+      const hdUrl = moment.hdPhoto || moment.photo;
+      Share.share({
+        message: [moment.caption, moment.location].filter(Boolean).join(' — '),
+        url: hdUrl,
+      });
+    } else if (action === 'download-hd') {
+      const hdUrl = moment.hdPhoto || moment.photo;
+      if (hdUrl) {
+        (async () => {
+          try {
+            const { shareAsync } = await import('expo-sharing');
+            const FileSystem = await import('expo-file-system/legacy');
+            const ext = hdUrl.match(/\.\w+$/)?.[0] || '.jpeg';
+            const localPath = `${FileSystem.cacheDirectory}moment-hd-${moment.id}${ext}`;
+            const download = await FileSystem.downloadAsync(hdUrl, localPath);
+            await shareAsync(download.uri);
+          } catch (err) { if (__DEV__) console.warn('[Moments] HD download failed:', err); }
+        })();
+      }
+    } else if (action === 'reel') {
+      setFilmMoments([moment]);
+      setFilmInitIdx(0);
+    } else if (action === 'archive') {
+      handleToggleVisibility(moment.id);
+    } else if (action === 'set-private') {
+      handleSetVisibility(moment.id, 'private');
+    } else if (action === 'set-album') {
+      handleSetVisibility(moment.id, 'album');
+    } else if (action === 'set-shared') {
+      handleSetVisibility(moment.id, 'shared');
+    } else if (action === 'set-public') {
+      handleSetVisibility(moment.id, 'shared');
+      import('@/lib/supabase').then(({ setMomentPublic }) => {
+        setMomentPublic(moment.id, true).catch(() => {});
+      });
+    } else if (action === 'edit') {
+      setEditMomentId(moment.id);
+    } else if (action === 'delete') {
+      Alert.alert('Delete photo?', 'This cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const { deleteMoment: deleteMomentFn } = await import('@/lib/supabase');
+            try { await deleteMomentFn(moment.id); } catch (err) { if (__DEV__) console.warn('[Moments] delete failed:', err); }
+            setRawMoments((prev) => prev.filter((m) => m.id !== moment.id));
+          },
+        },
+      ]);
+    } else if (action === 'hide') {
+      dismissMoment(moment.id).catch((err) => { if (__DEV__) console.warn('[Moments] dismiss failed:', err); });
+      setDismissedIds((prev) => new Set([...prev, moment.id]));
+    } else if (action === 'unhide') {
+      undismissMoment(moment.id).catch((err) => { if (__DEV__) console.warn('[Moments] undismiss failed:', err); });
+      setDismissedIds((prev) => { const next = new Set(prev); next.delete(moment.id); return next; });
+    } else if (action === 'save-to-mine') {
+      saveGroupPhotoToPrivate(moment.id)
+        .then(() => { loadRef.current?.(true); })
+        .catch((err) => { if (__DEV__) console.warn('[Moments] save-to-mine failed:', err); });
+    }
+  }, [handleToggleVisibility, handleSetVisibility]);
+
+  const handleBatchAction = useCallback((action: BatchAction) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    const exitSelect = () => { setSelectMode(false); setSelectedIds(new Set()); };
+
+    if (action === 'collage') {
+      setCollageVisible(true);
+      return;
+    }
+
+    if (action === 'hide') {
+      batchDismissMoments(ids).catch((err) => { if (__DEV__) console.warn('[Moments] batch dismiss failed:', err); });
+      setDismissedIds((prev) => new Set([...prev, ...ids]));
+      exitSelect();
+      return;
+    }
+
+    if (action === 'delete') {
+      Alert.alert(`Delete ${ids.length} photos?`, 'This cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try { await batchDeleteMoments(ids); } catch (err) { if (__DEV__) console.warn('[Moments] batch delete failed:', err); }
+            setRawMoments((prev) => prev.filter((m) => !selectedIds.has(m.id)));
+            exitSelect();
+          },
+        },
+      ]);
+      return;
+    }
+
+    // Visibility actions
+    const visMap: Record<string, 'private' | 'album' | 'shared'> = {
+      'set-private': 'private',
+      'set-album': 'album',
+      'set-shared': 'shared',
+    };
+    const vis = visMap[action];
+    if (vis) {
+      (async () => {
+        try { await batchSetMomentVisibility(ids, vis); } catch (err) { if (__DEV__) console.warn('[Moments] batch visibility failed:', err); }
+        setRawMoments((prev) =>
+          prev.map((m) => selectedIds.has(m.id) ? { ...m, visibility: vis } : m),
+        );
+        exitSelect();
+      })();
+    }
+  }, [selectedIds]);
 
   // Curation: long-press a day chip to curate that day's photos
   const handleCurationLongPress = useCallback((day: string) => {
@@ -396,13 +420,22 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       }
 
       const [moments, groupMembers, favs] = await Promise.all([
-        getMomentsPromise(tripId, silent).catch(() => [] as Moment[]),
-        getGroupMembersPromise(tripId, silent).catch(() => [] as GroupMember[]),
-        getMomentFavorites(tripId).catch(() => ({} as MomentFavoriteMap)),
+        withTimeout(getMomentsPromise(tripId ?? '', silent), [] as Moment[]),
+        withTimeout(getGroupMembersPromise(tripId ?? '', silent), [] as GroupMember[]),
+        withTimeout(getMomentFavorites(tripId), {} as MomentFavoriteMap),
       ]);
       setRawMoments(moments);
       setMembers(groupMembers);
       setFavoriteMap(favs);
+
+      // Fetch comment counts + dismissals in parallel
+      const momentIds = moments.map(m => m.id).filter(Boolean) as string[];
+      if (momentIds.length > 0) {
+        getCommentCounts(momentIds).then(setCommentCountMap).catch(() => {});
+      }
+      if (tripId) {
+        getDismissedMomentIds(tripId).then(setDismissedIds).catch(() => {});
+      }
 
       // Cache photo metadata to SQLite for offline
       if (tripId && moments.length > 0) {
@@ -430,11 +463,13 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       setRefreshing(false);
     }
   }, [tripId]);
+  loadRef.current = load;
 
   useEffect(() => {
     // Cache-first: load silently if we have cached data
     const cached = tripId ? getMomentsCached(tripId) : undefined;
     if (cached !== undefined) {
+      setLoading(false);
       load(true);
     } else {
       load();
@@ -455,8 +490,8 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const currentUserId = user?.id;
   const people = useMemo(() => buildPeopleMap(members), [members]);
   const allMoments = useMemo(
-    () => buildMomentDisplays(rawMoments, people, currentUserId, favoriteMap),
-    [rawMoments, people, currentUserId, favoriteMap],
+    () => buildMomentDisplays(rawMoments, people, currentUserId, favoriteMap, commentCountMap),
+    [rawMoments, people, currentUserId, favoriteMap, commentCountMap],
   );
   const dayCounts = useMemo(() => computeDayCounts(allMoments), [allMoments]);
   const scopeCounts = useMemo(() => computeScopeCounts(allMoments), [allMoments]);
@@ -469,7 +504,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     () => new Set(allMoments.map((m) => m.userId).filter(Boolean)).size,
     [allMoments],
   );
-  const dayEntries = useMemo(() => buildDayEntries(dayCounts), [dayCounts]);
 
   const personCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -486,29 +520,12 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     else if (activeScope === 'me') result = result.filter((m) => m.visibility === 'private');
     else if (activeScope === 'album') result = result.filter((m) => m.visibility === 'album');
     else if (activeScope === 'favorites') result = result.filter((m) => (m.favoriteCount ?? 0) > 0 || m.isFavorited);
-    if (activeDayRail) result = result.filter((m) => m.date === activeDayRail);
-    return result;
-  }, [allMoments, activePerson, activeScope, activeDayRail]);
-
-  // Guard stale lightbox index when filtered array changes
-  useEffect(() => {
-    if (openIdx !== null && openIdx >= filtered.length) {
-      setOpenIdx(filtered.length > 0 ? filtered.length - 1 : null);
+    // Per-user dismissals — hide unless toggle is on
+    if (!showHidden && dismissedIds.size > 0) {
+      result = result.filter((m) => !dismissedIds.has(m.id));
     }
-  }, [filtered.length, openIdx]);
-
-  const dayGroups = useMemo(() => groupByDay(filtered), [filtered]);
-
-  // Lightbox handlers
-  const handleOpen = useCallback(
-    (moment: MomentDisplay) => {
-      const idx = filtered.indexOf(moment);
-      setOpenIdx(idx >= 0 ? idx : 0);
-    },
-    [filtered],
-  );
-
-  const openItem = openIdx != null ? filtered[openIdx] ?? null : null;
+    return result;
+  }, [allMoments, activePerson, activeScope, showHidden, dismissedIds]);
 
   if (loading) {
     return (
@@ -521,209 +538,263 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   return (
     <>
       <View style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={s.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.accentLt} />}
-        >
-          {/* ---- Header ---- */}
-          <View style={s.header}>
-            <View>
-              <View style={s.titleRow}>
-                <Text style={[s.title, { color: colors.text }]}>Moments</Text>
-                <Text style={[s.titleCount, { color: colors.accent }]}>{allMoments.length}</Text>
-              </View>
+        {/* ---- Header ---- */}
+        <View style={s.header}>
+          <View>
+            <View style={s.titleRow}>
+              <Text style={[s.title, { color: colors.text }]}>Moments</Text>
+              <Text style={[s.titleCount, { color: colors.accent }]}>{allMoments.length}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={[s.subtitle, { color: colors.text3 }]}>
-                {dayCount} days · {uniquePlaces} places · {contributorCount} contributor{contributorCount !== 1 ? 's' : ''}
+                {dayCount} days · {uniquePlaces} places
               </Text>
-            </View>
-            {!selectMode && (
-              <TouchableOpacity
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setSelectedIds(new Set(['__trigger__']));
-                  setSelectedIds(new Set());
-                }}
-                style={[s.selectBtn, { borderColor: colors.border }]}
-              >
-                <Text style={[s.selectBtnText, { color: colors.text2 }]}>Select</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* ---- Trip / Public underline tabs ---- */}
-          <View style={[s.tabRow, { borderBottomColor: colors.border }]}>
-            <Pressable
-              onPress={() => setTabMode('trip')}
-              style={[s.tab, tabMode === 'trip' && s.tabActive]}
-            >
-              <Text style={[s.tabLabel, { color: tabMode === 'trip' ? colors.text : colors.text3 }]}>Your trip</Text>
-              <Text style={[s.tabSub, { color: tabMode === 'trip' ? colors.accent : colors.text3 }]}>{allMoments.length}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setTabMode('public')}
-              style={[s.tab, tabMode === 'public' && s.tabActive]}
-            >
-              <Text style={[s.tabLabel, { color: tabMode === 'public' ? colors.text : colors.text3 }]}>Public</Text>
-              <Text style={[s.tabSub, { color: tabMode === 'public' ? colors.accent : colors.text3 }]}>Coming soon</Text>
-            </Pressable>
-          </View>
-
-          {tabMode === 'public' ? (
-            <View style={s.publicPlaceholder}>
-              <Text style={[s.publicTitle, { color: colors.text }]}>Afterstay Public Feed</Text>
-              <Text style={[s.publicSub, { color: colors.text3 }]}>
-                See moments from travelers across Afterstay.{'\n'}Coming soon.
-              </Text>
-            </View>
-          ) : (
-            <>
-              {/* ---- Person filter ---- */}
-              <PersonChips
-                active={activePerson}
-                onChange={setActivePerson}
-                members={members}
-                counts={personCounts}
-                total={allMoments.length}
-              />
-
-              {/* ---- Scope filter ---- */}
-              <ScopeChips
-                active={activeScope}
-                onChange={setActiveScope}
-                counts={scopeCounts}
-              />
-
-              {/* ---- Select mode floating bar ---- */}
-              {selectMode && (
-                <View style={[s.selBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Pressable onPress={() => setSelectedIds(new Set())} style={[s.selBarClose, { backgroundColor: colors.card2 }]}>
-                    <XIcon size={14} color={colors.text2} strokeWidth={2} />
-                  </Pressable>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.selBarCount, { color: colors.text }]}>{selectedIds.size} selected</Text>
-                    <Text style={[s.selBarSub, { color: colors.text3 }]}>Promote · Album · Save · Delete</Text>
+              {members.length > 1 && (
+                <Pressable
+                  onPress={() => setShowContributors(!showContributors)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                  hitSlop={8}
+                >
+                  {/* Stacked mini avatars */}
+                  <View style={{ flexDirection: 'row', marginLeft: 2 }}>
+                    {members.slice(0, 3).map((m, i) => (
+                      <View key={m.id} style={{
+                        width: 18, height: 18, borderRadius: 9,
+                        marginLeft: i > 0 ? -6 : 0,
+                        borderWidth: 1.5, borderColor: colors.canvas,
+                        backgroundColor: PEOPLE_COLORS[i % PEOPLE_COLORS.length],
+                        overflow: 'hidden', zIndex: 3 - i,
+                      }}>
+                        {m.profilePhoto ? (
+                          <Image source={{ uri: m.profilePhoto }} style={{ width: '100%', height: '100%' }} />
+                        ) : (
+                          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ fontSize: 8, fontWeight: '700', color: '#fff' }}>{m.name.charAt(0)}</Text>
+                          </View>
+                        )}
+                      </View>
+                    ))}
                   </View>
-                  <Pressable onPress={handleBatchFavorite} style={[s.selBarAct, { borderColor: colors.border }]}>
-                    <Star size={16} color={colors.accent} strokeWidth={2} />
-                  </Pressable>
-                  <Pressable onPress={handleDeleteSelected} style={[s.selBarAct, { borderColor: colors.border }]}>
-                    <Trash2 size={16} color={colors.danger} strokeWidth={2} />
-                  </Pressable>
-                  <Pressable onPress={handlePromoteToGroup} style={[s.selBarActPrimary, { backgroundColor: colors.accent }]}>
-                    <Text style={{ color: colors.onBlack, fontSize: 12, fontWeight: '700' }}>→ Group</Text>
-                  </Pressable>
-                </View>
+                  <Text style={[s.subtitle, { color: colors.accent }]}>
+                    {contributorCount}
+                  </Text>
+                </Pressable>
               )}
+            </View>
+          </View>
+        </View>
 
-              {/* ---- Albums grid (when Album scope selected) ---- */}
-              {activeScope === 'album' ? (
+        {/* ---- Expandable contributor row ---- */}
+        {showContributors && members.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingVertical: 8 }}>
+            {members.map((m, i) => {
+              const count = m.userId ? (personCounts[m.userId] ?? 0) : 0;
+              return (
+                <Pressable
+                  key={m.id}
+                  onPress={() => {
+                    if (m.userId) {
+                      router.push({ pathname: '/profile/[userId]', params: { userId: m.userId } } as never);
+                    }
+                  }}
+                  style={{ alignItems: 'center', gap: 4, minWidth: 56 }}
+                >
+                  <View style={{
+                    width: 40, height: 40, borderRadius: 20,
+                    borderWidth: 2, borderColor: count > 0 ? colors.accent : colors.border,
+                    overflow: 'hidden',
+                    backgroundColor: PEOPLE_COLORS[i % PEOPLE_COLORS.length],
+                  }}>
+                    {m.profilePhoto ? (
+                      <Image source={{ uri: m.profilePhoto }} style={{ width: '100%', height: '100%' }} />
+                    ) : (
+                      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#fff' }}>{m.name.charAt(0)}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text }} numberOfLines={1}>
+                    {m.name.split(' ')[0]}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: count > 0 ? colors.accent : colors.text3 }}>
+                    {count}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {/* ---- Trip / Public underline tabs ---- */}
+        <View style={[s.tabRow, { borderBottomColor: colors.border }]}>
+          <Pressable
+            onPress={() => setTabMode('trip')}
+            style={[s.tab, tabMode === 'trip' && s.tabActive]}
+          >
+            <Text style={[s.tabLabel, { color: tabMode === 'trip' ? colors.text : colors.text3 }]}>Your trip</Text>
+            <Text style={[s.tabSub, { color: tabMode === 'trip' ? colors.accent : colors.text3 }]}>{allMoments.length}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setTabMode('public')}
+            style={[s.tab, tabMode === 'public' && s.tabActive]}
+          >
+            <Text style={[s.tabLabel, { color: tabMode === 'public' ? colors.text : colors.text3 }]}>Explore</Text>
+          </Pressable>
+        </View>
+
+        {tabMode === 'public' ? (
+          <View style={{ flex: 1 }}>
+            <React.Suspense fallback={<View style={{ padding: 40, alignItems: 'center' }}><Text style={{ color: colors.text3 }}>Loading...</Text></View>}>
+              <ExploreMomentsFeed />
+            </React.Suspense>
+          </View>
+        ) : (
+          <>
+            {/* ---- Person filter ---- */}
+            <PersonChips
+              active={activePerson}
+              onChange={setActivePerson}
+              members={members}
+              counts={personCounts}
+              total={allMoments.length}
+            />
+
+            {/* ---- Scope filter + hidden toggle ---- */}
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <ScopeChips
+                  active={activeScope}
+                  onChange={setActiveScope}
+                  counts={scopeCounts}
+                />
+              </View>
+              {dismissedIds.size > 0 && (
+                <Pressable
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowHidden((v) => !v);
+                  }}
+                  hitSlop={10}
+                  style={{ paddingHorizontal: 14, paddingVertical: 6 }}
+                >
+                  {showHidden ? (
+                    <Eye size={18} color={colors.accent} />
+                  ) : (
+                    <EyeOff size={18} color={colors.text3} />
+                  )}
+                </Pressable>
+              )}
+            </View>
+
+            {activeScope === 'album' ? (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
                 <AlbumsGrid
                   tripId={tripId}
                   totalMoments={allMoments.length}
                   privateMoments={scopeCounts.me}
                   onSwitchScope={setActiveScope}
                 />
-              ) : (
-                /* ---- Day-grouped mosaic ---- */
-                <View style={{ paddingRight: dayEntries.length > 1 ? 32 : 0, position: 'relative' }}>
-                  {dayGroups.map((group) => (
-                    <View key={group.date}>
-                      <DaySectionHeader label={group.label} sub={group.sub} />
-                      <BentoLayout
-                        items={group.moments}
-                        onOpen={handleOpen}
-                        selectedIds={selectedIds}
-                        onToggleSelect={handleToggleSelect}
-                        selectMode={selectMode}
-                        onLongPress={handleLongPress}
-                        tripId={tripId}
-                      />
-                    </View>
-                  ))}
-
-                  {/* Day rail (right side) */}
-                  <DayRail
-                    days={dayEntries}
-                    active={activeDayRail}
-                    onChange={setActiveDayRail}
-                  />
+              </ScrollView>
+            ) : filtered.length === 0 ? (
+              <View style={s.emptyWrap}>
+                <Text style={[s.emptyTitle, { color: colors.text }]}>No moments yet</Text>
+                <Text style={[s.emptySub, { color: colors.text3 }]}>
+                  Add photos for this trip, or explore what other travelers are sharing.
+                </Text>
+                <View style={s.emptyActions}>
+                  <Pressable
+                    style={[s.emptyActionBtn, { backgroundColor: colors.accent, borderColor: colors.accent }]}
+                    onPress={() => router.push({ pathname: '/add-moment', params: tripId ? { tripId } : {} } as never)}
+                  >
+                    <Camera size={15} color={colors.ink} strokeWidth={2} />
+                    <Text style={[s.emptyActionText, { color: colors.ink }]}>Add photos</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[s.emptyActionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => setTabMode('public')}
+                  >
+                    <Compass size={15} color={colors.text} strokeWidth={2} />
+                    <Text style={[s.emptyActionText, { color: colors.text }]}>Explore</Text>
+                  </Pressable>
                 </View>
-              )}
-
-              {/* ---- Upload CTA ---- */}
-              <View style={s.ctaWrapper}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => router.push('/add-moment' as never)}
-                  style={[s.addButton, { backgroundColor: colors.card, borderColor: colors.border2 }]}
-                >
-                  <Text style={[s.addButtonText, { color: colors.text2 }]}>+ Add moment</Text>
-                </TouchableOpacity>
               </View>
-            </>
-          )}
-        </ScrollView>
+            ) : (
+              <ScrollView
+                key={`bento-${activeScope}-${activePerson ?? 'all'}`}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 100 }}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={() => { setRefreshing(true); load(); }}
+                    tintColor={colors.accentLt}
+                  />
+                }
+              >
+                <BentoLayout
+                  items={filtered}
+                  onOpen={(m) => {
+                    const idx = filtered.findIndex((f) => f.id === m.id);
+                    setCarouselIndex(idx >= 0 ? idx : 0);
+                    setCarouselVisible(true);
+                  }}
+                  selectedIds={selectedIds}
+                  onToggleSelect={(id) => {
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    });
+                  }}
+                  selectMode={selectMode}
+                  onLongPress={(id) => {
+                    if (!selectMode) {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      setSelectMode(true);
+                      setSelectedIds(new Set([id]));
+                    }
+                  }}
+                  tripId={tripId}
+                />
+              </ScrollView>
+            )}
+
+            {/* Batch action bar (select mode) */}
+            {selectMode && selectedIds.size > 0 && (
+              <BatchActionBar
+                count={selectedIds.size}
+                onAction={handleBatchAction}
+                onCancel={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+              />
+            )}
+
+            {/* Fullscreen Carousel */}
+            <Modal
+              visible={carouselVisible}
+              transparent
+              animationType="fade"
+              statusBarTranslucent
+              onRequestClose={() => setCarouselVisible(false)}
+            >
+              <PhotoCarousel
+                moments={filtered}
+                initialIndex={carouselIndex}
+                people={people}
+                onClose={() => setCarouselVisible(false)}
+                onFavorite={handleFavorite}
+                onComment={(momentId) => {
+                  setCarouselVisible(false);
+                  setTimeout(() => setCommentMomentId(momentId), 300);
+                }}
+                onAction={handlePhotoAction}
+                dismissedIds={dismissedIds}
+              />
+            </Modal>
+
+          </>
+        )}
       </View>
-
-      {/* ---- Lightbox ---- */}
-      <MomentLightbox
-        moment={openItem}
-        index={openIdx ?? 0}
-        total={filtered.length}
-        onClose={() => setOpenIdx(null)}
-        onPrev={() =>
-          setOpenIdx((prev) =>
-            prev != null ? (prev - 1 + filtered.length) % filtered.length : 0,
-          )
-        }
-        onNext={() =>
-          setOpenIdx((prev) =>
-            prev != null ? (prev + 1) % filtered.length : 0,
-          )
-        }
-        people={people}
-        allMoments={filtered}
-        onDelete={(id) => {
-          import('@/lib/supabase').then(({ deletePage }) => {
-            deletePage(id).catch(() => {});
-          });
-          setRawMoments((prev) => prev.filter((m) => m.id !== id));
-          setOpenIdx(null);
-        }}
-        onEdit={(id) => {
-          setOpenIdx(null);
-          setEditMomentId(id);
-        }}
-        onFilm={(m) => {
-          setFilmMoments([m]);
-          setFilmInitIdx(0);
-        }}
-        onFavorite={handleFavorite}
-        onToggleVisibility={handleToggleVisibility}
-        onCurate={(id, action) => {
-          if (action === 'favorite') {
-            setRawMoments((prev) =>
-              prev.map((m) => (m.id === id ? { ...m, isFavorite: true } : m)),
-            );
-          } else {
-            setRawMoments((prev) =>
-              prev.map((m) => (m.id === id ? { ...m, isFavorite: false } : m)),
-            );
-          }
-        }}
-      />
-
-      {/* ---- Themed action sheet ---- */}
-      <PhotoActionSheet
-        visible={actionMomentId !== null}
-        title={actionMoment?.caption || actionMoment?.location || 'Photo'}
-        onShare={handleActionShare}
-        onEdit={handleActionEdit}
-        onSelectMultiple={handleActionSelectMultiple}
-        onDelete={handleActionDelete}
-        onClose={() => setActionMomentId(null)}
-      />
 
       {/* ---- Edit details sheet ---- */}
       <PhotoEditSheet
@@ -755,6 +826,17 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         />
       )}
 
+      {/* ---- Polaroid collage ---- */}
+      <PolaroidCollage
+        visible={collageVisible}
+        moments={filtered.filter((m) => selectedIds.has(m.id))}
+        onClose={() => {
+          setCollageVisible(false);
+          setSelectMode(false);
+          setSelectedIds(new Set());
+        }}
+      />
+
       {/* ---- Curation lightbox ---- */}
       <Modal
         visible={curationDay !== null}
@@ -771,6 +853,19 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           />
         )}
       </Modal>
+
+      {/* Comment Sheet */}
+      {commentMomentId && (
+        <CommentSheet
+          visible={!!commentMomentId}
+          momentId={commentMomentId}
+          members={members}
+          onClose={() => setCommentMomentId(null)}
+          onCountChange={(mid, count) => {
+            setCommentCountMap(prev => ({ ...prev, [mid]: count }));
+          }}
+        />
+      )}
     </>
   );
 }
@@ -786,9 +881,6 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       alignItems: 'center',
       justifyContent: 'center',
       paddingTop: 60,
-    },
-    scrollContent: {
-      paddingBottom: 100,
     },
     // Header
     header: {
@@ -820,17 +912,59 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       fontWeight: '500',
       marginTop: 2,
     },
-    selectBtn: {
-      borderWidth: 1,
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      borderRadius: 999,
+    // Member stats
+    memberStatsRow: {
+      paddingHorizontal: 16,
+      gap: 8,
+      paddingBottom: 10,
     },
-    selectBtnText: {
+    memberStatCard: {
+      alignItems: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      minWidth: 72,
+    },
+    memberStatAvatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 6,
+    },
+    memberStatAvatarImg: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+    },
+    memberStatInitial: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: '#fff',
+    },
+    memberStatName: {
       fontSize: 11,
       fontWeight: '600',
-      letterSpacing: 0.4,
-      textTransform: 'uppercase',
+      marginBottom: 2,
+      maxWidth: 60,
+    },
+    memberStatCount: {
+      fontSize: 16,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'] as any,
+      marginBottom: 4,
+    },
+    memberStatBar: {
+      width: 48,
+      height: 3,
+      borderRadius: 2,
+      overflow: 'hidden' as const,
+    },
+    memberStatBarFill: {
+      height: 3,
+      borderRadius: 2,
     },
     // Underline tabs
     tabRow: {
@@ -865,6 +999,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     },
     // Public placeholder
     publicPlaceholder: {
+      flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
       paddingTop: 80,
@@ -881,69 +1016,22 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       lineHeight: 20,
       textAlign: 'center',
     },
-    // Selection bar
-    selBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      marginHorizontal: 12,
-      marginBottom: 10,
-      padding: 10,
-      paddingHorizontal: 12,
-      borderRadius: 16,
-      borderWidth: 1,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 12,
-      elevation: 8,
+    // Empty state
+    emptyWrap: {
+      flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingTop: 60,
     },
-    selBarClose: {
-      width: 32,
-      height: 32,
-      borderRadius: 99,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    selBarCount: {
-      fontSize: 13,
-      fontWeight: '600',
-    },
-    selBarSub: {
-      fontSize: 10.5,
-      marginTop: 1,
-    },
-    selBarAct: {
-      width: 36,
-      height: 36,
-      borderRadius: 99,
-      borderWidth: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    selBarActPrimary: {
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 99,
-    },
-    // CTA
-    ctaWrapper: {
+    emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8, textAlign: 'center' },
+    emptySub: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+    emptyActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+    emptyActionBtn: {
+      minHeight: 42,
       paddingHorizontal: 16,
-      paddingTop: 20,
-    },
-    addButton: {
+      borderRadius: 12,
+      borderWidth: 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      paddingVertical: 12,
-      paddingHorizontal: 14,
-      borderWidth: 1,
-      borderStyle: 'dashed',
-      borderRadius: 14,
+      gap: 7,
     },
-    addButtonText: {
-      fontSize: 13,
-      fontWeight: '600',
-    },
+    emptyActionText: { fontSize: 13, fontWeight: '700' },
   });

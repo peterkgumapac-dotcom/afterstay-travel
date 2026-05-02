@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { MessageCircle, UserPlus } from 'lucide-react-native';
+import { CalendarPlus, Hotel, MessageCircle, Plane, UserPlus } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import type { GroupMember, Trip } from '@/lib/types';
 import { formatDatePHT, formatCurrency } from '@/lib/utils';
 import { GroupHeader } from './GroupHeader';
@@ -16,8 +17,11 @@ interface OverviewTabProps {
   colors: ThemeColors;
   onMemberEdit: (m: GroupMember) => void;
   onMemberChat: (m: GroupMember) => void;
+  onMemberProfile: (m: GroupMember) => void;
   onInvite: () => void;
   onAddMember: () => void;
+  onCalendarInvite: () => void;
+  isPrimary?: boolean;
   onLoad: () => void;
 }
 
@@ -29,10 +33,15 @@ export function OverviewTab({
   colors,
   onMemberEdit,
   onMemberChat,
+  onMemberProfile,
   onInvite,
   onAddMember,
+  onCalendarInvite,
+  isPrimary = true,
 }: OverviewTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const router = useRouter();
+  const hasAccom = !!(trip?.accommodation || trip?.address);
 
   return (
     <>
@@ -40,7 +49,7 @@ export function OverviewTab({
       <GroupHeader
         kicker={`Group · ${members.length} traveler${members.length !== 1 ? 's' : ''}`}
         title="Who's going"
-        action={
+        action={isPrimary ? (
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <TouchableOpacity onPress={onAddMember} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <UserPlus size={12} color={colors.accent} strokeWidth={2} />
@@ -50,7 +59,7 @@ export function OverviewTab({
               <Text style={styles.ghostAction}>Invite +</Text>
             </TouchableOpacity>
           </View>
-        }
+        ) : undefined}
         colors={colors}
       />
       <View style={styles.listContainer}>
@@ -63,22 +72,28 @@ export function OverviewTab({
             accessibilityRole="button"
             accessibilityLabel={`Edit ${m.name} contact details`}
           >
-            {m.profilePhoto ? (
-              <Image
-                source={{ uri: m.profilePhoto }}
-                style={styles.memberAvatar}
-                resizeMode="cover"
-              />
-            ) : (
-              <View
-                style={[
-                  styles.memberAvatar,
-                  { backgroundColor: MEMBER_COLORS[idx % MEMBER_COLORS.length] },
-                ]}
-              >
-                <Text style={styles.memberInit}>{m.name.charAt(0).toUpperCase()}</Text>
-              </View>
-            )}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => m.userId ? onMemberProfile(m) : onMemberEdit(m)}
+              accessibilityLabel={m.userId ? `View ${m.name} profile` : `Edit ${m.name}`}
+            >
+              {m.profilePhoto ? (
+                <Image
+                  source={{ uri: m.profilePhoto }}
+                  style={styles.memberAvatar}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View
+                  style={[
+                    styles.memberAvatar,
+                    { backgroundColor: MEMBER_COLORS[idx % MEMBER_COLORS.length] },
+                  ]}
+                >
+                  <Text style={styles.memberInit}>{m.name.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
             <View style={styles.memberInfo}>
               <Text style={styles.memberName}>
                 {m.name}
@@ -105,86 +120,157 @@ export function OverviewTab({
             </TouchableOpacity>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={styles.calendarBtn}
+          onPress={onCalendarInvite}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Open trip in Google Calendar"
+        >
+          <CalendarPlus size={14} color={colors.accent} strokeWidth={2} />
+          <Text style={styles.calendarBtnText}>
+            {members.some((m) => m.email) ? 'Send Calendar Invite to All' : 'Add Trip to Google Calendar'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Accommodation */}
-      <GroupHeader
-        kicker="Accommodation"
-        title={trip?.accommodation ?? 'Hotel'}
-        action={
-          <View style={styles.paidChip}>
-            <Text style={styles.paidChipText}>Paid</Text>
-          </View>
-        }
-        colors={colors}
-      />
-      <View style={styles.sectionPadding}>
-        <View style={styles.accomCard}>
-          <View style={styles.accomHeader}>
-            {hotelPhotos[0] ? (
-              <Image
-                source={{ uri: hotelPhotos[0] }}
-                style={styles.accomThumb}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.accomThumb} />
-            )}
-            <View style={styles.accomHeaderInfo}>
-              <Text style={styles.accomTitle}>
-                {trip?.roomType || trip?.accommodation || 'Accommodation'}
-              </Text>
-              <Text style={styles.accomAddr}>
-                {trip?.address || ''}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.accomGrid}>
-            <View>
-              <Text style={styles.accomGridLabel}>CHECK-IN</Text>
-              <Text style={styles.accomGridValue}>
-                {trip ? formatDatePHT(trip.startDate) : ''} · {trip?.checkIn || '3:00 PM'}
-              </Text>
-            </View>
-            <View>
-              <Text style={styles.accomGridLabel}>CHECKOUT</Text>
-              <Text style={styles.accomGridValue}>
-                {trip ? formatDatePHT(trip.endDate) : ''} · {trip?.checkOut || '12:00 PM'}
-              </Text>
-            </View>
-            {trip?.cost != null && (
-              <View>
-                <Text style={styles.accomGridLabel}>TOTAL</Text>
-                <Text style={styles.accomGridValue}>
-                  {formatCurrency(trip.cost, trip.costCurrency || 'PHP')}
-                </Text>
+      {hasAccom ? (
+        <>
+          <GroupHeader
+            kicker="Accommodation"
+            title={trip?.accommodation ?? 'Hotel'}
+            action={
+              trip?.cost != null ? (
+                <View style={styles.paidChip}>
+                  <Text style={styles.paidChipText}>Paid</Text>
+                </View>
+              ) : undefined
+            }
+            colors={colors}
+          />
+          <View style={styles.sectionPadding}>
+            <View style={styles.accomCard}>
+              <View style={styles.accomHeader}>
+                {hotelPhotos[0] ? (
+                  <Image
+                    source={{ uri: hotelPhotos[0] }}
+                    style={styles.accomThumb}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.accomThumb, { backgroundColor: colors.bg3, alignItems: 'center', justifyContent: 'center' }]}>
+                    <Hotel size={20} color={colors.text3} />
+                  </View>
+                )}
+                <View style={styles.accomHeaderInfo}>
+                  <Text style={styles.accomTitle}>
+                    {trip?.roomType || trip?.accommodation || 'Accommodation'}
+                  </Text>
+                  {trip?.address ? <Text style={styles.accomAddr}>{trip.address}</Text> : null}
+                </View>
               </View>
-            )}
-            {trip?.cost != null && members.length > 0 && (
-              <View>
-                <Text style={styles.accomGridLabel}>
-                  SPLIT / PERSON
-                </Text>
-                <Text style={styles.accomGridValue}>
-                  {formatCurrency(trip.cost / members.length, trip.costCurrency || 'PHP')}
-                </Text>
+              <View style={styles.accomGrid}>
+                <View>
+                  <Text style={styles.accomGridLabel}>CHECK-IN</Text>
+                  <Text style={styles.accomGridValue}>
+                    {trip ? formatDatePHT(trip.startDate) : ''} · {trip?.checkIn || '3:00 PM'}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={styles.accomGridLabel}>CHECKOUT</Text>
+                  <Text style={styles.accomGridValue}>
+                    {trip ? formatDatePHT(trip.endDate) : ''} · {trip?.checkOut || '12:00 PM'}
+                  </Text>
+                </View>
+                {trip?.cost != null && (
+                  <View>
+                    <Text style={styles.accomGridLabel}>TOTAL</Text>
+                    <Text style={styles.accomGridValue}>
+                      {formatCurrency(trip.cost, trip.costCurrency || 'PHP')}
+                    </Text>
+                  </View>
+                )}
+                {trip?.cost != null && members.length > 0 && (
+                  <View>
+                    <Text style={styles.accomGridLabel}>SPLIT / PERSON</Text>
+                    <Text style={styles.accomGridValue}>
+                      {formatCurrency(trip.cost / members.length, trip.costCurrency || 'PHP')}
+                    </Text>
+                  </View>
+                )}
               </View>
-            )}
+            </View>
           </View>
-        </View>
-      </View>
+        </>
+      ) : (
+        <>
+          <GroupHeader kicker="Accommodation" title="Add your hotel" colors={colors} />
+          <View style={styles.sectionPadding}>
+            <View style={[styles.accomCard, { alignItems: 'center', paddingVertical: 24 }]}>
+              <Hotel size={28} color={colors.text3} strokeWidth={1.5} />
+              <Text style={{ color: colors.text2, fontSize: 14, fontWeight: '600', marginTop: 10 }}>
+                Add your hotel details
+              </Text>
+              <Text style={{ color: colors.text3, fontSize: 12, textAlign: 'center', marginTop: 4, lineHeight: 18 }}>
+                Upload your booking confirmation or enter the details manually.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <TouchableOpacity
+                  style={{ backgroundColor: colors.accent, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12 }}
+                  onPress={() => router.push({ pathname: '/scan-trip', params: { mode: 'hotel', tripId: trip?.id } } as never)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Upload booking</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ backgroundColor: colors.card2, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
+                  onPress={() => router.push({ pathname: '/trip-overview', params: { tripId: trip?.id } } as never)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>Enter manually</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </>
+      )}
 
-      {/* Mini flights */}
-      <GroupHeader
-        kicker="Transit · Both ways"
-        title="Flights"
-        colors={colors}
-      />
-      <View style={styles.flightsList}>
-        {flights.map((f, i) => (
-          <MiniFlightCard key={f.ref || i} f={f} colors={colors} />
-        ))}
-      </View>
+      {/* Flights */}
+      {flights.length > 0 ? (
+        <>
+          <GroupHeader kicker="Transit · Both ways" title="Flights" colors={colors} />
+          <View style={styles.flightsList}>
+            {flights.map((f, i) => (
+              <MiniFlightCard key={f.ref || i} f={f} colors={colors} tripId={trip?.id} />
+            ))}
+          </View>
+        </>
+      ) : (
+        <>
+          <GroupHeader kicker="Transit" title="Add your flight" colors={colors} />
+          <View style={styles.sectionPadding}>
+            <View style={[styles.accomCard, { alignItems: 'center', paddingVertical: 24 }]}>
+              <Plane size={28} color={colors.text3} strokeWidth={1.5} />
+              <Text style={{ color: colors.text2, fontSize: 14, fontWeight: '600', marginTop: 10 }}>
+                Add your flight
+              </Text>
+              <Text style={{ color: colors.text3, fontSize: 12, textAlign: 'center', marginTop: 4, lineHeight: 18 }}>
+                Upload your boarding pass or enter flight details manually.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                <TouchableOpacity
+                  style={{ backgroundColor: colors.accent, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12 }}
+                  onPress={() => router.push({ pathname: '/scan-trip', params: { mode: 'flight', tripId: trip?.id } } as never)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>Upload boarding pass</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </>
+      )}
     </>
   );
 }
@@ -199,6 +285,23 @@ const getStyles = (colors: ThemeColors) =>
     listContainer: {
       paddingHorizontal: 16,
       gap: 8,
+    },
+    calendarBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      borderRadius: 14,
+    },
+    calendarBtnText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.accent,
     },
     sectionPadding: {
       paddingHorizontal: 16,

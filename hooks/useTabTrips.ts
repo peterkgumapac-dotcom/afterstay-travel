@@ -38,15 +38,17 @@ export function getActiveTripCached() {
 
 /* ─── All Trips ─── */
 
-export function getAllTripsPromise(forceRefresh = false) {
-  return getCachedPromise<Trip[]>(ALL_TRIPS_KEY, () => getAllUserTrips(''), {
+export function getAllTripsPromise(forceRefresh = false, includeDeleted = false) {
+  const key = includeDeleted ? `${ALL_TRIPS_KEY}:withDeleted` : ALL_TRIPS_KEY;
+  return getCachedPromise<Trip[]>(key, () => getAllUserTrips(undefined, includeDeleted), {
     forceRefresh,
     ttlMs: 5 * 60 * 1000, // 5 min
   });
 }
 
-export function getAllTripsCached() {
-  return getCachedData<Trip[]>(ALL_TRIPS_KEY);
+export function getAllTripsCached(includeDeleted = false) {
+  const key = includeDeleted ? `${ALL_TRIPS_KEY}:withDeleted` : ALL_TRIPS_KEY;
+  return getCachedData<Trip[]>(key);
 }
 
 /* ─── Past Trips ─── */
@@ -78,7 +80,7 @@ export function getQuickTripsCached() {
 /* ─── Lifetime Stats ─── */
 
 export function getLifetimeStatsPromise(forceRefresh = false) {
-  return getCachedPromise<LifetimeStats | null>(LIFETIME_STATS_KEY, () => getLifetimeStats(''), {
+  return getCachedPromise<LifetimeStats | null>(LIFETIME_STATS_KEY, () => getLifetimeStats(), {
     forceRefresh,
     ttlMs: 10 * 60 * 1000, // 10 min
   });

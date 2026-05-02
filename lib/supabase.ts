@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { secureStorage } from './secureStorage'
 import * as FileSystem from 'expo-file-system/legacy'
 import { clearTripLocalData } from './cache'
+import { invalidateTripCache } from './tabDataCache'
 import { compressImage } from './compressImage'
 import { MS_PER_DAY } from './utils'
 
@@ -42,6 +43,13 @@ import type {
   TripStatus,
   UserSegment,
   UserTier,
+  MomentComment,
+  FeedFilter,
+  FeedPage,
+  FeedPost,
+  FeedPostType,
+  FeedPostComment,
+  FollowState,
 } from './types'
 
 // ---------- client ----------
@@ -104,12 +112,43 @@ async function readFileAsBytes(uri: string): Promise<Uint8Array> {
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   })
-  const binaryStr = atob(base64)
+  const binaryStr = decodeBase64(base64)
   const bytes = new Uint8Array(binaryStr.length)
   for (let i = 0; i < binaryStr.length; i++) {
     bytes[i] = binaryStr.charCodeAt(i)
   }
   return bytes
+}
+
+function decodeBase64(value: string): string {
+  if (typeof globalThis.atob === 'function') return globalThis.atob(value)
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
+  let output = ''
+  let buffer = 0
+  let bits = 0
+  for (const char of value.replace(/\s/g, '')) {
+    if (char === '=') break
+    const idx = chars.indexOf(char)
+    if (idx < 0) continue
+    buffer = (buffer << 6) | idx
+    bits += 6
+    if (bits >= 8) {
+      bits -= 8
+      output += String.fromCharCode((buffer >> bits) & 0xff)
+    }
+  }
+  return output
+}
+
+function withOperationTimeout<T>(promise: PromiseLike<T>, message: string, ms = 45_000): Promise<T> {
+  const wrapped = Promise.resolve(promise)
+  return Promise.race([
+    wrapped,
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms)
+      wrapped.finally(() => clearTimeout(timer)).catch(() => clearTimeout(timer))
+    }),
+  ])
 }
 
 /** Android-safe date parser: date-only strings get PHT suffix to avoid UTC shift. */
@@ -124,13 +163,17 @@ function parseDateSafe(iso: string): Date {
 // do not fire a separate query every time.
 let cachedTripId: string | undefined
 let cachedTrip: Trip | null | undefined // undefined = not fetched, null = no trip
+let cachedTripUserId: string | undefined
 
 async function resolveTripId(tripId?: string): Promise<string> {
   if (tripId) return tripId
-  if (cachedTripId) return cachedTripId
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+  if (cachedTripId && cachedTripUserId === userId) return cachedTripId
   const trip = await getActiveTrip()
   if (!trip) throw new Error('No active trip found and no tripId provided.')
   cachedTripId = trip.id
+  cachedTripUserId = trip.userId ?? userId
   return trip.id
 }
 
@@ -233,12 +276,20 @@ function ensurePhtOffset(iso: string): string {
   return iso + '+08:00';
 }
 
+function normalizeFlightDirection(value?: string): Flight['direction'] {
+  const direction = (value ?? '').trim().toLowerCase();
+  if (['return', 'inbound', 'arrival', 'arrive', 'back', 'homebound'].some((token) => direction.includes(token))) {
+    return 'Return';
+  }
+  return 'Outbound';
+}
+
 function mapFlight(row: Record<string, unknown>): Flight {
   const rawDepart = (row.departure_time as string) ?? (row.depart_time as string) ?? '';
   const rawArrive = (row.arrival_time as string) ?? (row.arrive_time as string) ?? '';
   return {
     id: row.id as string,
-    direction: ((row.direction as string) || 'Outbound') as Flight['direction'],
+    direction: normalizeFlightDirection(row.direction as string),
     flightNumber: (row.flight_number as string) ?? '',
     airline: (row.airline as string) ?? '',
     from: (row.origin as string) ?? (row.from_city as string) ?? '',
@@ -246,6 +297,7 @@ function mapFlight(row: Record<string, unknown>): Flight {
     departTime: rawDepart,
     arriveTime: rawArrive,
     bookingRef: (row.booking_ref as string) ?? (row.confirmation as string) ?? undefined,
+    seatNumber: (row.seat_number as string) ?? (row.seat as string) ?? undefined,
     baggage: (row.baggage as string) ?? undefined,
     passenger: (row.passenger as string) ?? undefined,
   }
@@ -257,6 +309,8 @@ function mapMember(row: Record<string, unknown>): GroupMember {
     name: (row.name as string) ?? '',
     role: ((row.role as string) || 'Member') as GroupMember['role'],
     userId: (row.user_id as string) ?? undefined,
+    sharesAccommodation: row.shares_accommodation == null ? undefined : !!row.shares_accommodation,
+    travelNotes: (row.travel_notes as string) ?? undefined,
     phone: (row.phone as string) ?? undefined,
     email: (row.email as string) ?? undefined,
     profilePhoto: (row.avatar_url as string) ?? undefined,
@@ -376,6 +430,12 @@ function mapMoment(row: Record<string, unknown>): Moment {
     date: (row.taken_at as string) ?? new Date().toISOString().slice(0, 10),
     tags: ((row.tags as string[]) ?? []) as MomentTag[],
     visibility: ((row.visibility as string) ?? 'shared') as Moment['visibility'],
+    isPublic: !!row.is_public,
+    likesCount: (row.likes_count as number) ?? 0,
+    commentsCount: (row.comments_count as number) ?? 0,
+    dayNumber: num(row.day_number),
+    latitude: num(row.latitude),
+    longitude: num(row.longitude),
   }
 }
 
@@ -384,6 +444,10 @@ function mapTripFile(row: Record<string, unknown>): TripFile {
     id: row.id as string,
     fileName: (row.name as string) ?? '',
     fileUrl: (row.file_url as string) ?? undefined,
+    storagePath: (row.storage_path as string) ?? undefined,
+    contentType: (row.content_type as string) ?? undefined,
+    sizeBytes: num(row.size_bytes),
+    uploadedBy: (row.uploaded_by as string) ?? undefined,
     type: ((row.file_type as string) || 'Other') as TripFileType,
     notes: (row.description as string) ?? undefined,
     printRequired: !!row.print_required,
@@ -393,41 +457,77 @@ function mapTripFile(row: Record<string, unknown>): TripFile {
 // ---------- TRIPS ----------
 
 export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> {
-  if (cachedTrip !== undefined && !forceRefresh) return cachedTrip
-
   // Get authenticated user — filter trips to only this user's
   const { data: authData } = await supabase.auth.getUser()
   const userId = authData?.user?.id
 
-  let query = supabase
-    .from(T.trips)
-    .select('*')
-    .in('status', ['Planning', 'Active'])
-    .is('is_draft', null)          // exclude incomplete onboarding drafts
-    .order('start_date', { ascending: true })
-    .limit(1)
-
-  if (userId) {
-    query = query.eq('user_id', userId)
-  }
-
-  const { data, error } = await query
-
-  if (error || !data || data.length === 0) {
+  if (!userId) {
+    cachedTripId = undefined
     cachedTrip = null
+    cachedTripUserId = undefined
     return null
   }
 
-  // Filter soft-deleted / archived in JS (columns may not exist in old DBs)
-  const row = data[0]
-  if (row.deleted_at || row.archived_at) {
+  if (cachedTripUserId !== userId) {
+    cachedTripId = undefined
+    cachedTrip = undefined
+    cachedTripUserId = userId
+  }
+
+  if (cachedTrip !== undefined && !forceRefresh) return cachedTrip
+
+  // Trips owned by user (is_draft must not be true — allow null and false).
+  // Fetch a small window, then filter deleted/archived locally so one stale
+  // duplicate cannot hide the next valid planning trip.
+  const { data: owned } = await supabase
+    .from(T.trips)
+    .select('*')
+    .eq('user_id', userId)
+    .in('status', ['Planning', 'Active'])
+    .or('is_draft.is.null,is_draft.eq.false')
+    .order('start_date', { ascending: true })
+    .limit(20)
+
+  // Trips where user is a member (covers invited members)
+  const { data: memberTrips } = await supabase
+    .from(T.trips)
+    .select('*, group_members!inner(user_id)')
+    .eq('group_members.user_id', userId)
+    .in('status', ['Planning', 'Active'])
+    .or('is_draft.is.null,is_draft.eq.false')
+    .order('start_date', { ascending: true })
+    .limit(20)
+
+  // Merge and pick earliest
+  const allRows = [...(owned ?? []), ...(memberTrips ?? [])]
+  if (allRows.length === 0) {
     cachedTrip = null
+    cachedTripUserId = userId
+    return null
+  }
+
+  // Deduplicate, drop archived/deleted rows, then pick first by start_date.
+  const seen = new Set<string>()
+  const unique = allRows.filter((r) => {
+    const id = r.id as string
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  }).filter((r) => !r.deleted_at && !r.archived_at)
+    .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)))
+
+  const row = unique[0]
+  if (!row) {
+    cachedTripId = undefined
+    cachedTrip = null
+    cachedTripUserId = userId
     return null
   }
 
   const trip = mapTrip(row)
   cachedTripId = trip.id
   cachedTrip = trip
+  cachedTripUserId = userId
   return trip
 }
 
@@ -477,6 +577,7 @@ export async function getStandaloneExpenses(limit = 30): Promise<Expense[]> {
 export function clearTripCache() {
   cachedTripId = undefined
   cachedTrip = undefined
+  cachedTripUserId = undefined
 }
 
 /** Fetch a single trip by ID (works for any status including Completed). */
@@ -507,20 +608,16 @@ export async function createTrip(input: {
   cost?: number;
   costCurrency?: string;
   transport?: string;
+  vibes?: string[];
 }): Promise<string> {
   // Get authenticated user ID for trip ownership — required by RLS
   const { data: authData } = await supabase.auth.getUser();
   const userId = authData?.user?.id;
   if (!userId) throw new Error('createTrip: not authenticated')
 
-  // Archive only THIS user's old Planning trips — never touch an Active
-  // trip. Multi-trip support means users can have past trips alongside
-  // a new one, but only one Planning trip at a time makes sense.
-  await supabase
-    .from(T.trips)
-    .update({ status: 'Completed' })
-    .eq('status', 'Planning')
-    .eq('user_id', userId)
+  // Creating a trip must not reclassify other upcoming trips. Users can have
+  // multiple future trips, and auto-marking old Planning rows as Completed
+  // makes duplicates look like fake past trips in My Trips and stats.
 
   // Clear all trip-specific local caches for a fresh start
   await clearTripLocalData()
@@ -529,7 +626,7 @@ export async function createTrip(input: {
   const now = new Date();
   const start = new Date(input.startDate + 'T00:00:00+08:00');
   const end = new Date(input.endDate + 'T23:59:59+08:00');
-  const status = now > end ? 'Completed' : now >= start ? 'Active' : 'Planning';
+  const status = now > end ? 'Completed' : now > start ? 'Active' : 'Planning';
 
   const { data, error } = await supabase
     .from(T.trips)
@@ -549,6 +646,7 @@ export async function createTrip(input: {
       ...(input.bookingRef ? { notes: `Booking ref: ${input.bookingRef}` } : {}),
       ...(input.roomType ? { room_type: input.roomType } : {}),
       ...(input.transport ? { transport_mode: input.transport } : {}),
+      ...(input.vibes?.length ? { vibes: input.vibes } : {}),
     })
     .select('id')
     .single()
@@ -557,6 +655,8 @@ export async function createTrip(input: {
   const tripId = data.id as string
   cachedTripId = tripId
   cachedTrip = undefined // Invalidate cache so next fetch gets new trip
+  cachedTripUserId = userId
+  invalidateTripCache(tripId)
 
   // Always add the organizer as Primary member
   const userName = authData?.user?.user_metadata?.full_name
@@ -656,6 +756,13 @@ export async function saveDraftTrip(input: {
   return tripId
 }
 
+/** Finalize a draft trip — clears is_draft so getActiveTrip() can detect it */
+export async function finalizeDraftTrip(tripId: string): Promise<void> {
+  await supabase.from(T.trips).update({ is_draft: false }).eq('id', tripId)
+  cachedTrip = undefined // bust cache
+  invalidateTripCache(tripId)
+}
+
 /** Delete a draft trip (used when user taps "Discard" on resume nudge) */
 export async function discardDraftTrip(tripId: string): Promise<void> {
   // Best-effort cascade cleanup — ignore errors on tables that may not exist
@@ -677,6 +784,9 @@ export async function discardDraftTrip(tripId: string): Promise<void> {
 
   const { error } = await supabase.from(T.trips).delete().eq('id', tripId)
   if (error) throw new Error(`deleteTrip: ${error.message}`)
+  clearTripCache()
+  invalidateTripCache(tripId)
+  await clearTripLocalData()
 }
 
 // ---------- ADD GROUP MEMBER ----------
@@ -685,17 +795,24 @@ export async function discardDraftTrip(tripId: string): Promise<void> {
 
 export async function createInviteCode(tripId?: string): Promise<string> {
   const id = await resolveTripId(tripId)
-  // Generate 6-char alphanumeric code
-  const code = Math.random().toString(36).slice(2, 8).toUpperCase()
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 7 days
+  let lastError: any = null
 
-  const { error } = await supabase.from('trip_invites').insert({
-    trip_id: id,
-    code,
-    expires_at: expiresAt,
-  })
-  if (error) throw new Error(`createInviteCode: ${error.message}`)
-  return code
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    // Generate 6-char alphanumeric code
+    const code = Math.random().toString(36).slice(2, 8).toUpperCase()
+    const { error } = await supabase.from('trip_invites').insert({
+      trip_id: id,
+      code,
+      expires_at: expiresAt,
+    })
+    if (!error) return code
+    lastError = error
+    const isCollision = error.code === '23505' || /duplicate|unique/i.test(error.message ?? '')
+    if (!isCollision) break
+  }
+
+  throw new Error(`createInviteCode: ${lastError?.message ?? 'Could not create a unique invite code'}`)
 }
 
 export async function joinTripByCode(code: string, userName: string): Promise<{ tripId: string; trip: Trip }> {
@@ -707,7 +824,6 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
     .single()
 
   if (lookupError || !invite) throw new Error('Invalid invite code')
-  if (invite.used) throw new Error('This invite has already been used')
   if (new Date(invite.expires_at) < new Date()) throw new Error('This invite has expired')
 
   // Get trip details
@@ -722,22 +838,85 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
   // Add user as trip member with user_id
   const { data: authData } = await supabase.auth.getUser()
   const userId = authData?.user?.id
+  const userEmail = authData?.user?.email?.trim().toLowerCase()
 
-  const { error: memberError } = await supabase.from(T.groupMembers).insert({
-    trip_id: tripId,
-    name: userName,
-    role: 'Member',
-    ...(userId ? { user_id: userId } : {}),
-  })
-  if (memberError) throw new Error(`joinTrip: ${memberError.message}`)
+  if (userId) {
+    const { data: existingMember } = await supabase
+      .from(T.groupMembers)
+      .select('id, user_id')
+      .eq('trip_id', tripId)
+      .eq('user_id', userId)
+      .maybeSingle()
 
-  // Mark invite as used
+    if (existingMember?.id) {
+      await supabase
+        .from(T.groupMembers)
+        .update({ name: userName })
+        .eq('id', existingMember.id)
+        .then(() => {})
+    } else {
+      let placeholderMember: { id: string } | null = null
+      if (userEmail) {
+        const { data } = await supabase
+          .from(T.groupMembers)
+          .select('id')
+          .eq('trip_id', tripId)
+          .is('user_id', null)
+          .ilike('email', userEmail)
+          .maybeSingle()
+        placeholderMember = data as { id: string } | null
+      }
+      if (!placeholderMember && userName.trim()) {
+        const { data } = await supabase
+          .from(T.groupMembers)
+          .select('id')
+          .eq('trip_id', tripId)
+          .is('user_id', null)
+          .ilike('name', userName.trim())
+          .maybeSingle()
+        placeholderMember = data as { id: string } | null
+      }
+
+      if (placeholderMember?.id) {
+        const { error: linkError } = await supabase
+          .from(T.groupMembers)
+          .update({ name: userName, user_id: userId })
+          .eq('id', placeholderMember.id)
+        if (linkError) throw new Error(`joinTrip: ${linkError.message}`)
+      } else {
+        const { error: memberError } = await supabase.from(T.groupMembers).insert({
+          trip_id: tripId,
+          name: userName,
+          role: 'Member',
+          user_id: userId,
+          ...(userEmail ? { email: userEmail } : {}),
+        })
+        if (memberError) throw new Error(`joinTrip: ${memberError.message}`)
+      }
+    }
+  } else {
+    const { error: memberError } = await supabase.from(T.groupMembers).insert({
+      trip_id: tripId,
+      name: userName,
+      role: 'Member',
+    })
+    if (memberError) throw new Error(`joinTrip: ${memberError.message}`)
+  }
+
+  // Mark as used for organizer history only. Codes remain reusable until expiry
+  // so one group invite can be shared with multiple travelers.
   await supabase.from('trip_invites').update({ used: true }).eq('code', code.toUpperCase())
 
   // Notify existing members (best-effort, non-blocking)
   if (userId) {
     notifyMemberJoined(tripId, userName, userId).catch(() => {})
   }
+
+  cachedTripId = tripId
+  cachedTrip = undefined
+  cachedTripUserId = userId
+  invalidateTripCache(tripId)
+  await clearTripLocalData()
 
   return { tripId, trip: mapTrip(tripData) }
 }
@@ -770,9 +949,9 @@ export async function getInvites(tripId?: string): Promise<TripInvite[]> {
 
 // ---------- ADD FLIGHT ----------
 
-export async function addFlight(input: {
+type AddFlightInput = {
   tripId: string;
-  direction: 'Outbound' | 'Return';
+  direction: 'Outbound' | 'Return' | string;
   flightNumber: string;
   airline?: string;
   fromCity?: string;
@@ -780,21 +959,206 @@ export async function addFlight(input: {
   departTime?: string;
   arriveTime?: string;
   bookingRef?: string;
+  seatNumber?: string;
   passenger?: string;
-}): Promise<void> {
-  const { error } = await supabase.from(T.flights).insert({
+}
+
+function cleanRow(row: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined))
+}
+
+function buildCurrentFlightRow(input: AddFlightInput) {
+  return cleanRow({
     trip_id: input.tripId,
-    direction: input.direction,
+    direction: normalizeFlightDirection(input.direction),
+    flight_number: input.flightNumber,
+    ...(input.airline ? { airline: input.airline } : {}),
+    ...(input.fromCity ? { origin: input.fromCity } : {}),
+    ...(input.toCity ? { destination: input.toCity } : {}),
+    ...(input.departTime ? { departure_time: input.departTime } : {}),
+    ...(input.arriveTime ? { arrival_time: input.arriveTime } : {}),
+    ...(input.bookingRef ? { confirmation: input.bookingRef } : {}),
+    ...(input.seatNumber ? { seat_number: input.seatNumber } : {}),
+    ...(input.passenger ? { passenger: input.passenger } : {}),
+  })
+}
+
+function isSchemaCacheError(error: { message?: string; code?: string }) {
+  return (
+    error.message?.includes('schema cache') ||
+    error.message?.includes('Could not find') ||
+    error.code === 'PGRST204'
+  )
+}
+
+function isMissingColumnError(error: { message?: string; code?: string }, column: string) {
+  return (
+    error.code === 'PGRST204' ||
+    error.message?.includes(column) ||
+    error.message?.includes('schema cache') ||
+    error.message?.includes('Could not find')
+  )
+}
+
+export async function addFlight(input: AddFlightInput): Promise<void> {
+  const liveRow = {
+    trip_id: input.tripId,
+    direction: normalizeFlightDirection(input.direction),
+    flight_number: input.flightNumber,
+    ...(input.airline ? { airline: input.airline } : {}),
+    ...(input.fromCity ? { origin: input.fromCity } : {}),
+    ...(input.toCity ? { destination: input.toCity } : {}),
+    ...(input.bookingRef ? { confirmation: input.bookingRef } : {}),
+    ...(input.seatNumber ? { seat_number: input.seatNumber } : {}),
+    ...(input.passenger ? { passenger: input.passenger } : {}),
+  }
+
+  const liveRowWithLegacySeat = {
+    ...liveRow,
+    seat_number: undefined,
+    ...(input.seatNumber ? { seat: input.seatNumber } : {}),
+  }
+
+  const legacyRow = {
+    trip_id: input.tripId,
+    direction: normalizeFlightDirection(input.direction),
     flight_number: input.flightNumber,
     ...(input.airline ? { airline: input.airline } : {}),
     ...(input.fromCity ? { from_city: input.fromCity } : {}),
     ...(input.toCity ? { to_city: input.toCity } : {}),
-    ...(input.departTime ? { depart_time: input.departTime } : {}),
-    ...(input.arriveTime ? { arrive_time: input.arriveTime } : {}),
     ...(input.bookingRef ? { booking_ref: input.bookingRef } : {}),
+    ...(input.seatNumber ? { seat_number: input.seatNumber } : {}),
     ...(input.passenger ? { passenger: input.passenger } : {}),
+  }
+
+  const legacyRouteFallbackRow = {
+    ...legacyRow,
+    from_city: undefined,
+    to_city: undefined,
+    ...(input.fromCity ? { origin: input.fromCity } : {}),
+    ...(input.toCity ? { destination: input.toCity } : {}),
+  }
+
+  const withTimeColumns = (
+    base: Record<string, unknown>,
+    departColumn?: string,
+    arriveColumn?: string,
+  ) => ({
+    ...base,
+    ...(departColumn && input.departTime ? { [departColumn]: input.departTime } : {}),
+    ...(arriveColumn && input.arriveTime ? { [arriveColumn]: input.arriveTime } : {}),
   })
-  if (error) throw new Error(`addFlight: ${error.message}`)
+
+  const timeVariants: [string, string][] = [
+    ['departure_time', 'arrival_time'],
+    ['depart_time', 'arrive_time'],
+    ['departure_time', 'arrive_time'],
+    ['depart_time', 'arrival_time'],
+    ['departure_at', 'arrival_at'],
+    ['depart_at', 'arrive_at'],
+  ]
+
+  const rowsToTry: Record<string, unknown>[] = []
+  for (const [departColumn, arriveColumn] of timeVariants) {
+    rowsToTry.push(withTimeColumns(liveRow, departColumn, arriveColumn))
+    rowsToTry.push(withTimeColumns(liveRowWithLegacySeat, departColumn, arriveColumn))
+    rowsToTry.push(withTimeColumns(legacyRow, departColumn, arriveColumn))
+    rowsToTry.push(withTimeColumns(legacyRouteFallbackRow, departColumn, arriveColumn))
+  }
+
+  if (input.seatNumber) {
+    const noSeatRows = rowsToTry.map(({ seat_number: _seatNumber, ...row }) => row)
+    rowsToTry.push(...noSeatRows)
+  }
+
+  const errors: string[] = []
+  const seen = new Set<string>()
+  for (const candidate of rowsToTry) {
+    const row = cleanRow(candidate)
+    const signature = Object.keys(row).sort().join('|')
+    if (seen.has(signature)) continue
+    seen.add(signature)
+
+    const { error } = await supabase.from(T.flights).insert(row)
+    if (!error) return
+
+    errors.push(`${signature}: ${error.message}`)
+    if (!isSchemaCacheError(error)) throw new Error(`addFlight: ${error.message}`)
+  }
+
+  throw new Error(`addFlight: could not match flights schema. Last error: ${errors.at(-1) ?? 'unknown error'}`)
+}
+
+export async function replaceTripFlights(
+  tripId: string,
+  flights: Omit<AddFlightInput, 'tripId'>[],
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('replaceTripFlights: not authenticated')
+
+  const rpcFlights = flights.map((flight) => ({
+    direction: flight.direction,
+    flightNumber: flight.flightNumber,
+    airline: flight.airline,
+    fromCity: flight.fromCity,
+    toCity: flight.toCity,
+    departTime: flight.departTime,
+    arriveTime: flight.arriveTime,
+    bookingRef: flight.bookingRef,
+    seatNumber: flight.seatNumber,
+    passenger: flight.passenger,
+  }))
+
+  const { error: rpcError } = await supabase.rpc('replace_trip_flights_from_scan', {
+    p_trip_id: tripId,
+    p_flights: rpcFlights,
+  })
+  if (!rpcError) return
+
+  const canFallbackToPostgrest = (
+    rpcError.code === 'PGRST202' ||
+    rpcError.code === '42883' ||
+    rpcError.message?.includes('replace_trip_flights_from_scan') ||
+    rpcError.message?.includes('schema cache')
+  )
+  if (!canFallbackToPostgrest) {
+    throw new Error(`replaceTripFlights: ${rpcError.message}`)
+  }
+
+  const { error: deleteError } = await supabase
+    .from(T.flights)
+    .delete()
+    .eq('trip_id', tripId)
+    .or('passenger.is.null,passenger.eq.')
+  if (deleteError) throw new Error(`replaceTripFlights: ${deleteError.message}`)
+
+  const scannedPassengers = Array.from(new Set(
+    flights
+      .map((flight) => flight.passenger?.trim())
+      .filter((passenger): passenger is string => !!passenger),
+  ))
+
+  for (const passenger of scannedPassengers) {
+    const { error: passengerDeleteError } = await supabase
+      .from(T.flights)
+      .delete()
+      .eq('trip_id', tripId)
+      .eq('passenger', passenger)
+    if (passengerDeleteError) throw new Error(`replaceTripFlights: ${passengerDeleteError.message}`)
+  }
+
+  if (flights.length === 0) return
+
+  const liveRows = flights.map((flight) => buildCurrentFlightRow({ ...flight, tripId }))
+  const { error: bulkError } = await supabase.from(T.flights).insert(liveRows)
+  if (!bulkError) return
+  if (!isSchemaCacheError(bulkError)) {
+    throw new Error(`replaceTripFlights: ${bulkError.message}`)
+  }
+
+  for (const flight of flights) {
+    await addFlight({ ...flight, tripId })
+  }
 }
 
 // ---------- GROUP CHAT ----------
@@ -804,6 +1168,7 @@ export interface ChatMessage {
   tripId: string;
   senderName: string;
   senderAvatar?: string;
+  senderUserId?: string;
   message: string;
   createdAt: string;
 }
@@ -823,6 +1188,7 @@ export async function getChatMessages(tripId?: string): Promise<ChatMessage[]> {
     tripId: row.trip_id,
     senderName: row.sender_name ?? '',
     senderAvatar: row.sender_avatar ?? undefined,
+    senderUserId: row.sender_user_id ?? undefined,
     message: row.message ?? '',
     createdAt: row.created_at,
   }))
@@ -832,6 +1198,7 @@ export async function sendChatMessage(input: {
   tripId?: string;
   senderName: string;
   senderAvatar?: string;
+  senderUserId?: string;
   message: string;
 }): Promise<void> {
   const id = await resolveTripId(input.tripId)
@@ -839,6 +1206,7 @@ export async function sendChatMessage(input: {
     trip_id: id,
     sender_name: input.senderName,
     sender_avatar: input.senderAvatar ?? null,
+    sender_user_id: input.senderUserId ?? null,
     message: input.message.trim(),
   })
   if (error) throw new Error(`sendChatMessage: ${error.message}`)
@@ -865,6 +1233,7 @@ export function subscribeToChatMessages(
           tripId: row.trip_id,
           senderName: row.sender_name ?? '',
           senderAvatar: row.sender_avatar ?? undefined,
+          senderUserId: row.sender_user_id ?? undefined,
           message: row.message ?? '',
           createdAt: row.created_at,
         })
@@ -895,6 +1264,40 @@ export async function addGroupMember(input: {
   if (error) throw new Error(`addGroupMember: ${error.message}`)
 }
 
+export async function removeGroupMember(memberId: string): Promise<void> {
+  const { data: member, error: readError } = await supabase
+    .from(T.groupMembers)
+    .select('role')
+    .eq('id', memberId)
+    .single()
+  if (readError) throw new Error(`removeGroupMember: ${readError.message}`)
+  if ((member?.role as string) === 'Primary') {
+    throw new Error('The trip organizer cannot be removed.')
+  }
+
+  const { error } = await supabase.from(T.groupMembers).delete().eq('id', memberId)
+  if (error) throw new Error(`removeGroupMember: ${error.message}`)
+}
+
+export async function updateMyTripMemberPreferences(
+  tripId: string,
+  input: { sharesAccommodation?: boolean; travelNotes?: string },
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('updateMyTripMemberPreferences: not authenticated')
+
+  const { error } = await supabase
+    .from(T.groupMembers)
+    .update({
+      ...(input.sharesAccommodation != null ? { shares_accommodation: input.sharesAccommodation } : {}),
+      ...(input.travelNotes != null ? { travel_notes: input.travelNotes } : {}),
+    })
+    .eq('trip_id', tripId)
+    .eq('user_id', user.id)
+
+  if (error) throw new Error(`updateMyTripMemberPreferences: ${error.message}`)
+}
+
 /**
  * Update a single text property on a trip.
  * The key uses the Notion-era display name; we map it to the Supabase column.
@@ -908,6 +1311,8 @@ const TRIP_PROPERTY_MAP: Record<string, string> = {
   'WiFi Network': 'wifi_ssid',
   'WiFi Password': 'wifi_password',
   'Door Code': 'door_code',
+  'Room Type': 'room_type',
+  'Booking Ref': 'booking_ref',
   Notes: 'notes',
   'Hotel URL': 'hotel_url',
   'Airport Arrival Buffer': 'airport_arrival_buffer',
@@ -919,6 +1324,10 @@ const TRIP_PROPERTY_MAP: Record<string, string> = {
   'Hotel Photos': 'hotel_photos',
   Destination: 'destination',
   'Trip Name': 'name',
+  'Start Date': 'start_date',
+  'End Date': 'end_date',
+  'Budget Limit': 'budget_limit',
+  Currency: 'currency',
   status: 'status',
 }
 
@@ -931,6 +1340,52 @@ export async function updateTripProperty(
   if (!column) throw new Error(`updateTripProperty: unknown key "${key}"`)
   const { error } = await supabase.from(T.trips).update({ [column]: value }).eq('id', tripId)
   if (error) throw new Error(`updateTripProperty: ${error.message}`)
+}
+
+export async function updateTripFromScan(
+  tripId: string,
+  input: {
+    destination?: string;
+    startDate?: string;
+    endDate?: string;
+    accommodation?: string;
+    address?: string;
+    checkIn?: string;
+    checkOut?: string;
+    roomType?: string;
+    bookingRef?: string;
+    cost?: number;
+    costCurrency?: string;
+  },
+): Promise<void> {
+  const row: Record<string, unknown> = {}
+  if (input.destination) row.destination = input.destination
+  if (input.startDate) row.start_date = input.startDate
+  if (input.endDate) row.end_date = input.endDate
+  if (input.accommodation) row.accommodation_name = input.accommodation
+  if (input.address) row.accommodation_address = input.address
+  if (input.checkIn) row.check_in = input.checkIn
+  if (input.checkOut) row.check_out = input.checkOut
+  if (input.roomType) row.room_type = input.roomType
+  if (input.bookingRef) row.booking_ref = input.bookingRef
+  if (input.cost != null) row.budget_limit = input.cost
+  if (input.costCurrency) row.currency = input.costCurrency
+
+  if (input.startDate && input.endDate) {
+    const now = new Date()
+    const start = new Date(input.startDate + 'T00:00:00+08:00')
+    const end = new Date(input.endDate + 'T23:59:59+08:00')
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+      row.status = now > end ? 'Completed' : now > start ? 'Active' : 'Planning'
+    }
+  }
+
+  if (Object.keys(row).length === 0) return
+
+  const { error } = await supabase.from(T.trips).update(row).eq('id', tripId)
+  if (error) throw new Error(`updateTripFromScan: ${error.message}`)
+  cachedTrip = undefined
+  invalidateTripCache(tripId)
 }
 
 export async function updateTripBudgetMode(
@@ -950,6 +1405,18 @@ export async function updateTripBudgetLimit(tripId: string, limit: number): Prom
     .update({ budget_limit: limit })
     .eq('id', tripId)
   if (error) throw new Error(`updateTripBudgetLimit: ${error.message}`)
+}
+
+export async function updateHotelCoordinates(
+  tripId: string,
+  lat: number,
+  lng: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from(T.trips)
+    .update({ hotel_lat: lat, hotel_lng: lng })
+    .eq('id', tripId)
+  if (error) throw new Error(`updateHotelCoordinates: ${error.message}`)
 }
 
 // ── Payment QRs ────────────────────────────────────────────────────────
@@ -1032,6 +1499,216 @@ export async function removePaymentQr(tripId: string, index: number): Promise<Pa
   return next
 }
 
+// ── Expense Splits (per-member assignment) ───────────────────────────
+
+export interface ExpenseSplit {
+  id: string
+  expenseId: string
+  tripId: string
+  memberId: string
+  memberName: string
+  amount: number
+  settled: boolean
+  settledAt?: string
+}
+
+function mapSplit(row: Record<string, unknown>): ExpenseSplit {
+  return {
+    id: row.id as string,
+    expenseId: row.expense_id as string,
+    tripId: row.trip_id as string,
+    memberId: row.member_id as string,
+    memberName: row.member_name as string,
+    amount: Number(row.amount ?? 0),
+    settled: (row.settled as boolean) ?? false,
+    settledAt: (row.settled_at as string) ?? undefined,
+  }
+}
+
+export async function addExpenseSplits(
+  expenseId: string,
+  tripId: string,
+  splits: { memberId: string; memberName: string; amount: number }[],
+): Promise<ExpenseSplit[]> {
+  if (splits.length === 0) return []
+  const rows = splits.map((s) => ({
+    expense_id: expenseId,
+    trip_id: tripId,
+    member_id: s.memberId,
+    member_name: s.memberName,
+    amount: s.amount,
+  }))
+  const { data, error } = await supabase.from('expense_splits').insert(rows).select()
+  if (error) throw new Error(`addExpenseSplits: ${error.message}`)
+  return (data ?? []).map((r) => mapSplit(r as Record<string, unknown>))
+}
+
+export async function getExpenseSplits(expenseId: string): Promise<ExpenseSplit[]> {
+  const { data, error } = await supabase
+    .from('expense_splits')
+    .select('*')
+    .eq('expense_id', expenseId)
+    .order('created_at')
+  if (error) throw new Error(`getExpenseSplits: ${error.message}`)
+  return (data ?? []).map((r) => mapSplit(r as Record<string, unknown>))
+}
+
+export async function getTripSplits(tripId: string): Promise<ExpenseSplit[]> {
+  const { data, error } = await supabase
+    .from('expense_splits')
+    .select('*')
+    .eq('trip_id', tripId)
+    .order('created_at')
+  if (error) throw new Error(`getTripSplits: ${error.message}`)
+  return (data ?? []).map((r) => mapSplit(r as Record<string, unknown>))
+}
+
+export async function settleExpenseSplit(splitId: string): Promise<void> {
+  const { error } = await supabase
+    .from('expense_splits')
+    .update({ settled: true, settled_at: new Date().toISOString() })
+    .eq('id', splitId)
+  if (error) throw new Error(`settleExpenseSplit: ${error.message}`)
+}
+
+export async function unsettleExpenseSplit(splitId: string): Promise<void> {
+  const { error } = await supabase
+    .from('expense_splits')
+    .update({ settled: false, settled_at: null })
+    .eq('id', splitId)
+  if (error) throw new Error(`unsettleExpenseSplit: ${error.message}`)
+}
+
+/** Calculate net balances between group members for a trip */
+export interface MemberBalance {
+  memberId: string
+  memberName: string
+  totalOwed: number
+  totalPaid: number
+  net: number // positive = owed to them, negative = they owe
+  settled: number
+  unsettled: number
+}
+
+export async function getTripBalances(
+  tripId: string,
+  expenses: Expense[],
+  members: GroupMember[],
+): Promise<MemberBalance[]> {
+  const splits = await getTripSplits(tripId)
+
+  const balances = new Map<string, MemberBalance>()
+  for (const m of members) {
+    balances.set(m.id, {
+      memberId: m.id,
+      memberName: m.name,
+      totalOwed: 0,
+      totalPaid: 0,
+      net: 0,
+      settled: 0,
+      unsettled: 0,
+    })
+  }
+
+  // Sum what each member paid
+  for (const e of expenses) {
+    const payer = members.find((m) => m.name === e.paidBy)
+    if (payer) {
+      const b = balances.get(payer.id)
+      if (b) b.totalPaid += e.amount
+    }
+  }
+
+  // Sum what each member owes from splits
+  for (const s of splits) {
+    const b = balances.get(s.memberId)
+    if (b) {
+      b.totalOwed += s.amount
+      if (s.settled) b.settled += s.amount
+      else b.unsettled += s.amount
+    }
+  }
+
+  // Net = paid - owed (positive means others owe you)
+  for (const b of balances.values()) {
+    b.net = b.totalPaid - b.totalOwed
+  }
+
+  return [...balances.values()]
+}
+
+// ── User-scoped Payment QR Codes ─────────────────────────────────────
+
+export interface UserPaymentQr {
+  id: string
+  label: string
+  uri: string
+  qrData?: string
+  bank?: string
+}
+
+export async function addUserPaymentQr(
+  userId: string,
+  label: string,
+  localUri: string,
+): Promise<UserPaymentQr> {
+  const ext = 'jpeg'
+  const rand = Math.random().toString(36).slice(2, 6)
+  const path = `payment-qr/user/${userId}/${label.toLowerCase().replace(/\s+/g, '-')}-${rand}.${ext}`
+
+  const bytes = await readFileAsBytes(localUri)
+  const { error: uploadErr } = await supabase.storage
+    .from('moments')
+    .upload(path, bytes, { contentType: 'image/jpeg', upsert: false })
+  if (uploadErr) throw new Error(`Upload QR: ${uploadErr.message}`)
+
+  const { data: urlData } = supabase.storage.from('moments').getPublicUrl(path)
+  const publicUrl = urlData.publicUrl
+
+  // Store in profile JSON column (no separate table needed)
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('payment_qrs')
+    .eq('id', userId)
+    .single()
+
+  const current: UserPaymentQr[] = (profile?.payment_qrs as UserPaymentQr[]) ?? []
+  const newQr: UserPaymentQr = { id: `qr-${Date.now()}`, label, uri: publicUrl }
+  const next = [...current, newQr]
+
+  const { error } = await supabase.from('profiles').update({ payment_qrs: next }).eq('id', userId)
+  if (error) throw new Error(`addUserPaymentQr: ${error.message}`)
+
+  return newQr
+}
+
+export async function getUserPaymentQrs(userId: string): Promise<UserPaymentQr[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('payment_qrs')
+    .eq('id', userId)
+    .single()
+  if (error) return []
+  return (data?.payment_qrs as UserPaymentQr[]) ?? []
+}
+
+export async function removeUserPaymentQr(qrId: string): Promise<void> {
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData?.user?.id
+  if (!userId) return
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('payment_qrs')
+    .eq('id', userId)
+    .single()
+
+  const current: UserPaymentQr[] = (profile?.payment_qrs as UserPaymentQr[]) ?? []
+  const next = current.filter((q) => q.id !== qrId)
+
+  await supabase.from('profiles').update({ payment_qrs: next }).eq('id', userId)
+}
+
 // ── Curated Lists (AI Recommendations via Edge Function) ───────────
 
 export interface CuratedItem {
@@ -1061,14 +1738,31 @@ export async function getCuratedList(args: {
   }
 }
 
+// ---------- DESTINATION OVERVIEW ----------
+
+export async function getDestinationOverview(
+  destination: string,
+): Promise<import('./types').DestinationOverview | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('ai-recommend', {
+      body: { destination, category: 'destination-overview' },
+    });
+    if (error || !data?.overview) return null;
+    return data.overview as import('./types').DestinationOverview;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- FLIGHTS ----------
 
 export async function getFlights(tripId?: string): Promise<Flight[]> {
   const id = await resolveTripId(tripId)
-  const { data, error } = await supabase
-    .from(T.flights)
-    .select('*')
-    .eq('trip_id', id)
+	  const { data, error } = await supabase
+	    .from(T.flights)
+	    .select('*')
+	    .eq('trip_id', id)
+	    .order('departure_time', { ascending: true })
 
   if (error) throw new Error(`getFlights: ${error.message}`)
   return (data ?? []).map(mapFlight)
@@ -1191,7 +1885,7 @@ export async function getExpenses(tripId?: string): Promise<Expense[]> {
 
 export async function addExpense(
   input: Omit<Expense, 'id'> & { tripId?: string; standalone?: boolean }
-): Promise<void> {
+): Promise<Expense & { tripId?: string }> {
   let tripId: string | null = null
   if (!input.standalone) {
     tripId = await resolveTripId(input.tripId)
@@ -1199,7 +1893,7 @@ export async function addExpense(
 
   const { data: authData } = await supabase.auth.getUser()
 
-  const { error } = await supabase.from(T.expenses).insert({
+  const { data, error } = await supabase.from(T.expenses).insert({
     ...(tripId ? { trip_id: tripId } : {}),
     ...(input.standalone ? { user_id: authData?.user?.id } : {}),
     title: input.description,
@@ -1214,8 +1908,21 @@ export async function addExpense(
     ...(input.placeLongitude != null ? { place_longitude: input.placeLongitude } : {}),
     ...(input.splitType ? { split_type: input.splitType } : {}),
     ...(input.notes ? { notes: input.notes } : {}),
-  })
+  }).select().single()
   if (error) throw new Error(`addExpense: ${error.message}`)
+
+  const row = data as Record<string, unknown>
+  return {
+    id: row.id as string,
+    description: (row.title as string) ?? '',
+    amount: Number(row.amount ?? 0),
+    currency: (row.currency as string) ?? 'PHP',
+    category: (row.category as Expense['category']) ?? 'Other',
+    date: (row.expense_date as string) ?? '',
+    paidBy: (row.paid_by as string) ?? undefined,
+    splitType: (row.split_type as Expense['splitType']) ?? undefined,
+    tripId: (row.trip_id as string) ?? undefined,
+  }
 }
 
 export async function updateExpense(
@@ -1413,15 +2120,18 @@ export async function notifyGroupOfRecommendation(
     if (targets.length === 0) return
 
     const rows = targets.map((m) => ({
-      user_id: m.userId,
+      id: createNotificationId(),
+      user_id: m.userId!,
+      trip_id: tripId,
       type: 'vote_needed',
       title: `${recommenderName} recommends ${placeName}`,
       body: 'Tap to vote — should the group visit this place?',
-      data: { tripId, placeId, placeName, recommenderName },
+      data: { type: 'vote_needed', tripId, placeId, placeName, recommenderName },
       read: false,
     }))
 
-    await supabase.from('notifications').insert(rows)
+    const { error } = await supabase.from('notifications').insert(rows)
+    if (!error) rows.forEach((row) => queuePushForNotification(row))
   } catch {
     // Notifications table might not exist yet — silently ignore
   }
@@ -1587,6 +2297,43 @@ export async function resetRpsGame(placeId: string): Promise<void> {
 
 // ---------- NOTIFICATION HELPERS ----------
 
+type NotificationInsertRecord = {
+  id: string
+  user_id: string
+  trip_id?: string
+  type: string
+  title: string
+  body: string
+  data: Record<string, any>
+  read: boolean
+}
+
+function createNotificationId(): string {
+  const randomUUID = globalThis.crypto?.randomUUID
+  if (randomUUID) return randomUUID.call(globalThis.crypto)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const rnd = Math.floor(Math.random() * 16)
+    const val = char === 'x' ? rnd : (rnd & 0x3) | 0x8
+    return val.toString(16)
+  })
+}
+
+function queuePushForNotification(record: NotificationInsertRecord): void {
+  supabase.functions.invoke('send-push-notification', {
+    body: { type: 'INSERT', record },
+  }).then(({ error }) => {
+    if (error && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[pushNotification] delivery failed:', error.message)
+    }
+  }).catch((err) => {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[pushNotification] delivery error:', err)
+    }
+  })
+}
+
 /** Generic notification insert — all specific notifiers delegate to this. */
 async function insertNotification(opts: {
   userId: string
@@ -1627,7 +2374,8 @@ async function insertNotification(opts: {
       return // User has suppressed this notification category/phase/trip
     }
 
-    const { error: insertErr } = await supabase.from('notifications').insert({
+    const record: NotificationInsertRecord = {
+      id: createNotificationId(),
       user_id: opts.userId,
       trip_id: opts.tripId,
       type: opts.type,
@@ -1635,11 +2383,13 @@ async function insertNotification(opts: {
       body: opts.body,
       data: { ...opts.data, type: opts.type },
       read: false,
-    })
+    }
+    const { error: insertErr } = await supabase.from('notifications').insert(record)
     if (insertErr && __DEV__) {
       // eslint-disable-next-line no-console
       console.warn('[insertNotification] failed:', insertErr.message)
     }
+    if (!insertErr) queuePushForNotification(record)
   } catch (err) {
     if (__DEV__) {
       // eslint-disable-next-line no-console
@@ -1781,8 +2531,8 @@ export async function getMoments(tripId?: string): Promise<Moment[]> {
   const filtered = (data ?? []).filter((row) => {
     const vis = (row.visibility as string) ?? 'shared'
     if (vis === 'shared') return true
-    if (row.user_id == null) return true  // Legacy moments without user_id
-    if (uid && row.user_id === uid) return true  // Own private/album moments
+    // Private/album moments: only visible to the uploader
+    if (uid && row.user_id === uid) return true
     return false
   })
 
@@ -1796,15 +2546,20 @@ const MOMENT_NAME_POOL = [
   'good-times', 'wander', 'explore', 'memory', 'getaway', 'escape',
 ] as const;
 
+function isUuid(value?: string): value is string {
+  return !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+}
+
 function buildMomentFilename(
-  input: { tags: string[]; location?: string; date: string; caption?: string },
+  input: { tags?: string[]; location?: string; date: string; caption?: string },
   ext: string,
 ): string {
   const parts: string[] = [];
+  const tags = Array.isArray(input.tags) ? input.tags.filter(Boolean) : [];
 
   // Use first tag if available, otherwise pick from pool
-  if (input.tags.length > 0) {
-    parts.push(input.tags[0].toLowerCase());
+  if (tags.length > 0) {
+    parts.push(tags[0].toLowerCase());
   } else if (input.caption && input.caption !== 'Untitled') {
     // Use first word of caption
     const word = input.caption.split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1834,13 +2589,16 @@ function buildMomentFilename(
 }
 
 export async function addMoment(
-  input: Omit<Moment, 'id'> & { tripId?: string; localUri?: string }
-): Promise<void> {
+  input: Omit<Moment, 'id'> & { tripId?: string; localUri?: string; isPublic?: boolean }
+): Promise<string> {
   const tripId = await resolveTripId(input.tripId)
+  const tags = Array.isArray(input.tags) ? input.tags.filter(Boolean) : []
 
   let storagePath: string | undefined
   let publicUrl: string | undefined
   let hdUrl: string | undefined
+  const uploadedPaths: string[] = []
+  let uploadHdVersion: ((momentId: string) => void) | undefined
 
   // If a local file URI is provided, compress and upload to Supabase Storage.
   if (input.localUri) {
@@ -1852,7 +2610,11 @@ export async function addMoment(
 
     // Helper: compress → read bytes → upload
     const uploadFile = async (uri: string, path: string) => {
-      const bytes = await readFileAsBytes(uri)
+      const bytes = await withOperationTimeout(
+        readFileAsBytes(uri),
+        'Reading photo timed out. Please try a smaller photo.',
+        60_000,
+      )
       const { error: uploadError } = await supabase.storage
         .from('moments')
         .upload(path, bytes, { contentType, upsert: false })
@@ -1862,18 +2624,45 @@ export async function addMoment(
     }
 
     // Standard version (800px, 70% quality) — used for thumbnails + lightbox
-    const standardFile = isVideo ? input.localUri : await compressImage(input.localUri, 800, 0.7)
+    const standardFile = isVideo
+      ? input.localUri
+      : await withOperationTimeout(
+          compressImage(input.localUri, 1000, 0.68),
+          'Preparing photo timed out. Please try a smaller photo.',
+          60_000,
+        )
     storagePath = `trips/${tripId}/${friendlyName}`
-    publicUrl = await uploadFile(standardFile, storagePath)
+    publicUrl = await withOperationTimeout(
+      uploadFile(standardFile, storagePath),
+      'Photo upload timed out. Please check your connection and try again.',
+      150_000,
+    )
+    uploadedPaths.push(storagePath)
 
-    // HD version (1920px, 85% quality) — for download/share
+    // HD is optional. Save the moment first so weak mobile uploads do not block the UI.
     if (!isVideo) {
-      try {
-        const hdFile = await compressImage(input.localUri, 1920, 0.85)
+      uploadHdVersion = (momentId: string) => {
         const hdPath = `trips/${tripId}/hd/${friendlyName}`
-        hdUrl = await uploadFile(hdFile, hdPath)
-      } catch {
-        // HD upload failed — standard version still works
+        void (async () => {
+          try {
+            const hdFile = await withOperationTimeout(
+              compressImage(input.localUri!, 1600, 0.78),
+              'Preparing HD photo timed out.',
+              45_000,
+            )
+            const nextHdUrl = await withOperationTimeout(uploadFile(hdFile, hdPath), 'HD photo upload timed out.', 90_000)
+            const { error: updateError } = await withOperationTimeout(
+              supabase.from(T.moments).update({ hd_url: nextHdUrl }).eq('id', momentId),
+              'Saving HD photo timed out.',
+              45_000,
+            )
+            if (updateError) {
+              await supabase.storage.from('moments').remove([hdPath]).catch(() => {})
+            }
+          } catch {
+            await supabase.storage.from('moments').remove([hdPath]).catch(() => {})
+          }
+        })()
       }
     }
   } else if (input.photo) {
@@ -1891,29 +2680,55 @@ export async function addMoment(
     ...(publicUrl ? { public_url: publicUrl } : {}),
     ...(hdUrl ? { hd_url: hdUrl } : {}),
     ...(input.location ? { location: input.location } : {}),
-    ...(input.takenBy ? { uploaded_by: input.takenBy } : {}),
+    ...(isUuid(input.takenBy) ? { uploaded_by: input.takenBy } : {}),
     ...(authUser?.id ? { user_id: authUser.id } : {}),
     taken_at: input.date,
-    ...(input.tags.length > 0 ? { tags: input.tags } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
     ...(input.visibility ? { visibility: input.visibility } : {}),
+    ...(input.isPublic ? { is_public: true } : {}),
   }
 
-  const { error } = await supabase.from(T.moments).insert(row)
+  let insertedId: string | undefined
+  const { data, error } = await withOperationTimeout(
+    supabase.from(T.moments).insert(row).select('id').single(),
+    'Saving photo timed out. Please try again.',
+    60_000,
+  )
+  insertedId = data?.id as string | undefined
   if (error) {
     // Retry without hd_url in case column doesn't exist yet
     if (hdUrl && error.message.includes('hd_url')) {
       delete row.hd_url
-      const { error: retryError } = await supabase.from(T.moments).insert(row)
-      if (retryError) throw new Error(`addMoment insert: ${retryError.message}`)
+      const { data: retryData, error: retryError } = await supabase.from(T.moments).insert(row).select('id').single()
+      insertedId = retryData?.id as string | undefined
+      if (retryError) {
+        if (uploadedPaths.length > 0) await supabase.storage.from('moments').remove(uploadedPaths).catch(() => {})
+        throw new Error(`addMoment insert: ${retryError.message}`)
+      }
     } else {
+      if (uploadedPaths.length > 0) await supabase.storage.from('moments').remove(uploadedPaths).catch(() => {})
       throw new Error(`addMoment insert: ${error.message}`)
     }
   }
+  if (!insertedId) throw new Error('addMoment insert: no row returned')
+  if (uploadHdVersion) uploadHdVersion(insertedId)
+  return insertedId
 }
 
 function guessMimeType(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase()
   switch (ext) {
+    case 'pdf':
+      return 'application/pdf'
+    case 'doc':
+      return 'application/msword'
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    case 'txt':
+      return 'text/plain'
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg'
     case 'png':
       return 'image/png'
     case 'gif':
@@ -1927,7 +2742,7 @@ function guessMimeType(filename: string): string {
     case 'mov':
       return 'video/quicktime'
     default:
-      return 'image/jpeg'
+      return 'application/octet-stream'
   }
 }
 
@@ -2037,6 +2852,124 @@ export async function toggleMomentVisibility(momentId: string): Promise<'shared'
 
   if (error) throw new Error(`toggleMomentVisibility: ${error.message}`)
   return newVisibility as 'shared' | 'private'
+}
+
+/** Set moment visibility to a specific value (private / shared / album). Owner only. */
+export async function setMomentVisibility(
+  momentId: string,
+  visibility: 'shared' | 'private' | 'album',
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('setMomentVisibility: not authenticated')
+
+  const { data: moment } = await supabase
+    .from(T.moments)
+    .select('user_id')
+    .eq('id', momentId)
+    .single()
+
+  if (!moment) throw new Error('setMomentVisibility: moment not found')
+  const momentUserId = moment.user_id as string | null
+  if (momentUserId && momentUserId !== user.id) {
+    throw new Error('setMomentVisibility: can only change own moments')
+  }
+
+  const { error } = await supabase
+    .from(T.moments)
+    .update({ visibility })
+    .eq('id', momentId)
+
+  if (error) throw new Error(`setMomentVisibility: ${error.message}`)
+}
+
+/** Batch-set visibility on multiple moments. Owner only — silently skips others' moments. */
+export async function batchSetMomentVisibility(
+  momentIds: string[],
+  visibility: 'shared' | 'private' | 'album',
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('batchSetMomentVisibility: not authenticated')
+
+  // Only update moments owned by this user (or legacy unowned)
+  const { error } = await supabase
+    .from(T.moments)
+    .update({ visibility })
+    .in('id', momentIds)
+    .or(`user_id.eq.${user.id},user_id.is.null`)
+
+  if (error) throw new Error(`batchSetMomentVisibility: ${error.message}`)
+}
+
+/** Batch-delete multiple moments. Owner only — silently skips others' moments. */
+export async function batchDeleteMoments(momentIds: string[]): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('batchDeleteMoments: not authenticated')
+
+  const { error } = await supabase
+    .from(T.moments)
+    .delete()
+    .in('id', momentIds)
+    .or(`user_id.eq.${user.id},user_id.is.null`)
+
+  if (error) throw new Error(`batchDeleteMoments: ${error.message}`)
+}
+
+/** Share a moment to the trip group — sets visibility to 'shared', notifies members, posts chat message. */
+export async function shareMomentToGroup(momentId: string, tripId?: string): Promise<void> {
+  const id = await resolveTripId(tripId)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('shareMomentToGroup: not authenticated')
+
+  // Set visibility to shared
+  const { data: moment } = await supabase
+    .from(T.moments)
+    .select('visibility, caption')
+    .eq('id', momentId)
+    .single()
+
+  if (!moment) throw new Error('shareMomentToGroup: moment not found')
+
+  if ((moment.visibility as string) !== 'shared') {
+    await supabase.from(T.moments).update({ visibility: 'shared' }).eq('id', momentId)
+  }
+
+  // Get sharer's name
+  const profile = await getProfile(user.id)
+  const name = profile?.fullName?.split(' ')[0] ?? 'Someone'
+
+  // Notify group members
+  const caption = (moment.caption as string) ? ` "${moment.caption}"` : ''
+  await notifyAllMembers(id, 'photo_shared', `${name} shared a photo`, `${name} shared a photo${caption} with the group`, { momentId }, user.id)
+
+  // Post chat message
+  sendChatMessage({
+    tripId: id,
+    senderName: name,
+    senderAvatar: profile?.avatarUrl ?? undefined,
+    message: `📸 Shared a photo${caption} with the group`,
+  }).catch(() => {})
+}
+
+/** Delete a moment (owner only). */
+export async function deleteMoment(momentId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('deleteMoment: not authenticated')
+
+  const { data: moment } = await supabase
+    .from(T.moments)
+    .select('user_id, photo')
+    .eq('id', momentId)
+    .single()
+
+  if (!moment) throw new Error('deleteMoment: moment not found')
+
+  const momentUserId = moment.user_id as string | null
+  if (momentUserId && momentUserId !== user.id) {
+    throw new Error('deleteMoment: can only delete own moments')
+  }
+
+  const { error } = await supabase.from(T.moments).delete().eq('id', momentId)
+  if (error) throw new Error(`deleteMoment: ${error.message}`)
 }
 
 /** Get moments favorited by 2+ group members (group highlights). */
@@ -2319,22 +3252,103 @@ export async function getTripFiles(tripId?: string): Promise<TripFile[]> {
     .eq('trip_id', id)
 
   if (error) throw new Error(`getTripFiles: ${error.message}`)
-  return (data ?? []).map(mapTripFile)
+  const files = (data ?? []).map(mapTripFile)
+  return Promise.all(files.map(async (file) => {
+    if (!file.storagePath) return file
+    try {
+      const signedUrl = await getTripFilePreviewUrl(file.storagePath)
+      return { ...file, fileUrl: signedUrl, previewError: undefined }
+    } catch (signedError) {
+      const message = signedError instanceof Error ? signedError.message : 'Preview link could not be created'
+      if (__DEV__) console.warn('[trip-files] signed URL failed:', message)
+      return { ...file, fileUrl: undefined, previewError: message }
+    }
+  }))
+}
+
+export async function getTripFilePreviewUrl(storagePath: string, expiresInSeconds = 60 * 60): Promise<string> {
+  const path = storagePath.trim()
+  if (!path) throw new Error('File storage path is missing')
+  const { data, error } = await supabase.storage
+    .from('trip-files')
+    .createSignedUrl(path, expiresInSeconds)
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message ?? 'Preview link could not be created')
+  }
+  return data.signedUrl
 }
 
 export async function addTripFile(
   input: Omit<TripFile, 'id'> & { tripId?: string }
 ): Promise<void> {
   const id = await resolveTripId(input.tripId)
+  const fileUrl = input.fileUrl || input.storagePath
   const { error } = await supabase.from(T.tripFiles).insert({
     trip_id: id,
     name: input.fileName,
-    ...(input.fileUrl ? { file_url: input.fileUrl } : {}),
+    ...(fileUrl ? { file_url: fileUrl } : {}),
+    ...(input.storagePath ? { storage_path: input.storagePath } : {}),
+    ...(input.contentType ? { content_type: input.contentType } : {}),
+    ...(input.sizeBytes ? { size_bytes: input.sizeBytes } : {}),
+    ...(input.uploadedBy ? { uploaded_by: input.uploadedBy } : {}),
     file_type: input.type,
     ...(input.notes ? { description: input.notes } : {}),
     print_required: input.printRequired,
   })
   if (error) throw new Error(`addTripFile: ${error.message}`)
+}
+
+function safeStorageName(name: string) {
+  const cleaned = name.trim().replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_')
+  return cleaned || 'trip-file'
+}
+
+export async function uploadTripFile(input: {
+  tripId?: string
+  fileName: string
+  type: TripFileType
+  localUri: string
+  contentType?: string
+  notes?: string
+  printRequired?: boolean
+}): Promise<void> {
+  const tripId = await resolveTripId(input.tripId)
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('uploadTripFile: not authenticated')
+  if (!input.localUri) throw new Error('uploadTripFile: localUri is required')
+
+  const fileName = safeStorageName(input.fileName)
+  const contentType = input.contentType || guessMimeType(fileName)
+  const storagePath = `trip-files/${tripId}/${user.id}/${Date.now()}-${fileName}`
+  const bytes = await withOperationTimeout(
+    readFileAsBytes(input.localUri),
+    'Reading document timed out. Please try a smaller file.',
+    30_000,
+  )
+
+  const { error: uploadError } = await withOperationTimeout(
+    supabase.storage.from('trip-files').upload(storagePath, bytes, { contentType, upsert: false }),
+    'Document upload timed out. Please check your connection and try again.',
+    60_000,
+  )
+  if (uploadError) throw new Error(`uploadTripFile upload: ${uploadError.message}`)
+
+  try {
+    await addTripFile({
+      tripId,
+      fileName: input.fileName,
+      type: input.type,
+      storagePath,
+      contentType,
+      sizeBytes: bytes.byteLength,
+      uploadedBy: user.id,
+      notes: input.notes,
+      printRequired: !!input.printRequired,
+    })
+  } catch (error) {
+    await supabase.storage.from('trip-files').remove([storagePath]).catch(() => {})
+    throw error
+  }
 }
 
 // ---------- GENERIC DELETE ----------
@@ -2459,12 +3473,18 @@ export interface Profile {
   avatarUrl?: string;
   phone?: string;
   handle?: string;
+  bio?: string;
+  homeBase?: string;
+  profileVisibility?: 'public' | 'companions' | 'private';
+  publicStatsEnabled?: boolean;
+  profileBadges?: string[];
   socials?: ProfileSocials;
   tier: UserTier;
   tripCount: number;
   completedTripCount: number;
   lastTripId?: string;
   onboardedAt?: string;
+  onboardingState?: Record<string, unknown>;
   userSegment: UserSegment;
 }
 
@@ -2481,12 +3501,18 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     avatarUrl: data.avatar_url ?? undefined,
     phone: data.phone ?? undefined,
     handle: data.handle ?? undefined,
+    bio: data.bio ?? undefined,
+    homeBase: data.home_base ?? undefined,
+    profileVisibility: data.profile_visibility ?? undefined,
+    publicStatsEnabled: data.public_stats_enabled ?? undefined,
+    profileBadges: data.profile_badges ?? undefined,
     socials: (data.socials as ProfileSocials) ?? undefined,
     tier: (data.tier as UserTier) ?? 'free',
     tripCount: (data.trip_count as number) ?? 0,
     completedTripCount: (data.completed_trip_count as number) ?? 0,
     lastTripId: (data.last_trip_id as string) ?? undefined,
     onboardedAt: (data.onboarded_at as string) ?? undefined,
+    onboardingState: (data.onboarding_state as Record<string, unknown>) ?? undefined,
     userSegment: (data.user_segment as UserSegment) ?? 'new',
   }
 }
@@ -2495,26 +3521,186 @@ export async function updateProfile(
   userId: string,
   updates: Partial<Omit<Profile, 'id'>>
 ): Promise<void> {
-  const row: Record<string, unknown> = { id: userId }
+  const row: Record<string, unknown> = {}
   // Always include fields that are passed — even empty strings — so they persist
   if (updates.fullName !== undefined) row.full_name = updates.fullName
   if (updates.avatarUrl !== undefined) row.avatar_url = updates.avatarUrl || null
   if (updates.phone !== undefined) row.phone = updates.phone || null
   if (updates.handle !== undefined) row.handle = updates.handle || null
+  if (updates.bio !== undefined) row.bio = updates.bio || null
+  if (updates.homeBase !== undefined) row.home_base = updates.homeBase || null
+  if (updates.profileVisibility !== undefined) row.profile_visibility = updates.profileVisibility
+  if (updates.publicStatsEnabled !== undefined) row.public_stats_enabled = updates.publicStatsEnabled
+  if (updates.profileBadges !== undefined) row.profile_badges = updates.profileBadges
   if (updates.socials !== undefined) row.socials = updates.socials
   if (updates.onboardedAt !== undefined) row.onboarded_at = updates.onboardedAt
-  const { error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' })
-  if (error) throw new Error(`updateProfile: ${error.message}`)
+  if (updates.onboardingState !== undefined) row.onboarding_state = updates.onboardingState
+  if (Object.keys(row).length === 0) return
+
+  const { data: authData } = await supabase.auth.getUser()
+  const isOwnProfile = authData?.user?.id === userId
+
+  const rpcSupportedKeys = new Set(['full_name', 'handle', 'avatar_url', 'phone', 'socials'])
+  const canUseProfileRpc = Object.keys(row).every((key) => rpcSupportedKeys.has(key))
+
+  if (isOwnProfile && canUseProfileRpc) {
+    const { error: rpcError } = await supabase.rpc('upsert_own_profile', {
+      p_full_name: updates.fullName ?? null,
+      p_handle: updates.handle ?? null,
+      p_avatar_url: updates.avatarUrl ?? null,
+      p_phone: updates.phone ?? null,
+      p_socials: updates.socials ?? null,
+    })
+    if (!rpcError) return
+    const canFallbackFromRpc =
+      rpcError.code === 'PGRST202' ||
+      rpcError.message.includes('Could not find the function') ||
+      rpcError.message.includes('schema cache') ||
+      rpcError.message.includes('upsert_own_profile')
+    if (!canFallbackFromRpc) {
+      throw new Error(`updateProfile: ${rpcError.message}`)
+    }
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from('profiles')
+    .update(row)
+    .eq('id', userId)
+    .select('id')
+    .maybeSingle()
+
+  if (updateError) throw new Error(`updateProfile: ${updateError.message}`)
+  if (updated) return
+
+  const { error: insertError } = await supabase
+    .from('profiles')
+    .insert({ id: userId, ...row })
+  if (insertError) throw new Error(`updateProfile: ${insertError.message}`)
 }
 
 export async function isHandleAvailable(handle: string, currentUserId: string): Promise<boolean> {
+  const cleaned = handle.trim().toLowerCase()
+  if (!cleaned) return false
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc('is_handle_available', {
+    p_handle: cleaned,
+    p_current_user_id: currentUserId,
+  })
+  if (!rpcError && typeof rpcData === 'boolean') return rpcData
+
   const { data } = await supabase
     .from('profiles')
     .select('id')
-    .ilike('handle', handle)
+    .ilike('handle', cleaned)
     .neq('id', currentUserId)
     .limit(1)
   return !data || data.length === 0
+}
+
+export interface ProfileSearchResult {
+  id: string;
+  fullName: string;
+  handle?: string;
+  avatarUrl?: string;
+}
+
+export interface PublicProfileRow {
+  id: string;
+  fullName: string;
+  handle?: string;
+  avatarUrl?: string;
+  companionPrivacy?: CompanionPrivacy;
+}
+
+export async function getPublicProfiles(userIds: string[]): Promise<PublicProfileRow[]> {
+  const ids = [...new Set(userIds.filter(Boolean))]
+  if (ids.length === 0) return []
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc('get_public_profiles', {
+    p_user_ids: ids,
+  })
+  if (!rpcError && Array.isArray(rpcData)) {
+    return rpcData.map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      fullName: (r.full_name as string) ?? 'Traveler',
+      handle: (r.handle as string) ?? undefined,
+      avatarUrl: (r.avatar_url as string) ?? undefined,
+      companionPrivacy: (r.companion_privacy as CompanionPrivacy) ?? undefined,
+    }))
+  }
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, full_name, handle, avatar_url, companion_privacy')
+    .in('id', ids)
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    id: r.id as string,
+    fullName: (r.full_name as string) ?? 'Traveler',
+    handle: (r.handle as string) ?? undefined,
+    avatarUrl: (r.avatar_url as string) ?? undefined,
+    companionPrivacy: (r.companion_privacy as CompanionPrivacy) ?? undefined,
+  }))
+}
+
+/** Search profiles by handle or name. Returns up to 20 results. */
+export async function searchProfiles(query: string): Promise<ProfileSearchResult[]> {
+  if (!query || query.trim().length < 2) return [];
+  const q = query.trim().replace(/^@/, '');
+  const { data: rpcData, error: rpcError } = await supabase.rpc('search_public_profiles', {
+    p_query: q,
+    p_limit: 20,
+  })
+  if (!rpcError && Array.isArray(rpcData)) {
+    return rpcData.map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      fullName: (r.full_name as string) ?? 'Traveler',
+      handle: (r.handle as string) ?? undefined,
+      avatarUrl: (r.avatar_url as string) ?? undefined,
+    }))
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, handle, avatar_url')
+    .or(`handle.ilike.%${q}%,full_name.ilike.%${q}%`)
+    .limit(20);
+  if (error || !data) return [];
+  return data.map((r: Record<string, unknown>) => ({
+    id: r.id as string,
+    fullName: r.full_name as string,
+    handle: r.handle as string | undefined,
+    avatarUrl: r.avatar_url as string | undefined,
+  }));
+}
+
+export async function getPublicProfilePosts(
+  userId: string,
+  limit = 20,
+  offset = 0,
+): Promise<FeedPost[]> {
+  const { data: rpcData, error: rpcError } = await supabase.rpc('get_public_profile_posts', {
+    p_user_id: userId,
+    p_limit: limit,
+    p_offset: offset,
+  })
+
+  if (!rpcError && Array.isArray(rpcData)) {
+    return rpcData.map((row: Record<string, unknown>) => ({
+      ...mapFeedPost(row),
+      media: Array.isArray(row.media) ? (row.media as FeedPost['media']) : [],
+    }))
+  }
+
+  const { data, error } = await supabase
+    .from('feed_posts')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error || !data) return []
+  return data.map((row: Record<string, unknown>) => mapFeedPost(row))
 }
 
 export async function uploadProfilePhoto(userId: string, localUri: string): Promise<string> {
@@ -2557,12 +3743,23 @@ export async function ensureProfile(userId: string, name: string): Promise<void>
 
 // ---------- LIFETIME STATS & HIGHLIGHTS ----------
 
-export async function getLifetimeStats(userId: string): Promise<LifetimeStats | null> {
-  const { data } = await supabase
+export async function getLifetimeStats(userId?: string): Promise<LifetimeStats | null> {
+  let uid = userId
+  if (!uid) {
+    const { data: authData } = await supabase.auth.getUser()
+    uid = authData?.user?.id
+  }
+  if (!uid) return null
+
+  const { data, error } = await supabase
     .from('lifetime_stats')
     .select('*')
-    .eq('user_id', userId)
-    .single()
+    .eq('user_id', uid)
+    .maybeSingle()
+  if (error) {
+    if (__DEV__) console.warn('[getLifetimeStats] fetch failed:', error.message)
+    return null
+  }
   if (!data) return null
   return {
     totalTrips: data.total_trips,
@@ -2636,7 +3833,7 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
     uid = authData?.user?.id
   }
   if (!uid) {
-    console.warn('[getAllUserTrips] No user ID available')
+    if (__DEV__) console.warn('[getAllUserTrips] No user ID available')
     return []
   }
 
@@ -2657,11 +3854,11 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
   const { data: memberTrips, error: memberError } = await memberQuery
 
   if (ownedError) {
-    console.error('[getAllUserTrips] ownedQuery error:', ownedError)
+    if (__DEV__) console.error('[getAllUserTrips] ownedQuery error:', ownedError)
     throw new Error(`Owned trips fetch failed: ${ownedError.message}`)
   }
   if (memberError) {
-    console.error('[getAllUserTrips] memberQuery error:', memberError)
+    if (__DEV__) console.error('[getAllUserTrips] memberQuery error:', memberError)
     throw new Error(`Member trips fetch failed: ${memberError.message}`)
   }
 
@@ -2680,7 +3877,7 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
     ? unique
     : unique.filter((r) => !r.deleted_at)
 
-  console.log(`[getAllUserTrips] User ${uid.slice(0, 8)}: ${result.length} trips (${ownedTrips?.length ?? 0} owned, ${memberTrips?.length ?? 0} member)`)
+  if (__DEV__) console.log(`[getAllUserTrips] User ${uid.slice(0, 8)}: ${result.length} trips (${ownedTrips?.length ?? 0} owned, ${memberTrips?.length ?? 0} member)`)
   return result.map((r) => mapTrip(r as Record<string, unknown>))
 }
 
@@ -2706,10 +3903,10 @@ export async function getDraftTrips(userId?: string): Promise<Trip[]> {
 
 /** Archived trips */
 export async function getArchivedTrips(userId?: string): Promise<Trip[]> {
-  const all = await getAllUserTrips(userId)
+  const all = await getAllUserTrips(userId, true)
   return all.filter(t =>
-    t.archivedAt != null &&
-    !t.deletedAt
+    t.archivedAt != null ||
+    t.deletedAt != null
   )
 }
 
@@ -2735,6 +3932,7 @@ export async function finishTrip(tripId: string): Promise<void> {
     if (error) throw new Error(`finishTrip: ${error.message}`)
   }
   clearTripCache()
+  invalidateTripCache(tripId)
   await clearTripLocalData()
 }
 
@@ -2757,17 +3955,21 @@ export async function archiveTrip(tripId: string): Promise<void> {
     if (error) throw new Error(`archiveTrip: ${error.message}`)
   }
   clearTripCache()
+  invalidateTripCache(tripId)
   await clearTripLocalData()
 }
 
 /** Soft-delete a trip (30-day retention window). */
 export async function softDeleteTrip(tripId: string): Promise<void> {
+  const nowIso = new Date().toISOString()
   const { error } = await supabase
     .from(T.trips)
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: nowIso, archived_at: nowIso })
     .eq('id', tripId)
   if (error) throw new Error(`softDeleteTrip: ${error.message}`)
   clearTripCache()
+  invalidateTripCache(tripId)
+  await clearTripLocalData()
 }
 
 /** Restore a soft-deleted or archived trip. */
@@ -2778,6 +3980,8 @@ export async function restoreTrip(tripId: string): Promise<void> {
     .eq('id', tripId)
   if (error) throw new Error(`restoreTrip: ${error.message}`)
   clearTripCache()
+  invalidateTripCache(tripId)
+  await clearTripLocalData()
 }
 
 // ---------- TRIP MEMORIES ----------
@@ -2882,23 +4086,42 @@ export async function addPersonalPhoto(input: {
   takenAt?: string;
   tags?: string[];
 }): Promise<string> {
-  const compressed = await compressImage(input.localUri, 1200, 0.8)
+  const userId = input.userId?.trim()
+  const localUri = input.localUri?.trim()
+  if (!userId) throw new Error('addPersonalPhoto: userId is required')
+  if (!localUri) throw new Error('addPersonalPhoto: localUri is required')
+
+  const compressed = await withOperationTimeout(
+    compressImage(localUri, 1000, 0.68),
+    'Preparing photo timed out. Please try a smaller photo.',
+    60_000,
+  )
   const timestamp = Date.now()
   const ext = 'jpg'
-  const storagePath = `personal/${input.userId}/${timestamp}.${ext}`
+  const nonce = Math.random().toString(36).slice(2, 10)
+  const storagePath = `personal/${userId}/${timestamp}-${nonce}.${ext}`
 
-  const bytes = await readFileAsBytes(compressed)
+  const bytes = await withOperationTimeout(
+    readFileAsBytes(compressed),
+    'Reading photo timed out. Please try a smaller photo.',
+    60_000,
+  )
 
-  const { error: uploadError } = await supabase.storage
-    .from('moments')
-    .upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: false })
+  const { error: uploadError } = await withOperationTimeout(
+    supabase.storage
+      .from('moments')
+      .upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: false }),
+    'Photo upload timed out. Please check your connection and try again.',
+    150_000,
+  )
   if (uploadError) throw new Error(`addPersonalPhoto upload: ${uploadError.message}`)
 
   const { data: urlData } = supabase.storage.from('moments').getPublicUrl(storagePath)
   const publicUrl = urlData?.publicUrl
+  if (!publicUrl) throw new Error('addPersonalPhoto: public URL could not be generated')
 
-  const { data, error } = await supabase.from('personal_photos').insert({
-    user_id: input.userId,
+  const row = {
+    user_id: userId,
     photo_url: publicUrl,
     storage_path: storagePath,
     location: input.location,
@@ -2907,8 +4130,32 @@ export async function addPersonalPhoto(input: {
     caption: input.caption,
     taken_at: input.takenAt ?? new Date().toISOString().slice(0, 10),
     tags: input.tags ?? [],
-  }).select('id').single()
-  if (error) throw new Error(`addPersonalPhoto insert: ${error.message}`)
+  }
+
+  let { data, error } = await withOperationTimeout(
+    supabase.from('personal_photos').insert(row).select('id').single(),
+    'Saving photo timed out. Please try again.',
+    60_000,
+  )
+  if (error && isMissingColumnError(error, 'photo_url')) {
+    const { photo_url: _photoUrl, ...fallbackRow } = row
+    const retry = await withOperationTimeout(
+      supabase
+        .from('personal_photos')
+        .insert({ ...fallbackRow, public_url: publicUrl })
+        .select('id')
+        .single(),
+      'Saving photo timed out. Please try again.',
+      60_000,
+    )
+    data = retry.data
+    error = retry.error
+  }
+  if (error) {
+    await supabase.storage.from('moments').remove([storagePath]).catch(() => {})
+    throw new Error(`addPersonalPhoto insert: ${error.message}`)
+  }
+  if (!data?.id) throw new Error('addPersonalPhoto insert: no row returned')
   return data.id as string
 }
 
@@ -2922,7 +4169,7 @@ export async function getPersonalPhotos(userId: string): Promise<import('./types
   return (data ?? []).map((row: Record<string, unknown>) => ({
     id: row.id as string,
     userId: row.user_id as string,
-    photoUrl: row.photo_url as string | undefined,
+    photoUrl: (row.photo_url as string | undefined) ?? (row.public_url as string | undefined),
     storagePath: row.storage_path as string | undefined,
     location: row.location as string | undefined,
     latitude: row.latitude as number | undefined,
@@ -3073,6 +4320,47 @@ export async function getDailyExpensePeriodSummary(
     byCategory,
     count: exps.length,
   }
+}
+
+// ── Daily Tracker Settings & CRUD ────────────────────────────────────
+
+import type { DailyTrackerSettings } from './types'
+
+export async function getDailyTrackerSettings(): Promise<DailyTrackerSettings> {
+  const { data: authData } = await supabase.auth.getUser()
+  if (!authData?.user?.id) return {}
+  const { data } = await supabase
+    .from('profiles')
+    .select('daily_tracker_settings')
+    .eq('id', authData.user.id)
+    .single()
+  return (data?.daily_tracker_settings as DailyTrackerSettings) ?? {}
+}
+
+export async function setDailyTrackerSettings(settings: DailyTrackerSettings): Promise<void> {
+  const { data: authData } = await supabase.auth.getUser()
+  if (!authData?.user?.id) return
+  await supabase
+    .from('profiles')
+    .update({ daily_tracker_settings: settings })
+    .eq('id', authData.user.id)
+}
+
+export async function deleteDailyExpense(expenseId: string): Promise<void> {
+  const { error } = await supabase.from(T.expenses).delete().eq('id', expenseId)
+  if (error) throw new Error(`deleteDailyExpense: ${error.message}`)
+}
+
+export async function updateDailyExpense(
+  expenseId: string,
+  input: { description?: string; amount?: number; dailyCategory?: DailyExpenseCategory }
+): Promise<void> {
+  const updates: Record<string, unknown> = {}
+  if (input.description != null) updates.title = input.description
+  if (input.amount != null) updates.amount = input.amount
+  if (input.dailyCategory != null) updates.daily_category = input.dailyCategory
+  const { error } = await supabase.from(T.expenses).update(updates).eq('id', expenseId)
+  if (error) throw new Error(`updateDailyExpense: ${error.message}`)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -3249,4 +4537,948 @@ export async function markMilestoneCelebrated(goalId: string, milestone: number)
     .from('savings_goals')
     .update({ celebrated_milestones: [...current, milestone] })
     .eq('id', goalId)
+}
+
+// ---------- MOMENT COMMENTS ----------
+
+/** Get comments for a moment, with user profile info. */
+export async function getComments(momentId: string): Promise<MomentComment[]> {
+  const { data, error } = await supabase
+    .from('moment_comments')
+    .select('id, moment_id, user_id, text, created_at')
+    .eq('moment_id', momentId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw new Error(`getComments: ${error.message}`)
+  if (!data || data.length === 0) return []
+
+  const userIds = [...new Set(data.map(c => c.user_id as string))]
+  const profiles = await getPublicProfiles(userIds)
+  const profileMap = new Map(
+    profiles.map(p => [p.id, { name: p.fullName, avatar: p.avatarUrl }])
+  )
+
+  return data.map(c => ({
+    id: c.id as string,
+    momentId: c.moment_id as string,
+    userId: c.user_id as string,
+    userName: profileMap.get(c.user_id as string)?.name ?? 'Unknown',
+    userAvatar: profileMap.get(c.user_id as string)?.avatar,
+    text: c.text as string,
+    createdAt: c.created_at as string,
+  }))
+}
+
+/** Get comment counts for multiple moments (batch). */
+export async function getCommentCounts(momentIds: string[]): Promise<Record<string, number>> {
+  if (momentIds.length === 0) return {}
+  const { data } = await supabase
+    .from('moment_comments')
+    .select('moment_id')
+    .in('moment_id', momentIds)
+
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    const mid = row.moment_id as string
+    counts[mid] = (counts[mid] ?? 0) + 1
+  }
+  return counts
+}
+
+/** Add a comment to a moment. Returns the new comment. */
+export async function addComment(momentId: string, text: string): Promise<MomentComment> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('addComment: not authenticated')
+
+  const { data, error } = await supabase
+    .from('moment_comments')
+    .insert({ moment_id: momentId, user_id: user.id, text: text.trim() })
+    .select('id, moment_id, user_id, text, created_at')
+    .single()
+
+  if (error || !data) throw new Error(`addComment: ${error?.message ?? 'insert failed'}`)
+
+  // Fetch own profile for display
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, avatar_url')
+    .eq('id', user.id)
+    .single()
+
+  const comment: MomentComment = {
+    id: data.id as string,
+    momentId: data.moment_id as string,
+    userId: user.id,
+    userName: (profile?.full_name as string) ?? 'You',
+    userAvatar: (profile?.avatar_url as string) ?? undefined,
+    text: data.text as string,
+    createdAt: data.created_at as string,
+  }
+
+  // Notify photo owner + other commenters (best-effort)
+  notifyComment(momentId, comment.userName, user.id, text).catch(() => {})
+
+  return comment
+}
+
+/** Delete a comment. */
+export async function deleteComment(commentId: string): Promise<void> {
+  const { error } = await supabase
+    .from('moment_comments')
+    .delete()
+    .eq('id', commentId)
+  if (error) throw new Error(`deleteComment: ${error.message}`)
+}
+
+/** Notify photo owner + other commenters about a new comment. */
+async function notifyComment(
+  momentId: string,
+  commenterName: string,
+  commenterId: string,
+  commentText: string,
+): Promise<void> {
+  // Get the moment to find trip_id and owner
+  const { data: moment } = await supabase
+    .from(T.moments)
+    .select('trip_id, user_id, caption')
+    .eq('id', momentId)
+    .single()
+  if (!moment) return
+
+  const tripId = moment.trip_id as string
+  const photoOwnerId = moment.user_id as string | null
+
+  // Get all unique commenters on this photo
+  const { data: commenters } = await supabase
+    .from('moment_comments')
+    .select('user_id')
+    .eq('moment_id', momentId)
+  const commenterIds = new Set(
+    (commenters ?? []).map(c => c.user_id as string)
+  )
+
+  // Also notify photo owner
+  if (photoOwnerId) commenterIds.add(photoOwnerId)
+
+  // Remove the person who just commented
+  commenterIds.delete(commenterId)
+
+  const truncated = commentText.length > 60 ? commentText.slice(0, 57) + '...' : commentText
+  const photoLabel = (moment.caption as string) || 'a photo'
+
+  for (const userId of commenterIds) {
+    await insertNotification({
+      userId,
+      tripId,
+      type: 'moment_comment',
+      title: `${commenterName} commented`,
+      body: `"${truncated}" on ${photoLabel}`,
+      data: { momentId, commenterId },
+    })
+  }
+
+  // Notify @mentioned users (separate from comment thread notifications)
+  const mentionMatches = commentText.match(/@([^\s@]+(?:\s[^\s@]+)?)/g)
+  if (mentionMatches && tripId) {
+    const members = await getGroupMembers(tripId)
+    const alreadyNotified = new Set(commenterIds)
+    for (const mention of mentionMatches) {
+      const name = mention.slice(1) // remove @
+      const member = members.find(m => m.name === name)
+      if (member?.userId && member.userId !== commenterId && !alreadyNotified.has(member.userId)) {
+        alreadyNotified.add(member.userId)
+        await insertNotification({
+          userId: member.userId,
+          tripId,
+          type: 'user_mentioned',
+          title: `${commenterName} mentioned you`,
+          body: `"${truncated}" on ${photoLabel}`,
+          data: { momentId, commenterId },
+        })
+      }
+    }
+  }
+}
+
+// ---------- COMPANION SYSTEM ----------
+
+import type { CompanionStatus, CompanionPrivacy, CompanionProfile } from './types'
+
+const DEFAULT_PRIVACY: CompanionPrivacy = {
+  showStats: true,
+  showSharedMoments: true,
+  showPastTrips: true,
+  showUpcomingTrips: false,
+  showSocials: true,
+}
+
+/** Get companion status between current user and target. */
+export async function getCompanionStatus(targetUserId: string): Promise<CompanionStatus> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user || user.id === targetUserId) return 'none'
+
+  const { data: myTrips } = await supabase
+    .from('group_members')
+    .select('trip_id')
+    .eq('user_id', user.id)
+
+  const tripIds = [...new Set((myTrips ?? []).map((row) => row.trip_id as string).filter(Boolean))]
+  if (tripIds.length > 0) {
+    const { data: sharedMember } = await supabase
+      .from('group_members')
+      .select('trip_id')
+      .eq('user_id', targetUserId)
+      .in('trip_id', tripIds)
+      .limit(1)
+      .maybeSingle()
+    if (sharedMember) return 'companion'
+  }
+
+  const { data } = await supabase
+    .from('companions')
+    .select('status, source')
+    .or(`and(user_id.eq.${user.id},companion_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},companion_id.eq.${user.id})`)
+    .eq('source', 'trip')
+    .limit(1)
+    .maybeSingle()
+
+  if (!data) return 'none'
+  return data.status === 'accepted' ? 'companion' : 'pending'
+}
+
+/** Get full companion profile for viewing. */
+export async function getCompanionProfile(targetUserId: string): Promise<CompanionProfile> {
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url, handle, bio, home_base, profile_visibility, public_stats_enabled, profile_badges, phone, socials, companion_privacy')
+    .eq('id', targetUserId)
+    .single()
+
+  let resolvedProfile = profile as Record<string, unknown> | null
+  if (error || !resolvedProfile) {
+    const [publicProfile] = await getPublicProfiles([targetUserId])
+    if (!publicProfile) throw new Error('Profile not found')
+    resolvedProfile = {
+      id: publicProfile.id,
+      full_name: publicProfile.fullName,
+      avatar_url: publicProfile.avatarUrl,
+      handle: publicProfile.handle,
+      companion_privacy: publicProfile.companionPrivacy,
+    }
+  }
+
+  const status = await getCompanionStatus(targetUserId)
+
+  // Count mutual trips
+  const { data: { user } } = await supabase.auth.getUser()
+  let mutualTripCount = 0
+  if (user) {
+    const { data: myTrips } = await supabase
+      .from('group_members').select('trip_id').eq('user_id', user.id)
+    const { data: theirTrips } = await supabase
+      .from('group_members').select('trip_id').eq('user_id', targetUserId)
+    if (myTrips && theirTrips) {
+      const mySet = new Set(myTrips.map(r => r.trip_id as string))
+      mutualTripCount = theirTrips.filter(r => mySet.has(r.trip_id as string)).length
+    }
+  }
+
+  // Get lifetime stats only if companion and privacy allows
+  const privacy = (resolvedProfile.companion_privacy as CompanionPrivacy) ?? DEFAULT_PRIVACY
+  let lifetimeStats: LifetimeStats | undefined
+  if ((status === 'companion' && privacy.showStats) || !!resolvedProfile.public_stats_enabled) {
+    lifetimeStats = await getLifetimeStats(targetUserId).catch(() => undefined) ?? undefined
+
+    // Fallback: compute basic stats from their trips if lifetime_stats row is empty
+    if (!lifetimeStats) {
+      try {
+        const { data: memberRows } = await supabase
+          .from('group_members').select('trip_id').eq('user_id', targetUserId)
+        const tripIds = (memberRows ?? []).map(r => r.trip_id as string)
+        if (tripIds.length > 0) {
+          const { data: trips } = await supabase
+            .from(T.trips).select('destination, start_date, end_date').in('id', tripIds)
+          const { data: moments } = await supabase
+            .from(T.moments).select('id').in('trip_id', tripIds).eq('visibility', 'shared')
+          const destinations = new Set((trips ?? []).map(t => t.destination as string).filter(Boolean))
+          const totalNights = (trips ?? []).reduce((sum, t) => {
+            const s = new Date(t.start_date as string)
+            const e = new Date(t.end_date as string)
+            return sum + Math.max(0, Math.round((e.getTime() - s.getTime()) / 86400000))
+          }, 0)
+          lifetimeStats = {
+            totalTrips: tripIds.length,
+            totalCountries: destinations.size,
+            totalNights,
+            totalMiles: 0,
+            totalSpent: 0,
+            homeCurrency: 'PHP',
+            totalMoments: moments?.length ?? 0,
+            countriesList: [...destinations],
+          }
+        }
+      } catch { /* best-effort */ }
+    }
+  }
+
+  return {
+    id: resolvedProfile.id as string,
+    fullName: (resolvedProfile.full_name as string) ?? 'Traveler',
+    avatarUrl: (resolvedProfile.avatar_url as string) ?? undefined,
+    handle: (resolvedProfile.handle as string) ?? undefined,
+    bio: (resolvedProfile.bio as string) ?? undefined,
+    homeBase: (resolvedProfile.home_base as string) ?? undefined,
+    profileVisibility: (resolvedProfile.profile_visibility as CompanionProfile['profileVisibility']) ?? 'public',
+    publicStatsEnabled: (resolvedProfile.public_stats_enabled as boolean) ?? false,
+    profileBadges: (resolvedProfile.profile_badges as string[]) ?? undefined,
+    phone: (resolvedProfile.phone as string) ?? undefined,
+    socials: (resolvedProfile.socials as CompanionProfile['socials']) ?? undefined,
+    companionStatus: status,
+    companionPrivacy: privacy,
+    mutualTripCount,
+    lifetimeStats,
+  }
+}
+
+/** Get all companions for current user. */
+export async function getCompanions(): Promise<CompanionProfile[]> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data } = await supabase
+    .from('companions')
+    .select('user_id, companion_id, status')
+    .or(`user_id.eq.${user.id},companion_id.eq.${user.id}`)
+    .eq('status', 'accepted')
+
+  if (!data || data.length === 0) return []
+
+  const companionIds = data.map(r =>
+    (r.user_id as string) === user.id ? (r.companion_id as string) : (r.user_id as string)
+  )
+
+  const profiles = await getPublicProfiles(companionIds)
+
+  return profiles.map(p => ({
+    id: p.id,
+    fullName: p.fullName,
+    avatarUrl: p.avatarUrl,
+    handle: p.handle,
+    companionStatus: 'companion' as CompanionStatus,
+    companionPrivacy: p.companionPrivacy ?? DEFAULT_PRIVACY,
+    mutualTripCount: 0,
+  }))
+}
+
+export async function getFollowState(targetUserId: string): Promise<FollowState> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { isFollowing: false, followersCount: 0, followingCount: 0 }
+
+  const [following, followersCount, followingCount] = await Promise.all([
+    supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', user.id)
+      .eq('following_id', targetUserId)
+      .maybeSingle(),
+    supabase
+      .from('follows')
+      .select('follower_id', { count: 'exact', head: true })
+      .eq('following_id', targetUserId),
+    supabase
+      .from('follows')
+      .select('following_id', { count: 'exact', head: true })
+      .eq('follower_id', targetUserId),
+  ])
+
+  return {
+    isFollowing: !!following.data,
+    followersCount: followersCount.count ?? 0,
+    followingCount: followingCount.count ?? 0,
+  }
+}
+
+export async function toggleFollow(targetUserId: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('toggleFollow: not authenticated')
+  if (user.id === targetUserId) return false
+
+  const { data: existing } = await supabase
+    .from('follows')
+    .select('following_id')
+    .eq('follower_id', user.id)
+    .eq('following_id', targetUserId)
+    .maybeSingle()
+
+  if (existing) {
+    await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetUserId)
+    return false
+  }
+
+  const { error } = await supabase.from('follows').insert({
+    follower_id: user.id,
+    following_id: targetUserId,
+  })
+  if (error) throw new Error(`toggleFollow: ${error.message}`)
+  return true
+}
+
+/** Send a companion request. */
+export async function addCompanion(targetUserId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const { error } = await supabase.from('companions').insert({
+    user_id: user.id,
+    companion_id: targetUserId,
+    status: 'pending',
+    source: 'manual',
+  })
+  if (error) throw new Error(`addCompanion: ${error.message}`)
+}
+
+/** Accept a pending companion request. */
+export async function acceptCompanion(fromUserId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  const { error } = await supabase
+    .from('companions')
+    .update({ status: 'accepted' })
+    .eq('user_id', fromUserId)
+    .eq('companion_id', user.id)
+  if (error) throw new Error(`acceptCompanion: ${error.message}`)
+
+  // Create reverse entry
+  await supabase.from('companions').upsert({
+    user_id: user.id,
+    companion_id: fromUserId,
+    status: 'accepted',
+    source: 'manual',
+  }, { onConflict: 'user_id,companion_id' })
+}
+
+/** Remove companion (both directions). */
+export async function removeCompanion(targetUserId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  await supabase.from('companions').delete()
+    .or(`and(user_id.eq.${user.id},companion_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},companion_id.eq.${user.id})`)
+}
+
+/** Get trips that both current user and target share. */
+export async function getMutualTrips(targetUserId: string): Promise<Trip[]> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: myTrips } = await supabase
+    .from('group_members').select('trip_id').eq('user_id', user.id)
+  const { data: theirTrips } = await supabase
+    .from('group_members').select('trip_id').eq('user_id', targetUserId)
+
+  if (!myTrips || !theirTrips) return []
+  const mySet = new Set(myTrips.map(r => r.trip_id as string))
+  const mutualIds = theirTrips
+    .map(r => r.trip_id as string)
+    .filter(id => mySet.has(id))
+
+  if (mutualIds.length === 0) return []
+
+  const { data: trips } = await supabase
+    .from(T.trips)
+    .select('*')
+    .in('id', mutualIds)
+    .order('start_date', { ascending: false })
+
+  const mapped = (trips ?? []).map(mapTrip)
+
+  // Enrich with expense totals
+  for (const trip of mapped) {
+    try {
+      const { data: exps } = await supabase
+        .from(T.expenses)
+        .select('amount')
+        .eq('trip_id', trip.id)
+      trip.totalSpent = (exps ?? []).reduce((sum, e) => sum + Number(e.amount ?? 0), 0)
+    } catch { /* best-effort */ }
+  }
+
+  return mapped
+}
+
+/** Get shared moments from mutual trips. */
+export async function getSharedMomentsWith(targetUserId: string): Promise<Moment[]> {
+  const mutualTrips = await getMutualTrips(targetUserId)
+  if (mutualTrips.length === 0) return []
+
+  const tripIds = mutualTrips.map(t => t.id)
+  const { data } = await supabase
+    .from(T.moments)
+    .select('*')
+    .in('trip_id', tripIds)
+    .eq('visibility', 'shared')
+    .order('taken_at', { ascending: false })
+    .limit(50)
+
+  return (data ?? []).map(mapMoment)
+}
+
+/** Update companion privacy settings. */
+export async function updateCompanionPrivacy(prefs: CompanionPrivacy): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  await supabase
+    .from('profiles')
+    .update({ companion_privacy: prefs })
+    .eq('id', user.id)
+}
+
+/** Get companion privacy for a user. */
+export async function getCompanionPrivacySettings(): Promise<CompanionPrivacy> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return DEFAULT_PRIVACY
+  const { data } = await supabase
+    .from('profiles')
+    .select('companion_privacy')
+    .eq('id', user.id)
+    .single()
+  return (data?.companion_privacy as CompanionPrivacy) ?? DEFAULT_PRIVACY
+}
+
+// ── Moment Dismissals (per-user hide/show) ─────────────────────────────────
+
+/** Get set of moment IDs the current user has dismissed for a trip. */
+export async function getDismissedMomentIds(tripId: string): Promise<Set<string>> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return new Set()
+  const { data } = await supabase
+    .from('moment_dismissals')
+    .select('moment_id, moments!inner(trip_id)')
+    .eq('user_id', user.id)
+    .eq('moments.trip_id', tripId)
+  return new Set((data ?? []).map((r: any) => r.moment_id))
+}
+
+/** Dismiss a moment (hide from current user's view). */
+export async function dismissMoment(momentId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('dismissMoment: not authenticated')
+  const { error } = await supabase
+    .from('moment_dismissals')
+    .upsert({ user_id: user.id, moment_id: momentId }, { onConflict: 'user_id,moment_id' })
+  if (error) throw new Error(`dismissMoment: ${error.message}`)
+}
+
+/** Undismiss a moment (show again in current user's view). */
+export async function undismissMoment(momentId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('undismissMoment: not authenticated')
+  const { error } = await supabase
+    .from('moment_dismissals')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('moment_id', momentId)
+  if (error) throw new Error(`undismissMoment: ${error.message}`)
+}
+
+/** Batch dismiss multiple moments. */
+export async function batchDismissMoments(momentIds: string[]): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('batchDismissMoments: not authenticated')
+  const rows = momentIds.map((mid) => ({ user_id: user.id, moment_id: mid }))
+  const { error } = await supabase
+    .from('moment_dismissals')
+    .upsert(rows, { onConflict: 'user_id,moment_id' })
+  if (error) throw new Error(`batchDismissMoments: ${error.message}`)
+}
+
+/** Save a group-shared moment to the current user's private collection (copy). */
+export async function saveGroupPhotoToPrivate(momentId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('saveGroupPhotoToPrivate: not authenticated')
+
+  // Fetch the source moment
+  const { data: source, error: fetchErr } = await supabase
+    .from('moments')
+    .select('*')
+    .eq('id', momentId)
+    .single()
+  if (fetchErr || !source) throw new Error('saveGroupPhotoToPrivate: moment not found')
+
+  // Insert as private copy owned by current user
+  const { error } = await supabase.from('moments').insert({
+    trip_id: source.trip_id,
+    user_id: user.id,
+    visibility: 'private',
+    caption: source.caption,
+    photo: source.photo,
+    hd_url: source.hd_url,
+    blurhash: source.blurhash,
+    location: source.location,
+    taken_at: source.taken_at,
+    tags: source.tags,
+  })
+  if (error) throw new Error(`saveGroupPhotoToPrivate: ${error.message}`)
+}
+
+// ── Public Feed ─────────────────────────────────────────────────
+
+const FEED_PAGE_SIZE = 20
+
+/** Fetch public moments feed with pagination. */
+export async function getPublicFeed(
+  offset = 0,
+  limit = FEED_PAGE_SIZE,
+): Promise<FeedPage> {
+  const { data, error } = await supabase
+    .from(T.moments)
+    .select('*')
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error) throw new Error(`getPublicFeed: ${error.message}`)
+
+  const moments = (data ?? []).map(mapMoment)
+  return {
+    moments,
+    nextOffset: moments.length === limit ? offset + limit : null,
+  }
+}
+
+/** Fetch trending public moments (most liked in recent hours). */
+export async function getTrendingFeed(
+  offset = 0,
+  limit = FEED_PAGE_SIZE,
+  hoursBack = 24,
+): Promise<FeedPage> {
+  const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()
+
+  const { data, error } = await supabase
+    .from(T.moments)
+    .select('*')
+    .eq('is_public', true)
+    .gte('created_at', since)
+    .order('likes_count', { ascending: false })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error) throw new Error(`getTrendingFeed: ${error.message}`)
+
+  const moments = (data ?? []).map(mapMoment)
+  return {
+    moments,
+    nextOffset: moments.length === limit ? offset + limit : null,
+  }
+}
+
+/** Fetch nearby public moments using bounding-box approximation.
+ *  1 degree latitude ~111km, so 0.45 deg ~ 50km.
+ *  Longitude adjusted by cos(lat). */
+export async function getNearbyFeed(
+  lat: number,
+  lng: number,
+  radiusKm = 50,
+  offset = 0,
+  limit = FEED_PAGE_SIZE,
+): Promise<FeedPage> {
+  const latDelta = radiusKm / 111
+  const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180))
+
+  const { data, error } = await supabase
+    .from(T.moments)
+    .select('*')
+    .eq('is_public', true)
+    .not('latitude', 'is', null)
+    .gte('latitude', lat - latDelta)
+    .lte('latitude', lat + latDelta)
+    .gte('longitude', lng - lngDelta)
+    .lte('longitude', lng + lngDelta)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error) throw new Error(`getNearbyFeed: ${error.message}`)
+
+  const moments = (data ?? []).map(mapMoment)
+  return {
+    moments,
+    nextOffset: moments.length === limit ? offset + limit : null,
+  }
+}
+
+/** Fetch public moments from user's companions. */
+export async function getFriendsFeed(
+  offset = 0,
+  limit = FEED_PAGE_SIZE,
+): Promise<FeedPage> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('getFriendsFeed: not authenticated')
+
+  // Get companion user IDs (people who share a trip with the current user)
+  const { data: myMemberships } = await supabase
+    .from('group_members')
+    .select('trip_id')
+    .eq('user_id', user.id)
+
+  if (!myMemberships || myMemberships.length === 0) {
+    return { moments: [], nextOffset: null }
+  }
+
+  const tripIds = myMemberships.map(m => m.trip_id as string)
+
+  const { data: companionRows } = await supabase
+    .from('group_members')
+    .select('user_id')
+    .in('trip_id', tripIds)
+    .neq('user_id', user.id)
+
+  const companionIds = [...new Set((companionRows ?? []).map(r => r.user_id as string))]
+  if (companionIds.length === 0) {
+    return { moments: [], nextOffset: null }
+  }
+
+  const { data, error } = await supabase
+    .from(T.moments)
+    .select('*')
+    .eq('is_public', true)
+    .in('user_id', companionIds)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error) throw new Error(`getFriendsFeed: ${error.message}`)
+
+  const moments = (data ?? []).map(mapMoment)
+  return {
+    moments,
+    nextOffset: moments.length === limit ? offset + limit : null,
+  }
+}
+
+/** Set a moment's public visibility. Only the moment owner can do this. */
+export async function setMomentPublic(
+  momentId: string,
+  isPublic: boolean,
+): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('setMomentPublic: not authenticated')
+
+  const { error } = await supabase
+    .from(T.moments)
+    .update({ is_public: isPublic })
+    .eq('id', momentId)
+    .eq('user_id', user.id)
+
+  if (error) throw new Error(`setMomentPublic: ${error.message}`)
+}
+
+// ── Feed Posts ───────────────────────────────────────────────────
+
+function mapFeedPost(row: Record<string, unknown>): FeedPost {
+  return {
+    id: row.id as string,
+    userId: row.user_id as string,
+    type: row.type as FeedPostType,
+    caption: (row.caption as string) ?? undefined,
+    momentId: (row.moment_id as string) ?? undefined,
+    tripId: (row.trip_id as string) ?? undefined,
+    photoUrl: (row.photo_url as string) ?? undefined,
+    locationName: (row.location_name as string) ?? undefined,
+    latitude: num(row.latitude),
+    longitude: num(row.longitude),
+    metadata: (row.metadata as Record<string, unknown>) ?? {},
+    likesCount: (row.likes_count as number) ?? 0,
+    commentsCount: (row.comments_count as number) ?? 0,
+    saveCount: (row.save_count as number) ?? 0,
+    shareCount: (row.share_count as number) ?? 0,
+    isPublic: !!row.is_public,
+    createdAt: (row.created_at as string) ?? new Date().toISOString(),
+  }
+}
+
+const FEED_POST_PAGE = 20
+
+/** Fetch public feed posts, newest first. */
+export async function getFeedPosts(
+  offset = 0,
+  limit = FEED_POST_PAGE,
+): Promise<{ posts: FeedPost[]; nextOffset: number | null }> {
+  const { data, error } = await supabase
+    .from('feed_posts')
+    .select('*')
+    .eq('is_public', true)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error) throw new Error(`getFeedPosts: ${error.message}`)
+  const posts = (data ?? []).map(mapFeedPost)
+  return { posts, nextOffset: posts.length === limit ? offset + limit : null }
+}
+
+/** Fetch trending posts (most liked in recent hours). */
+export async function getTrendingPosts(
+  offset = 0,
+  limit = FEED_POST_PAGE,
+  hoursBack = 24,
+): Promise<{ posts: FeedPost[]; nextOffset: number | null }> {
+  const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('feed_posts')
+    .select('*')
+    .eq('is_public', true)
+    .gte('created_at', since)
+    .order('likes_count', { ascending: false })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error) throw new Error(`getTrendingPosts: ${error.message}`)
+  const posts = (data ?? []).map(mapFeedPost)
+  return { posts, nextOffset: posts.length === limit ? offset + limit : null }
+}
+
+/** Fetch companion posts (from users who share a trip with you). */
+export async function getCompanionPosts(
+  offset = 0,
+  limit = FEED_POST_PAGE,
+): Promise<{ posts: FeedPost[]; nextOffset: number | null }> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('getCompanionPosts: not authenticated')
+
+  const { data: myTrips } = await supabase
+    .from('group_members').select('trip_id').eq('user_id', user.id)
+  if (!myTrips || myTrips.length === 0) return { posts: [], nextOffset: null }
+
+  const tripIds = myTrips.map(m => m.trip_id as string)
+  const { data: companions } = await supabase
+    .from('group_members').select('user_id').in('trip_id', tripIds).neq('user_id', user.id)
+  const companionIds = [...new Set((companions ?? []).map(r => r.user_id as string))]
+  if (companionIds.length === 0) return { posts: [], nextOffset: null }
+
+  const { data, error } = await supabase
+    .from('feed_posts')
+    .select('*')
+    .eq('is_public', true)
+    .in('user_id', companionIds)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error) throw new Error(`getCompanionPosts: ${error.message}`)
+  const posts = (data ?? []).map(mapFeedPost)
+  return { posts, nextOffset: posts.length === limit ? offset + limit : null }
+}
+
+/** Create a feed post. */
+export async function createFeedPost(input: {
+  type: FeedPostType;
+  caption?: string;
+  momentId?: string;
+  tripId?: string;
+  photoUrl?: string;
+  locationName?: string;
+  latitude?: number;
+  longitude?: number;
+  metadata?: Record<string, unknown>;
+}): Promise<FeedPost> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('createFeedPost: not authenticated')
+
+  const { data, error } = await supabase
+    .from('feed_posts')
+    .insert({
+      user_id: user.id,
+      type: input.type,
+      caption: input.caption ?? null,
+      moment_id: input.momentId ?? null,
+      trip_id: input.tripId ?? null,
+      photo_url: input.photoUrl ?? null,
+      location_name: input.locationName ?? null,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
+      metadata: input.metadata ?? {},
+      is_public: true,
+    })
+    .select('*')
+    .single()
+
+  if (error || !data) throw new Error(`createFeedPost: ${error?.message ?? 'insert failed'}`)
+  return mapFeedPost(data)
+}
+
+/** Delete a feed post. */
+export async function deleteFeedPost(postId: string): Promise<void> {
+  const { error } = await supabase.from('feed_posts').delete().eq('id', postId)
+  if (error) throw new Error(`deleteFeedPost: ${error.message}`)
+}
+
+/** Toggle like on a feed post. Returns true if now liked. */
+export async function togglePostLike(postId: string): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('togglePostLike: not authenticated')
+
+  const { data: existing } = await supabase
+    .from('feed_post_likes')
+    .select('id')
+    .eq('post_id', postId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (existing) {
+    await supabase.from('feed_post_likes').delete().eq('id', existing.id)
+    return false
+  }
+  const { error } = await supabase.from('feed_post_likes').insert({ post_id: postId, user_id: user.id })
+  if (error) throw new Error(`togglePostLike: ${error.message}`)
+  return true
+}
+
+/** Get comments for a feed post. */
+export async function getPostComments(postId: string): Promise<FeedPostComment[]> {
+  const { data, error } = await supabase
+    .from('feed_post_comments')
+    .select('id, post_id, user_id, text, created_at')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw new Error(`getPostComments: ${error.message}`)
+  if (!data || data.length === 0) return []
+
+  const userIds = [...new Set(data.map(c => c.user_id as string))]
+  const profiles = await getPublicProfiles(userIds)
+  const pm = new Map(
+    profiles.map(p => [p.id, { name: p.fullName, avatar: p.avatarUrl }])
+  )
+
+  return data.map(c => ({
+    id: c.id as string,
+    postId: c.post_id as string,
+    userId: c.user_id as string,
+    userName: pm.get(c.user_id as string)?.name ?? 'Traveler',
+    userAvatar: pm.get(c.user_id as string)?.avatar,
+    text: c.text as string,
+    createdAt: c.created_at as string,
+  }))
+}
+
+/** Add a comment to a feed post. */
+export async function addPostComment(postId: string, text: string): Promise<FeedPostComment> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('addPostComment: not authenticated')
+
+  const { data, error } = await supabase
+    .from('feed_post_comments')
+    .insert({ post_id: postId, user_id: user.id, text: text.trim() })
+    .select('id, post_id, user_id, text, created_at')
+    .single()
+
+  if (error || !data) throw new Error(`addPostComment: ${error?.message ?? 'insert failed'}`)
+
+  const { data: profile } = await supabase
+    .from('profiles').select('full_name, avatar_url').eq('id', user.id).single()
+
+  return {
+    id: data.id as string,
+    postId: data.post_id as string,
+    userId: user.id,
+    userName: (profile?.full_name as string) ?? 'You',
+    userAvatar: (profile?.avatar_url as string) ?? undefined,
+    text: data.text as string,
+    createdAt: data.created_at as string,
+  }
 }

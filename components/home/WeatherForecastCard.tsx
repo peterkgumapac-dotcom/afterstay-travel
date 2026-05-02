@@ -4,7 +4,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { ChevronDown, Droplets, Sun, Thermometer, Umbrella, Wind } from 'lucide-react-native';
 
@@ -283,7 +283,7 @@ export const WeatherForecastCard: React.FC<WeatherForecastCardProps> = ({ destin
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     const next = !expanded;
     setExpanded(next);
-    chevronAnim.value = withSpring(next ? 1 : 0, { damping: 18, stiffness: 140 });
+    chevronAnim.value = withTiming(next ? 1 : 0, { duration: 250 });
   }, [expanded, chevronAnim]);
 
   const chevronStyle = useAnimatedStyle(() => ({

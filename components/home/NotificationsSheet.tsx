@@ -20,6 +20,7 @@ import { useTheme } from '@/constants/ThemeContext';
 import { formatCurrency } from '@/lib/utils';
 import { useNotifications, type AppNotification } from '@/hooks/useNotifications';
 import { shouldNotify, getLocalNotificationPrefs } from '@/lib/notificationPrefs';
+import { useAuth } from '@/lib/auth';
 import type { NotificationPrefs } from '@/lib/notificationPrefs';
 import type { Place, GroupMember } from '@/lib/types';
 
@@ -252,11 +253,11 @@ export function useNotificationCount(
   const resolvedDbUnread = dbUnread ?? fallback.unreadCount;
   const dismissed = useDismissedCount();
   const [prefs, setPrefs] = useState<Partial<NotificationPrefs>>({});
+  const { user } = useAuth();
 
-  // Load prefs once
-  useState(() => {
-    getLocalNotificationPrefs().then(setPrefs).catch(() => {});
-  });
+  useEffect(() => {
+    getLocalNotificationPrefs(user?.id).then(setPrefs).catch(() => {});
+  }, [user?.id]);
 
   const localAlerts = useMemo(
     () => filterLocalAlertsByPrefs(generateLocalAlerts(props, colors), prefs),
@@ -285,11 +286,12 @@ export default function NotificationsSheet({
   const dbNotifs = sharedNotifs ?? fallback.notifications;
   const markRead = sharedMarkRead ?? fallback.markRead;
   const markAllRead = sharedMarkAllRead ?? fallback.markAllRead;
+  const { user } = useAuth();
 
   const [prefs, setPrefs] = useState<Partial<NotificationPrefs>>({});
-  useState(() => {
-    getLocalNotificationPrefs().then(setPrefs).catch(() => {});
-  });
+  useEffect(() => {
+    getLocalNotificationPrefs(user?.id).then(setPrefs).catch(() => {});
+  }, [user?.id]);
 
   const localAlerts = useMemo(
     () => filterLocalAlertsByPrefs(generateLocalAlerts(dataProps, colors), prefs),

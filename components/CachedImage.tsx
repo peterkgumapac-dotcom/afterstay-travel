@@ -3,13 +3,17 @@ import { ImageStyle, StyleProp } from 'react-native';
 import { Image } from 'expo-image';
 import { cachedImageUri } from '@/lib/cache/mediaCache';
 
+// Warm neutral placeholder — shows a soft dark amber instead of black while loading
+const FALLBACK_BLURHASH = 'L15OE2-;00xu~q%M4nof00D%00Rj';
+
 interface CachedImageProps {
   remoteUrl: string;
   style?: StyleProp<ImageStyle>;
   resizeMode?: 'cover' | 'contain' | 'stretch' | 'center';
+  blurhash?: string;
 }
 
-function CachedImageInner({ remoteUrl, style, resizeMode = 'cover' }: CachedImageProps) {
+function CachedImageInner({ remoteUrl, style, resizeMode = 'cover', blurhash }: CachedImageProps) {
   const [uri, setUri] = useState<string | null>(null);
   const retried = useRef(false);
   const mounted = useRef(true);
@@ -40,13 +44,25 @@ function CachedImageInner({ remoteUrl, style, resizeMode = 'cover' }: CachedImag
     }
   }, [remoteUrl]);
 
-  if (!uri) return null;
+  const resolvedBlurhash = blurhash || FALLBACK_BLURHASH;
+
+  // Show blurhash placeholder immediately while cache resolves
+  if (!uri) {
+    return (
+      <Image
+        style={style as any}
+        placeholder={{ blurhash: resolvedBlurhash }}
+        contentFit={resizeMode === 'cover' ? 'cover' : resizeMode === 'contain' ? 'contain' : 'cover'}
+      />
+    );
+  }
 
   return (
     <Image
       source={{ uri }}
       style={style as any}
       contentFit={resizeMode === 'cover' ? 'cover' : resizeMode === 'contain' ? 'contain' : 'cover'}
+      placeholder={{ blurhash: resolvedBlurhash }}
       onError={handleError}
       transition={200}
       cachePolicy="memory-disk"

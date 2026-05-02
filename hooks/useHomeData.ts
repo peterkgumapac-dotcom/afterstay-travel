@@ -178,7 +178,7 @@ export function getHomeLifetimeStatsCached(): LifetimeStats | null | undefined {
 export async function getHomeLifetimeStatsPromise(force = false): Promise<LifetimeStats | null> {
   return queryClient.fetchQuery({
     queryKey: keys.lifetimeStats,
-    queryFn: () => getLifetimeStats(''),
+    queryFn: () => getLifetimeStats(),
     staleTime: force ? 0 : 1000 * 60 * 5,
   });
 }

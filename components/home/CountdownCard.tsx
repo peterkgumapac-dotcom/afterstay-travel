@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
+import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
+import { TiltCard } from '@/components/shared/TiltCard';
 import { safeParse, MS_PER_DAY, MS_PER_HOUR } from '@/lib/utils';
 
 interface Props {
@@ -33,6 +35,9 @@ export function CountdownCard({
 
   if (status === 'completed') return null;
 
+  const tripStartDate = safeParse(tripStartISO);
+  const hasValidStart = Number.isFinite(tripStartDate.getTime());
+
   if (status === 'active') {
     return (
       <View style={styles.card}>
@@ -43,14 +48,33 @@ export function CountdownCard({
     );
   }
 
-  const tripStart = safeParse(tripStartISO).getTime();
+  if (!hasValidStart) {
+    return (
+      <TiltCard style={styles.card}>
+        <View style={styles.topRow}>
+          <View>
+            <Text style={styles.eyebrow}>Trip timing</Text>
+            <Text style={styles.dateLabel}>{dateLabel || 'Add your departure date'}</Text>
+          </View>
+          <View style={styles.stamp}>
+            <Text style={styles.stampText}>Needs details</Text>
+          </View>
+        </View>
+        <Text style={styles.fallbackText}>
+          Add or rescan your booking details to unlock the countdown.
+        </Text>
+      </TiltCard>
+    );
+  }
+
+  const tripStart = tripStartDate.getTime();
   const diff = Math.max(0, tripStart - now);
   const days = Math.floor(diff / MS_PER_DAY);
   const hours = Math.floor((diff % MS_PER_DAY) / MS_PER_HOUR);
   const minutes = Math.floor((diff % MS_PER_HOUR) / 60000);
   const seconds = Math.floor((diff % 60000) / 1000);
 
-  const label = safeParse(tripStartISO).toLocaleDateString('en-US', {
+  const label = tripStartDate.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
@@ -64,7 +88,7 @@ export function CountdownCard({
   ];
 
   return (
-    <View style={styles.card}>
+    <TiltCard style={styles.card}>
       {/* Top row: label + stamp */}
       <View style={styles.topRow}>
         <View>
@@ -93,10 +117,9 @@ export function CountdownCard({
 
       {/* Manual boarding CTA */}
       {onBoard && (
-        <TouchableOpacity
+        <AnimatedPressable
           style={styles.boardButton}
           onPress={onBoard}
-          activeOpacity={0.85}
           accessibilityRole="button"
           accessibilityLabel="I'm boarding now"
         >
@@ -120,9 +143,9 @@ export function CountdownCard({
               strokeLinejoin="round"
             />
           </Svg>
-        </TouchableOpacity>
+        </AnimatedPressable>
       )}
-    </View>
+    </TiltCard>
   );
 }
 
@@ -256,5 +279,11 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       fontSize: 20,
       fontWeight: '700',
       textAlign: 'center',
+    },
+    fallbackText: {
+      color: colors.text3,
+      fontSize: 13,
+      lineHeight: 19,
+      marginTop: 4,
     },
   });

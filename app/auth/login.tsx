@@ -18,29 +18,15 @@ import Animated, {
   useAnimatedStyle,
   withDelay,
   withTiming,
-  withSpring,
   Easing,
 } from 'react-native-reanimated';
 import Svg, { Path, Circle as SvgCircle, Rect, Line, Polyline } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
-import { CONFIG } from '@/lib/config';
+import { beginGoogleSignIn } from '@/lib/googleAuth';
 import { supabase } from '@/lib/supabase';
 import { spacing, radius } from '@/constants/theme';
 import ConstellationHero from '@/components/auth/ConstellationHero';
-
-/* Lazy-load Google Sign-In so Expo Go without the native module doesn't crash */
-let googleSigninModule: typeof import('@react-native-google-signin/google-signin') | null = null;
-
-async function getGoogleSignin() {
-  if (!googleSigninModule) {
-    googleSigninModule = await import('@react-native-google-signin/google-signin');
-    googleSigninModule.GoogleSignin.configure({
-      webClientId: CONFIG.GOOGLE_WEB_CLIENT_ID,
-    });
-  }
-  return googleSigninModule;
-}
 
 type Panel = 'root' | 'email' | 'sent';
 
@@ -394,7 +380,7 @@ function SuccessIcon({
   const iconOpacity = useSharedValue(0);
 
   useEffect(() => {
-    scale.value = withSpring(1, { damping: 8, stiffness: 180 });
+    scale.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
     iconOpacity.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.ease) });
   }, [scale, iconOpacity]);
 
@@ -433,7 +419,7 @@ const successStyles = StyleSheet.create({
 
 export default function LoginScreen() {
   const { colors } = useTheme();
-  const { signIn, signInWithMagicLink, signInAsDemo, session } = useAuth();
+  const { signIn, signInWithMagicLink, session } = useAuth();
   const router = useRouter();
 
   const [panel, setPanel] = useState<Panel>('root');
@@ -571,9 +557,7 @@ export default function LoginScreen() {
                   try {
                     setLoading(true);
                     setError(null);
-                    const { GoogleSignin, statusCodes } = await getGoogleSignin();
-                    await GoogleSignin.hasPlayServices();
-                    const response = await GoogleSignin.signIn();
+                    const response = await beginGoogleSignIn();
                     const idToken = response.data?.idToken;
                     if (!idToken) {
                       setLoading(false);
@@ -587,8 +571,10 @@ export default function LoginScreen() {
                     if (googleErr) {
                       setLoading(false);
                       Alert.alert('Sign-In Error', googleErr.message);
+                    } else {
+                      // Session useEffect handles redirect; timeout as safety net
+                      setTimeout(() => setLoading(false), 5000);
                     }
-                    // Success: session useEffect handles redirect
                   } catch (e: unknown) {
                     setLoading(false);
                     const err = e as { code?: string; message?: string };
@@ -674,18 +660,6 @@ export default function LoginScreen() {
             </Text>
           </StaggeredItem>
 
-          {/* Continue as guest */}
-          <StaggeredItem index={8}>
-            <TouchableOpacity
-              onPress={() => signInAsDemo()}
-              style={styles.guestLink}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.guestText, { color: colors.text3 }]}>
-                Continue as guest
-              </Text>
-            </TouchableOpacity>
-          </StaggeredItem>
         </View>
       </>
     );
@@ -1029,18 +1003,6 @@ const styles = StyleSheet.create({
   },
   toggleAuthText: {
     fontSize: 13,
-  },
-  guestLink: {
-    alignSelf: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  guestText: {
-    fontSize: 13,
-    fontWeight: '500',
-    textDecorationLine: 'underline',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,

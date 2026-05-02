@@ -1,28 +1,70 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Plane } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
+import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 import type { Flight } from '@/lib/types';
 
 interface Props {
   flight?: Flight;
   direction?: 'outbound' | 'return';
+  onAddFlight?: () => void;
 }
 
-export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'outbound' }) => {
+const KNOWN_AIRPORT_HINTS = [
+  { code: 'MPH', label: 'Boracay/Caticlan', patterns: [/boracay/i, /caticlan/i, /godofredo/i, /\bmph\b/i] },
+  { code: 'MNL', label: 'Manila', patterns: [/manila/i, /ninoy/i, /\bmnl\b/i] },
+  { code: 'CEB', label: 'Cebu', patterns: [/cebu/i, /mactan/i, /\bceb\b/i] },
+  { code: 'KLO', label: 'Kalibo', patterns: [/kalibo/i, /\bklo\b/i] },
+];
+
+const cleanAirportLabel = (value?: string | null) =>
+  (value ?? '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\b(international|domestic|airport|terminal)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const buildFallbackCode = (label: string) => {
+  const letters = label.replace(/[^a-z]/gi, '').toUpperCase();
+  return letters.length >= 3 ? letters.slice(0, 3) : (letters || '---');
+};
+
+const resolveAirportDisplay = (value?: string | null) => {
+  const raw = (value ?? '').trim();
+
+  if (!raw) {
+    return { code: '---', label: 'Airport' };
+  }
+
+  const known = KNOWN_AIRPORT_HINTS.find(({ patterns }) => patterns.some((pattern) => pattern.test(raw)));
+  if (known) {
+    return known;
+  }
+
+  const explicitCode = raw.match(/\b[A-Z]{3}\b/)?.[0];
+  const label = cleanAirportLabel(raw) || raw;
+
+  return {
+    code: explicitCode ?? buildFallbackCode(label),
+    label,
+  };
+};
+
+export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'outbound', onAddFlight }) => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const openFlight = onAddFlight ?? (() => router.push('/(tabs)/trip'));
 
   if (!flightProp) {
     return (
-      <TouchableOpacity
+      <AnimatedPressable
         style={[styles.card, { alignItems: 'center', paddingVertical: 24 }]}
-        activeOpacity={0.7}
-        onPress={() => router.push('/(tabs)/trip')}
+        onPress={openFlight}
       >
         <Plane size={22} color={colors.text3} strokeWidth={1.5} />
         <Text style={{ color: colors.text2, fontSize: 13, fontWeight: '500', marginTop: 8 }}>
@@ -31,33 +73,43 @@ export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'o
         <Text style={{ color: colors.text3, fontSize: 11, marginTop: 2 }}>
           Tap to add flight details
         </Text>
-      </TouchableOpacity>
+      </AnimatedPressable>
     );
   }
 
-  const depCode = flightProp.from;
-  const arrCode = flightProp.to;
-  const depTime = formatTimePHT(flightProp.departTime);
-  const arrTime = formatTimePHT(flightProp.arriveTime);
-  const depCity = flightProp.from;
-  const arrCity = flightProp.to;
-  const flightCode = flightProp.flightNumber;
+  const departure = resolveAirportDisplay(flightProp.from);
+  const arrival = resolveAirportDisplay(flightProp.to);
+  const depCode = departure.code;
+  const arrCode = arrival.code;
+  const depTime = flightProp.departTime ? formatTimePHT(flightProp.departTime) : '—';
+  const arrTime = flightProp.arriveTime ? formatTimePHT(flightProp.arriveTime) : '—';
+  const depCity = departure.label;
+  const arrCity = arrival.label;
+  const flightCode = flightProp.flightNumber ?? '';
   const ref = flightProp.bookingRef ?? '';
-  const dateShort = formatDatePHT(flightProp.departTime);
+  const dateShort = flightProp.departTime ? formatDatePHT(flightProp.departTime) : '—';
   const airline = flightProp.airline ?? '';
-  const airlineCode = flightCode.split(' ')[0] ?? '';
+  const airlineCode = (flightCode.match(/\b[A-Z0-9]{2}\b/)?.[0] ?? airline.slice(0, 2)).toUpperCase();
 
   return (
-    <View style={styles.card}>
+    <AnimatedPressable
+      style={styles.card}
+      onPress={openFlight}
+      accessibilityLabel="Open flight details"
+      haptic={false}
+    >
       {/* Header: airline logo + info + on-time chip */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.airlineLogo}>
-            <Text style={styles.airlineLogoText}>{airlineCode}</Text>
+            <Text style={styles.airlineLogoText} numberOfLines={1} adjustsFontSizeToFit>{airlineCode}</Text>
           </View>
-          <View>
-            <Text style={styles.airlineName}>{airline} {'\u00B7'} {flightCode}</Text>
-            <Text style={styles.refText}>{ref ? `Ref ${ref} \u00B7 ` : ''}{dateShort}</Text>
+          <View style={styles.headerCopy}>
+            <View style={styles.legRow}>
+              <Text style={styles.legChip}>{direction === 'return' ? 'Return' : 'Outbound'}</Text>
+            </View>
+            <Text style={styles.airlineName} numberOfLines={1}>{airline} {'\u00B7'} {flightCode}</Text>
+            <Text style={styles.refText} numberOfLines={1}>{ref ? `Ref ${ref} \u00B7 ` : ''}{dateShort}</Text>
           </View>
         </View>
         <View style={styles.onTimePill}>
@@ -68,9 +120,9 @@ export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'o
 
       {/* Route: dep -> plane -> arr */}
       <View style={styles.route}>
-        <View>
-          <Text style={styles.routeCode}>{depCode}</Text>
-          <Text style={styles.routeMeta}>{depTime} {'\u00B7'} {depCity}</Text>
+        <View style={styles.routeSide}>
+          <Text style={styles.routeCode} numberOfLines={1} adjustsFontSizeToFit>{depCode}</Text>
+          <Text style={styles.routeMeta} numberOfLines={2}>{depTime} {'\u00B7'} {depCity}</Text>
         </View>
 
         <View style={styles.routeCenter}>
@@ -88,8 +140,8 @@ export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'o
         </View>
 
         <View style={styles.routeRight}>
-          <Text style={styles.routeCode}>{arrCode}</Text>
-          <Text style={styles.routeMeta}>{arrTime} {'\u00B7'} {arrCity}</Text>
+          <Text style={styles.routeCode} numberOfLines={1} adjustsFontSizeToFit>{arrCode}</Text>
+          <Text style={[styles.routeMeta, styles.routeMetaRight]} numberOfLines={2}>{arrTime} {'\u00B7'} {arrCity}</Text>
         </View>
       </View>
 
@@ -106,15 +158,15 @@ export const FlightCard: React.FC<Props> = ({ flight: flightProp, direction = 'o
           {depCode} {'\u2192'} {arrCode}
         </Text>
         <Text style={styles.footerDot}>{'\u2022'}</Text>
-        <Text style={styles.footerText}>{dateShort}</Text>
+        <Text style={styles.footerText} numberOfLines={1}>{dateShort}</Text>
         {flightProp.baggage ? (
           <>
             <Text style={styles.footerDot}>{'\u2022'}</Text>
-            <Text style={styles.footerText}>{flightProp.baggage}</Text>
+            <Text style={styles.footerText} numberOfLines={1}>{flightProp.baggage}</Text>
           </>
         ) : null}
       </View>
-    </View>
+    </AnimatedPressable>
   );
 };
 
@@ -135,9 +187,31 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       marginBottom: 14,
     },
     headerLeft: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
+      minWidth: 0,
+    },
+    headerCopy: {
+      flex: 1,
+      minWidth: 0,
+    },
+    legRow: {
+      flexDirection: 'row',
+      marginBottom: 3,
+    },
+    legChip: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 999,
+      overflow: 'hidden',
+      backgroundColor: colors.card2,
+      color: colors.text2,
+      fontSize: 9,
+      fontWeight: '700',
+      textTransform: 'uppercase',
     },
     airlineLogo: {
       width: 38,
@@ -166,6 +240,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
+      flexShrink: 0,
       backgroundColor: colors.accentBg,
       borderWidth: 1,
       borderColor: colors.accentBorder,
@@ -189,11 +264,15 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       alignItems: 'center',
       gap: 14,
     },
+    routeSide: {
+      width: 76,
+      minWidth: 0,
+    },
     routeCode: {
       fontFamily: 'SpaceMono',
       fontSize: 22,
       fontWeight: '500',
-      letterSpacing: -0.8,
+      letterSpacing: 0,
       color: colors.text,
     },
     routeMeta: {
@@ -215,6 +294,11 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     },
     routeRight: {
       alignItems: 'flex-end',
+      width: 76,
+      minWidth: 0,
+    },
+    routeMetaRight: {
+      textAlign: 'right',
     },
     ticketDivider: {
       flexDirection: 'row',
@@ -249,8 +333,10 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       flexDirection: 'row',
       gap: 14,
       alignItems: 'center',
+      minWidth: 0,
     },
     footerText: {
+      flexShrink: 1,
       fontSize: 11,
       color: colors.text3,
     },

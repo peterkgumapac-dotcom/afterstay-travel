@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -33,6 +35,7 @@ import { createQuickTrip } from '@/lib/quickTrips';
 import type { QuickTripCategory } from '@/lib/quickTripTypes';
 
 type Phase = 'photos' | 'review';
+type PlaceSuggestion = { placeId: string; description: string; manual?: boolean };
 
 export default function QuickTripCreateScreen() {
   const { colors } = useTheme();
@@ -50,19 +53,28 @@ export default function QuickTripCreateScreen() {
   const [placeName, setPlaceName] = useState('');
   const [placeAddress, setPlaceAddress] = useState('');
   const [googlePlaceId, setGooglePlaceId] = useState('');
-  const [placeResults, setPlaceResults] = useState<{ placeId: string; description: string }[]>([]);
+  const [placeResults, setPlaceResults] = useState<PlaceSuggestion[]>([]);
+  const [placeSearching, setPlaceSearching] = useState(false);
   const [category, setCategory] = useState<QuickTripCategory | null>(null);
   const [occurredAt, setOccurredAt] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState<'date' | 'time'>('date');
+  const [datePickerKey, setDatePickerKey] = useState(0);
   const [companions, setCompanions] = useState<CompanionInput[]>([]);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [latitude, setLatitude] = useState<number | undefined>();
+  const [longitude, setLongitude] = useState<number | undefined>();
   const [saving, setSaving] = useState(false);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDateRef = useRef<Date>(new Date());
+  const initializedPickerRef = useRef(false);
 
   // Pre-populate from passed photoUris or open picker
   useEffect(() => {
+    if (initializedPickerRef.current) return;
+    initializedPickerRef.current = true;
     if (photoUris) {
       const uris = photoUris.split(',').filter(Boolean);
       if (uris.length > 0) {
@@ -72,7 +84,7 @@ export default function QuickTripCreateScreen() {
       }
     }
     pickPhotos();
-  }, []);
+  }, [photoUris]);
 
   const pickPhotos = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -114,17 +126,89 @@ export default function QuickTripCreateScreen() {
       return;
     }
     searchTimer.current = setTimeout(async () => {
-      const results = await placeAutocomplete(text);
-      setPlaceResults(results);
+      setPlaceSearching(true);
+      try {
+        const results = await placeAutocomplete(text);
+        const trimmed = text.trim();
+        const next = results.slice(0, 6);
+        setPlaceResults(next.length > 0
+          ? next
+          : [{ placeId: `manual:${trimmed}`, description: `Use "${trimmed}"`, manual: true }]);
+      } catch (err) {
+        if (__DEV__) console.warn('[QuickTripCreate] autocomplete failed:', err);
+        const trimmed = text.trim();
+        setPlaceResults([{ placeId: `manual:${trimmed}`, description: `Use "${trimmed}"`, manual: true }]);
+      } finally {
+        setPlaceSearching(false);
+      }
     }, 300);
   }, []);
 
-  const selectPlace = (result: { placeId: string; description: string }) => {
-    const shortName = result.description.split(',')[0] ?? result.description;
+  const openDatePicker = useCallback(() => {
+    pendingDateRef.current = occurredAt;
+    setDatePickerMode('date');
+    setDatePickerKey((key) => key + 1);
+    setShowDatePicker(true);
+  }, [occurredAt]);
+
+  const handleDateChange = useCallback((event: any, selected?: Date) => {
+    if (event?.type === 'dismissed') {
+      setShowDatePicker(false);
+      setDatePickerMode('date');
+      return;
+    }
+
+    if (!selected) return;
+
+    if (Platform.OS === 'android' && datePickerMode === 'date') {
+      const next = new Date(pendingDateRef.current);
+      next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+      pendingDateRef.current = next;
+      setOccurredAt(next);
+      setShowDatePicker(false);
+      setDatePickerMode('time');
+      setTimeout(() => {
+        setDatePickerKey((key) => key + 1);
+        setShowDatePicker(true);
+      }, 120);
+      return;
+    }
+
+    if (Platform.OS === 'android' && datePickerMode === 'time') {
+      const next = new Date(pendingDateRef.current);
+      next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      pendingDateRef.current = next;
+      setOccurredAt(next);
+      setShowDatePicker(false);
+      setDatePickerMode('date');
+      return;
+    }
+
+    setOccurredAt(selected);
+    setShowDatePicker(Platform.OS === 'ios');
+  }, [datePickerMode]);
+
+  const selectPlace = async (result: PlaceSuggestion) => {
+    const description = result.manual
+      ? result.description.replace(/^Use\s+"/, '').replace(/"$/, '')
+      : result.description;
+    const shortName = description.split(',')[0] ?? description;
     setPlaceName(shortName);
-    setPlaceAddress(result.description);
-    setGooglePlaceId(result.placeId);
+    setPlaceAddress(result.manual ? '' : description);
+    setGooglePlaceId(result.manual ? '' : result.placeId);
     setPlaceResults([]);
+    if (result.manual) return;
+    // Fetch coordinates from Google Places
+    try {
+      const { getPlaceLocation } = await import('@/lib/google-places');
+      const loc = await getPlaceLocation(result.placeId);
+      if (loc) {
+        setLatitude(loc.lat);
+        setLongitude(loc.lng);
+      }
+    } catch (err) {
+      if (__DEV__) console.warn('[QuickTripCreate] location fetch failed:', err);
+    }
   };
 
   const handleSave = async () => {
@@ -137,6 +221,8 @@ export default function QuickTripCreateScreen() {
         placeName: placeName.trim(),
         placeAddress: placeAddress || undefined,
         googlePlaceId: googlePlaceId || undefined,
+        latitude,
+        longitude,
         category,
         occurredAt: occurredAt.toISOString(),
         notes: notes.trim() || undefined,
@@ -144,12 +230,15 @@ export default function QuickTripCreateScreen() {
         companions,
       });
       if (returnTo === 'add-expense') {
-        router.replace({ pathname: '/add-expense', params: { target: 'quick-trip', quickTripId: id } } as never);
+        router.dismiss();
+        router.push({ pathname: '/add-expense', params: { target: 'quick-trip', quickTripId: id } } as never);
       } else {
-        router.replace({ pathname: '/quick-trip-detail', params: { quickTripId: id } } as never);
+        router.dismiss();
+        router.push({ pathname: '/quick-trip-detail', params: { quickTripId: id } } as never);
       }
-    } catch {
+    } catch (err: any) {
       setSaving(false);
+      Alert.alert('Save failed', err?.message ?? 'Something went wrong. Please try again.');
     }
   };
 
@@ -221,6 +310,7 @@ export default function QuickTripCreateScreen() {
   // ---------- REVIEW PHASE ----------
   return (
     <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setPhase('photos')} style={styles.headerBtn}>
           <ArrowLeft size={20} color={colors.text} />
@@ -243,7 +333,11 @@ export default function QuickTripCreateScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.reviewContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.reviewContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Photo carousel */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.carousel}>
           {photos.map((p, i) => (
@@ -266,6 +360,12 @@ export default function QuickTripCreateScreen() {
             placeholderTextColor={colors.text3}
           />
         </View>
+        {placeSearching && placeResults.length === 0 && (
+          <View style={styles.placeLoading}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={styles.placeLoadingText}>Searching places...</Text>
+          </View>
+        )}
         {placeResults.length > 0 && (
           <View style={styles.placeResults}>
             {placeResults.slice(0, 4).map((r) => (
@@ -279,7 +379,7 @@ export default function QuickTripCreateScreen() {
 
         {/* When */}
         <Text style={styles.fieldLabel}>When</Text>
-        <TouchableOpacity style={styles.fieldRow} onPress={() => setShowDatePicker(true)}>
+        <TouchableOpacity style={styles.fieldRow} onPress={openDatePicker}>
           <Calendar size={16} color={colors.text3} />
           <Text style={styles.fieldValue}>
             {occurredAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -289,13 +389,11 @@ export default function QuickTripCreateScreen() {
         </TouchableOpacity>
         {showDatePicker && (
           <DateTimePicker
+            key={`${datePickerMode}-${datePickerKey}`}
             value={occurredAt}
-            mode="datetime"
+            mode={Platform.OS === 'ios' ? 'datetime' : datePickerMode}
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(_, date) => {
-              setShowDatePicker(Platform.OS !== 'ios');
-              if (date) setOccurredAt(date);
-            }}
+            onChange={handleDateChange}
           />
         )}
 
@@ -336,6 +434,7 @@ export default function QuickTripCreateScreen() {
 
         <View style={{ height: 60 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -414,6 +513,13 @@ const getStyles = (colors: ThemeColors) =>
       borderBottomWidth: 1, borderBottomColor: colors.border,
     },
     placeText: { flex: 1, fontSize: 13, color: colors.text2 },
+    placeLoading: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      marginTop: 6, paddingHorizontal: 14, paddingVertical: 10,
+      backgroundColor: colors.card, borderRadius: 12,
+      borderWidth: 1, borderColor: colors.border,
+    },
+    placeLoadingText: { fontSize: 13, color: colors.text3, fontWeight: '600' },
 
     textInput: {
       fontSize: 14, color: colors.text, paddingHorizontal: 14, paddingVertical: 12,

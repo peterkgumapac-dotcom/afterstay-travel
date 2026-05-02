@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Switch,
@@ -9,7 +10,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ArrowLeft,
   Bell,
@@ -27,8 +27,7 @@ import {
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import { clearPrefsCache } from '@/lib/notificationPrefs';
-import { spacing } from '@/constants/theme';
+import { clearPrefsCache, getLocalNotificationPrefs, saveLocalNotificationPrefs } from '@/lib/notificationPrefs';
 
 // ---------- TYPES ----------
 
@@ -46,8 +45,6 @@ interface NotificationPrefsState {
   quietHours: { enabled: boolean; startHour: number; endHour: number };
   mutedTrips: string[];
 }
-
-const STORAGE_KEY = 'settings_notifications';
 
 const DEFAULTS: NotificationPrefsState = {
   departureReminders: true,
@@ -72,19 +69,48 @@ export default function NotificationSettingsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<NotificationPrefsState>(DEFAULTS);
+  const [pushStatus, setPushStatus] = useState<'loading' | 'enabled' | 'disabled'>('loading');
+  const [sendingTest, setSendingTest] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) setPrefs({ ...DEFAULTS, ...JSON.parse(raw) });
-    }).catch(() => {});
-  }, []);
+    let cancelled = false;
+
+    async function loadPrefs() {
+      const localPrefs = await getLocalNotificationPrefs(user?.id).catch(() => ({}));
+      if (!cancelled && Object.keys(localPrefs).length > 0) {
+        setPrefs({ ...DEFAULTS, ...localPrefs });
+      }
+
+      if (!user?.id) {
+        if (!cancelled) setPushStatus('disabled');
+        return;
+      }
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('fcm_token, expo_push_token, push_enabled, notification_prefs')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (data?.notification_prefs && typeof data.notification_prefs === 'object') {
+        const remotePrefs = { ...DEFAULTS, ...(data.notification_prefs as Partial<NotificationPrefsState>) };
+        setPrefs(remotePrefs);
+        await saveLocalNotificationPrefs(remotePrefs, user.id).catch(() => {});
+      }
+      setPushStatus((data?.fcm_token || data?.expo_push_token) && data?.push_enabled ? 'enabled' : 'disabled');
+    }
+
+    loadPrefs();
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   const save = useCallback(async (updated: NotificationPrefsState) => {
     setPrefs(updated);
-    clearPrefsCache();
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    clearPrefsCache(user?.id);
+    await saveLocalNotificationPrefs(updated, user?.id);
     if (user?.id) {
-      supabase.from('profiles').update({ notification_prefs: updated }).eq('id', user.id).then(() => {});
+      await supabase.from('profiles').update({ notification_prefs: updated }).eq('id', user.id);
     }
   }, [user?.id]);
 
@@ -99,6 +125,38 @@ export default function NotificationSettingsScreen() {
     });
   }, [prefs, save]);
 
+  const sendTestPush = useCallback(async () => {
+    if (!user?.id || sendingTest) return;
+    setSendingTest(true);
+    try {
+      const record = {
+        user_id: user.id,
+        type: 'trip_starting',
+        title: 'Test push',
+        body: 'If this arrives, Firebase push delivery is working.',
+        data: { type: 'trip_starting', source: 'notification_settings' },
+        read: false,
+      };
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert(record)
+        .select('*')
+        .single();
+      if (error) throw new Error(`Notification insert failed: ${error.message}`);
+
+      const { error: pushError } = await supabase.functions.invoke('send-push-notification', {
+        body: { type: 'INSERT', record: data },
+      });
+      if (pushError) throw new Error(`Push function failed: ${pushError.message}`);
+
+      Alert.alert('Test sent', 'If your device token is valid, the push should arrive shortly.');
+    } catch (err) {
+      Alert.alert('Test failed', err instanceof Error ? err.message : 'Unable to send test push.');
+    } finally {
+      setSendingTest(false);
+    }
+  }, [sendingTest, user?.id]);
+
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
@@ -110,6 +168,32 @@ export default function NotificationSettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* ── PUSH STATUS ── */}
+        {pushStatus !== 'loading' && (
+          <View style={[s.pushBanner, pushStatus === 'enabled' ? s.pushBannerOn : s.pushBannerOff]}>
+            {pushStatus === 'enabled' ? (
+              <Bell size={14} color={colors.success} />
+            ) : (
+              <BellOff size={14} color={colors.danger} />
+            )}
+            <Text style={[s.pushBannerText, { color: pushStatus === 'enabled' ? colors.success : colors.danger }]}>
+              {pushStatus === 'enabled' ? 'Push notifications enabled' : 'Push notifications not registered'}
+            </Text>
+          </View>
+        )}
+
+        {user?.id && (
+          <TouchableOpacity
+            style={[s.testPushBtn, sendingTest && { opacity: 0.55 }]}
+            onPress={sendTestPush}
+            disabled={sendingTest}
+            activeOpacity={0.75}
+          >
+            <Bell size={15} color={colors.bg} strokeWidth={2} />
+            <Text style={s.testPushText}>{sendingTest ? 'Sending test...' : 'Send test push'}</Text>
+          </TouchableOpacity>
+        )}
 
         {/* ── TRIP PHASES ── */}
         <Text style={s.sectionLabel}>When to notify</Text>
@@ -306,6 +390,36 @@ const getStyles = (colors: ThemeColors) =>
     },
     headerTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
     scroll: { paddingHorizontal: 16, paddingTop: 8 },
+    pushBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 8,
+      paddingVertical: 10, paddingHorizontal: 14,
+      borderRadius: 12, borderWidth: 1,
+    },
+    pushBannerOn: {
+      backgroundColor: 'rgba(216,171,122,0.08)', borderColor: 'rgba(216,171,122,0.25)',
+    },
+    pushBannerOff: {
+      backgroundColor: 'rgba(196,85,74,0.08)', borderColor: 'rgba(196,85,74,0.25)',
+    },
+    pushBannerText: {
+      fontSize: 12, fontWeight: '600',
+    },
+    testPushBtn: {
+      marginTop: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: colors.accent,
+      borderRadius: 14,
+      paddingVertical: 11,
+      paddingHorizontal: 14,
+    },
+    testPushText: {
+      color: colors.bg,
+      fontSize: 13,
+      fontWeight: '700',
+    },
     sectionLabel: {
       fontSize: 11, fontWeight: '600', color: colors.text3,
       textTransform: 'uppercase', letterSpacing: 1.4,

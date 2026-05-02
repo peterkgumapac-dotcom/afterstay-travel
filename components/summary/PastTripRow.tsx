@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Archive, Star, Trash2 } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Archive, Play, Star, Trash2 } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 
@@ -56,9 +57,28 @@ export default function PastTripRow({ trip, hasMemory, onPress, onDelete, onArch
 
   return (
     <Wrapper style={styles.row} {...wrapperProps as any}>
-      <View style={styles.flagContainer}>
-        <Text style={styles.flag}>{trip.flag}</Text>
-      </View>
+      {/* Story ring for completed trips with memories */}
+      {hasMemory ? (
+        <View style={styles.storyRingOuter}>
+          <LinearGradient
+            colors={['#d8ab7a', '#c66a36', '#d9a441']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.storyRing}
+          />
+          <View style={styles.storyRingInner}>
+            <Text style={styles.flag}>{trip.flag}</Text>
+          </View>
+          {/* Play indicator */}
+          <View style={styles.playBadge}>
+            <Play size={7} color="#fff" fill="#fff" />
+          </View>
+        </View>
+      ) : (
+        <View style={styles.flagContainer}>
+          <Text style={styles.flag}>{trip.flag}</Text>
+        </View>
+      )}
 
       <View style={styles.info}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -111,6 +131,7 @@ const getStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       borderRadius: 14,
     },
+    // Default flag circle (no memory)
     flagContainer: {
       width: 40,
       height: 40,
@@ -120,6 +141,38 @@ const getStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    // Story ring (has memory) — Instagram-style gradient border
+    storyRingOuter: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    storyRing: {
+      ...StyleSheet.absoluteFillObject,
+      borderRadius: 14,
+    },
+    storyRingInner: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    playBadge: {
+      position: 'absolute',
+      bottom: -2,
+      right: -2,
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: colors.card,
     },
     flag: {
       fontSize: 20,

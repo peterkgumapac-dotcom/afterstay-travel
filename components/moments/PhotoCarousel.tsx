@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, memo } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,6 @@ import Animated, {
   withSpring,
   withTiming,
   runOnJS,
-  interpolate,
-  Extrapolation,
   type SharedValue,
 } from 'react-native-reanimated';
 import {
@@ -21,10 +19,12 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { ChevronLeft, Heart, Share2, Bookmark, MoreHorizontal } from 'lucide-react-native';
+import { Image as RNImage } from 'react-native';
+import { ChevronLeft, Heart, MessageCircle, Share2, Download, MoreHorizontal, MapPin, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CachedImage } from '@/components/CachedImage';
 import { useTheme } from '@/constants/ThemeContext';
 import { springPresets, thresholds } from '@/constants/animations';
 import type { MomentDisplay, PeopleMap } from './types';
@@ -32,6 +32,11 @@ import { HeartBurst } from './HeartBurst';
 import { PhotoActionsSheet, type PhotoAction } from './PhotoActionsSheet';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const FALLBACK_BLURHASH = 'L15OE2-;00xu~q%M4nof00D%00Rj';
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
 
 interface PhotoCarouselProps {
   moments: MomentDisplay[];
@@ -39,8 +44,10 @@ interface PhotoCarouselProps {
   people: PeopleMap;
   onClose: () => void;
   onFavorite?: (id: string) => void;
+  onComment?: (momentId: string) => void;
   onAction?: (action: PhotoAction, moment: MomentDisplay) => void;
   onIndexChange?: (index: number) => void;
+  dismissedIds?: Set<string>;
 }
 
 interface CarouselItemProps {
@@ -48,57 +55,32 @@ interface CarouselItemProps {
   index: number;
   scrollX: SharedValue<number>;
   onDoubleTap: (moment: MomentDisplay) => void;
+  isNearActive: boolean;
 }
 
-function CarouselItem({ moment, index, scrollX, onDoubleTap }: CarouselItemProps) {
+// ---------------------------------------------------------------------------
+// CarouselItem — single photo slide
+// ---------------------------------------------------------------------------
+
+const CarouselItem = memo(function CarouselItemComponent({
+  moment,
+  index,
+  scrollX,
+  onDoubleTap,
+  isNearActive,
+}: CarouselItemProps) {
   const [burstVisible, setBurstVisible] = useState(false);
   const [burstCenter, setBurstCenter] = useState({ x: SCREEN_W / 2, y: SCREEN_H / 2 });
+  const [hasBeenVisible, setHasBeenVisible] = useState(isNearActive);
 
-  const animatedStyle = useAnimatedStyle(() => {
-    const inputRange = [
-      (index - 1) * SCREEN_W,
-      index * SCREEN_W,
-      (index + 1) * SCREEN_W,
-    ];
+  useEffect(() => {
+    if (isNearActive && !hasBeenVisible) setHasBeenVisible(true);
+  }, [isNearActive]);
 
-    const scale = interpolate(
-      scrollX.value,
-      inputRange,
-      [0.85, 1, 0.85],
-      Extrapolation.CLAMP
-    );
-
-    const opacity = interpolate(
-      scrollX.value,
-      inputRange,
-      [0.5, 1, 0.5],
-      Extrapolation.CLAMP
-    );
-
-    const rotateY = interpolate(
-      scrollX.value,
-      inputRange,
-      [15, 0, -15],
-      Extrapolation.CLAMP
-    );
-
-    const translateX = interpolate(
-      scrollX.value,
-      inputRange,
-      [-SCREEN_W * 0.1, 0, SCREEN_W * 0.1],
-      Extrapolation.CLAMP
-    );
-
-    return {
-      transform: [
-        { translateX },
-        { scale },
-        { perspective: 1000 },
-        { rotateY: `${rotateY}deg` },
-      ],
-      opacity,
-    };
-  });
+  // No scale/opacity animation — clean flat slide
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: 1,
+  }));
 
   const handleDoubleTap = useCallback(() => {
     setBurstCenter({ x: SCREEN_W / 2, y: SCREEN_H / 2 });
@@ -106,9 +88,7 @@ function CarouselItem({ moment, index, scrollX, onDoubleTap }: CarouselItemProps
     onDoubleTap(moment);
   }, [moment, onDoubleTap]);
 
-  const handleBurstComplete = useCallback(() => {
-    setBurstVisible(false);
-  }, []);
+  const handleBurstComplete = useCallback(() => setBurstVisible(false), []);
 
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
@@ -118,18 +98,22 @@ function CarouselItem({ moment, index, scrollX, onDoubleTap }: CarouselItemProps
       runOnJS(handleDoubleTap)();
     });
 
+  const photoUri = moment.hdPhoto || moment.photo;
+
   return (
-    <View style={styles.carouselItem}>
+    <View style={styles.slide}>
       <GestureDetector gesture={doubleTap}>
-        <Animated.View style={[styles.photoContainer, animatedStyle]}>
-          {moment.photo ? (
-            <CachedImage
-              remoteUrl={moment.photo}
-              style={styles.photo}
-              resizeMode="contain"
+        <Animated.View style={[styles.photoWrap, animatedStyle]}>
+          {hasBeenVisible && photoUri && (
+            <Image
+              source={{ uri: photoUri }}
+              style={StyleSheet.absoluteFill}
+              contentFit="contain"
+              placeholder={moment.blurhash ? { blurhash: moment.blurhash } : { blurhash: FALLBACK_BLURHASH }}
+              cachePolicy="memory-disk"
+              recyclingKey={moment.id}
+              transition={120}
             />
-          ) : (
-            <View style={[styles.photo, { backgroundColor: '#1a1a1a' }]} />
           )}
         </Animated.View>
       </GestureDetector>
@@ -142,7 +126,15 @@ function CarouselItem({ moment, index, scrollX, onDoubleTap }: CarouselItemProps
       />
     </View>
   );
-}
+}, (prev, next) =>
+  prev.moment.id === next.moment.id &&
+  prev.index === next.index &&
+  prev.isNearActive === next.isNearActive
+);
+
+// ---------------------------------------------------------------------------
+// PhotoCarousel — fullscreen lightbox
+// ---------------------------------------------------------------------------
 
 export function PhotoCarousel({
   moments,
@@ -150,57 +142,58 @@ export function PhotoCarousel({
   people,
   onClose,
   onFavorite,
+  onComment,
   onAction,
   onIndexChange,
+  dismissedIds,
 }: PhotoCarouselProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [currentIdx, setCurrentIdx] = useState(initialIndex);
   const [actionsVisible, setActionsVisible] = useState(false);
+  const [chromeVisible, setChromeVisible] = useState(true);
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
 
   const scrollX = useSharedValue(initialIndex * SCREEN_W);
-  const translateY = useSharedValue(0);
-  const dismissScale = useSharedValue(1);
-  const dismissOpacity = useSharedValue(1);
-  const bgOpacity = useSharedValue(1);
+  const chromeOpacity = useSharedValue(1);
 
   const currentMoment = moments[currentIdx];
+  const isHd = !!currentMoment?.hdPhoto;
 
   useEffect(() => {
-    if (onIndexChange) {
-      onIndexChange(currentIdx);
-    }
+    if (onIndexChange) onIndexChange(currentIdx);
   }, [currentIdx]);
+
+  // Preload ±2 adjacent (HD when available)
+  useEffect(() => {
+    [currentIdx - 2, currentIdx - 1, currentIdx, currentIdx + 1, currentIdx + 2]
+      .filter((i) => i >= 0 && i < moments.length)
+      .forEach((i) => {
+        const uri = moments[i].hdPhoto || moments[i].photo;
+        if (uri) Image.prefetch(uri).catch(() => {});
+      });
+  }, [currentIdx, moments]);
 
   const handleFavorite = useCallback((moment: MomentDisplay) => {
     if (onFavorite) {
       onFavorite(moment.id);
-      setFavoritedIds(prev => new Set(prev).add(moment.id));
+      setFavoritedIds((prev) => new Set(prev).add(moment.id));
     }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [onFavorite]);
 
-  const handleSwipeLeft = useCallback(() => {
-    if (currentIdx < moments.length - 1) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setCurrentIdx(prev => prev + 1);
-      scrollX.value = withSpring((currentIdx + 1) * SCREEN_W, springPresets.CAROUSEL_SNAP);
-    }
-  }, [currentIdx, moments.length, scrollX]);
+  // Toggle chrome on single tap
+  const toggleChrome = useCallback(() => {
+    const next = !chromeVisible;
+    setChromeVisible(next);
+    chromeOpacity.value = withTiming(next ? 1 : 0, { duration: 200 });
+  }, [chromeVisible]);
 
-  const handleSwipeRight = useCallback(() => {
-    if (currentIdx > 0) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setCurrentIdx(prev => prev - 1);
-      scrollX.value = withSpring((currentIdx - 1) * SCREEN_W, springPresets.CAROUSEL_SNAP);
-    }
-  }, [currentIdx, scrollX]);
+  // ---------------------------------------------------------------------------
+  // Gestures
+  // ---------------------------------------------------------------------------
 
-  const handleDismissComplete = useCallback(() => {
-    onClose();
-  }, [onClose]);
-
-  // Horizontal pan for carousel
+  // Horizontal pan for swiping between photos
   const horizontalPan = Gesture.Pan()
     .activeOffsetX([-15, 15])
     .failOffsetY([-10, 10])
@@ -208,8 +201,6 @@ export function PhotoCarousel({
       'worklet';
       const translation = event.translationX;
       const baseX = currentIdx * SCREEN_W;
-      
-      // Edge resistance
       if ((currentIdx === 0 && translation > 0) || (currentIdx === moments.length - 1 && translation < 0)) {
         scrollX.value = baseX + translation * thresholds.edgeResistance;
       } else {
@@ -220,7 +211,7 @@ export function PhotoCarousel({
       'worklet';
       const velocity = event.velocityX;
       const translation = event.translationX;
-      const shouldAdvance = Math.abs(translation) > 100 || Math.abs(velocity) > thresholds.flickVelocity;
+      const shouldAdvance = Math.abs(translation) > 80 || Math.abs(velocity) > thresholds.flickVelocity;
       const direction = translation < 0 ? 'left' : 'right';
 
       if (shouldAdvance) {
@@ -240,81 +231,63 @@ export function PhotoCarousel({
       }
     });
 
-  // Vertical pan for dismiss
-  const verticalPan = Gesture.Pan()
-    .activeOffsetY([-20, 20])
-    .failOffsetX([-10, 10])
-    .onUpdate((event) => {
+  // Single tap toggles chrome
+  const singleTap = Gesture.Tap()
+    .numberOfTaps(1)
+    .onEnd(() => {
       'worklet';
-      if (event.translationY > 0) {
-        const progress = Math.min(event.translationY / thresholds.dismissSwipe, 1);
-        translateY.value = event.translationY * 0.6;
-        dismissScale.value = 1 - progress * 0.2;
-        bgOpacity.value = 1 - progress * 0.6;
-      }
-    })
-    .onEnd((event) => {
-      'worklet';
-      if (event.translationY > thresholds.dismissSwipe || event.velocityY > 300) {
-        translateY.value = withSpring(SCREEN_H, springPresets.DISMISS);
-        dismissOpacity.value = withTiming(0, { duration: 250 });
-        runOnJS(handleDismissComplete)();
-        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
-      } else {
-        translateY.value = withSpring(0, springPresets.BOUNCY);
-        dismissScale.value = withSpring(1, springPresets.BOUNCY);
-        bgOpacity.value = withSpring(1, springPresets.BOUNCY);
-      }
-    });
-
-  // Swipe up for action sheet
-  const swipeUp = Gesture.Pan()
-    .activeOffsetY([-30, -5])
-    .failOffsetX([-10, 10])
-    .onEnd((event) => {
-      'worklet';
-      if (event.translationY < -80 || event.velocityY < -300) {
-        runOnJS(setActionsVisible)(true);
-        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
-      }
+      runOnJS(toggleChrome)();
     });
 
   const composedGestures = Gesture.Simultaneous(
-    Gesture.Race(horizontalPan, verticalPan),
-    swipeUp
+    horizontalPan,
+    singleTap,
   );
 
+  // ---------------------------------------------------------------------------
+  // Animated styles
+  // ---------------------------------------------------------------------------
+
   const containerStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { scale: dismissScale.value },
-    ],
-    opacity: dismissOpacity.value,
+    opacity: 1,
   }));
 
   const bgStyle = useAnimatedStyle(() => ({
-    opacity: bgOpacity.value,
+    opacity: 1,
+  }));
+
+  const chromeStyle = useAnimatedStyle(() => ({
+    opacity: chromeOpacity.value,
+  }));
+
+  const trackStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -scrollX.value }],
   }));
 
   const handleAction = useCallback((action: PhotoAction) => {
     setActionsVisible(false);
-    if (onAction && currentMoment) {
-      onAction(action, currentMoment);
-    }
+    if (onAction && currentMoment) onAction(action, currentMoment);
   }, [currentMoment, onAction]);
+
+  const isFavorited = currentMoment?.isFavorited || favoritedIds.has(currentMoment?.id ?? '');
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <GestureHandlerRootView style={styles.root}>
       {/* Background */}
-      <Animated.View style={[styles.background, bgStyle]} />
+      <Animated.View style={[styles.bg, bgStyle]} />
 
-      {/* Carousel */}
+      {/* Photo track */}
       <GestureDetector gesture={composedGestures}>
-        <Animated.View style={[styles.carouselContainer, containerStyle]}>
+        <Animated.View style={[styles.trackContainer, containerStyle]}>
           <Animated.View
             style={[
-              styles.carouselTrack,
-              { transform: [{ translateX: -scrollX.value }] },
+              styles.track,
+              { width: SCREEN_W * moments.length },
+              trackStyle,
             ]}
           >
             {moments.map((moment, idx) => (
@@ -324,79 +297,142 @@ export function PhotoCarousel({
                 index={idx}
                 scrollX={scrollX}
                 onDoubleTap={handleFavorite}
+                isNearActive={Math.abs(idx - currentIdx) <= 2}
               />
             ))}
           </Animated.View>
         </Animated.View>
       </GestureDetector>
 
-      {/* Top bar */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-        <Pressable
-          onPress={() => {
-            Haptics.selectionAsync();
-            onClose();
-          }}
-          style={styles.topBtn}
-        >
-          <ChevronLeft size={20} color="#fff" strokeWidth={2.5} />
+      {/* ── Top chrome ── */}
+      <Animated.View style={[styles.topChrome, { paddingTop: insets.top + 4 }, chromeStyle]} pointerEvents={chromeVisible ? 'auto' : 'none'}>
+        <LinearGradient
+          colors={['rgba(0,0,0,0.6)', 'transparent']}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        <Pressable onPress={() => { Haptics.selectionAsync(); onClose(); }} style={styles.pill} accessibilityLabel="Close">
+          <ChevronLeft size={18} color="#fff" strokeWidth={2.5} />
         </Pressable>
 
-        <View style={styles.counter}>
-          <Text style={styles.counterText}>
-            {currentIdx + 1} of {moments.length}
-          </Text>
+        <View style={styles.counterPill}>
+          <Text style={styles.counterText}>{currentIdx + 1} / {moments.length}</Text>
+          {isHd && (
+            <View style={styles.hdBadge}>
+              <Sparkles size={10} color="#000" strokeWidth={2.5} />
+              <Text style={styles.hdText}>HD</Text>
+            </View>
+          )}
         </View>
 
-        <Pressable
-          onPress={() => {
-            Haptics.selectionAsync();
-            setActionsVisible(true);
-          }}
-          style={styles.topBtn}
-        >
+        <Pressable onPress={() => { Haptics.selectionAsync(); setActionsVisible(true); }} style={styles.pill} accessibilityLabel="More actions">
           <MoreHorizontal size={18} color="#fff" strokeWidth={1.8} />
         </Pressable>
-      </View>
+      </Animated.View>
 
-      {/* Bottom bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
-        <Pressable
-          onPress={() => currentMoment && handleFavorite(currentMoment)}
-          style={styles.bottomBtn}
-        >
-          <Heart
-            size={22}
-            color={currentMoment?.isFavorited ? '#e55' : '#fff'}
-            fill={currentMoment?.isFavorited ? '#e55' : 'transparent'}
-            strokeWidth={2}
-          />
-        </Pressable>
+      {/* ── Bottom chrome: caption + actions ── */}
+      <Animated.View style={[styles.bottomChrome, { paddingBottom: insets.bottom + 16 }, chromeStyle]} pointerEvents={chromeVisible ? 'auto' : 'none'}>
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.7)']}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
 
-        <Pressable
-          onPress={() => {
-            Haptics.selectionAsync();
-            if (currentMoment && onAction) {
-              onAction('share', currentMoment);
-            }
-          }}
-          style={styles.bottomBtn}
-        >
-          <Share2 size={22} color="#fff" strokeWidth={2} />
-        </Pressable>
+        {/* Shared by indicator */}
+        {currentMoment && (() => {
+          const personEntry = currentMoment.userId ? people[currentMoment.userId] : null;
+          const authorName = personEntry?.name ?? currentMoment.takenBy;
+          if (!authorName) return null;
+          return (
+            <View style={styles.sharedByRow}>
+              <View style={[styles.sharedByAvatar, { backgroundColor: currentMoment.authorColor ?? '#a64d1e' }]}>
+                {personEntry?.avatar ? (
+                  <RNImage source={{ uri: personEntry.avatar }} style={styles.sharedByAvatarImg} />
+                ) : (
+                  <Text style={styles.sharedByInitial}>{authorName.charAt(0).toUpperCase()}</Text>
+                )}
+              </View>
+              <Text style={styles.sharedByText}>
+                {currentMoment.isMine ? 'You' : authorName.split(' ')[0]}
+              </Text>
+              {currentMoment.date && (
+                <Text style={styles.sharedByDate}> · {new Date(currentMoment.date + 'T00:00:00+08:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+              )}
+            </View>
+          );
+        })()}
 
-        <Pressable
-          onPress={() => {
-            Haptics.selectionAsync();
-            if (currentMoment && onAction) {
-              onAction('reel', currentMoment);
-            }
-          }}
-          style={styles.bottomBtn}
-        >
-          <Bookmark size={22} color="#fff" strokeWidth={2} />
-        </Pressable>
-      </View>
+        {/* Caption / location */}
+        {(currentMoment?.caption || currentMoment?.location) && (
+          <View style={styles.captionWrap}>
+            {currentMoment.location && (
+              <View style={styles.locationRow}>
+                <MapPin size={12} color="rgba(255,255,255,0.7)" strokeWidth={2} />
+                <Text style={styles.locationText} numberOfLines={1}>{currentMoment.location}</Text>
+              </View>
+            )}
+            {currentMoment.caption ? (
+              <Text style={styles.captionText} numberOfLines={2}>{currentMoment.caption}</Text>
+            ) : null}
+          </View>
+        )}
+
+        {/* Action buttons */}
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={() => currentMoment && handleFavorite(currentMoment)}
+            style={styles.actionBtn}
+            accessibilityLabel={isFavorited ? 'Unfavorite' : 'Favorite'}
+          >
+            <Heart
+              size={22}
+              color={isFavorited ? '#ff4d6a' : '#fff'}
+              fill={isFavorited ? '#ff4d6a' : 'transparent'}
+              strokeWidth={2}
+            />
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              if (currentMoment && onComment) onComment(currentMoment.id);
+            }}
+            style={styles.actionBtn}
+            accessibilityLabel="Comments"
+          >
+            <MessageCircle size={20} color="#fff" strokeWidth={2} />
+            {(currentMoment?.commentCount ?? 0) > 0 && (
+              <View style={styles.commentBadge}>
+                <Text style={styles.commentBadgeText}>{currentMoment!.commentCount}</Text>
+              </View>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              if (currentMoment && onAction) onAction('share', currentMoment);
+            }}
+            style={styles.actionBtn}
+            accessibilityLabel="Share"
+          >
+            <Share2 size={20} color="#fff" strokeWidth={2} />
+          </Pressable>
+
+          {isHd && (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                if (currentMoment && onAction) onAction('download-hd', currentMoment);
+              }}
+              style={styles.actionBtn}
+              accessibilityLabel="Save HD"
+            >
+              <Download size={20} color="#fff" strokeWidth={2} />
+            </Pressable>
+          )}
+        </View>
+      </Animated.View>
 
       {/* Actions Sheet */}
       <PhotoActionsSheet
@@ -404,45 +440,51 @@ export function PhotoCarousel({
         onAction={handleAction}
         onClose={() => setActionsVisible(false)}
         photoId={currentMoment?.id ?? ''}
+        currentVisibility={(currentMoment?.visibility as 'shared' | 'private' | 'album') ?? 'shared'}
+        hasHd={isHd}
+        isMine={currentMoment?.isMine ?? true}
+        isDismissed={dismissedIds?.has(currentMoment?.id ?? '') ?? false}
       />
     </GestureHandlerRootView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: 'transparent',
   },
-  background: {
+  bg: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000',
   },
-  carouselContainer: {
+  trackContainer: {
     flex: 1,
     overflow: 'hidden',
   },
-  carouselTrack: {
+  track: {
     flexDirection: 'row',
-    width: SCREEN_W * 3, // Dynamic in real usage
+    flex: 1,
   },
-  carouselItem: {
+  slide: {
     width: SCREEN_W,
     height: SCREEN_H,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  photoContainer: {
+  photoWrap: {
     width: SCREEN_W,
-    height: SCREEN_H * 0.8,
+    height: SCREEN_H,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  photo: {
-    width: '100%',
-    height: '100%',
-  },
-  topBar: {
+
+  // ── Top chrome ──
+  topChrome: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -450,48 +492,144 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 16,
     zIndex: 10,
   },
-  topBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+  pill: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  counter: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 12,
+  counterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 14,
   },
   counterText: {
-    fontSize: 12,
-    color: '#fff',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
-  bottomBar: {
+  hdBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: '#d8ab7a',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  hdText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#000',
+    letterSpacing: 0.5,
+  },
+
+  // ── Bottom chrome ──
+  bottomChrome: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 32,
-    paddingTop: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
+    paddingTop: 40,
     zIndex: 10,
   },
-  bottomBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+  captionWrap: {
+    marginBottom: 16,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  locationText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
+  },
+  captionText: {
+    fontSize: 15,
+    color: '#fff',
+    fontWeight: '500',
+    lineHeight: 21,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  actionBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  commentBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#d8ab7a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  commentBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#141210',
+  },
+
+  // ── Shared by ──
+  sharedByRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  sharedByAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  sharedByAvatarImg: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  sharedByInitial: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  sharedByText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.9)',
+  },
+  sharedByDate: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.5)',
   },
 });

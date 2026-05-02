@@ -67,30 +67,41 @@ Deno.serve(async (req) => {
       .single();
 
     if (cached?.items) {
-      return new Response(JSON.stringify({ items: cached.items, cached: true }), {
+      const isOverviewCached = category === 'destination-overview';
+      const cachedBody = isOverviewCached
+        ? { overview: cached.items, cached: true }
+        : { items: cached.items, cached: true };
+      return new Response(JSON.stringify(cachedBody), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
     }
 
-    // Call Claude with web_search
+    // Build prompt based on category type
+    const isOverview = category === 'destination-overview';
     const areaLabel = area ? ` in ${area}` : '';
     const hotelRef = hotelName ? ` The user is staying at ${hotelName}.` : '';
 
-    const response = await fetch(ANTHROPIC_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 4096,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [
-          {
-            role: 'user',
-            content: `You are a local travel expert for ${destination}. Use web_search to find REAL, currently-operating places.
+    const prompt = isOverview
+      ? `You are a travel expert. Use web_search to find current information about visiting ${destination}.
+
+Search for: "visiting ${destination} travel guide 2025 2026", "${destination} things to do", "${destination} budget travel cost"
+
+Return ONLY a JSON object (no markdown, no explanation):
+{
+  "summary": "1-2 sentence overview of what makes ${destination} special for travelers",
+  "highlights": ["Top thing to do 1", "Top thing 2", "Top thing 3", "Top thing 4", "Top thing 5"],
+  "budgetRange": {
+    "budget": "₱X-Y/day estimate for budget travelers",
+    "mid": "₱X-Y/day for mid-range",
+    "luxury": "₱X+/day for luxury"
+  },
+  "bestMonths": "Best months to visit and why (e.g. Nov-May, dry season)",
+  "weatherNote": "Brief climate/weather note for travelers",
+  "gettingThere": "Brief transport note on how to get there from Manila"
+}
+
+Use Philippine Peso (₱) for budget estimates. Only include verified information from web search.`
+      : `You are a local travel expert for ${destination}. Use web_search to find REAL, currently-operating places.
 
 Search Reddit, TripAdvisor, Google, and travel blogs for: "best ${category}${areaLabel} ${destination} 2025 2026"
 
@@ -107,9 +118,21 @@ For each place, include:
 Return ONLY a JSON array. No markdown, no explanation. Example:
 [{"name":"Cafe Name","reason":"Recommended by Reddit users for their cold brew","source_url":"https://reddit.com/...","rating":4,"price":"₱150-300","category":"cafe"}]
 
-Only include places you verified exist via web search. Do not hallucinate.`,
-          },
-        ],
+Only include places you verified exist via web search. Do not hallucinate.`;
+
+    // Call Claude with web_search
+    const response = await fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicKey,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 4096,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content: prompt }],
       }),
     });
 
@@ -125,36 +148,42 @@ Only include places you verified exist via web search. Do not hallucinate.`,
     const result = await response.json();
 
     // Extract JSON from Claude's response (may have text blocks + tool results)
-    let items: RecommendItem[] = [];
+    let parsed: unknown = null;
     for (const block of result.content ?? []) {
       if (block.type === 'text' && block.text) {
-        const jsonMatch = block.text.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          try {
-            items = JSON.parse(jsonMatch[0]);
-          } catch { /* ignore parse errors */ }
+        // Try object first (destination-overview), then array (place list)
+        const objMatch = block.text.match(/\{[\s\S]*\}/);
+        const arrMatch = block.text.match(/\[[\s\S]*\]/);
+        if (isOverview && objMatch) {
+          try { parsed = JSON.parse(objMatch[0]); } catch { /* ignore */ }
+        } else if (arrMatch) {
+          try { parsed = JSON.parse(arrMatch[0]); } catch { /* ignore */ }
         }
       }
     }
 
-    if (items.length === 0) {
+    if (!parsed || (Array.isArray(parsed) && parsed.length === 0)) {
       return new Response(JSON.stringify({ error: 'No results found', items: [] }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
     }
 
-    // Cache results
+    // Cache results — store the parsed data as `items` for both formats
     const expiresAt = new Date(Date.now() + CACHE_DAYS * 24 * 60 * 60 * 1000).toISOString();
     await supabase.from('curated_lists').upsert({
       query_hash: qHash,
       destination,
       category,
       area: area ?? null,
-      items,
+      items: parsed,
       expires_at: expiresAt,
     }, { onConflict: 'query_hash' });
 
-    return new Response(JSON.stringify({ items, cached: false }), {
+    const responseBody = isOverview
+      ? { overview: parsed, cached: false }
+      : { items: parsed as RecommendItem[], cached: false };
+
+    return new Response(JSON.stringify(responseBody), {
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   } catch (err) {

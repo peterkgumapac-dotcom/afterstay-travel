@@ -37,6 +37,19 @@ serve(async (_req) => {
   }
 
   let sent = 0
+  const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push-notification`
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+  async function dispatchPushNotifications(records: any[]) {
+    await Promise.all(records.map((record) => fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({ type: 'INSERT', record }),
+    }).catch(() => null)))
+  }
 
   for (const trip of trips) {
     // Get members for this trip
@@ -74,7 +87,8 @@ serve(async (_req) => {
         data: { type, tripId: trip.id },
         read: false,
       }))
-      await supabase.from('notifications').insert(rows)
+      const { data: inserted } = await supabase.from('notifications').insert(rows).select('*')
+      if (inserted?.length) await dispatchPushNotifications(inserted)
       sent += rows.length
     }
 
@@ -151,7 +165,6 @@ serve(async (_req) => {
           const departMs = new Date(flight.departure_time).getTime()
           const hoursUntil = (departMs - now.getTime()) / 3600000
           if (hoursUntil > 0 && hoursUntil <= 3) {
-            const type = `flight_boarding_${flight.id}`
             if (!(await alreadySent('flight_boarding'))) {
               const rows = userIds.map((uid: string) => ({
                 user_id: uid,
@@ -162,7 +175,8 @@ serve(async (_req) => {
                 data: { type: 'flight_boarding', tripId: trip.id, flightId: flight.id },
                 read: false,
               }))
-              await supabase.from('notifications').insert(rows)
+              const { data: inserted } = await supabase.from('notifications').insert(rows).select('*')
+              if (inserted?.length) await dispatchPushNotifications(inserted)
               sent += rows.length
             }
           }

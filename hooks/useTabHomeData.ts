@@ -75,7 +75,7 @@ export function getHomeExpensesPromise(tripId: string, forceRefresh = false) {
 }
 
 export function getHomeAllTripsPromise(forceRefresh = false) {
-  return getCachedPromise<Trip[]>(KEYS.allTrips, () => getAllUserTrips(''), {
+  return getCachedPromise<Trip[]>(KEYS.allTrips, () => getAllUserTrips(), {
     forceRefresh,
     ttlMs: 5 * 60 * 1000,
   });
@@ -89,7 +89,7 @@ export function getHomeQuickTripsPromise(forceRefresh = false) {
 }
 
 export function getHomeLifetimeStatsPromise(forceRefresh = false) {
-  return getCachedPromise<LifetimeStats | null>(KEYS.lifetimeStats, () => getLifetimeStats(''), {
+  return getCachedPromise<LifetimeStats | null>(KEYS.lifetimeStats, () => getLifetimeStats(), {
     forceRefresh,
     ttlMs: 10 * 60 * 1000,
   });

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image } from 'expo-image';
 import Animated, {
   Easing,
   FadeIn,
@@ -80,11 +81,11 @@ function SlideshowImage({
   return (
     <View style={[style, { overflow: 'hidden', backgroundColor: '#1a1612' }]}>
       <Animated.View style={[StyleSheet.absoluteFill, styleA]}>
-        <Image source={{ uri: photos[idxA] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <Image source={{ uri: photos[idxA] }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" transition={0} />
       </Animated.View>
       {photos.length > 1 && (
         <Animated.View style={[StyleSheet.absoluteFill, styleB]}>
-          <Image source={{ uri: photos[idxB] }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <Image source={{ uri: photos[idxB] }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" transition={0} />
         </Animated.View>
       )}
     </View>

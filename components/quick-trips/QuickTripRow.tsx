@@ -1,9 +1,13 @@
 import React, { useMemo } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Camera, MapPin, Users, Wallet } from 'lucide-react-native';
+import { Camera, Coffee, Dumbbell, Heart, MapPin, Sparkles, User, Users, UtensilsCrossed, Wallet } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatCurrency, formatDatePHT } from '@/lib/utils';
-import { CATEGORY_EMOJI, type QuickTrip } from '@/lib/quickTripTypes';
+import { CATEGORY_ICON, type QuickTrip } from '@/lib/quickTripTypes';
+
+const ICON_MAP: Record<string, React.ElementType> = {
+  Users, Heart, Coffee, User, UtensilsCrossed, Dumbbell, Sparkles,
+};
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
@@ -15,7 +19,8 @@ interface QuickTripRowProps {
 export default function QuickTripRow({ trip, onPress }: QuickTripRowProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
-  const emoji = CATEGORY_EMOJI[trip.category] ?? '\u2728';
+  const iconName = CATEGORY_ICON[trip.category] ?? 'Sparkles';
+  const Icon = ICON_MAP[iconName] ?? Sparkles;
 
   return (
     <TouchableOpacity
@@ -24,12 +29,12 @@ export default function QuickTripRow({ trip, onPress }: QuickTripRowProps) {
       activeOpacity={onPress ? 0.7 : 1}
       disabled={!onPress}
     >
-      {/* Cover or emoji */}
+      {/* Cover or icon */}
       {trip.coverPhotoUrl ? (
         <Image source={{ uri: trip.coverPhotoUrl }} style={styles.cover} />
       ) : (
         <View style={styles.emojiWrap}>
-          <Text style={styles.emoji}>{emoji}</Text>
+          <Icon size={20} color={colors.accent} strokeWidth={1.8} />
         </View>
       )}
 

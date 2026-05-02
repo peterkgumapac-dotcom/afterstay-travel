@@ -1,0 +1,216 @@
+import React, { memo, useEffect, useState, useRef } from 'react';
+import { View, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withDelay,
+  withSequence,
+  Easing,
+  runOnJS,
+} from 'react-native-reanimated';
+import { Image } from 'expo-image';
+import { supabase } from '@/lib/supabase';
+
+const GAP = 2;
+
+interface TripCollageProps {
+  tripId?: string;
+  quickTripId?: string;
+  width: number;
+  height: number;
+  /** If provided, skip the fetch and use these URLs directly */
+  photoUrls?: string[];
+}
+
+/** Shuffle array (Fisher-Yates) */
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Fetch random moment photos for a trip. */
+async function fetchTripPhotos(tripId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('moments')
+    .select('public_url, storage_path')
+    .eq('trip_id', tripId)
+    .limit(30);
+
+  if (!data || data.length === 0) return [];
+
+  const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+  const urls = data
+    .map((row) => {
+      let url = row.public_url as string | undefined;
+      if (!url || url.endsWith('/')) {
+        const sp = row.storage_path as string | undefined;
+        if (sp && SUPABASE_URL) url = `${SUPABASE_URL}/storage/v1/object/public/moments/${sp}`;
+      }
+      return url;
+    })
+    .filter(Boolean) as string[];
+
+  return shuffle(urls);
+}
+
+/** Fetch photos for a quick trip. */
+async function fetchQuickTripPhotos(quickTripId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('quick_trip_photos')
+    .select('photo_url')
+    .eq('quick_trip_id', quickTripId)
+    .limit(30);
+
+  if (!data || data.length === 0) return [];
+
+  const urls = data
+    .map((row) => row.photo_url as string | undefined)
+    .filter((url): url is string => !!url && !url.endsWith('/'));
+
+  return shuffle(urls);
+}
+
+// ── Flipping cell ──
+interface FlipCellProps {
+  photos: string[];
+  cellW: number;
+  cellH: number;
+  flipInterval: number;
+  flipDelay: number;
+}
+
+const FlipCell = memo(function FlipCell({ photos, cellW, cellH, flipInterval, flipDelay }: FlipCellProps) {
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const rotateY = useSharedValue(0);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (photos.length <= 1) return;
+
+    const startFlipping = () => {
+      timer.current = setInterval(() => {
+        // Flip out
+        rotateY.value = withSequence(
+          withTiming(90, { duration: 250, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0, { duration: 250, easing: Easing.inOut(Easing.ease) }),
+        );
+        // Swap image at the midpoint
+        setTimeout(() => {
+          setCurrentIdx((prev) => (prev + 1) % photos.length);
+        }, 250);
+      }, flipInterval);
+    };
+
+    const timeout = setTimeout(startFlipping, flipDelay);
+
+    return () => {
+      clearTimeout(timeout);
+      if (timer.current) clearInterval(timer.current);
+    };
+  }, [photos.length, flipInterval, flipDelay]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 600 },
+      { rotateY: `${rotateY.value}deg` },
+    ],
+  }));
+
+  if (photos.length === 0) return <View style={{ width: cellW, height: cellH, backgroundColor: '#1a1a1a' }} />;
+
+  return (
+    <Animated.View style={[{ width: cellW, height: cellH, overflow: 'hidden' }, animStyle]}>
+      <Image
+        source={{ uri: photos[currentIdx] }}
+        style={{ width: cellW, height: cellH }}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        transition={0}
+      />
+    </Animated.View>
+  );
+});
+
+// ── Main collage ──
+function TripCollageInner({ tripId, quickTripId, width, height, photoUrls }: TripCollageProps) {
+  const [photos, setPhotos] = useState<string[]>(photoUrls ?? []);
+  const [loaded, setLoaded] = useState(!!photoUrls);
+
+  useEffect(() => {
+    if (photoUrls) return;
+    const fetchFn = quickTripId
+      ? fetchQuickTripPhotos(quickTripId)
+      : tripId
+        ? fetchTripPhotos(tripId)
+        : Promise.resolve([]);
+    fetchFn.then((urls) => {
+      setPhotos(urls);
+      setLoaded(true);
+    }).catch(() => setLoaded(true));
+  }, [tripId, quickTripId, photoUrls]);
+
+  if (!loaded || photos.length === 0) {
+    return <View style={{ width, height, backgroundColor: '#1a1a1a' }} />;
+  }
+
+  // Single photo — just show it
+  if (photos.length === 1) {
+    return (
+      <Image
+        source={{ uri: photos[0] }}
+        style={{ width, height }}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        transition={200}
+      />
+    );
+  }
+
+  // 2x2 collage — distribute photos across 4 cells
+  const cellW = (width - GAP) / 2;
+  const cellH = (height - GAP) / 2;
+
+  // Distribute photos into 4 buckets for rotation
+  const cells: string[][] = [[], [], [], []];
+  photos.forEach((url, i) => {
+    cells[i % 4].push(url);
+  });
+  // Ensure every cell has at least 1 photo
+  cells.forEach((cell, i) => {
+    if (cell.length === 0) cell.push(photos[i % photos.length]);
+  });
+
+  // Stagger flip intervals so cells don't all flip at once
+  const intervals = [3200, 4100, 3700, 4500];
+  const delays = [1000, 2200, 1600, 3000];
+
+  return (
+    <View style={[styles.grid, { width, height }]}>
+      <View style={styles.row}>
+        <FlipCell photos={cells[0]} cellW={cellW} cellH={cellH} flipInterval={intervals[0]} flipDelay={delays[0]} />
+        <FlipCell photos={cells[1]} cellW={cellW} cellH={cellH} flipInterval={intervals[1]} flipDelay={delays[1]} />
+      </View>
+      <View style={styles.row}>
+        <FlipCell photos={cells[2]} cellW={cellW} cellH={cellH} flipInterval={intervals[2]} flipDelay={delays[2]} />
+        <FlipCell photos={cells[3]} cellW={cellW} cellH={cellH} flipInterval={intervals[3]} flipDelay={delays[3]} />
+      </View>
+    </View>
+  );
+}
+
+export const TripCollage = memo(TripCollageInner);
+
+const styles = StyleSheet.create({
+  grid: {
+    gap: GAP,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: GAP,
+  },
+});

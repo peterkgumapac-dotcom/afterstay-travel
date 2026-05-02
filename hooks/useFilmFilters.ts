@@ -31,7 +31,7 @@ export interface FilmFilter {
 }
 
 // ── Identity (no-op) ────────────────────────────────────────────────────────
-const IDENTITY: number[] = [
+export const IDENTITY: number[] = [
   1, 0, 0, 0, 0,
   0, 1, 0, 0, 0,
   0, 0, 1, 0, 0,

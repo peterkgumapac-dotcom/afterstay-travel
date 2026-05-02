@@ -40,7 +40,17 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 // ── Main screen ─────────────────────────────────────────────────────────
 
-export default function GuideScreen() {
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
+
+export default function GuideScreenWithBoundary() {
+  return (
+    <TabErrorBoundary name="Guide">
+      <GuideScreen />
+    </TabErrorBoundary>
+  );
+}
+
+function GuideScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { isTestMode, mockData } = useUserSegment();
@@ -95,6 +105,8 @@ export default function GuideScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const hasHotelData = !!(trip?.accommodation || trip?.address);
+
   if (!trip) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -112,6 +124,72 @@ export default function GuideScreen() {
           actionLabel="Plan a Trip"
           onAction={() => router.push('/onboarding')}
         />
+      </SafeAreaView>
+    );
+  }
+
+  if (!hasHotelData) {
+    const fields = [
+      { label: 'Accommodation', filled: !!trip.accommodation },
+      { label: 'Address', filled: !!trip.address },
+      { label: 'Check-in time', filled: !!trip.checkIn },
+      { label: 'Check-out time', filled: !!trip.checkOut },
+      { label: 'WiFi', filled: !!trip.wifiSsid },
+      { label: 'Door code', filled: !!trip.doorCode },
+    ];
+    const filledCount = fields.filter((f) => f.filled).length;
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/home')} hitSlop={12}>
+            <ArrowLeft size={22} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.title}>Guide</Text>
+          <View style={{ width: 22 }} />
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+          <View style={{ alignItems: 'center', paddingVertical: 20, gap: 8 }}>
+            <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.accentBorder }}>
+              <Hotel size={26} color={colors.accent} />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginTop: 8 }}>
+              Complete your stay details
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.text3, textAlign: 'center', lineHeight: 19 }}>
+              {trip.destination ? `Add your ${trip.destination} accommodation details so your guide is ready when you arrive.` : 'Add your accommodation details so your guide is ready when you arrive.'}
+            </Text>
+          </View>
+
+          <View style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 16, gap: 12 }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', color: colors.text3 }}>
+              {filledCount}/{fields.length} DETAILS ADDED
+            </Text>
+            {fields.map((f) => (
+              <View key={f.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: f.filled ? colors.accentBg : colors.card2, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: f.filled ? colors.accentBorder : colors.border }}>
+                  {f.filled && <Text style={{ fontSize: 11, color: colors.accent }}>✓</Text>}
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: f.filled ? colors.text : colors.text3 }}>{f.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            style={{ backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}
+            onPress={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Scan Hotel Booking</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{ backgroundColor: colors.card, borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}
+            onPress={() => router.push('/trip-overview')}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>Add Manually</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </SafeAreaView>
     );
   }

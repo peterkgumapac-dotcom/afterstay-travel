@@ -7,19 +7,31 @@ export type QuickTripCategory =
   | 'activity'
   | 'other';
 
-export const QUICK_TRIP_CATEGORIES: { key: QuickTripCategory; label: string; emoji: string }[] = [
-  { key: 'family', label: 'Family', emoji: '\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67\u200D\uD83D\uDC66' },
-  { key: 'date', label: 'Date', emoji: '\u2764\uFE0F' },
-  { key: 'coffee', label: 'Coffee', emoji: '\u2615' },
-  { key: 'solo', label: 'Solo', emoji: '\uD83E\uDDD8' },
-  { key: 'food', label: 'Food', emoji: '\uD83C\uDF7D\uFE0F' },
-  { key: 'activity', label: 'Activity', emoji: '\uD83C\uDFC4' },
-  { key: 'other', label: 'Other', emoji: '\u2728' },
+export const QUICK_TRIP_CATEGORIES: { key: QuickTripCategory; label: string; icon: string }[] = [
+  { key: 'family', label: 'Family', icon: 'Users' },
+  { key: 'date', label: 'Date', icon: 'Heart' },
+  { key: 'coffee', label: 'Coffee', icon: 'Coffee' },
+  { key: 'solo', label: 'Solo', icon: 'User' },
+  { key: 'food', label: 'Food', icon: 'UtensilsCrossed' },
+  { key: 'activity', label: 'Activity', icon: 'Dumbbell' },
+  { key: 'other', label: 'Other', icon: 'Sparkles' },
 ];
 
-export const CATEGORY_EMOJI: Record<QuickTripCategory, string> = Object.fromEntries(
-  QUICK_TRIP_CATEGORIES.map((c) => [c.key, c.emoji]),
+/** Icon name for each category (lucide-react-native) */
+export const CATEGORY_ICON: Record<QuickTripCategory, string> = Object.fromEntries(
+  QUICK_TRIP_CATEGORIES.map((c) => [c.key, c.icon]),
 ) as Record<QuickTripCategory, string>;
+
+/** @deprecated Use CATEGORY_ICON instead */
+export const CATEGORY_EMOJI: Record<QuickTripCategory, string> = {
+  family: 'Users',
+  date: 'Heart',
+  coffee: 'Coffee',
+  solo: 'User',
+  food: 'UtensilsCrossed',
+  activity: 'Dumbbell',
+  other: 'Sparkles',
+};
 
 export interface QuickTrip {
   id: string;

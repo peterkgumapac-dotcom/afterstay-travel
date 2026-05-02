@@ -95,6 +95,7 @@ export function mapNearbyToDiscoverPlace(
     lng: place.lng,
     totalRatings: place.total_ratings,
     types: place.types ?? [],
+    summary: place.editorial_summary,
   };
 }
 

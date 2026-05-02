@@ -51,11 +51,15 @@ export function usePushNotifications() {
 
         // Android channel
         if (Platform.OS === 'android') {
-          await Notifs.setNotificationChannelAsync('default', {
+          // Delete the old channel that was created without sound
+          try { await Notifs.deleteNotificationChannelAsync('default'); } catch {}
+          await Notifs.setNotificationChannelAsync('afterstay', {
             name: 'AfterStay',
             importance: 4,
+            sound: 'default',
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#D4A574',
+            enableVibrate: true,
           });
         }
 
@@ -73,14 +77,42 @@ export function usePushNotifications() {
         // Fallback to hardcoded projectId from app.json
         if (!projectId) projectId = HARDCODED_PROJECT_ID;
 
-        const pushToken = await Notifs.getExpoPushTokenAsync({ projectId });
-        setToken(pushToken.data);
+        const [devicePushToken, expoPushToken] = await Promise.all([
+          Notifs.getDevicePushTokenAsync().catch(() => null),
+          Notifs.getExpoPushTokenAsync({ projectId }).catch(() => null),
+        ]);
+        const fcmToken = Platform.OS === 'android' && devicePushToken?.data && typeof devicePushToken.data === 'string'
+          ? devicePushToken.data
+          : null;
+        const expoToken = expoPushToken?.data ?? null;
+        setToken(fcmToken ?? expoToken);
 
-        // Save token and enable push
-        await supabase
-          .from('profiles')
-          .update({ expo_push_token: pushToken.data, push_enabled: true })
-          .eq('id', user!.id);
+        const provider = fcmToken ? 'firebase' : 'expo';
+        const { error: rpcError } = await supabase.rpc('save_own_push_tokens', {
+          p_fcm_token: fcmToken,
+          p_expo_push_token: expoToken,
+          p_push_provider: provider,
+          p_push_enabled: true,
+        });
+
+        if (rpcError) {
+          const { error: pushUpdateError } = await supabase
+            .from('profiles')
+            .update({
+              fcm_token: fcmToken,
+              expo_push_token: expoToken,
+              push_provider: provider,
+              push_enabled: true,
+            })
+            .eq('id', user!.id);
+
+          if (pushUpdateError) {
+            await supabase
+              .from('profiles')
+              .update({ expo_push_token: expoToken, push_enabled: true })
+              .eq('id', user!.id);
+          }
+        }
 
         // Listen for notifications while app is open
         const sub1 = Notifs.addNotificationReceivedListener(() => {});
@@ -100,6 +132,8 @@ export function usePushNotifications() {
               case 'member_joined':
                 router.push('/(tabs)/trip' as never); break;
               case 'trip_recap_ready':
+              case 'moment_comment':
+              case 'moments_added':
                 router.push('/(tabs)/moments' as never); break;
               case 'flight_boarding':
               case 'departure_prep':

@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -30,6 +30,7 @@ export default function ScanReceiptScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { expenseType } = useLocalSearchParams<{ expenseType?: string }>();
   const [phase, setPhase] = useState<Phase>('picking');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -123,6 +124,7 @@ export default function ScanReceiptScreen() {
             date: scanned.date,
             notes: itemLines,
             photoUri: asset.uri,
+            ...(expenseType ? { target: expenseType } : {}),
           },
         });
       }
@@ -181,6 +183,21 @@ export default function ScanReceiptScreen() {
             })
             .join('\n');
 
+          // Build per-member split amounts from assignments
+          const splitAmounts: Record<string, number> = {};
+          const sharedTotal = result.items
+            .filter(i => i.assignedTo === 'shared')
+            .reduce((s, i) => s + i.amount * i.qty, 0);
+          const perHead = sharedTotal / result.sharedCount;
+          for (const m of members) {
+            splitAmounts[m.name] = perHead;
+          }
+          for (const item of result.items) {
+            if (item.assignedTo !== 'shared') {
+              splitAmounts[item.assignedTo] = (splitAmounts[item.assignedTo] ?? 0) + item.amount * item.qty;
+            }
+          }
+
           router.replace({
             pathname: '/add-expense',
             params: {
@@ -192,6 +209,9 @@ export default function ScanReceiptScreen() {
               date: scannedData.date,
               notes: itemLines,
               photoUri: imageUri ?? '',
+              splitType: 'Custom',
+              receiptSplits: JSON.stringify(splitAmounts),
+              ...(expenseType ? { target: expenseType } : {}),
             },
           });
         }}

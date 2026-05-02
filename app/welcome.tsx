@@ -21,7 +21,7 @@ import { Calendar, Camera, MapPin, Plane, Users, Wallet } from 'lucide-react-nat
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { updateProfile } from '@/lib/supabase';
-import { cacheSet } from '@/lib/cache';
+import { completeOnboarding, setOnboardingProgress } from '@/lib/onboardingProgress';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
@@ -69,13 +69,13 @@ export default function WelcomeScreen() {
     }
   }).current;
 
-  const handleGetStarted = () => {
+  const handleGetStarted = async () => {
+    await setOnboardingProgress({ stage: 'path_picker' }, user?.id);
     router.replace('/onboarding');
   };
 
   const handleSkip = async () => {
-    // Mark as onboarded so they don't see this again
-    await cacheSet('onboarding_complete', true);
+    await completeOnboarding(user?.id, true);
     if (user?.id) {
       await updateProfile(user.id, { onboardedAt: new Date().toISOString() }).catch(() => {});
     }

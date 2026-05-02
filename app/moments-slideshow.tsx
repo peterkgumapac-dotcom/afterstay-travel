@@ -72,8 +72,8 @@ export default function PhotoGallery() {
         const ms = await getMoments(resolvedTripId);
         if (!mountedRef.current) return;
         setMoments(ms.filter((m) => m.photo));
-      } catch {
-        // empty
+      } catch (err) {
+        if (__DEV__) console.warn('[MomentsSlideshow] load moments failed:', err);
       } finally {
         if (mountedRef.current) setLoading(false);
       }

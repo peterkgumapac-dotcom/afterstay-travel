@@ -1,7 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { documentDirectory, copyAsync, makeDirectoryAsync, getInfoAsync } from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { Check } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
@@ -23,10 +23,8 @@ import FormField from '@/components/FormField';
 import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { addTripFile } from '@/lib/supabase';
+import { addTripFile, uploadTripFile } from '@/lib/supabase';
 import type { TripFileType } from '@/lib/types';
-
-const FILES_DIR = (documentDirectory ?? '') + 'trip-files/';
 
 const FILE_TYPES: TripFileType[] = [
   'Boarding Pass',
@@ -42,23 +40,15 @@ export default function AddFileScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { tripId } = useLocalSearchParams<{ tripId?: string }>();
   const [fileName, setFileName] = useState('');
   const [fileType, setFileType] = useState<TripFileType>('Other');
   const [fileUrl, setFileUrl] = useState('');
+  const [localUri, setLocalUri] = useState('');
+  const [contentType, setContentType] = useState<string | undefined>();
   const [notes, setNotes] = useState('');
   const [printRequired, setPrintRequired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
-  /** Copy a picked/captured file to a persistent app directory so it survives cache cleanup. */
-  const persistFile = async (sourceUri: string, name: string): Promise<string> => {
-    if (sourceUri.startsWith('http')) return sourceUri;
-    const dirInfo = await getInfoAsync(FILES_DIR);
-    if (!dirInfo.exists) await makeDirectoryAsync(FILES_DIR, { intermediates: true });
-    const safeName = name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const dest = FILES_DIR + Date.now() + '_' + safeName;
-    await copyAsync({ from: sourceUri, to: dest });
-    return dest;
-  };
 
   const pickDocument = async () => {
     try {
@@ -70,8 +60,9 @@ export default function AddFileScreen() {
         const asset = result.assets[0];
         const name = asset.name ?? 'Untitled';
         if (!fileName.trim()) setFileName(name);
-        const persisted = await persistFile(asset.uri, name);
-        setFileUrl(persisted);
+        setLocalUri(asset.uri);
+        setContentType(asset.mimeType);
+        setFileUrl(name);
       }
     } catch (err) {
       Alert.alert('Error', 'Could not pick file. Try again.');
@@ -100,8 +91,9 @@ export default function AddFileScreen() {
       });
       if (!result.canceled && result.assets[0]) {
         if (!fileName.trim()) setFileName('Photo');
-        const persisted = await persistFile(result.assets[0].uri, 'photo.jpg');
-        setFileUrl(persisted);
+        setLocalUri(result.assets[0].uri);
+        setContentType('image/jpeg');
+        setFileUrl('Photo');
       }
     } catch (err) {
       Alert.alert('Error', 'Could not take photo. Try again.');
@@ -110,17 +102,30 @@ export default function AddFileScreen() {
 
   const save = async () => {
     if (!fileName.trim()) return Alert.alert('File name required');
-    if (!fileUrl.trim()) return Alert.alert('No file', 'Pick a document, take a photo, or paste a URL.');
+    if (!localUri && !fileUrl.trim()) return Alert.alert('No file', 'Pick a document, take a photo, or paste a URL.');
 
     setSubmitting(true);
     try {
-      await addTripFile({
-        fileName: fileName.trim(),
-        type: fileType,
-        fileUrl: fileUrl.trim(),
-        notes: notes.trim() || undefined,
-        printRequired,
-      });
+      if (localUri) {
+        await uploadTripFile({
+          tripId,
+          fileName: fileName.trim(),
+          type: fileType,
+          localUri,
+          contentType,
+          notes: notes.trim() || undefined,
+          printRequired,
+        });
+      } else {
+        await addTripFile({
+          tripId,
+          fileName: fileName.trim(),
+          type: fileType,
+          fileUrl: fileUrl.trim(),
+          notes: notes.trim() || undefined,
+          printRequired,
+        });
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (e: any) {
@@ -172,7 +177,11 @@ export default function AddFileScreen() {
             label="URL"
             placeholder="Paste a link to the file"
             value={fileUrl}
-            onChangeText={setFileUrl}
+            onChangeText={(value) => {
+              setFileUrl(value);
+              setLocalUri('');
+              setContentType(undefined);
+            }}
             keyboardType="url"
             autoCapitalize="none"
             autoCorrect={false}
