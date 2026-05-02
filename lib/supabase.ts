@@ -3703,7 +3703,33 @@ export async function getPublicProfilePosts(
     .range(offset, offset + limit - 1)
 
   if (error || !data) return []
-  return data.map((row: Record<string, unknown>) => mapFeedPost(row))
+  const postIds = data.map((row) => row.id as string).filter(Boolean)
+  let mediaByPost: Record<string, FeedPost['media']> = {}
+  if (postIds.length > 0) {
+    const { data: mediaRows } = await supabase
+      .from('post_media')
+      .select('id, post_id, media_url, storage_path, media_type, order_index')
+      .in('post_id', postIds)
+      .order('order_index', { ascending: true })
+    mediaByPost = (mediaRows ?? []).reduce<Record<string, FeedPost['media']>>((acc, row) => {
+      const postId = row.post_id as string
+      acc[postId] = [
+        ...(acc[postId] ?? []),
+        {
+          id: row.id as string,
+          mediaUrl: row.media_url as string,
+          storagePath: row.storage_path as string,
+          mediaType: (row.media_type as string) ?? 'image',
+          orderIndex: row.order_index as number,
+        },
+      ]
+      return acc
+    }, {})
+  }
+  return data.map((row: Record<string, unknown>) => ({
+    ...mapFeedPost(row),
+    media: mediaByPost[row.id as string] ?? [],
+  }))
 }
 
 export async function uploadProfilePhoto(userId: string, localUri: string): Promise<string> {
@@ -5350,6 +5376,7 @@ function mapFeedPost(row: Record<string, unknown>): FeedPost {
     latitude: num(row.latitude),
     longitude: num(row.longitude),
     metadata: (row.metadata as Record<string, unknown>) ?? {},
+    layoutType: (row.layout_type as FeedPost['layoutType']) ?? undefined,
     likesCount: (row.likes_count as number) ?? 0,
     commentsCount: (row.comments_count as number) ?? 0,
     saveCount: (row.save_count as number) ?? 0,

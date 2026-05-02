@@ -130,6 +130,7 @@ as $$
       select jsonb_agg(jsonb_build_object(
         'id', pm.id,
         'mediaUrl', pm.media_url,
+        'storagePath', pm.storage_path,
         'mediaType', pm.media_type,
         'orderIndex', pm.order_index
       ) order by pm.order_index)
