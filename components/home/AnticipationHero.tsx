@@ -2,7 +2,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Dimensions,
   Image,
   Pressable,
   StyleSheet,
@@ -17,14 +16,12 @@ import Animated, {
   withSequence,
   withTiming,
   cancelAnimation,
-  interpolate,
 } from 'react-native-reanimated';
 import { useTheme } from '@/constants/ThemeContext';
-import { findPlacePhoto } from '@/lib/google-places';
+import { fetchDestinationPhotos, findPlacePhoto } from '@/lib/google-places';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import type { GroupMember } from '@/lib/types';
 
-const { width: SCREEN_W } = Dimensions.get('window');
 const HERO_H = 320;
 const SLIDE_DURATION = 4500; // 4.5s per slide
 const DEST_PHOTO_TIMEOUT_MS = 10000;
@@ -98,16 +95,26 @@ export const AnticipationHero: React.FC<Props> = ({
     [photos, failedUrls],
   );
 
-  // Fetch destination photo when no hotel photos are available, or when hotel images fail.
-  const [destPhoto, setDestPhoto] = useState<string | null>(null);
+  // Fetch destination photos when no hotel photos are available, or when hotel images fail.
+  const [destPhotos, setDestPhotos] = useState<string[]>([]);
+  const destinationCacheKey = useMemo(
+    () => `dest_photos:v2:${destination.trim().toLowerCase()}`,
+    [destination],
+  );
+
   useEffect(() => {
     if (visiblePhotos.length > 0 || !destination) return;
     let cancelled = false;
-    const cacheKey = `dest_photo:${destination.trim().toLowerCase()}`;
-    setDestPhoto(null);
+    setDestPhotos([]);
     (async () => {
-      const cached = await cacheGet<string>(cacheKey, 24 * 60 * 60 * 1000);
-      if (cached) { if (!cancelled) setDestPhoto(cached); return; }
+      const cached = await cacheGet<string[] | string>(destinationCacheKey, 6 * 60 * 60 * 1000);
+      const cachedList = Array.isArray(cached) ? cached.filter(Boolean) : cached ? [cached] : [];
+      if (cachedList.length > 0) {
+        if (!cancelled) setDestPhotos(cachedList);
+        return;
+      }
+
+      const collected = await withTimeout(fetchDestinationPhotos(destination, 5), []);
       const queries = [
         `${destination} travel destination`,
         `${destination} landmark`,
@@ -117,31 +124,40 @@ export const AnticipationHero: React.FC<Props> = ({
       ];
       for (const query of queries) {
         const url = await withTimeout(findPlacePhoto(query), null);
-        if (url && !cancelled) {
-          setDestPhoto(url);
-          await cacheSet(cacheKey, url);
-          return;
-        }
+        if (url && !collected.includes(url)) collected.push(url);
+        if (collected.length >= 5) break;
+      }
+
+      if (collected.length > 0 && !cancelled) {
+        setDestPhotos(collected);
+        await cacheSet(destinationCacheKey, collected);
       }
     })();
     return () => { cancelled = true; };
-  }, [destination, visiblePhotos.length]);
+  }, [destination, destinationCacheKey, visiblePhotos.length]);
 
   const heroPhotos = useMemo(
-    () => visiblePhotos.length > 0 ? visiblePhotos : destPhoto && !failedUrls.has(destPhoto) ? [destPhoto] : [],
-    [destPhoto, failedUrls, visiblePhotos],
+    () => visiblePhotos.length > 0 ? visiblePhotos : destPhotos.filter((url) => !failedUrls.has(url)),
+    [destPhotos, failedUrls, visiblePhotos],
   );
 
   const handleImageError = useCallback((url?: string | null) => {
     if (!url) return;
     if (__DEV__) console.warn('[AnticipationHero] image failed:', url);
+    if (destPhotos.includes(url)) {
+      setDestPhotos((prev) => {
+        const next = prev.filter((item) => item !== url);
+        cacheSet(destinationCacheKey, next).catch(() => {});
+        return next;
+      });
+    }
     setFailedUrls((prev) => {
       if (prev.has(url)) return prev;
       const next = new Set(prev);
       next.add(url);
       return next;
     });
-  }, []);
+  }, [destPhotos, destinationCacheKey]);
 
   useEffect(() => {
     if (heroPhotos.length === 0) return;
@@ -179,21 +195,21 @@ export const AnticipationHero: React.FC<Props> = ({
     },
     [heroPhotos.length],
   );
-  const canUseDestPhoto = !!destPhoto && !failedUrls.has(destPhoto);
+  const fallbackPhoto = destPhotos.find((url) => !failedUrls.has(url)) ?? null;
 
   if (heroPhotos.length === 0) {
     // No hotel photos — show destination photo or gradient fallback
     return (
       <View style={styles.outerWrap}>
         <View style={[styles.container, { backgroundColor: colors.card }]}>
-          {canUseDestPhoto ? (
+          {fallbackPhoto ? (
             <>
               <Animated.View style={[StyleSheet.absoluteFill, kenBurnsStyle]}>
                 <Image
-                  source={{ uri: destPhoto }}
+                  source={{ uri: fallbackPhoto }}
                   style={StyleSheet.absoluteFill}
                   resizeMode="cover"
-                  onError={() => handleImageError(destPhoto)}
+                  onError={() => handleImageError(fallbackPhoto)}
                 />
               </Animated.View>
               <LinearGradient
@@ -208,12 +224,12 @@ export const AnticipationHero: React.FC<Props> = ({
             />
           )}
           <View style={styles.emptyHero}>
-            <Text style={[styles.emptyDestination, canUseDestPhoto && { textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }]}>
+            <Text style={[styles.emptyDestination, fallbackPhoto && { textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }]}>
               {destination || 'Your Trip'}
             </Text>
-            <Text style={[styles.emptyDateRange, canUseDestPhoto && { color: 'rgba(255,255,255,0.85)' }]}>{dateRange}</Text>
+            <Text style={[styles.emptyDateRange, fallbackPhoto && { color: 'rgba(255,255,255,0.85)' }]}>{dateRange}</Text>
             {hotelName ? (
-              <Text style={[styles.emptyHotel, canUseDestPhoto && { color: 'rgba(255,255,255,0.7)' }]}>{hotelName}</Text>
+              <Text style={[styles.emptyHotel, fallbackPhoto && { color: 'rgba(255,255,255,0.7)' }]}>{hotelName}</Text>
             ) : null}
           </View>
         </View>
