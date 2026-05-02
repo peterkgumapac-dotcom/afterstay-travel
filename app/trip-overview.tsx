@@ -80,6 +80,20 @@ function formatTime(iso: string): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+function shortAirportCode(value?: string | null): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '---';
+  const explicit = raw.match(/\b[A-Z]{3}\b/)?.[0];
+  if (explicit) return explicit;
+  const normalized = raw.toLowerCase();
+  if (normalized.includes('boracay') || normalized.includes('caticlan') || normalized.includes('godofredo')) return 'MPH';
+  if (normalized.includes('manila') || normalized.includes('ninoy')) return 'MNL';
+  if (normalized.includes('cebu')) return 'CEB';
+  if (normalized.includes('kalibo')) return 'KLO';
+  const letters = raw.replace(/[^a-z]/gi, '').toUpperCase();
+  return letters.length >= 3 ? letters.slice(0, 3) : (letters || '---');
+}
+
 function getCountdown(startDate: string, endDate: string): string {
   const now = new Date();
   const start = safeParse(startDate);
@@ -345,8 +359,12 @@ export default function TripOverviewScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
-  const params = useLocalSearchParams<{ tripId?: string }>();
+  const params = useLocalSearchParams<{ tripId?: string; section?: string }>();
   const tripId = typeof params.tripId === 'string' ? params.tripId : undefined;
+  const requestedSection = typeof params.section === 'string' ? params.section : undefined;
+  const scrollRef = useRef<ScrollView>(null);
+  const flightsYRef = useRef(0);
+  const didScrollToSectionRef = useRef(false);
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -378,6 +396,18 @@ export default function TripOverviewScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (loading || !data || requestedSection !== 'flights' || didScrollToSectionRef.current) return;
+    didScrollToSectionRef.current = true;
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(flightsYRef.current - spacing.md, 0),
+        animated: true,
+      });
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [data, loading, requestedSection]);
 
   if (loading) {
     return (
@@ -446,6 +476,7 @@ export default function TripOverviewScreen() {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -495,26 +526,57 @@ export default function TripOverviewScreen() {
 
         {/* Flights */}
         {flights.length > 0 ? (
+          <View onLayout={(event) => { flightsYRef.current = event.nativeEvent.layout.y; }}>
           <CollapsibleCard icon={<Plane size={18} color={colors.blue} />} title="Flights">
             {orderedFlights.map(({ flight, leg }, index) => (
-              <View key={flight.id} style={[styles.flightRow, index > 0 && { marginTop: spacing.sm }]}>
-                <Text style={[
-                  styles.flightDir,
-                  leg === 'return' && { backgroundColor: colors.amber + '20', color: colors.amber },
-                ]}>
-                  {leg === 'return' ? 'RET' : 'OUT'}
-                </Text>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.flightRoute} numberOfLines={1}>
-                    {flight.from} → {flight.to}
+              <View key={flight.id} style={[styles.flightCard, index > 0 && { marginTop: spacing.sm }]}>
+                <View style={styles.flightHeader}>
+                  <Text style={[
+                    styles.flightDir,
+                    leg === 'return' && { backgroundColor: colors.amber + '20', color: colors.amber },
+                  ]}>
+                    {leg === 'return' ? 'Return' : 'Outbound'}
                   </Text>
-                  <Text style={styles.flightMeta} numberOfLines={1}>
-                    {flight.flightNumber}  ·  {formatDate(flight.departTime)} {formatTime(flight.departTime)}
+                  <Text style={styles.flightNumber} numberOfLines={1}>
+                    {[flight.airline, flight.flightNumber].filter(Boolean).join(' · ') || 'Flight'}
                   </Text>
                 </View>
+                <View style={styles.flightRouteRow}>
+                  <View style={styles.flightEndpoint}>
+                    <Text style={styles.flightAirportCode} numberOfLines={1} adjustsFontSizeToFit>
+                      {shortAirportCode(flight.from)}
+                    </Text>
+                    <Text style={styles.flightAirportLabel} numberOfLines={2}>
+                      {flight.from || 'Departure'}
+                    </Text>
+                    <Text style={styles.flightTime}>{formatTime(flight.departTime)}</Text>
+                  </View>
+                  <View style={styles.flightLine}>
+                    <View style={styles.flightDot} />
+                    <View style={styles.flightDash} />
+                    <Plane size={15} color={colors.text3} strokeWidth={1.8} />
+                    <View style={styles.flightDash} />
+                    <View style={styles.flightDot} />
+                  </View>
+                  <View style={[styles.flightEndpoint, styles.flightEndpointRight]}>
+                    <Text style={styles.flightAirportCode} numberOfLines={1} adjustsFontSizeToFit>
+                      {shortAirportCode(flight.to)}
+                    </Text>
+                    <Text style={[styles.flightAirportLabel, styles.flightAirportLabelRight]} numberOfLines={2}>
+                      {flight.to || 'Arrival'}
+                    </Text>
+                    <Text style={styles.flightTime}>{formatTime(flight.arriveTime)}</Text>
+                  </View>
+                </View>
+                <Text style={styles.flightDate} numberOfLines={1}>
+                  {formatDate(flight.departTime)}
+                  {flight.bookingRef ? ` · Ref ${flight.bookingRef}` : ''}
+                  {flight.baggage ? ` · ${flight.baggage}` : ''}
+                </Text>
               </View>
             ))}
           </CollapsibleCard>
+          </View>
         ) : null}
 
         {/* Group */}
@@ -749,23 +811,93 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   editCancelText: { color: colors.text2, fontSize: 12 },
 
   // flights
-  flightRow: {
+  flightCard: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg3,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  flightHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   flightDir: {
     backgroundColor: colors.blue + '20',
     color: colors.blue,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: radius.sm,
     overflow: 'hidden',
+    textTransform: 'uppercase',
   },
-  flightRoute: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  flightMeta: { color: colors.text2, fontSize: 12, marginTop: 2 },
+  flightNumber: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  flightRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  flightEndpoint: {
+    flex: 1,
+    minWidth: 0,
+  },
+  flightEndpointRight: {
+    alignItems: 'flex-end',
+  },
+  flightAirportCode: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  flightAirportLabel: {
+    color: colors.text2,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2,
+  },
+  flightAirportLabelRight: {
+    textAlign: 'right',
+  },
+  flightTime: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+  flightLine: {
+    flex: 0.8,
+    minWidth: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  flightDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: colors.text3,
+  },
+  flightDash: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border2,
+  },
+  flightDate: {
+    color: colors.text3,
+    fontSize: 11,
+    lineHeight: 15,
+  },
 
   // group
   memberList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

@@ -336,9 +336,12 @@ function HomeScreen() {
     [trip?.id, trip?.startDate, trip?.endDate, trip?.status, clockNow],
   );
   const totalNights = countdown.totalDays;
-  const openTripOverview = useCallback(() => {
+  const openTripOverview = useCallback((section?: 'flights') => {
     if (trip?.id) {
-      router.push({ pathname: '/trip-overview', params: { tripId: trip.id } } as never);
+      router.push({
+        pathname: '/trip-overview',
+        params: section ? { tripId: trip.id, section } : { tripId: trip.id },
+      } as never);
     } else {
       router.push('/trip-overview' as never);
     }
@@ -727,7 +730,7 @@ function HomeScreen() {
             onScanBooking={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
 	            onAction={(key) => {
 	              switch (key) {
-	                case 'flights': openTripOverview(); break;
+	                case 'flights': openTripOverview('flights'); break;
 	                case 'accommodation': openTripOverview(); break;
 	                case 'members': router.push('/add-member' as never); break;
 	                case 'places': router.push('/(tabs)/discover' as never); break;
@@ -771,7 +774,7 @@ function HomeScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.discoverSecondaryBtn}
-                  onPress={openTripOverview}
+                  onPress={() => openTripOverview()}
                   activeOpacity={0.75}
                 >
                   <Text style={styles.discoverSecondaryText}>Edit Trip</Text>
@@ -829,10 +832,10 @@ function HomeScreen() {
 	              <View style={styles.flightStack}>
 	                {visibleFlights.length > 0 ? (
 	                  visibleFlights.map(({ flight, direction }) => (
-	                    <FlightCard key={flight.id} flight={flight} direction={direction} onAddFlight={openTripOverview} />
+	                    <FlightCard key={flight.id} flight={flight} direction={direction} onAddFlight={() => openTripOverview('flights')} />
 	                  ))
 	                ) : (
-	                  <FlightCard direction={fallbackDirection} onAddFlight={openTripOverview} />
+	                  <FlightCard direction={fallbackDirection} onAddFlight={() => openTripOverview('flights')} />
 	                )}
 	              </View>
             </>
