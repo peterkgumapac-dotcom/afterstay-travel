@@ -21,6 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { Share2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/constants/ThemeContext';
+import { base64ToBytes, bytesToBase64 } from '@/lib/base64';
 import TravelConstellationMap, { type ConstellationData } from './TravelConstellationMap';
 // @ts-ignore — gifenc is pure JS, no type declarations
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
@@ -116,7 +117,7 @@ export default function ShareTravelStats({
 
       // Write GIF to temp file
       const gifPath = `${FileSystem.cacheDirectory}travel-stats-${Date.now()}.gif`;
-      const base64Gif = uint8ArrayToBase64(gifBytes);
+      const base64Gif = bytesToBase64(gifBytes);
       await FileSystem.writeAsStringAsync(gifPath, base64Gif, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -223,9 +224,7 @@ export default function ShareTravelStats({
 
 function decodeBase64PngToRGBA(base64: string): { data: Uint8Array; width: number; height: number } | null {
   try {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const bytes = base64ToBytes(base64);
 
     // Parse PNG — find IHDR for dimensions, IDAT for pixel data
     // For ViewShot captures, we get clean PNGs. Use a simplified approach:
@@ -252,14 +251,6 @@ function decodeBase64PngToRGBA(base64: string): { data: Uint8Array; width: numbe
   } catch {
     return null;
   }
-}
-
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 const styles = StyleSheet.create({

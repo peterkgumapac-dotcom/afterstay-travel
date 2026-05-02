@@ -5,6 +5,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { secureStorage } from './secureStorage'
 import * as FileSystem from 'expo-file-system/legacy'
+import { base64ToBytes } from './base64'
 import { clearTripLocalData } from './cache'
 import { invalidateTripCache } from './tabDataCache'
 import { compressImage } from './compressImage'
@@ -115,32 +116,7 @@ async function readFileAsBytes(uri: string): Promise<Uint8Array> {
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   })
-  const binaryStr = decodeBase64(base64)
-  const bytes = new Uint8Array(binaryStr.length)
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i)
-  }
-  return bytes
-}
-
-function decodeBase64(value: string): string {
-  if (typeof globalThis.atob === 'function') return globalThis.atob(value)
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
-  let output = ''
-  let buffer = 0
-  let bits = 0
-  for (const char of value.replace(/\s/g, '')) {
-    if (char === '=') break
-    const idx = chars.indexOf(char)
-    if (idx < 0) continue
-    buffer = (buffer << 6) | idx
-    bits += 6
-    if (bits >= 8) {
-      bits -= 8
-      output += String.fromCharCode((buffer >> bits) & 0xff)
-    }
-  }
-  return output
+  return base64ToBytes(base64)
 }
 
 function withOperationTimeout<T>(promise: PromiseLike<T>, message: string, ms = 45_000): Promise<T> {

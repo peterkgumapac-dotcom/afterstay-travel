@@ -1,3 +1,5 @@
+import './lib/runtimePolyfills';
+
 import { registerWidgetTaskHandler } from 'react-native-android-widget';
 
 import { widgetTaskHandler } from './widgets/task-handler';
@@ -7,4 +9,5 @@ import { widgetTaskHandler } from './widgets/task-handler';
 registerWidgetTaskHandler(widgetTaskHandler);
 
 // Boot the normal Expo Router app.
+// eslint-disable-next-line import/first
 import 'expo-router/entry';

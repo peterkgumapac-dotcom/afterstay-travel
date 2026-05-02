@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from './supabase';
+import { base64ToBytes } from './base64';
 import { compressImage } from './compressImage';
 import type {
   QuickTrip,
@@ -165,11 +166,7 @@ export async function createQuickTrip(input: CreateQuickTripInput): Promise<stri
       const base64 = await FileSystem.readAsStringAsync(compressed, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      const binaryStr = atob(base64);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let j = 0; j < binaryStr.length; j++) {
-        bytes[j] = binaryStr.charCodeAt(j);
-      }
+      const bytes = base64ToBytes(base64);
       const { error: uploadErr } = await supabase.storage
         .from('moments')
         .upload(storagePath, bytes, { contentType: 'image/jpeg', upsert: true });

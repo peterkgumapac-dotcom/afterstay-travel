@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
+import { base64ToBytes } from '@/lib/base64';
 import { compressImage } from '@/lib/compressImage';
 import { getPublicProfiles, searchProfiles as searchPublicProfiles, supabase } from '@/lib/supabase';
 import type { FeedPost, PostMedia, PostTag, Story } from '@/lib/types';
@@ -86,32 +87,7 @@ async function readFileAsBytes(uri: string): Promise<Uint8Array> {
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,
   });
-  const binaryStr = decodeBase64(base64);
-  const bytes = new Uint8Array(binaryStr.length);
-  for (let i = 0; i < binaryStr.length; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function decodeBase64(value: string): string {
-  if (typeof globalThis.atob === 'function') return globalThis.atob(value);
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  let output = '';
-  let buffer = 0;
-  let bits = 0;
-  for (const char of value.replace(/\s/g, '')) {
-    if (char === '=') break;
-    const idx = chars.indexOf(char);
-    if (idx < 0) continue;
-    buffer = (buffer << 6) | idx;
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      output += String.fromCharCode((buffer >> bits) & 0xff);
-    }
-  }
-  return output;
+  return base64ToBytes(base64);
 }
 
 async function uploadMedia(
