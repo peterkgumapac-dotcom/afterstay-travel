@@ -191,6 +191,23 @@ New backend file in this clean branch, already applied live:
 
 ## Verification Run
 
+Latest clean branch rerun after backend verification, 2026-05-03:
+
+- `npx tsc --noEmit --pretty false`
+  - Result: exit 0.
+- `npx jest --runInBand`
+  - Result: 5 suites passed, 33 tests passed.
+- `npx eslint app components constants contexts hooks lib utils widgets index.ts --ext .ts,.tsx`
+  - Result: exit 0 with warnings only. No errors. Warnings remain existing import-order, unused code, and hook-dependency cleanup debt.
+- `git diff --check`
+  - Result: exit 0.
+- `npx expo export --platform android --output-dir /tmp/afterstay-reconciliation-android-latest`
+  - Result: exported Android JS bundle successfully.
+- `npx expo export --platform ios --output-dir /tmp/afterstay-reconciliation-ios-latest`
+  - Result: exported iOS JS bundle successfully.
+
+Earlier clean branch verification:
+
 - `npx tsc --noEmit --pretty false`
   - Result: exit 0.
 - Targeted ESLint on changed files
