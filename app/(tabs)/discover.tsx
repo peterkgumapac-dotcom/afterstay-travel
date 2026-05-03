@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bookmark, CalendarDays, ChevronDown, ChevronRight, Filter, Map, MapPin, Search, SlidersHorizontal, Sparkles, ThumbsUp, Users, Vote } from 'lucide-react-native';
 
@@ -91,6 +92,12 @@ type StarterDestination = {
   eyebrow: string;
   body: string;
   countryCode: string;
+  coords: { lat: number; lng: number };
+};
+type DestinationAreaPreset = {
+  label: string;
+  eyebrow: string;
+  body: string;
   coords: { lat: number; lng: number };
 };
 type FilterState = PlaceFilterState;
@@ -246,6 +253,13 @@ const STARTER_DESTINATIONS: readonly StarterDestination[] = [
     coords: { lat: -8.3405, lng: 115.0920 },
   },
   {
+    label: 'Siargao',
+    eyebrow: 'Surf + cafes',
+    body: 'General Luna, Cloud 9, beach days, coffee, and island food.',
+    countryCode: 'PH',
+    coords: { lat: 9.7856, lng: 126.1611 },
+  },
+  {
     label: 'Tokyo',
     eyebrow: 'City discovery',
     body: 'Food alleys, coffee, shopping, nightlife, and hidden stops.',
@@ -261,6 +275,21 @@ const STARTER_DESTINATIONS: readonly StarterDestination[] = [
   },
 ] as const;
 
+const DESTINATION_AREA_PRESETS: Record<string, readonly DestinationAreaPreset[]> = {
+  japan: [
+    { label: 'Tokyo', eyebrow: 'Best first stop', body: 'Food, coffee, nightlife, shopping, and easy transit.', coords: { lat: 35.6762, lng: 139.6503 } },
+    { label: 'Kyoto', eyebrow: 'Culture', body: 'Temples, tea, old streets, gardens, and day walks.', coords: { lat: 35.0116, lng: 135.7681 } },
+    { label: 'Osaka', eyebrow: 'Food city', body: 'Street food, bars, shopping, and quick Kyoto/Nara access.', coords: { lat: 34.6937, lng: 135.5023 } },
+    { label: 'Okinawa', eyebrow: 'Island', body: 'Beaches, resorts, diving, cafes, and coastal drives.', coords: { lat: 26.2124, lng: 127.6809 } },
+  ],
+  siargao: [
+    { label: 'General Luna, Siargao', eyebrow: 'Best first stop', body: 'Food, coffee, stays, surf shops, and nightlife density.', coords: { lat: 9.7856, lng: 126.1611 } },
+    { label: 'Cloud 9, Siargao', eyebrow: 'Surf', body: 'Surf breaks, lessons, cafes, rentals, and sunset crowds.', coords: { lat: 9.8115, lng: 126.1630 } },
+    { label: 'Dapa, Siargao', eyebrow: 'Gateway', body: 'Ferry access, local eats, supplies, and island transfers.', coords: { lat: 9.7594, lng: 126.0531 } },
+    { label: 'Del Carmen, Siargao', eyebrow: 'Nature', body: 'Mangroves, airport access, lagoons, and quieter stays.', coords: { lat: 9.8697, lng: 125.9706 } },
+  ],
+};
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function getStarterDestinationFallback(input: string): StarterDestination | undefined {
@@ -270,6 +299,16 @@ function getStarterDestinationFallback(input: string): StarterDestination | unde
     normalized.includes(destination.label.toLowerCase()) ||
     destination.label.toLowerCase().includes(normalized),
   );
+}
+
+function getDestinationAreaPreset(input: string): readonly DestinationAreaPreset[] {
+  const normalized = input.trim().toLowerCase().replace(/\s+/g, ' ').replace(/,\s*/g, ', ');
+  const firstSegment = normalized.split(',')[0]?.trim() ?? normalized;
+  if (firstSegment === 'japan') return DESTINATION_AREA_PRESETS.japan;
+  if (firstSegment === 'siargao' || firstSegment === 'siargao island' || normalized === 'siargao island, philippines') {
+    return DESTINATION_AREA_PRESETS.siargao;
+  }
+  return [];
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────
@@ -421,7 +460,7 @@ const TopPicksSection = React.memo(function TopPicksSection({
             accessibilityLabel={p.n}
           >
             {p.img ? (
-              <Image source={{ uri: p.img }} style={styles.topPickImage} />
+              <ExpoImage source={{ uri: p.img }} style={styles.topPickImage} contentFit="cover" cachePolicy="disk" transition={160} />
             ) : (
               <View style={[styles.topPickImage, { alignItems: 'center', justifyContent: 'center' }]}>
                 <Map size={24} color={colors.text3} />
@@ -469,7 +508,7 @@ const TopPicksByCategorySection = React.memo(function TopPicksByCategorySection(
                 accessibilityLabel={p.n}
               >
                 {p.img ? (
-                  <Image source={{ uri: p.img }} style={styles.topPickImage} />
+                  <ExpoImage source={{ uri: p.img }} style={styles.topPickImage} contentFit="cover" cachePolicy="disk" transition={160} />
                 ) : (
                   <View style={[styles.topPickImage, { alignItems: 'center', justifyContent: 'center' }]}>
                     <Map size={24} color={colors.text3} />
@@ -556,6 +595,7 @@ function DiscoverScreenInner() {
   const [exploreQuery, setExploreQuery] = useState('');
   const [exploreResults, setExploreResults] = useState<{ placeId: string; description: string }[]>([]);
   const [exploreFocused, setExploreFocused] = useState(false);
+  const [destinationAreaOptions, setDestinationAreaOptions] = useState<readonly DestinationAreaPreset[]>([]);
   const exploreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exploreInputRef = useRef<TextInput>(null);
 
@@ -718,6 +758,20 @@ function DiscoverScreenInner() {
     cacheSet('discover:travelMode', m);
   }, []);
 
+  const applyExploreOrigin = useCallback((
+    label: string,
+    coords: { lat: number; lng: number },
+    areas: readonly DestinationAreaPreset[] = [],
+  ) => {
+    setExploreCoords(coords);
+    setExploreDest(label);
+    setExploreQuery(label);
+    setDestinationAreaOptions(areas);
+    setQ('');
+    setVisibleCount(20);
+    placesCache.current = {};
+  }, []);
+
   const chooseExploreDestination = useCallback(async (
     label: string,
     placeId?: string,
@@ -733,51 +787,51 @@ function DiscoverScreenInner() {
     setPlacesError(null);
     setPlacesLoading(true);
     try {
+      const areaPreset = getDestinationAreaPreset(cleaned);
+      const primaryArea = areaPreset[0];
+      if (primaryArea) {
+        applyExploreOrigin(primaryArea.label, primaryArea.coords, areaPreset);
+        return;
+      }
       const best = placeId
         ? { placeId, description: cleaned }
         : (await placeAutocomplete(cleaned))[0];
       const loc = best ? await getPlaceLocation(best.placeId) : null;
+      const resolvedPreset = getDestinationAreaPreset(best?.description ?? cleaned);
+      const resolvedPrimaryArea = resolvedPreset[0];
+      if (resolvedPrimaryArea) {
+        applyExploreOrigin(resolvedPrimaryArea.label, resolvedPrimaryArea.coords, resolvedPreset);
+        return;
+      }
       if (!loc) {
         if (!fallbackCoords) {
           setExploreCoords(null);
           setExploreDest('');
+          setDestinationAreaOptions([]);
           setPlaces([]);
           setPlacesError('Could not find that destination. Try another search.');
           return;
         }
-        setExploreCoords(fallbackCoords);
-        setExploreDest(cleaned);
-        setExploreQuery(cleaned);
+        applyExploreOrigin(cleaned, fallbackCoords);
       } else {
         const shortLabel = best?.description.split(',')[0] ?? cleaned;
-        setExploreCoords({ lat: loc.lat, lng: loc.lng });
-        setExploreDest(shortLabel);
-        setExploreQuery(shortLabel);
+        applyExploreOrigin(shortLabel, { lat: loc.lat, lng: loc.lng });
       }
-      setPlaceCategoryChip('All');
-      setQ('');
-      setVisibleCount(20);
-      placesCache.current = {};
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] choose destination failed:', err);
       if (fallbackCoords) {
-        setExploreCoords(fallbackCoords);
-        setExploreDest(cleaned);
-        setExploreQuery(cleaned);
-        setPlaceCategoryChip('All');
-        setQ('');
-        setVisibleCount(20);
-        placesCache.current = {};
+        applyExploreOrigin(cleaned, fallbackCoords);
       } else {
         setExploreCoords(null);
         setExploreDest('');
+        setDestinationAreaOptions([]);
         setPlaces([]);
         setPlacesError('Could not find that destination. Try another search.');
       }
     } finally {
       setPlacesLoading(false);
     }
-  }, []);
+  }, [applyExploreOrigin]);
 
   const useCurrentLocationForExplore = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -806,6 +860,7 @@ function DiscoverScreenInner() {
       setExploreCoords(coords);
       setExploreDest('Near me');
       setExploreQuery('Near me');
+      setDestinationAreaOptions([]);
       setDistanceOrigin('me');
       setPlaceCategoryChip('All');
       setQ('');
@@ -1356,6 +1411,7 @@ function DiscoverScreenInner() {
     });
   }, [filteredPlaces, getDistanceKm, filters.nearby, filters.sortMode, hasUsableOrigin, travelMode]);
   const displayPlaces = useMemo(() => placesWithDistance.map(({ place }) => place), [placesWithDistance]);
+  const hasLoadedPlaceResults = !placesLoading && !placesError && placesWithDistance.length > 0;
 
   // Stable filter callbacks — prevent FilterChip re-renders
   const toggleOpenNow = useCallback(() => setFilters((f) => ({ ...f, openNow: !f.openNow })), []);
@@ -1596,19 +1652,70 @@ function DiscoverScreenInner() {
         </View>
       )}
 
-      {/* Destination overview — AI-generated insights for trip discovery */}
+      {/* Search-first destination controls */}
       {!tripId && exploreDest && exploreCoords ? (
         <>
-          <DestinationCard destination={exploreDest} coords={exploreCoords} />
-          <TouchableOpacity
-            style={{ marginHorizontal: 16, marginTop: 10, marginBottom: 4, backgroundColor: colors.accent, borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}
-            onPress={() => router.push({ pathname: '/onboarding', params: { destination: exploreDest } } as never)}
-            activeOpacity={0.7}
-          >
-            <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
-              Plan a trip to {exploreDest}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.primaryPlaceSearchWrap}>
+            <View style={styles.primaryPlaceSearchHeader}>
+              <Text style={styles.primaryPlaceSearchTitle}>What are you looking for?</Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => router.push({ pathname: '/onboarding', params: { destination: exploreDest } } as never)}
+              >
+                <Text style={styles.primaryPlaceSearchAction}>Plan trip</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.primaryPlaceSearchBox}>
+              <Search size={16} color={colors.text3} strokeWidth={1.8} />
+              <TextInput
+                value={q}
+                onChangeText={setQ}
+                placeholder={`Search ${exploreDest}`}
+                placeholderTextColor={colors.text3}
+                style={styles.searchInput}
+                returnKeyType="search"
+              />
+            </View>
+          </View>
+          {destinationAreaOptions.length > 1 && (
+            <View style={styles.areaSwitchSection}>
+              <View style={styles.areaSwitchHeader}>
+                <Text style={styles.areaSwitchTitle}>Explore by area</Text>
+                <Text style={styles.areaSwitchHint}>Better local results</Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.areaChipRow}
+              >
+                {destinationAreaOptions.map((area) => {
+                  const active = exploreDest === area.label;
+                  return (
+                    <TouchableOpacity
+                      key={area.label}
+                      style={[styles.areaChip, active && styles.areaChipActive]}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        applyExploreOrigin(area.label, area.coords, destinationAreaOptions);
+                        setPlaceCategoryChip('All');
+                      }}
+                    >
+                      <Text style={[styles.areaChipEyebrow, active && styles.areaChipTextActive]}>
+                        {area.eyebrow}
+                      </Text>
+                      <Text style={[styles.areaChipTitle, active && styles.areaChipTextActive]} numberOfLines={1}>
+                        {area.label}
+                      </Text>
+                      <Text style={[styles.areaChipBody, active && styles.areaChipBodyActive]} numberOfLines={2}>
+                        {area.body}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
         </>
       ) : null}
 
@@ -1690,26 +1797,26 @@ function DiscoverScreenInner() {
                 </View>
               )}
 
-              {/* Search */}
-              <TouchableOpacity
-                style={styles.searchBox}
-                activeOpacity={effectiveCoords ? 1 : 0.75}
-                onPress={() => {
-                  if (effectiveCoords) return;
-                  setPlacesError('Choose a destination above, use Near me, or pick a popular starting point first.');
-                  exploreInputRef.current?.focus();
-                }}
-              >
-                <Search size={16} color={colors.text3} strokeWidth={1.8} />
-		                <TextInput
-		                  value={q}
-		                  onChangeText={setQ}
-		                  placeholder={effectiveCoords ? 'Search restaurants, beaches, activities...' : 'Pick a destination, then search places'}
-		                  placeholderTextColor={colors.text3}
-		                  style={styles.searchInput}
-		                  editable={!!effectiveCoords}
-		                />
-              </TouchableOpacity>
+              {!effectiveCoords && (
+                <TouchableOpacity
+                  style={styles.searchBox}
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    setPlacesError('Choose a destination above, use Near me, or pick a popular starting point first.');
+                    exploreInputRef.current?.focus();
+                  }}
+                >
+                  <Search size={16} color={colors.text3} strokeWidth={1.8} />
+                  <TextInput
+                    value={q}
+                    onChangeText={setQ}
+                    placeholder="Pick a destination, then search places"
+                    placeholderTextColor={colors.text3}
+                    style={styles.searchInput}
+                    editable={false}
+                  />
+                </TouchableOpacity>
+              )}
 
               {!tripId && !effectiveCoords && (
                 <View style={styles.starterSection}>
@@ -1774,74 +1881,78 @@ function DiscoverScreenInner() {
                 </View>
               )}
 
-              {/* Category chips */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.chipRow}
-              >
-                {PLACE_CATEGORY_CHIPS.map((c) => {
-                  const isActive = placeCategoryChip === c;
-                  return (
-                    <TouchableOpacity
-                      key={c}
-                      style={[styles.chip, isActive && styles.chipActive]}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setPlaceCategoryChip(c);
-                        setQ('');
-                        setVisibleCount(20);
-                      }}
-                    >
-                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                        {c}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              {hasLoadedPlaceResults && (
+                <>
+                  {/* Category chips */}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.chipRow}
+                  >
+                    {PLACE_CATEGORY_CHIPS.map((c) => {
+                      const isActive = placeCategoryChip === c;
+                      return (
+                        <TouchableOpacity
+                          key={c}
+                          style={[styles.chip, isActive && styles.chipActive]}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            setPlaceCategoryChip(c);
+                            setQ('');
+                            setVisibleCount(20);
+                          }}
+                        >
+                          <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                            {c}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
 
-              {/* Adaptive quick filters */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.quickFilterRow}
-              >
-                {quickFilters.map((quickFilter) => {
-                  const active = isQuickFilterActive(quickFilter.id);
-                  return (
-                    <TouchableOpacity
-                      key={quickFilter.id}
-                      style={[styles.quickFilterChip, active && styles.quickFilterChipActive]}
-                      activeOpacity={0.72}
-                      onPress={() => handleQuickFilterPress(quickFilter)}
-                    >
-                      <Text style={[styles.quickFilterText, active && styles.quickFilterTextActive]}>
-                        {quickFilter.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                  {/* Adaptive quick filters */}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.quickFilterRow}
+                  >
+                    {quickFilters.map((quickFilter) => {
+                      const active = isQuickFilterActive(quickFilter.id);
+                      return (
+                        <TouchableOpacity
+                          key={quickFilter.id}
+                          style={[styles.quickFilterChip, active && styles.quickFilterChipActive]}
+                          activeOpacity={0.72}
+                          onPress={() => handleQuickFilterPress(quickFilter)}
+                        >
+                          <Text style={[styles.quickFilterText, active && styles.quickFilterTextActive]}>
+                            {quickFilter.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
 
-              {/* More filters toggle */}
-              <TouchableOpacity
-                onPress={toggleShowFilters}
-                style={[
-                  styles.filterBarInline,
-                  activeFilterCount > 0 && { borderColor: colors.accent },
-                ]}
-                activeOpacity={0.7}
-              >
-                <Filter size={14} color={activeFilterCount > 0 ? colors.accent : colors.text3} strokeWidth={2} />
-                <Text style={{ fontSize: 13, fontWeight: '500', color: activeFilterCount > 0 ? colors.accent : colors.text2 }}>
-                  More filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
-                </Text>
-                <ChevronDown size={14} color={colors.text3} strokeWidth={2} style={{ transform: [{ rotate: showFilters ? '180deg' : '0deg' }] }} />
-              </TouchableOpacity>
+                  {/* More filters toggle */}
+                  <TouchableOpacity
+                    onPress={toggleShowFilters}
+                    style={[
+                      styles.filterBarInline,
+                      activeFilterCount > 0 && { borderColor: colors.accent },
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Filter size={14} color={activeFilterCount > 0 ? colors.accent : colors.text3} strokeWidth={2} />
+                    <Text style={{ fontSize: 13, fontWeight: '500', color: activeFilterCount > 0 ? colors.accent : colors.text2 }}>
+                      More filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+                    </Text>
+                    <ChevronDown size={14} color={colors.text3} strokeWidth={2} style={{ transform: [{ rotate: showFilters ? '180deg' : '0deg' }] }} />
+                  </TouchableOpacity>
+                </>
+              )}
 
               {/* Expanded filters panel */}
-              {showFilters && (
+              {hasLoadedPlaceResults && showFilters && (
                 <Animated.View
                   entering={FadeInDown.duration(200)}
                   style={styles.filterPanel}
@@ -1967,14 +2078,6 @@ function DiscoverScreenInner() {
                 </Animated.View>
               )}
 
-              {/* Top Picks */}
-              {placeCategoryChip === 'All' && !q && (
-                <>
-                  <TopPicksSection places={displayPlaces} onExplore={handleExplore} distFn={getDistanceKm} />
-                  <TopPicksByCategorySection places={displayPlaces} onExplore={handleExplore} distFn={getDistanceKm} />
-                </>
-              )}
-
               {/* Results count */}
               <Text style={styles.resultsCount}>
                 {placesWithDistance.length} {placesWithDistance.length === 1 ? 'place' : 'places'}
@@ -2000,52 +2103,60 @@ function DiscoverScreenInner() {
             </>
           }
           ListFooterComponent={
-            placesWithDistance.length > visibleCount ? (
-              <TouchableOpacity
-                style={styles.showMoreBtn}
-                onPress={() => setVisibleCount((c) => c + 20)}
-                activeOpacity={0.7}
-              >
-                <ChevronDown size={16} color={colors.accent} strokeWidth={2} />
-                <Text style={styles.showMoreText}>
-                  Show more ({placesWithDistance.length - visibleCount} remaining)
-                </Text>
-              </TouchableOpacity>
-            ) : nextPageToken ? (
-              <TouchableOpacity
-                style={styles.showMoreBtn}
-                disabled={loadingMore}
-                onPress={async () => {
-                  setLoadingMore(true);
-                  try {
-                    // Google requires ~2s before page token is valid
-                    await new Promise((r) => setTimeout(r, 2000));
-                    const { places: more, nextPageToken: token } = await searchNearbyPage(nextPageToken);
-                    setNextPageToken(token);
-                    if (more.length > 0) {
-                      const mapped = more.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords ?? undefined));
-                      setPlaces((prev) => [...prev, ...mapped]);
-                      setVisibleCount((c) => c + more.length);
-                    }
-                  } catch (err) {
-                    if (__DEV__) console.warn('[Discover] load more failed:', err);
-                    setNextPageToken(undefined);
-                  } finally {
-                    setLoadingMore(false);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                {loadingMore ? (
-                  <ActivityIndicator size="small" color={colors.accent} />
-                ) : (
+            <>
+              {placesWithDistance.length > visibleCount ? (
+                <TouchableOpacity
+                  style={styles.showMoreBtn}
+                  onPress={() => setVisibleCount((c) => c + 20)}
+                  activeOpacity={0.7}
+                >
                   <ChevronDown size={16} color={colors.accent} strokeWidth={2} />
-                )}
-                <Text style={styles.showMoreText}>
-                  {loadingMore ? 'Loading more places...' : 'Load more places'}
-                </Text>
-              </TouchableOpacity>
-            ) : null
+                  <Text style={styles.showMoreText}>
+                    Show more ({placesWithDistance.length - visibleCount} remaining)
+                  </Text>
+                </TouchableOpacity>
+              ) : nextPageToken ? (
+                <TouchableOpacity
+                  style={styles.showMoreBtn}
+                  disabled={loadingMore}
+                  onPress={async () => {
+                    setLoadingMore(true);
+                    try {
+                      // Google requires ~2s before page token is valid
+                      await new Promise((r) => setTimeout(r, 2000));
+                      const { places: more, nextPageToken: token } = await searchNearbyPage(nextPageToken);
+                      setNextPageToken(token);
+                      if (more.length > 0) {
+                        const mapped = more.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords ?? undefined));
+                        setPlaces((prev) => [...prev, ...mapped]);
+                        setVisibleCount((c) => c + more.length);
+                      }
+                    } catch (err) {
+                      if (__DEV__) console.warn('[Discover] load more failed:', err);
+                      setNextPageToken(undefined);
+                    } finally {
+                      setLoadingMore(false);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  {loadingMore ? (
+                    <ActivityIndicator size="small" color={colors.accent} />
+                  ) : (
+                    <ChevronDown size={16} color={colors.accent} strokeWidth={2} />
+                  )}
+                  <Text style={styles.showMoreText}>
+                    {loadingMore ? 'Loading more places...' : 'Load more places'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {hasLoadedPlaceResults && placeCategoryChip === 'All' && !q ? (
+                <>
+                  <TopPicksSection places={displayPlaces} onExplore={handleExplore} distFn={getDistanceKm} />
+                  <TopPicksByCategorySection places={displayPlaces} onExplore={handleExplore} distFn={getDistanceKm} />
+                </>
+              ) : null}
+            </>
           }
         />
       )}
@@ -2735,6 +2846,105 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
       color: colors.text,
       fontSize: 13,
+    },
+    primaryPlaceSearchWrap: {
+      marginHorizontal: 16,
+      marginBottom: 12,
+      padding: 14,
+      borderRadius: 16,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 12,
+    },
+    primaryPlaceSearchHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    primaryPlaceSearchTitle: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: '800',
+      color: colors.text,
+    },
+    primaryPlaceSearchAction: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: colors.accent,
+    },
+    primaryPlaceSearchBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      backgroundColor: colors.canvas,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    areaSwitchSection: {
+      marginBottom: 12,
+    },
+    areaSwitchHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      marginBottom: 8,
+    },
+    areaSwitchTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors.text,
+    },
+    areaSwitchHint: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.text3,
+    },
+    areaChipRow: {
+      paddingHorizontal: 16,
+      gap: 10,
+    },
+    areaChip: {
+      width: 178,
+      minHeight: 98,
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    areaChipActive: {
+      backgroundColor: colors.accentBg,
+      borderColor: colors.accentBorder,
+    },
+    areaChipEyebrow: {
+      fontSize: 9,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      color: colors.text3,
+      marginBottom: 4,
+    },
+    areaChipTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors.text,
+      marginBottom: 4,
+    },
+    areaChipBody: {
+      fontSize: 11,
+      lineHeight: 15,
+      color: colors.text3,
+    },
+    areaChipTextActive: {
+      color: colors.accent,
+    },
+    areaChipBodyActive: {
+      color: colors.text2,
     },
     starterSection: {
       marginBottom: 8,

@@ -26,6 +26,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const x = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   const [active, setActive] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const dotProgress = x.interpolate({
     inputRange: [0, width],
@@ -35,6 +36,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
 
   const onMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setActive(Math.max(0, Math.min(1, Math.round(event.nativeEvent.contentOffset.x / width))));
+    setIsDragging(false);
   };
 
   const jumpTo = (index: number) => {
@@ -46,7 +48,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const pulseDirection = active === 0 ? 1 : -1;
   const pulseTranslate = pulse.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, pulseDirection * 7],
+    outputRange: [0, pulseDirection * 5],
   });
   const pulseScale = pulse.interpolate({
     inputRange: [0, 0.5, 1],
@@ -90,13 +92,17 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
           [{ nativeEvent: { contentOffset: { x } } }],
           { useNativeDriver: true },
         )}
+        onScrollBeginDrag={() => setIsDragging(true)}
         onMomentumScrollEnd={onMomentumEnd}
       >
         <View style={[s.page, { width }]}>{profilePage}</View>
         <View style={[s.page, { width }]}>{memoriesPage}</View>
       </Animated.ScrollView>
 
-      <View style={[s.edgeRail, active === 0 ? s.edgeRailRight : s.edgeRailLeft]} pointerEvents="box-none">
+      <View
+        style={[s.edgeRail, active === 0 ? s.edgeRailRight : s.edgeRailLeft, isDragging && s.edgeRailHidden]}
+        pointerEvents={isDragging ? 'none' : 'box-none'}
+      >
         <Animated.View
           style={[
             s.edgePulse,
@@ -146,28 +152,31 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   edgeRail: {
     position: 'absolute',
-    top: '54%',
-    zIndex: 20,
-    elevation: 10,
+    top: '50%',
+    zIndex: 14,
+    elevation: 8,
   },
   edgeRailRight: {
-    right: 8,
+    right: -2,
   },
   edgeRailLeft: {
-    left: 8,
+    left: -2,
   },
   edgePulse: {
     borderRadius: 22,
   },
   edgeButton: {
-    width: 38,
-    height: 50,
-    borderRadius: 19,
+    width: 34,
+    height: 46,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(253,248,235,0.9)',
+    backgroundColor: 'rgba(253,248,235,0.82)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  edgeRailHidden: {
+    opacity: 0,
   },
   dots: {
     position: 'absolute',

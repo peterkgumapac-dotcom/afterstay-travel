@@ -23,12 +23,12 @@ import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { getPlaceLocation, placeAutocomplete } from '@/lib/google-places';
-import { addExpense, addExpenseSplits, getActiveTrip, getGroupMembers, getUserPaymentQrs, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
+import { addDailyExpense, addExpense, addExpenseSplits, getActiveTrip, getGroupMembers, getUserPaymentQrs, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
 import type { UserPaymentQr } from '@/lib/supabase';
 import { addQuickTripExpense, addQuickTripExpenseSplits, getQuickTripCompanions } from '@/lib/quickTrips';
 import type { QuickTripCompanion } from '@/lib/quickTripTypes';
 import { useAuth } from '@/lib/auth';
-import type { Expense, GroupMember } from '@/lib/types';
+import type { DailyExpenseCategory, Expense, GroupMember } from '@/lib/types';
 import { refreshWidgets, writeWidgetSnapshots } from '@/widgets/refresh';
 
 const CATEGORY_EMOJI: Record<Expense['category'], string> = {
@@ -49,11 +49,19 @@ const CATEGORIES: Expense['category'][] = [
   'Other',
 ];
 
+function mapToDailyCategory(category: Expense['category']): DailyExpenseCategory {
+  if (category === 'Food') return 'Food';
+  if (category === 'Transport') return 'Transport';
+  if (category === 'Shopping') return 'Groceries';
+  if (category === 'Activity') return 'Entertainment';
+  return 'Other';
+}
+
 const CURRENCIES = ['PHP', 'USD', 'EUR', 'JPY'] as const;
 
 const SPLIT_TYPES: NonNullable<Expense['splitType']>[] = ['Equal', 'Custom', 'Individual'];
 
-type ExpenseType = 'trip' | 'quick-trip' | 'personal';
+type ExpenseType = 'trip' | 'quick-trip' | 'personal' | 'daily-tracker';
 
 const EXPENSE_TYPES: { id: ExpenseType; label: string; icon: any; desc: string }[] = [
   { id: 'trip', label: 'Trip', icon: Briefcase, desc: 'Active trip budget' },
@@ -67,7 +75,7 @@ export default function AddExpenseScreen() {
   const { user } = useAuth();
   const params = useLocalSearchParams<{
     editId?: string;
-    target?: 'trip' | 'quick-trip' | 'standalone';
+    target?: 'trip' | 'quick-trip' | 'standalone' | 'daily-tracker';
     quickTripId?: string;
     description?: string;
     amount?: string;
@@ -135,6 +143,7 @@ export default function AddExpenseScreen() {
 
   // Expense type (replaces params.target)
   const initialType: ExpenseType = params.target === 'quick-trip' ? 'quick-trip'
+    : params.target === 'daily-tracker' ? 'daily-tracker'
     : params.target === 'standalone' ? 'personal' : 'trip';
   const [expenseType, setExpenseType] = useState<ExpenseType>(initialType);
   const [hasActiveTrip, setHasActiveTrip] = useState(true);
@@ -250,6 +259,10 @@ export default function AddExpenseScreen() {
   };
 
   const scanReceipt = () => {
+    if (expenseType === 'quick-trip' && !params.quickTripId) {
+      router.push('/quick-trip-create?returnTo=scan-receipt' as never);
+      return;
+    }
     router.push({
       pathname: '/scan-receipt',
       params: {
@@ -317,6 +330,17 @@ export default function AddExpenseScreen() {
       };
       if (isEditing) {
         await updateExpense(params.editId!, expenseData);
+      } else if (expenseType === 'daily-tracker') {
+        await addDailyExpense({
+          description: description.trim(),
+          amount: n,
+          currency,
+          dailyCategory: mapToDailyCategory(category),
+          date: expenseDate,
+          notes: combinedNotes,
+          photo: photoUri || undefined,
+          placeName: placeName.trim() || undefined,
+        });
       } else if (expenseType === 'quick-trip' && params.quickTripId) {
         const paidByCompanion = companions.find((c) => c.displayName === paidBy);
         const splitTypeForQuickTrip = splitAmountsFromReceipt || splitType !== 'Equal' ? 'custom' : 'even';
@@ -352,6 +376,8 @@ export default function AddExpenseScreen() {
             });
           }
         }
+      } else if (expenseType === 'quick-trip') {
+        throw new Error('Choose or create a Quick Trip before saving this receipt.');
       } else if (expenseType === 'personal') {
         await addExpense({ ...expenseData, standalone: true });
       } else {

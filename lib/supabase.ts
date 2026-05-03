@@ -191,6 +191,44 @@ async function uploadLocalFileToStorage(input: {
   }
 }
 
+function isLocalAssetUri(uri?: string): boolean {
+  if (!uri) return false;
+  return uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('/');
+}
+
+export async function uploadExpenseReceiptPhoto(inputUri?: string): Promise<{ publicUrl?: string; storagePath?: string }> {
+  const uri = inputUri?.trim();
+  if (!uri) return {};
+  if (!isLocalAssetUri(uri)) return { publicUrl: uri };
+
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id;
+  if (!userId) throw new Error('Not authenticated');
+
+  const compressed = await withOperationTimeout(
+    compressImage(uri, 1200, 0.72),
+    'Preparing receipt photo timed out. Please try a smaller photo.',
+    60_000,
+  );
+  const nonce = Math.random().toString(36).slice(2, 10);
+  const storagePath = `receipts/${userId}/${Date.now()}-${nonce}.jpg`;
+
+  await uploadLocalFileToStorage({
+    bucket: 'moments',
+    path: storagePath,
+    fileUri: compressed,
+    contentType: 'image/jpeg',
+    upsert: false,
+    timeoutMs: 150_000,
+    timeoutMessage: 'Receipt upload timed out. Please check your connection and try again.',
+  });
+
+  const { data: urlData } = supabase.storage.from('moments').getPublicUrl(storagePath);
+  const publicUrl = urlData?.publicUrl;
+  if (!publicUrl) throw new Error('Receipt upload failed: public URL could not be generated.');
+  return { publicUrl, storagePath };
+}
+
 /** Android-safe date parser: date-only strings get PHT suffix to avoid UTC shift. */
 function parseDateSafe(iso: string): Date {
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
@@ -1933,6 +1971,7 @@ export async function addExpense(
   }
 
   const { data: authData } = await supabase.auth.getUser();
+  const receiptUpload = await uploadExpenseReceiptPhoto(input.photo);
 
   const { data, error } = await supabase
     .from(T.expenses)
@@ -1945,7 +1984,7 @@ export async function addExpense(
       category: input.category,
       expense_date: input.date,
       ...(input.paidBy ? { paid_by: input.paidBy } : {}),
-      ...(input.photo ? { photo_url: input.photo } : {}),
+      ...(receiptUpload.publicUrl ? { photo_url: receiptUpload.publicUrl } : {}),
       ...(input.placeName ? { place_name: input.placeName } : {}),
       ...(input.placeLatitude != null ? { place_latitude: input.placeLatitude } : {}),
       ...(input.placeLongitude != null ? { place_longitude: input.placeLongitude } : {}),
@@ -1954,6 +1993,9 @@ export async function addExpense(
     })
     .select()
     .single();
+  if (error && receiptUpload.storagePath) {
+    await supabase.storage.from('moments').remove([receiptUpload.storagePath]).catch(() => {});
+  }
   if (error) throw new Error(`addExpense: ${error.message}`);
 
   const row = data as Record<string, unknown>;
@@ -4329,6 +4371,7 @@ export async function addDailyExpense(input: {
 }): Promise<void> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('Not authenticated');
+  const receiptUpload = await uploadExpenseReceiptPhoto(input.photo);
   const { error } = await supabase.from('expenses').insert({
     user_id: auth.user.id,
     trip_id: null,
@@ -4342,9 +4385,12 @@ export async function addDailyExpense(input: {
     daily_category: input.dailyCategory,
     expense_date: input.date ?? new Date().toISOString().slice(0, 10),
     notes: input.notes,
-    photo_url: input.photo,
+    photo_url: receiptUpload.publicUrl,
     place_name: input.placeName,
   });
+  if (error && receiptUpload.storagePath) {
+    await supabase.storage.from('moments').remove([receiptUpload.storagePath]).catch(() => {});
+  }
   if (error) throw new Error(`addDailyExpense: ${error.message}`);
 }
 

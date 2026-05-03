@@ -84,12 +84,12 @@ const QUICK_FILTERS_BY_CONTEXT: Record<FilterContext, QuickFilter[]> = {
     { id: 'beach', label: 'Beach' },
   ],
   destination: [
-    { id: 'top_rated', label: 'Top rated' },
-    { id: 'budget', label: 'Budget' },
     { id: 'food', label: 'Food' },
     { id: 'coffee', label: 'Coffee' },
     { id: 'activities', label: 'Activities' },
+    { id: 'top_rated', label: 'Top rated' },
     { id: 'open_now', label: 'Open now' },
+    { id: 'budget', label: 'Budget' },
   ],
   near_me: [
     { id: 'open_now', label: 'Open now' },

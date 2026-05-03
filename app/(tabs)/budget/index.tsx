@@ -546,7 +546,11 @@ function BudgetScreen() {
         }
         break;
       case 'daily-tracker':
-        setShowDailySheet(true);
+        if (action === 'scan') {
+          router.push({ pathname: '/scan-receipt', params: { expenseType: 'daily-tracker' } } as never);
+        } else {
+          setShowDailySheet(true);
+        }
         break;
     }
   };

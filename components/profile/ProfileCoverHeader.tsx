@@ -60,7 +60,7 @@ export default function ProfileCoverHeader({
   const tags = buildTags(stats, homeBase);
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
   const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
-  const coverHeight = hasCoverVisual ? Math.min(280, Math.max(248, width * 0.64)) : 232;
+  const coverHeight = hasCoverVisual ? Math.min(284, Math.max(256, width * 0.64)) : 232;
 
   return (
     <View style={s.container}>
@@ -227,7 +227,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   levelBadge: {
     position: 'absolute',
     right: 18,
-    bottom: 32,
+    bottom: 28,
     zIndex: 4,
     minHeight: 30,
     borderRadius: 15,
@@ -245,7 +245,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   coverEditPill: {
     position: 'absolute',
     right: 18,
-    top: 82,
+    top: 76,
     zIndex: 4,
     minHeight: 30,
     borderRadius: 15,
@@ -261,17 +261,17 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontWeight: '800',
   },
   sheet: {
-    marginTop: 0,
+    marginTop: -30,
     paddingHorizontal: 18,
-    paddingTop: 54,
+    paddingTop: 66,
     paddingBottom: 10,
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
     backgroundColor: colors.canvas,
   },
   avatarWrap: {
     position: 'absolute',
-    top: -58,
+    top: -64,
     left: 18,
     width: 94,
     height: 94,
@@ -324,19 +324,19 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   aboutInline: {
     marginTop: 9,
-    gap: 3,
+    gap: 2,
   },
   aboutLabel: {
     color: colors.text3,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
-    letterSpacing: 1.4,
+    letterSpacing: 1.1,
     textTransform: 'uppercase',
   },
   bio: {
     color: colors.text2,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 19,
   },
   tags: {
     flexDirection: 'row',

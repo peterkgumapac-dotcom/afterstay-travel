@@ -21,6 +21,7 @@ import {
   Heart,
   MapPin,
   Plus,
+  ScanLine,
   Sparkles,
   Trash2,
   User,
@@ -121,6 +122,11 @@ export default function QuickTripDetailScreen() {
     setExpAmount('');
     setShowAddExpense(false);
     load();
+  };
+
+  const handleScanReceipt = () => {
+    if (!quickTripId) return;
+    router.push({ pathname: '/scan-receipt', params: { expenseType: 'quick-trip', quickTripId } } as never);
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
@@ -317,14 +323,24 @@ export default function QuickTripDetailScreen() {
               </View>
             </View>
           ) : (
-            <TouchableOpacity
-              style={styles.addExpenseBtn}
-              onPress={() => setShowAddExpense(true)}
-              activeOpacity={0.7}
-            >
-              <Plus size={16} color={colors.accent} />
-              <Text style={styles.addExpenseText}>Add expense</Text>
-            </TouchableOpacity>
+            <View style={styles.expenseActionRow}>
+              <TouchableOpacity
+                style={[styles.addExpenseBtn, { flex: 1 }]}
+                onPress={() => setShowAddExpense(true)}
+                activeOpacity={0.7}
+              >
+                <Plus size={16} color={colors.accent} />
+                <Text style={styles.addExpenseText}>Add expense</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.addExpenseBtn, { flex: 1 }]}
+                onPress={handleScanReceipt}
+                activeOpacity={0.7}
+              >
+                <ScanLine size={16} color={colors.accent} />
+                <Text style={styles.addExpenseText}>Scan receipt</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -409,11 +425,15 @@ const getStyles = (colors: ThemeColors) =>
     expenseDate: { fontSize: 11, color: colors.text3, marginTop: 2 },
     expenseAmount: { fontSize: 14, fontWeight: '700', color: colors.text },
 
+    expenseActionRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 4,
+    },
     addExpenseBtn: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
       paddingVertical: 12, borderRadius: 12,
       borderWidth: 1.5, borderColor: colors.accentBorder, borderStyle: 'dashed',
-      marginTop: 4,
     },
     addExpenseText: { fontSize: 13, fontWeight: '600', color: colors.accent },
 

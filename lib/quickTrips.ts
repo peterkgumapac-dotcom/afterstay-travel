@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { supabase } from './supabase';
+import { supabase, uploadExpenseReceiptPhoto } from './supabase';
 import { base64ToBytes } from './base64';
 import { compressImage } from './compressImage';
 import type {
@@ -249,6 +249,7 @@ export async function addQuickTripExpense(input: {
   receiptPhotoUrl?: string;
 }): Promise<string> {
   const { data: authData } = await supabase.auth.getUser();
+  const receiptUpload = await uploadExpenseReceiptPhoto(input.receiptPhotoUrl);
 
   const { data, error } = await supabase
     .from('quick_trip_expenses')
@@ -261,11 +262,14 @@ export async function addQuickTripExpense(input: {
       paid_by_companion_id: input.paidByCompanionId ?? null,
       split_type: input.splitType ?? 'even',
       occurred_at: input.occurredAt ?? new Date().toISOString(),
-      receipt_photo_url: input.receiptPhotoUrl ?? null,
+      receipt_photo_url: receiptUpload.publicUrl ?? null,
     })
     .select('id')
     .single();
 
+  if (error && receiptUpload.storagePath) {
+    await supabase.storage.from('moments').remove([receiptUpload.storagePath]).catch(() => {});
+  }
   if (error) throw new Error(`Failed to add expense: ${error.message}`);
 
   // Update denormalized total

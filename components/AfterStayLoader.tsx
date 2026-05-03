@@ -9,7 +9,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
-const APP_ICON = require('@/assets/icon/afterstay-icon.png');
+const APP_MARK = require('../assets/icon/afterstay-monochrome.png');
 
 type AfterStayLoaderProps = {
   message?: string;
@@ -82,7 +82,7 @@ export default function AfterStayLoader({ message, detail, progress, steps = [] 
   return (
     <View style={styles.container}>
       <Animated.View style={animStyle}>
-        <Image source={APP_ICON} style={styles.icon} />
+        <Image source={APP_MARK} style={styles.icon} resizeMode="contain" />
       </Animated.View>
       <Text style={styles.message}>{message ?? 'Loading AfterStay...'}</Text>
       {currentDetail ? <Text style={styles.detail}>{currentDetail}</Text> : null}
@@ -108,9 +108,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   icon: {
-    width: 96,
-    height: 96,
-    borderRadius: 24,
+    width: 104,
+    height: 104,
   },
   message: {
     color: '#f7efe3',

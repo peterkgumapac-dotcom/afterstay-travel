@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
-import { Image, ImageStyle, Pressable, StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ImageStyle, Pressable, StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
 import { Footprints, Car, Plus, Check, X as XIcon, Clock, Users } from 'lucide-react-native';
 
@@ -69,6 +70,7 @@ interface DiscoverPlaceCardProps {
 }
 
 const VOTE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b']
+const THUMB_FALLBACK = 'https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=800&q=80';
 
 export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   place,
@@ -90,6 +92,11 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
 }: DiscoverPlaceCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const [imageUri, setImageUri] = useState(place.img || THUMB_FALLBACK);
+
+  useEffect(() => {
+    setImageUri(place.img || THUMB_FALLBACK);
+  }, [place.img]);
 
   // Cap absurd distances (emulator GPS in wrong location)
   const validDistance = distanceKm > 0 && distanceKm < 50;
@@ -111,10 +118,15 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
       accessibilityLabel={`View details for ${place.n}`}
     >
       {/* Thumbnail */}
-      <Image
-        source={{ uri: place.img }}
+      <ExpoImage
+        source={{ uri: imageUri }}
         style={styles.thumb}
-        resizeMode="cover"
+        contentFit="cover"
+        cachePolicy="disk"
+        transition={160}
+        onError={() => {
+          if (imageUri !== THUMB_FALLBACK) setImageUri(THUMB_FALLBACK);
+        }}
       />
 
       {/* Info */}

@@ -25,8 +25,9 @@ const RECEIPT_SCAN_STEPS = [
   'Building expense details',
 ];
 
-function normalizeExpenseTarget(expenseType?: string): 'trip' | 'quick-trip' | 'standalone' | undefined {
-  if (expenseType === 'personal' || expenseType === 'standalone' || expenseType === 'daily-tracker') return 'standalone';
+function normalizeExpenseTarget(expenseType?: string): 'trip' | 'quick-trip' | 'standalone' | 'daily-tracker' | undefined {
+  if (expenseType === 'daily-tracker') return 'daily-tracker';
+  if (expenseType === 'personal' || expenseType === 'standalone') return 'standalone';
   if (expenseType === 'quick-trip') return 'quick-trip';
   if (expenseType === 'trip') return 'trip';
   return undefined;
@@ -63,6 +64,14 @@ export default function ScanReceiptScreen() {
         } satisfies GroupMember)));
         return;
       }
+      if (receiptTarget === 'quick-trip' && !quickTripId) {
+        setMembers([]);
+        return;
+      }
+      if (receiptTarget === 'daily-tracker') {
+        setMembers([]);
+        return;
+      }
       if (receiptTarget === 'standalone' && receiptPeople) {
         try {
           const names = JSON.parse(receiptPeople) as string[];
@@ -84,6 +93,11 @@ export default function ScanReceiptScreen() {
   }, [quickTripId, receiptPeople, receiptTarget]);
 
   const pickImage = async (source: 'camera' | 'gallery') => {
+    if (receiptTarget === 'quick-trip' && !quickTripId) {
+      setErrorMsg('Choose or create a Quick Trip before scanning this receipt.');
+      setPhase('error');
+      return;
+    }
     // Request permissions before launching
     if (source === 'camera') {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -137,7 +151,7 @@ export default function ScanReceiptScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (scanned.items.length > 0 && members.length >= 2) {
+      if (receiptTarget !== 'daily-tracker' && scanned.items.length > 0 && members.length >= 2) {
         // Show item review for assignment
         setScannedData(scanned);
         setPhase('review');
@@ -328,8 +342,11 @@ const getStyles = (colors: ThemeColors) =>
       borderRadius: radius.lg,
     },
     overlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(15, 13, 11, 0.88)',
       alignItems: 'center',
-      paddingTop: spacing.xl,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xl,
       gap: spacing.md,
     },
     scanningText: {
