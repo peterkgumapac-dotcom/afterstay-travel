@@ -550,7 +550,8 @@ export interface FollowState {
 export type ExpenseTarget =
   | { type: 'trip'; tripId?: string }
   | { type: 'quick-trip'; quickTripId: string }
-  | { type: 'standalone' };
+  | { type: 'standalone' }
+  | { type: 'daily-tracker' };
 
 export interface UnifiedExpenseHistoryItem {
   id: string;

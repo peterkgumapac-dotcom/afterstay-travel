@@ -26,11 +26,19 @@ import type { GroupMember } from '@/lib/types';
 
 type Phase = 'picking' | 'scanning' | 'review' | 'error';
 
+function normalizeExpenseTarget(expenseType?: string): 'trip' | 'quick-trip' | 'standalone' | undefined {
+  if (expenseType === 'personal' || expenseType === 'standalone' || expenseType === 'daily-tracker') return 'standalone';
+  if (expenseType === 'quick-trip') return 'quick-trip';
+  if (expenseType === 'trip') return 'trip';
+  return undefined;
+}
+
 export default function ScanReceiptScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const { expenseType } = useLocalSearchParams<{ expenseType?: string }>();
+  const receiptTarget = normalizeExpenseTarget(expenseType);
   const [phase, setPhase] = useState<Phase>('picking');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -124,7 +132,7 @@ export default function ScanReceiptScreen() {
             date: scanned.date,
             notes: itemLines,
             photoUri: asset.uri,
-            ...(expenseType ? { target: expenseType } : {}),
+            ...(receiptTarget ? { target: receiptTarget } : {}),
           },
         });
       }
@@ -211,7 +219,7 @@ export default function ScanReceiptScreen() {
               photoUri: imageUri ?? '',
               splitType: 'Custom',
               receiptSplits: JSON.stringify(splitAmounts),
-              ...(expenseType ? { target: expenseType } : {}),
+              ...(receiptTarget ? { target: receiptTarget } : {}),
             },
           });
         }}

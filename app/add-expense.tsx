@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { Briefcase, Camera, ChevronDown, NotebookPen, PenLine, PiggyBank, QrCode, ScanLine, Zap } from 'lucide-react-native';
+import { Briefcase, Camera, ChevronDown, NotebookPen, PenLine, QrCode, ScanLine, Zap } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -53,13 +53,12 @@ const CURRENCIES = ['PHP', 'USD', 'EUR', 'JPY'] as const;
 
 const SPLIT_TYPES: NonNullable<Expense['splitType']>[] = ['Equal', 'Custom', 'Individual'];
 
-type ExpenseType = 'trip' | 'quick-trip' | 'personal' | 'budgeting';
+type ExpenseType = 'trip' | 'quick-trip' | 'personal';
 
 const EXPENSE_TYPES: { id: ExpenseType; label: string; icon: any; desc: string }[] = [
   { id: 'trip', label: 'Trip', icon: Briefcase, desc: 'Active trip budget' },
   { id: 'quick-trip', label: 'Quick Trip', icon: Zap, desc: 'Outing or day trip' },
   { id: 'personal', label: 'Personal', icon: NotebookPen, desc: 'Just for you' },
-  { id: 'budgeting', label: 'Budgeting', icon: PiggyBank, desc: 'Planned expense' },
 ];
 
 export default function AddExpenseScreen() {
@@ -154,7 +153,7 @@ export default function AddExpenseScreen() {
   const splitPeople: { id: string; name: string }[] = (() => {
     if (expenseType === 'trip') return memberObjects.map(m => ({ id: m.id, name: m.name }));
     if (expenseType === 'quick-trip') return companions.map(c => ({ id: c.id, name: c.displayName }));
-    // Personal / budgeting — use ad-hoc names
+    // Personal expenses use ad-hoc names
     return adHocNames.map((n, i) => ({ id: `adhoc-${i}`, name: n }));
   })();
   const hasPeople = splitPeople.length > 1;
@@ -280,7 +279,7 @@ export default function AddExpenseScreen() {
           occurredAt: expenseDate,
           receiptPhotoUrl: photoUri || undefined,
         });
-      } else if (expenseType === 'personal' || expenseType === 'budgeting') {
+      } else if (expenseType === 'personal') {
         await addExpense({ ...expenseData, standalone: true });
       } else {
         const newExpense = await addExpense(expenseData);
@@ -474,8 +473,8 @@ export default function AddExpenseScreen() {
           </ScrollView>
         </View>
 
-        {/* Add people — for personal, quick-trip, or budgeting expenses (BEFORE split controls) */}
-        {(expenseType === 'personal' || expenseType === 'budgeting' || (expenseType === 'quick-trip' && companions.length === 0)) && (
+        {/* Add people — for personal or quick-trip expenses (BEFORE split controls) */}
+        {(expenseType === 'personal' || (expenseType === 'quick-trip' && companions.length === 0)) && (
           <View>
             <Text style={[styles.sectionLabel, { color: colors.text3 }]}>SPLIT WITH</Text>
             {adHocNames.map((name, i) => (

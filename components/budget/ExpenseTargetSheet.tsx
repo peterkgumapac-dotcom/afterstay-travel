@@ -14,6 +14,7 @@ import {
   ChevronRight,
   NotebookPen,
   Plus,
+  ReceiptText,
   Zap,
 } from 'lucide-react-native';
 
@@ -117,6 +118,22 @@ export default function ExpenseTargetSheet({
                 <View style={styles.optionText}>
                   <Text style={styles.optionLabel}>Just Log It</Text>
                   <Text style={styles.optionDesc}>Personal expense — not tied to any trip</Text>
+                </View>
+                <ChevronRight size={16} color={colors.text3} />
+              </TouchableOpacity>
+
+              {/* Everyday Spending */}
+              <TouchableOpacity
+                style={styles.optionRow}
+                activeOpacity={0.7}
+                onPress={() => handleSelect({ type: 'daily-tracker' })}
+              >
+                <View style={[styles.optionIcon, { backgroundColor: colors.green + '18' }]}>
+                  <ReceiptText size={20} color={colors.green} />
+                </View>
+                <View style={styles.optionText}>
+                  <Text style={styles.optionLabel}>Everyday Spending</Text>
+                  <Text style={styles.optionDesc}>Track daily spend outside a trip</Text>
                 </View>
                 <ChevronRight size={16} color={colors.text3} />
               </TouchableOpacity>

@@ -2,7 +2,7 @@
 // Structure: Track/Budget/Group pill → Overview/Fate tabs → status + budget card + categories + expenses + settle
 
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -83,6 +83,7 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type BudgetState = 'cruising' | 'low' | 'over';
 type BudgetMode = 'budget' | 'group';
 type TabId = 'expenses' | 'savings' | 'settle' | 'fate';
+type MoneySummary = { today: number; week: number; month: number; currency: string };
 
 // ── Category config ──────────────────────────────────────────────────
 
@@ -109,6 +110,47 @@ function smartTitle(e: Expense): string {
   if (desc.length > 0) desc = desc.charAt(0).toUpperCase() + desc.slice(1);
   if (desc.length > 45) desc = desc.slice(0, 42) + '\u2026';
   return desc || e.description.slice(0, 35);
+}
+
+function dateKey(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function summarizeMoneyByPeriod(items: { amount: number; currency?: string; date: string }[]): MoneySummary {
+  const now = new Date();
+  const today = dateKey(now);
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - 6);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const summary: MoneySummary = { today: 0, week: 0, month: 0, currency: items[0]?.currency ?? 'PHP' };
+
+  for (const item of items) {
+    const itemDate = safeParse(item.date);
+    if (dateKey(itemDate) === today) summary.today += item.amount;
+    if (itemDate >= weekStart) summary.week += item.amount;
+    if (itemDate >= monthStart) summary.month += item.amount;
+  }
+
+  return summary;
+}
+
+function SummaryStrip({ summary, styles }: { summary: MoneySummary; styles: ReturnType<typeof getStyles> }) {
+  return (
+    <View style={styles.summaryStrip}>
+      {[
+        ['Today', summary.today],
+        ['This Week', summary.week],
+        ['This Month', summary.month],
+      ].map(([label, amount]) => (
+        <View key={label as string} style={styles.summaryTile}>
+          <Text style={styles.summaryLabel}>{label as string}</Text>
+          <Text style={styles.summaryAmount} numberOfLines={1} adjustsFontSizeToFit>
+            {formatCurrency(amount as number, summary.currency)}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 // ── Main screen ──────────────────────────────────────────────────────
@@ -270,6 +312,11 @@ function BudgetScreen() {
           if (mems.length >= 2) setMode('group');
           else setMode('budget');
         }
+      } else {
+        setExpenses([]);
+        setExpenseSummary({ total: 0, byCategory: {}, count: 0 });
+        setMembers([]);
+        setMode('budget');
       }
     } catch (e) { if (__DEV__) console.warn('[BudgetScreen] load budget data failed:', e); } finally {
       setRefreshing(false);
@@ -278,6 +325,17 @@ function BudgetScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load(true);
+    }, [load]),
+  );
+
+  useEffect(() => {
+    if (members.length < 2 && mode === 'group') setMode('budget');
+    if (members.length < 2 && tab === 'fate') setTab('expenses');
+  }, [members.length, mode, tab]);
 
   // ── Payment QRs (Supabase-synced) ──
   useEffect(() => {
@@ -335,6 +393,39 @@ function BudgetScreen() {
   ) + 1) : 1, [trip?.startDate, trip?.endDate]);
   const perDay = total > 0 ? Math.round(total / days) : 0;
   const bState: BudgetState = total <= 0 ? 'cruising' : remaining / total > 0.5 ? 'cruising' : remaining / total > 0.2 ? 'low' : 'over';
+  const tripStart = trip ? safeParse(trip.startDate) : new Date();
+  const tripEnd = trip ? safeParse(trip.endDate) : new Date();
+  const todayDate = new Date();
+  const elapsedDays = trip ? Math.min(days, Math.max(1, Math.floor((todayDate.getTime() - tripStart.getTime()) / MS_PER_DAY) + 1)) : 1;
+  const remainingTripDays = trip ? Math.max(1, Math.ceil((tripEnd.getTime() - todayDate.getTime()) / MS_PER_DAY) + 1) : 1;
+  const actualPerDay = spent > 0 ? Math.round(spent / elapsedDays) : 0;
+  const dailyAllowance = total > 0 ? Math.max(0, Math.round(remaining / remainingTripDays)) : 0;
+  const projectedSpend = trip && actualPerDay > 0 ? actualPerDay * days : spent;
+  const topCategory = useMemo(() => {
+    const entries = Object.entries(expenseSummary.byCategory).filter(([, amount]) => amount > 0);
+    if (entries.length === 0 || spent <= 0) return null;
+    const [name, amount] = entries.sort(([, a], [, b]) => b - a)[0];
+    return { name, amount, pct: Math.round((amount / spent) * 100) };
+  }, [expenseSummary.byCategory, spent]);
+  const budgetInsights = useMemo(() => {
+    if (!trip) return [] as string[];
+    const insights: string[] = [];
+    if (total > 0) {
+      insights.push(`You can spend ${formatCurrency(dailyAllowance, trip.costCurrency ?? 'PHP')}/day for the rest of this trip.`);
+      const delta = Math.round(projectedSpend - total);
+      if (spent > 0) {
+        insights.push(delta > 0
+          ? `At this pace, you'll finish ${formatCurrency(delta, trip.costCurrency ?? 'PHP')} over budget.`
+          : `At this pace, you'll finish ${formatCurrency(Math.abs(delta), trip.costCurrency ?? 'PHP')} under budget.`);
+      }
+    } else if (spent > 0) {
+      insights.push(`You're averaging ${formatCurrency(actualPerDay, trip.costCurrency ?? 'PHP')}/day so far.`);
+    }
+    if (topCategory) {
+      insights.push(`${topCategory.name} is your biggest category at ${topCategory.pct}% of spending.`);
+    }
+    return insights.slice(0, 3);
+  }, [actualPerDay, dailyAllowance, projectedSpend, spent, topCategory, total, trip]);
 
   const spendingByPerson = useMemo(() => {
     const map: Record<string, number> = {};
@@ -406,25 +497,33 @@ function BudgetScreen() {
   const [quickTrips, setQuickTrips] = useState<QuickTrip[]>([]);
   const [targetSheetVisible, setTargetSheetVisible] = useState(false);
 
-  useEffect(() => {
+  const loadHistory = useCallback(async () => {
     if (testModeRef.current) {
-      // In test mode, clear history so new user sees empty state
       setHistoryExpenses([]);
       setQuickTrips([]);
       setHistoryLoaded(true);
       return;
     }
+    const [exps, qts] = await Promise.all([
+      getUnifiedExpenseHistory(30).catch(() => [] as UnifiedExpenseHistoryItem[]),
+      getQuickTrips().catch(() => [] as QuickTrip[]),
+    ]);
+    setHistoryExpenses(exps);
+    setQuickTrips(qts);
+    setHistoryLoaded(true);
+  }, []);
+
+  useEffect(() => {
     if (!trip && !historyLoaded) {
-      Promise.all([
-        getUnifiedExpenseHistory(30).catch(() => [] as UnifiedExpenseHistoryItem[]),
-        getQuickTrips().catch(() => [] as QuickTrip[]),
-      ]).then(([exps, qts]) => {
-        setHistoryExpenses(exps);
-        setQuickTrips(qts);
-        setHistoryLoaded(true);
-      });
+      loadHistory();
     }
-  }, [trip, historyLoaded]);
+  }, [historyLoaded, loadHistory, trip]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!trip) loadHistory();
+    }, [loadHistory, trip]),
+  );
 
   useEffect(() => {
     if (!targetSheetVisible || quickTrips.length > 0 || testModeRef.current) return;
@@ -434,6 +533,11 @@ function BudgetScreen() {
   const historyTotal = useMemo(
     () => historyExpenses.reduce((sum, e) => sum + e.amount, 0),
     [historyExpenses],
+  );
+  const historySummary = useMemo(() => summarizeMoneyByPeriod(historyExpenses), [historyExpenses]);
+  const activeTripSummary = useMemo(
+    () => summarizeMoneyByPeriod(expenses.map(e => ({ amount: e.amount, currency: e.currency, date: e.date }))),
+    [expenses],
   );
 
   const handleSelectTarget = (target: ExpenseTarget) => {
@@ -451,6 +555,9 @@ function BudgetScreen() {
         break;
       case 'standalone':
         router.push('/add-expense?target=standalone' as never);
+        break;
+      case 'daily-tracker':
+        setShowDailySheet(true);
         break;
     }
   };
@@ -512,12 +619,25 @@ function BudgetScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.section}>
+            <View style={styles.moneyHero}>
+              <Text style={styles.eyebrow}>Personal Spending</Text>
+              <Text style={styles.moneyHeroAmount}>{formatCurrency(historyTotal, historySummary.currency)}</Text>
+              <Text style={styles.moneyHeroSub}>
+                {hasAnyExpenses
+                  ? `${historyExpenses.length} recent expense${historyExpenses.length !== 1 ? 's' : ''} across trips, quick trips, and personal logs`
+                  : 'Start with a receipt, quick expense, or weekly spending target.'}
+              </Text>
+            </View>
+            <SummaryStrip summary={historySummary} styles={styles} />
+          </View>
+
           {/* ── SAVINGS TAB (no-trip) ── */}
           {tab === 'savings' && (
             <View style={{ gap: 16 }}>
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
-                onScanReceipt={() => router.push('/scan-receipt' as never)}
+                onScanReceipt={() => router.push('/scan-receipt?expenseType=standalone' as never)}
               />
               <SavingsGoalCard
                 goal={savingsGoal}
@@ -589,6 +709,14 @@ function BudgetScreen() {
           )}
 
           {/* ── EXPENSES TAB (no-trip) ── */}
+          {tab === 'expenses' && (
+            <View style={{ paddingHorizontal: 16, paddingTop: hasAnyExpenses ? 0 : 8, paddingBottom: 16 }}>
+              <DailyTrackerCard
+                onAddExpense={() => setShowDailySheet(true)}
+                onScanReceipt={() => router.push('/scan-receipt?expenseType=standalone' as never)}
+              />
+            </View>
+          )}
           {tab === 'expenses' && hasAnyExpenses ? (
             <>
 
@@ -637,7 +765,7 @@ function BudgetScreen() {
                   alignItems: 'center',
                   gap: 12,
                 }}
-                onPress={() => router.push('/scan-receipt' as never)}
+                onPress={() => router.push('/scan-receipt?expenseType=standalone' as never)}
                 activeOpacity={0.7}
               >
                 <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
@@ -652,12 +780,6 @@ function BudgetScreen() {
                   </Text>
                 </View>
               </TouchableOpacity>
-
-              {/* Daily Tracker */}
-              <DailyTrackerCard
-                onAddExpense={() => setShowDailySheet(true)}
-                onScanReceipt={() => router.push('/scan-receipt' as never)}
-              />
 
               {/* Grouped purchases — per source with sub-groups by name/date */}
               <View style={styles.historyList}>
@@ -785,12 +907,12 @@ function BudgetScreen() {
               <Wallet size={32} color={colors.text3} strokeWidth={1.5} />
               <Text style={styles.historyEmptyTitle}>No expenses yet</Text>
               <Text style={styles.historyEmptySub}>
-                Track spending across trips or scan receipts{'\n'}to log expenses with AI
+                Start with a receipt, quick expense,{'\n'}or weekly spending target.
               </Text>
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                 <TouchableOpacity
                   style={styles.historyCtaBtn}
-                  onPress={() => router.push('/scan-receipt' as never)}
+                  onPress={() => router.push('/scan-receipt?expenseType=standalone' as never)}
                   activeOpacity={0.7}
                 >
                   <Text style={styles.historyCtaText}>Scan Receipt</Text>
@@ -1041,7 +1163,7 @@ function BudgetScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Budget</Text>
-          <Text style={styles.subtitle}>{trip?.destination ?? 'Trip'} · {days} days</Text>
+          <Text style={styles.subtitle}>{trip?.destination ?? 'Trip'} · {formatDatePHT(trip?.startDate ?? '')} - {formatDatePHT(trip?.endDate ?? '')}</Text>
         </View>
         <TouchableOpacity
           style={styles.addBtn}
@@ -1053,24 +1175,26 @@ function BudgetScreen() {
       </View>
 
       {/* Mode pill — Budget / Group */}
-      <View style={styles.modePadding}>
-        <View style={styles.segControl}>
-          {(['budget', 'group'] as const).map(m => {
-            const active = mode === m;
-            return (
-              <Pressable
-                key={m}
-                style={[styles.segBtn, active && styles.segBtnActive]}
-                onPress={() => handleModeChange(m)}
-              >
-                <Text style={[styles.segText, active && styles.segTextActive]}>
-                  {m === 'budget' ? 'Budget' : 'Group'}
-                </Text>
-              </Pressable>
-            );
-          })}
+      {members.length >= 2 && (
+        <View style={styles.modePadding}>
+          <View style={styles.segControl}>
+            {(['budget', 'group'] as const).map(m => {
+              const active = mode === m;
+              return (
+                <Pressable
+                  key={m}
+                  style={[styles.segBtn, active && styles.segBtnActive]}
+                  onPress={() => handleModeChange(m)}
+                >
+                  <Text style={[styles.segText, active && styles.segTextActive]}>
+                    {m === 'budget' ? 'Budget' : 'Group'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Tab row */}
       <View style={styles.tabRow}>
@@ -1078,7 +1202,7 @@ function BudgetScreen() {
           { id: 'expenses' as const, label: 'Expenses' },
           { id: 'savings' as const, label: 'Savings' },
           { id: 'settle' as const, label: 'Settle Up' },
-          { id: 'fate' as const, label: 'Who Pays?' },
+          ...(members.length >= 2 ? [{ id: 'fate' as const, label: 'Who Pays?' }] : []),
         ]).map(t => (
           <TouchableOpacity
             key={t.id}
@@ -1101,6 +1225,19 @@ function BudgetScreen() {
       >
         {tab === 'expenses' && (
           <>
+            <View style={styles.section}>
+              <View style={styles.moneyHero}>
+                <Text style={styles.eyebrow}>{total > 0 ? 'Trip Budget' : 'Trip Spending'}</Text>
+                <Text style={styles.moneyHeroAmount}>{formatCurrency(spent, trip?.costCurrency ?? 'PHP')}</Text>
+                <Text style={styles.moneyHeroSub}>
+                  {total > 0
+                    ? `${remaining < 0 ? 'Over by' : 'Left'} ${formatCurrency(Math.abs(remaining), trip?.costCurrency ?? 'PHP')} · ${formatCurrency(dailyAllowance, trip?.costCurrency ?? 'PHP')}/day left`
+                    : `${expenses.length} expense${expenses.length !== 1 ? 's' : ''} · ${formatCurrency(actualPerDay, trip?.costCurrency ?? 'PHP')}/day average`}
+                </Text>
+              </View>
+              <SummaryStrip summary={{ ...activeTripSummary, currency: trip?.costCurrency ?? activeTripSummary.currency }} styles={styles} />
+            </View>
+
             {/* Status banner */}
             {total > 0 && (
               <View style={styles.section}>
@@ -1147,6 +1284,20 @@ function BudgetScreen() {
                       <Text style={styles.progressText}>Spent <Text style={styles.progressBold}>{formatCurrency(spent, 'PHP')}</Text></Text>
                       <Text style={styles.progressText}>{remaining < 0 ? 'Over' : 'Left'} <Text style={[styles.progressBold, { color: remaining < 0 ? colors.red : colors.accent }]}>{formatCurrency(Math.abs(remaining), 'PHP')}</Text></Text>
                     </View>
+                    <View style={styles.budgetStatsRow}>
+                      <View style={styles.budgetStat}>
+                        <Text style={styles.budgetStatLabel}>Daily left</Text>
+                        <Text style={styles.budgetStatValue}>{formatCurrency(dailyAllowance, trip?.costCurrency ?? 'PHP')}</Text>
+                      </View>
+                      <View style={styles.budgetStat}>
+                        <Text style={styles.budgetStatLabel}>Avg/day</Text>
+                        <Text style={styles.budgetStatValue}>{formatCurrency(actualPerDay, trip?.costCurrency ?? 'PHP')}</Text>
+                      </View>
+                      <View style={styles.budgetStat}>
+                        <Text style={styles.budgetStatLabel}>Days left</Text>
+                        <Text style={styles.budgetStatValue}>{remainingTripDays}</Text>
+                      </View>
+                    </View>
                   </>
                 )}
 
@@ -1164,6 +1315,24 @@ function BudgetScreen() {
                   </View>
                 )}
               </View>
+            </View>
+
+            {budgetInsights.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.insightCard}>
+                  <Text style={styles.eyebrow}>Smart Budget</Text>
+                  {budgetInsights.map((insight) => (
+                    <Text key={insight} style={styles.insightText}>{insight}</Text>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            <View style={styles.section}>
+              <DailyTrackerCard
+                onAddExpense={() => setShowDailySheet(true)}
+                onScanReceipt={() => router.push('/scan-receipt' as never)}
+              />
             </View>
 
             {/* Payment QR shortcuts */}
@@ -1274,6 +1443,11 @@ function BudgetScreen() {
             {spent > 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Where it's going</Text>
+                {topCategory && (
+                  <Text style={[styles.categoryNudge, topCategory.pct >= 50 && { color: colors.red }]}>
+                    {topCategory.name} is {topCategory.pct}% of your spend{topCategory.pct >= 50 ? ' - worth a quick check.' : '.'}
+                  </Text>
+                )}
                 <View style={styles.catList}>
                   {CATEGORIES.map(cat => {
                     const amount = expenseSummary.byCategory[cat.matchKey] ?? 0;
@@ -1329,7 +1503,7 @@ function BudgetScreen() {
                   <Wallet size={28} color={colors.text3} strokeWidth={1.5} />
                   <Text style={[styles.sectionTitle, { marginTop: 10 }]}>No expenses yet</Text>
                   <Text style={{ fontSize: 13, color: colors.text2, textAlign: 'center', marginTop: 4 }}>
-                    Tap + Add to log your first expense
+                    Set a trip limit or scan your first receipt.
                   </Text>
                 </View>
               </View>
@@ -1414,13 +1588,22 @@ function BudgetScreen() {
         )}
 
         {/* ── SETTLE UP TAB ── */}
-        {tab === 'settle' && trip && (
+        {tab === 'settle' && trip && members.length >= 2 && (
           <GroupBalanceCard
             trip={trip}
             expenses={expenses}
             members={members}
             onBalancesChange={setBalances}
           />
+        )}
+        {tab === 'settle' && trip && members.length < 2 && (
+          <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
+            <Users size={28} color={colors.text3} strokeWidth={1.5} />
+            <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>No shared expenses yet</Text>
+            <Text style={{ fontSize: 13, color: colors.text3, textAlign: 'center' }}>
+              Add a shared expense to unlock Settle Up.
+            </Text>
+          </View>
         )}
         {tab === 'settle' && !trip && (
           <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
@@ -1578,6 +1761,13 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: '600', color: c.text },
   seeAllText: { fontSize: 12, fontWeight: '600', color: c.accent },
   eyebrow: { fontSize: 10, fontWeight: '600', letterSpacing: 1.6, textTransform: 'uppercase', color: c.text3 },
+  moneyHero: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 18, padding: 16, gap: 4 },
+  moneyHeroAmount: { fontSize: 30, fontWeight: '600', color: c.text, letterSpacing: -0.5 },
+  moneyHeroSub: { fontSize: 12, color: c.text3, lineHeight: 17 },
+  summaryStrip: { flexDirection: 'row', gap: 8 },
+  summaryTile: { flex: 1, minHeight: 64, backgroundColor: c.card2, borderWidth: 1, borderColor: c.border, borderRadius: 14, padding: 10, justifyContent: 'center' },
+  summaryLabel: { fontSize: 10, fontWeight: '700', color: c.text3, textTransform: 'uppercase', letterSpacing: 0.8 },
+  summaryAmount: { fontSize: 14, fontWeight: '700', color: c.text, marginTop: 4, letterSpacing: -0.2 },
 
   // Budget card
   budgetCard: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 22, padding: 18 },
@@ -1591,6 +1781,12 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   progressLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   progressText: { fontSize: 12, color: c.text3 },
   progressBold: { fontWeight: '600', color: c.text, letterSpacing: -0.3 },
+  budgetStatsRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  budgetStat: { flex: 1, backgroundColor: c.card2, borderRadius: 12, padding: 10 },
+  budgetStatLabel: { fontSize: 9.5, fontWeight: '700', color: c.text3, textTransform: 'uppercase', letterSpacing: 0.7 },
+  budgetStatValue: { fontSize: 13, fontWeight: '700', color: c.text, marginTop: 3 },
+  insightCard: { backgroundColor: c.accentBg, borderWidth: 1, borderColor: c.accentBorder, borderRadius: 16, padding: 14, gap: 8 },
+  insightText: { fontSize: 12.5, color: c.text2, lineHeight: 18 },
   lodgingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border },
   lodgingCheck: { width: 24, height: 24, borderRadius: 6, backgroundColor: c.accentBg, borderWidth: 1, borderColor: c.accentBorder, alignItems: 'center', justifyContent: 'center' },
   lodgingTitle: { fontSize: 12, fontWeight: '600', color: c.text },
@@ -1614,6 +1810,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
 
   // Categories
   catList: { gap: 8 },
+  categoryNudge: { fontSize: 12, color: c.text3, marginTop: -2, marginBottom: 2 },
   catRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 14 },
   catIcon: { width: 34, height: 34, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   catHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, gap: 8 },

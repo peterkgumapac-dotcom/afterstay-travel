@@ -136,7 +136,7 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt }: DailyTrackerCa
     <View style={[s.card, enabled && s.cardOn]}>
       {/* Header */}
       <View style={s.row}>
-        <Text style={s.title}>DAILY TRACKER</Text>
+        <Text style={s.title}>EVERYDAY SPENDING</Text>
         <View style={s.headerRight}>
           {enabled && (
             <TouchableOpacity onPress={() => setShowSettings(!showSettings)} style={s.gearBtn} activeOpacity={0.7}>
@@ -147,7 +147,7 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt }: DailyTrackerCa
         </View>
       </View>
 
-      {!enabled && <Text style={s.offText}>Track your everyday spending</Text>}
+      {!enabled && <Text style={s.offText}>Track everyday spending between trips</Text>}
 
       {enabled && (
         <>
