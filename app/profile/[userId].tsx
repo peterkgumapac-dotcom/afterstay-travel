@@ -43,6 +43,8 @@ import { GroupHeader } from '@/components/trip/GroupHeader';
 import { TripCollage } from '@/components/trip/TripCollage';
 import TopTripCard from '@/components/profile/TopTripCard';
 import MemoriesGrid from '@/components/profile/MemoriesGrid';
+import { MomentLightbox } from '@/components/moments/MomentLightbox';
+import type { MomentDisplay, PeopleMap } from '@/components/moments/types';
 import CountriesVisited from '@/components/profile/CountriesVisited';
 import ProfileCustomizeSheet from '@/components/profile/ProfileCustomizeSheet';
 import ProfilePager from '@/components/profile/ProfilePager';
@@ -83,6 +85,7 @@ export default function CompanionProfileScreen() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [customizeVisible, setCustomizeVisible] = useState(false);
+  const [selectedMomentIndex, setSelectedMomentIndex] = useState<number | null>(null);
 
   const isSelf = user?.id === userId;
 
@@ -240,6 +243,26 @@ export default function CompanionProfileScreen() {
     explicitCoverUrl: profile.coverPhotoUrl,
     moments: sharedMoments,
   });
+  const profileMomentAuthorKey = (profile.fullName || 'T').charAt(0).toUpperCase();
+  const profilePeople: PeopleMap = {
+    [profileMomentAuthorKey]: {
+      name: profile.fullName || 'Traveler',
+      color: colors.accent,
+      avatar: profile.avatarUrl,
+    },
+  };
+  const profileMomentDisplays: MomentDisplay[] = sharedMoments.map((moment) => ({
+    ...moment,
+    authorKey: profileMomentAuthorKey,
+    authorAvatar: profile.avatarUrl,
+    isMine: isSelf || moment.userId === user?.id,
+    favoriteCount: moment.likesCount,
+    commentCount: moment.commentsCount,
+  }));
+  const handleMomentPress = (_moment: Moment, index: number) => {
+    Haptics.selectionAsync();
+    setSelectedMomentIndex(index);
+  };
 
   return (
     <SafeAreaView style={s.screen} edges={['top']}>
@@ -428,7 +451,7 @@ export default function CompanionProfileScreen() {
                 />
 
                 {privacy.showSharedMoments && sharedMoments.length > 0 ? (
-                  <MemoriesGrid moments={sharedMoments} />
+                  <MemoriesGrid moments={sharedMoments} onMomentPress={handleMomentPress} />
                 ) : (
                   <View style={[s.emptyCard, { marginHorizontal: 16 }]}>
                     <Text style={s.emptyCardText}>
@@ -499,6 +522,16 @@ export default function CompanionProfileScreen() {
         profile={ownProfile}
         onClose={() => setCustomizeVisible(false)}
         onSaved={load}
+      />
+      <MomentLightbox
+        moment={selectedMomentIndex == null ? null : profileMomentDisplays[selectedMomentIndex] ?? null}
+        index={selectedMomentIndex ?? 0}
+        total={profileMomentDisplays.length}
+        onClose={() => setSelectedMomentIndex(null)}
+        onPrev={() => setSelectedMomentIndex((index) => index == null ? 0 : Math.max(0, index - 1))}
+        onNext={() => setSelectedMomentIndex((index) => index == null ? 0 : Math.min(profileMomentDisplays.length - 1, index + 1))}
+        people={profilePeople}
+        allMoments={profileMomentDisplays}
       />
     </SafeAreaView>
   );
