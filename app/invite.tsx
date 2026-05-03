@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
+import { buildInviteWebLink, buildTripInviteMessage } from '@/lib/inviteLinks';
 import { createInviteCode, getActiveTrip, getInvites, getOrCreateInviteCode, type TripInvite } from '@/lib/supabase';
 
 export default function InviteScreen() {
@@ -55,10 +56,9 @@ export default function InviteScreen() {
   // Auto-generate code on mount
   useEffect(() => { generateCode(); }, [generateCode]);
 
-  const inviteLink = code ? `afterstay://join-trip?code=${code}` : '';
-  const webInviteLink = code ? `https://afterstay.travel/join/${code}` : '';
+  const inviteLink = code ? buildInviteWebLink(code) : '';
   const shareMessage = code
-    ? `Join my trip to ${tripName} on AfterStay!\n\nInvite code: ${code}\n\nOpen AfterStay and tap Join a trip, or use this link: ${webInviteLink}`
+    ? buildTripInviteMessage({ code, tripName, senderPrefix: 'my' })
     : '';
 
   const handleShare = async () => {
@@ -68,14 +68,7 @@ export default function InviteScreen() {
 
   const handleMessenger = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const encoded = encodeURIComponent(webInviteLink);
-    const messengerUrl = `fb-messenger://share?link=${encoded}`;
-    const canOpen = await Linking.canOpenURL(messengerUrl);
-    if (canOpen) {
-      await Linking.openURL(messengerUrl);
-    } else {
-      await Share.share({ message: shareMessage });
-    }
+    await Share.share({ message: shareMessage });
   };
 
   const handleEmail = async () => {
@@ -90,9 +83,9 @@ export default function InviteScreen() {
     const subject = encodeURIComponent(`Join my trip to ${tripName} on AfterStay`);
     const body = encodeURIComponent(
       `Hey!\n\nI'd love for you to join my trip to ${tripName} on AfterStay.\n\n` +
-      `Use this invite code: ${code}\n\n` +
-      `Or tap this link to join: ${webInviteLink}\n\n` +
-      `If the app is installed, open: ${inviteLink}\n\n` +
+      `Tap to join or download the app: ${inviteLink}\n\n` +
+      `Invite code: ${code}\n\n` +
+      `If the link does not open the app, install AfterStay and enter the invite code above.\n\n` +
       `See you there!`
     );
     const mailUrl = `mailto:${recipient ? encodeURIComponent(recipient) : ''}?subject=${subject}&body=${body}`;
@@ -110,9 +103,9 @@ export default function InviteScreen() {
 
   const handleCopy = async () => {
     if (!code) return;
-    await Clipboard.setStringAsync(code);
+    await Clipboard.setStringAsync(shareMessage);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied!', `Invite code ${code} copied to clipboard`);
+    Alert.alert('Copied!', 'Invite link and code copied to clipboard.');
   };
 
   return (
@@ -152,12 +145,13 @@ export default function InviteScreen() {
             {/* QR code */}
             <View style={styles.qrWrap}>
               <QRCode
-                value={webInviteLink}
+                value={inviteLink}
                 size={160}
                 backgroundColor="transparent"
                 color={colors.text}
               />
               <Text style={styles.qrHint}>Scan to open the invite</Text>
+              <Text style={styles.qrLink} numberOfLines={1}>{inviteLink}</Text>
             </View>
 
             <View style={styles.emailCard}>
@@ -174,7 +168,7 @@ export default function InviteScreen() {
                 style={styles.emailInput}
               />
               <Text style={styles.emailHint}>
-                Optional. Leave blank to choose a contact in your email app.
+                Optional. Leave blank to choose someone in your email app.
               </Text>
             </View>
 
@@ -182,7 +176,7 @@ export default function InviteScreen() {
             <View style={styles.actions}>
               <Pressable style={styles.actionBtn} onPress={handleShare}>
                 <Send size={18} color={colors.accent} strokeWidth={1.8} />
-                <Text style={styles.actionText}>Share via SMS / WhatsApp</Text>
+                <Text style={styles.actionText}>Share link</Text>
               </Pressable>
 
               <Pressable style={styles.actionBtn} onPress={handleMessenger}>
@@ -197,7 +191,7 @@ export default function InviteScreen() {
 
               <Pressable style={styles.actionBtn} onPress={handleCopy}>
                 <Copy size={18} color={colors.accent} strokeWidth={1.8} />
-                <Text style={styles.actionText}>Copy invite code</Text>
+                <Text style={styles.actionText}>Copy invite link</Text>
               </Pressable>
             </View>
 
@@ -318,6 +312,12 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       color: colors.text3,
       fontWeight: '600',
       marginTop: spacing.xs,
+    },
+    qrLink: {
+      maxWidth: 250,
+      fontSize: 11,
+      color: colors.text2,
+      fontWeight: '600',
     },
 
     // Email invite

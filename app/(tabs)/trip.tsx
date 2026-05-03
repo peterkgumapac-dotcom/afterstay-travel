@@ -84,6 +84,7 @@ import {
   getExpenseSummaryPromise,
 } from '@/hooks/useTabTrips';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
+import { buildTripInviteMessage } from '@/lib/inviteLinks';
 import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
@@ -1290,13 +1291,11 @@ function TripScreen() {
       if (!trip) return;
       try {
         const inviteCode = await getOrCreateInviteCode(trip.id);
-        const webLink = `https://afterstay.travel/join/${inviteCode}`;
-        const deepLink = `afterstay://join-trip?code=${inviteCode}`;
-        const msg =
-          `Join our trip to ${trip.destination || trip.name} on AfterStay.\n\n` +
-          `Invite code: ${inviteCode}\n\n` +
-          `Tap to join: ${webLink}\n\n` +
-          `If the app is installed, open: ${deepLink}`;
+        const msg = buildTripInviteMessage({
+          code: inviteCode,
+          tripName: trip.destination || trip.name,
+          senderPrefix: 'our',
+        });
         const target = member.phone
           ? `sms:${encodeURIComponent(member.phone)}?body=${encodeURIComponent(msg)}`
           : member.email

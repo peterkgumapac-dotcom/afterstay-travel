@@ -17,6 +17,7 @@ import {
 import FormField from '@/components/FormField';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
+import { buildTripInviteMessage } from '@/lib/inviteLinks';
 import { addGroupMember, getActiveTrip, getOrCreateInviteCode } from '@/lib/supabase';
 
 export default function AddMemberScreen() {
@@ -33,13 +34,11 @@ export default function AddMemberScreen() {
     const trip = await getActiveTrip();
     if (!trip) return Alert.alert('No active trip', 'Create or select a trip before inviting members.');
     const inviteCode = await getOrCreateInviteCode(trip.id);
-    const webLink = `https://afterstay.travel/join/${inviteCode}`;
-    const deepLink = `afterstay://join-trip?code=${inviteCode}`;
-    const message =
-      `Join my trip to ${trip.destination || trip.name} on AfterStay.\n\n` +
-      `Invite code: ${inviteCode}\n\n` +
-      `Tap to join: ${webLink}\n\n` +
-      `If the app is installed, open: ${deepLink}`;
+    const message = buildTripInviteMessage({
+      code: inviteCode,
+      tripName: trip.destination || trip.name,
+      senderPrefix: 'my',
+    });
 
     try {
       if (targetPhone) {
