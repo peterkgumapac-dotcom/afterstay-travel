@@ -426,6 +426,11 @@ function BudgetScreen() {
     }
   }, [trip, historyLoaded]);
 
+  useEffect(() => {
+    if (!targetSheetVisible || quickTrips.length > 0 || testModeRef.current) return;
+    getQuickTrips().then(setQuickTrips).catch(() => {});
+  }, [quickTrips.length, targetSheetVisible]);
+
   const historyTotal = useMemo(
     () => historyExpenses.reduce((sum, e) => sum + e.amount, 0),
     [historyExpenses],
@@ -1040,7 +1045,7 @@ function BudgetScreen() {
         </View>
         <TouchableOpacity
           style={styles.addBtn}
-          onPress={() => router.push('/add-expense' as never)}
+          onPress={() => setTargetSheetVisible(true)}
           activeOpacity={0.7}
         >
           <Text style={styles.addBtnText}>+ Add</Text>
@@ -1452,6 +1457,13 @@ function BudgetScreen() {
       <SavingsGoalSetup visible={showSavingsSetup} onClose={() => setShowSavingsSetup(false)} onSave={savingsGoal ? handleUpdateGoal : handleCreateGoal} existing={savingsGoal} />
       <SavingsEntrySheet visible={showSavingsEntry} onClose={() => setShowSavingsEntry(false)} onSave={handleLogSavings} currency={savingsGoal?.targetCurrency ?? 'PHP'} />
       <SavingsMilestoneModal visible={milestoneToShow !== null} milestone={milestoneToShow} currentAmount={savingsGoal?.currentAmount ?? 0} currency={savingsGoal?.targetCurrency ?? 'PHP'} onClose={() => setMilestoneToShow(null)} />
+      <ExpenseTargetSheet
+        visible={targetSheetVisible}
+        onClose={() => setTargetSheetVisible(false)}
+        hasActiveTrip={!!trip}
+        quickTrips={quickTrips}
+        onSelectTarget={handleSelectTarget}
+      />
 
       {/* Expense detail sheet */}
       <ExpenseDetailSheet
