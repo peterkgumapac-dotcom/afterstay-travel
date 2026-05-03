@@ -61,7 +61,7 @@ export default function AfterStayLoader({ message, detail, progress, steps = [] 
       ),
       -1,
     );
-  }, []);
+  }, [opacity, scale, shimmer]);
 
   useEffect(() => {
     if (steps.length <= 1) return undefined;

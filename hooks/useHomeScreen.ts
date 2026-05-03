@@ -143,7 +143,7 @@ export function useHomeScreen() {
   const [destPhotos, setDestPhotos] = useState<string[]>([]);
   const heroLocation = useMemo(
     () => resolveHeroLocation(_rawTrip, flights),
-    [_rawTrip?.id, _rawTrip?.destination, _rawTrip?.address, _rawTrip?.accommodation, flights],
+    [_rawTrip, flights],
   );
   useEffect(() => {
     if (parsedHotelPhotos.length > 0) {
@@ -287,14 +287,14 @@ export function useHomeScreen() {
       if (!silent) setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   // ── Toggle-off recovery ──
   const prevTestMode = useRef(isTestMode);
   useEffect(() => {
     if (prevTestMode.current && !isTestMode) load({ force: true });
     prevTestMode.current = isTestMode;
-  }, [isTestMode]);
+  }, [isTestMode, load]);
 
   // ── Cache-first init ──
   useEffect(() => {
@@ -361,7 +361,7 @@ export function useHomeScreen() {
     setShowLoader(true);
     const t = setTimeout(() => setLoaderDone(true), 900);
     return () => clearTimeout(t);
-  }, []);
+  }, [loading]);
 
   const refresh = useCallback(() => {
     if (testModeRef.current) {
@@ -438,10 +438,22 @@ export function useHomeScreen() {
   }, [_rawTrip, dailyTrackerOn, load, user?.id]);
 
   // Override flights/moments/members/savedPlaces in test mode too
-  const effectiveFlights = isTestMode ? (mockData?.flights ?? []) as Flight[] : flights;
-  const effectiveMoments = isTestMode ? (mockData?.moments ?? []) as Moment[] : moments;
-  const effectiveMembers = isTestMode ? (mockData?.members ?? []) as GroupMember[] : members;
-  const effectiveSavedPlaces = isTestMode ? (mockData?.places ?? []) as Place[] : savedPlaces;
+  const effectiveFlights = useMemo(
+    () => (isTestMode ? (mockData?.flights ?? []) as Flight[] : flights),
+    [flights, isTestMode, mockData?.flights],
+  );
+  const effectiveMoments = useMemo(
+    () => (isTestMode ? (mockData?.moments ?? []) as Moment[] : moments),
+    [isTestMode, mockData?.moments, moments],
+  );
+  const effectiveMembers = useMemo(
+    () => (isTestMode ? (mockData?.members ?? []) as GroupMember[] : members),
+    [isTestMode, members, mockData?.members],
+  );
+  const effectiveSavedPlaces = useMemo(
+    () => (isTestMode ? (mockData?.places ?? []) as Place[] : savedPlaces),
+    [isTestMode, mockData?.places, savedPlaces],
+  );
   const phaseFlight = useMemo(
     () => selectUserOutboundFlight(effectiveFlights, effectiveMembers, user?.id),
     [effectiveFlights, effectiveMembers, user?.id],
@@ -494,7 +506,7 @@ export function useHomeScreen() {
       clearInterval(timer);
       sub.remove();
     };
-  }, [_rawTrip?.id, isTestMode, recomputeCurrentPhase]);
+  }, [_rawTrip, isTestMode, recomputeCurrentPhase]);
 
   return {
     // Core (test-mode-aware)

@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  Image,
   Linking,
   Modal,
   Platform,
@@ -24,9 +22,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 import { ArrowLeft, Archive, CheckCircle, Map, MoreHorizontal, Pencil, Settings, Share2, Trash2, X } from 'lucide-react-native';
-import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
@@ -38,31 +34,25 @@ import { PETER_DATA, AARON_DATA } from '@/components/profile/TravelConstellation
 import EmptyState from '@/components/shared/EmptyState';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 import { OverviewTab } from '@/components/trip/OverviewTab';
-import { mapFlightToDisplay, type FlightDisplayData } from '@/components/trip/tripConstants';
+import { mapFlightToDisplay } from '@/components/trip/tripConstants';
 import { SummaryTab } from '@/components/trip/SummaryTab';
 import { EssentialsTab } from '@/components/trip/EssentialsTab';
 import FileViewerSheet from '@/components/trip/FileViewerSheet';
 import { useTheme } from '@/constants/ThemeContext';
-import { colors as themeColors } from '@/constants/theme';
 import {
   addPackingItem,
   deletePackingItem,
-  getActiveTrip,
   getExpenseSummary,
   getFlights,
   getGroupMembers,
   getPackingList,
   getTripFiles,
-  getLifetimeStats,
   getHighlights,
-  getAllUserTrips,
-  getPastTrips,
   togglePacked,
   updatePackingItem,
   updateMemberEmail,
   updateMemberPhone,
   updateMemberPhoto,
-  updateTripProperty,
   getOrCreateInviteCode,
   removeGroupMember,
   finishTrip,
@@ -86,11 +76,10 @@ import {
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { buildTripInviteMessage } from '@/lib/inviteLinks';
 import { canManageTripMembers } from '@/lib/tripPermissions';
-import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useAuth } from '@/lib/auth';
-import { formatDatePHT, formatTimePHT, safeParse } from '@/lib/utils';
+import { formatDatePHT, safeParse } from '@/lib/utils';
 import type {
   Flight,
   GroupMember,
@@ -115,9 +104,8 @@ type TabKey = (typeof TAB_KEYS)[number];
 // ---------- CONSTANTS ----------
 
 const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
-const FILE_COLORS = ['#a64d1e', '#c66a36', '#b8892b', '#d9a441', '#8a5a2b'];
 
-// FlightDisplayData + mapFlightToDisplay imported from tripConstants (safe null guards)
+// mapFlightToDisplay imported from tripConstants (safe null guards)
 
 interface PackingGroup {
   [category: string]: { t: string; by: string; d: boolean; id: string }[];
@@ -211,441 +199,6 @@ function PulsingDot({ color }: { color: string }) {
   );
 }
 
-// ---------- GROUP HEADER ----------
-
-function GroupHeader({
-  kicker,
-  title,
-  action,
-  colors,
-}: {
-  kicker?: string;
-  title: string;
-  action?: React.ReactNode;
-  colors: ThemeColors;
-}) {
-  return (
-    <View style={groupHeaderStyles.container}>
-      <View>
-        {kicker ? (
-          <Text
-            style={[groupHeaderStyles.kicker, { color: colors.text3 }]}
-          >
-            {kicker}
-          </Text>
-        ) : null}
-        <Text style={[groupHeaderStyles.title, { color: colors.text }]}>
-          {title}
-        </Text>
-      </View>
-      {action}
-    </View>
-  );
-}
-
-const groupHeaderStyles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 10,
-  },
-  kicker: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '500',
-    letterSpacing: -0.6,
-    marginTop: 3,
-    lineHeight: 23,
-  },
-});
-
-// ---------- MINI FLIGHT CARD ----------
-
-function getTerminalInfo(airline: string, iata: string): string | null {
-  const a = airline.toLowerCase();
-  if (iata === 'MNL') {
-    if (a.includes('cebu pacific')) return 'Terminal 3 (NAIA)';
-    if (a.includes('airasia')) return 'Terminal 3 (NAIA)';
-    if (a.includes('philippine airlines') || a.includes('pal')) return 'Terminal 2 (NAIA)';
-  }
-  if (iata === 'MPH') return 'Godofredo P. Ramos Airport';
-  return null;
-}
-
-function MiniFlightCard({
-  f,
-  colors,
-}: {
-  f: FlightDisplayData;
-  colors: ThemeColors;
-}) {
-  const styles = miniFlightStyles(colors);
-  const depTerminal = getTerminalInfo(f.airline, f.from);
-  const arrTerminal = getTerminalInfo(f.airline, f.to);
-
-  const copyRef = () => {
-    Clipboard.setStringAsync(f.ref);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Copied', `Booking ref ${f.ref} copied to clipboard`);
-  };
-
-  return (
-    <View style={styles.card}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={[styles.logo, { backgroundColor: f.logo }]}>
-            <Text style={styles.logoText}>{f.code}</Text>
-          </View>
-          <View>
-            <Text style={styles.dirLabel}>{f.dir}</Text>
-            <Text style={styles.flightInfo}>
-              {f.airline} {'\u00B7'} {f.code} {f.num}
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity onPress={copyRef} activeOpacity={0.7}>
-          <Text style={styles.refText}>Ref {f.ref} {'\u2398'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Route */}
-      <View style={styles.routeRow}>
-        <View>
-          <Text style={styles.iataCode}>{f.from}</Text>
-          <Text style={styles.timeText}>{f.dep}</Text>
-          {depTerminal && <Text style={styles.terminalText}>{depTerminal}</Text>}
-        </View>
-        <View style={{ alignItems: 'center' }}>
-          <Text style={styles.durText}>{f.dur}</Text>
-          <Text style={[styles.terminalText, { marginTop: 2 }]}>{f.date}</Text>
-        </View>
-        <View style={styles.routeRight}>
-          <Text style={styles.iataCode}>{f.to}</Text>
-          <Text style={styles.timeText}>{f.arr}</Text>
-          {arrTerminal && <Text style={styles.terminalText}>{arrTerminal}</Text>}
-        </View>
-      </View>
-    </View>
-  );
-}
-
-const miniFlightStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    card: {
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 22,
-      padding: 14,
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 10,
-    },
-    headerLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    logo: {
-      width: 32,
-      height: 32,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    logoText: {
-      color: colors.ink,
-      fontSize: 9,
-      fontWeight: '600',
-    },
-    dirLabel: {
-      fontSize: 10,
-      color: colors.text3,
-      fontWeight: '600',
-      letterSpacing: 0.8,
-      textTransform: 'uppercase',
-    },
-    flightInfo: {
-      fontSize: 12,
-      color: colors.text,
-      fontWeight: '600',
-      marginTop: 1,
-    },
-    refText: {
-      fontSize: 10,
-      color: colors.text3,
-      letterSpacing: 0.2,
-    },
-    routeRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    iataCode: {
-      fontSize: 18,
-      fontWeight: '500',
-      color: colors.text,
-      letterSpacing: -0.54,
-    },
-    timeText: {
-      fontSize: 10,
-      color: colors.text3,
-      marginTop: 1,
-    },
-    durText: {
-      fontSize: 9,
-      color: colors.text3,
-    },
-    routeRight: {
-      alignItems: 'flex-end',
-    },
-    terminalText: {
-      fontSize: 9,
-      color: colors.accent,
-      marginTop: 2,
-      fontWeight: '500',
-    },
-  });
-
-// ---------- FULL FLIGHT CARD ----------
-
-function FullFlightCard({
-  f,
-  colors,
-}: {
-  f: FlightDisplayData;
-  colors: ThemeColors;
-}) {
-  const styles = fullFlightStyles(colors);
-
-  return (
-    <View style={styles.card}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={[styles.logo, { backgroundColor: f.logo }]}>
-            <Text style={styles.logoText}>{f.code}</Text>
-          </View>
-          <View>
-            <Text style={styles.dirLabel}>{f.dir}</Text>
-            <Text style={styles.airlineName}>{f.airline}</Text>
-            <Text style={styles.flightRef}>
-              {f.code} {f.num} {'\u00B7'} Ref {f.ref}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.statusChip}>
-          <View style={styles.statusDot} />
-          <Text style={styles.statusText}>{f.status}</Text>
-        </View>
-      </View>
-
-      {/* Route */}
-      <View style={styles.routeRow}>
-        <View>
-          <Text style={styles.iataCode}>{f.from}</Text>
-          <Text style={styles.depTime}>{f.dep}</Text>
-          <Text style={styles.cityDate}>
-            {f.fromCity} {'\u00B7'} {f.date}
-          </Text>
-        </View>
-        <View style={styles.planeCol}>
-          <Svg
-            width={20}
-            height={20}
-            viewBox="0 0 24 24"
-            fill="none"
-          >
-            <Path
-              d="M17.8 19.2L16.5 17.2 14 16l-2 3-2-3-2.5 1.2-1.3 2L2 17l1.5-2L8 13l-2-8 2 1 4 6 4-6 2-1-2 8 4.5 2L22 17z"
-              stroke={colors.text3}
-              strokeWidth={1.6}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </Svg>
-          <Text style={styles.durText}>{f.dur}</Text>
-        </View>
-        <View style={styles.routeRight}>
-          <Text style={styles.iataCode}>{f.to}</Text>
-          <Text style={styles.arrTime}>{f.arr}</Text>
-          <Text style={styles.cityDate}>
-            {f.toCity} {'\u00B7'} {f.date}
-          </Text>
-        </View>
-      </View>
-
-      {/* Baggage */}
-      <View style={styles.baggageSection}>
-        <Text style={styles.baggageLabel}>BAGGAGE</Text>
-        <View style={styles.baggageList}>
-          {f.bags.map((b) => (
-            <View key={b.who} style={styles.baggageRow}>
-              <Text style={styles.baggageWho}>{b.who}</Text>
-              <Text style={styles.baggageBag}>{b.bag}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </View>
-  );
-}
-
-const fullFlightStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    card: {
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 22,
-      padding: 18,
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 16,
-    },
-    headerLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-    },
-    logo: {
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    logoText: {
-      color: colors.ink,
-      fontSize: 11,
-      fontWeight: '600',
-    },
-    dirLabel: {
-      fontSize: 10,
-      color: colors.text3,
-      fontWeight: '600',
-      letterSpacing: 1,
-      textTransform: 'uppercase',
-    },
-    airlineName: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.text,
-      marginTop: 1,
-    },
-    flightRef: {
-      fontSize: 11,
-      color: colors.text3,
-      marginTop: 1,
-    },
-    statusChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingVertical: 5,
-      paddingHorizontal: 10,
-      borderRadius: 999,
-      backgroundColor: colors.accentBg,
-      borderWidth: 1,
-      borderColor: colors.accentBorder,
-    },
-    statusDot: {
-      width: 5,
-      height: 5,
-      borderRadius: 99,
-      backgroundColor: colors.accent,
-    },
-    statusText: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: colors.accent,
-    },
-    routeRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 16,
-    },
-    iataCode: {
-      fontSize: 26,
-      fontWeight: '500',
-      color: colors.text,
-      letterSpacing: -0.78,
-    },
-    depTime: {
-      fontSize: 12,
-      color: colors.text2,
-      fontWeight: '600',
-      marginTop: 3,
-    },
-    arrTime: {
-      fontSize: 12,
-      color: colors.text2,
-      fontWeight: '600',
-      marginTop: 3,
-    },
-    cityDate: {
-      fontSize: 10,
-      color: colors.text3,
-    },
-    planeCol: {
-      alignItems: 'center',
-    },
-    durText: {
-      fontSize: 10,
-      fontWeight: '600',
-      color: colors.text3,
-      marginTop: 4,
-    },
-    routeRight: {
-      alignItems: 'flex-end',
-    },
-    baggageSection: {
-      paddingTop: 14,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    baggageLabel: {
-      fontSize: 10,
-      fontWeight: '600',
-      letterSpacing: 1.6,
-      textTransform: 'uppercase',
-      color: colors.text3,
-      marginBottom: 8,
-    },
-    baggageList: {
-      gap: 4,
-    },
-    baggageRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    baggageWho: {
-      fontSize: 12,
-      color: colors.text2,
-    },
-    baggageBag: {
-      fontSize: 12,
-      color: colors.text,
-      fontWeight: '600',
-    },
-  });
-
 // ---------- MAIN SCREEN ----------
 
 export default function TripScreenWithBoundary() {
@@ -738,14 +291,6 @@ function TripScreen() {
     setRefreshing(false);
   }, [isTestMode, mockData]);
 
-  const prevTestModeTrip = useRef(isTestMode);
-  useEffect(() => {
-    if (prevTestModeTrip.current && !isTestMode) {
-      load({ force: true });
-    }
-    prevTestModeTrip.current = isTestMode;
-  }, [isTestMode]);
-
   const load = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
     if (testModeRef.current) { setLoading(false); setRefreshing(false); return; }
     const { force = false, silent = false } = opts ?? {};
@@ -811,7 +356,15 @@ function TripScreen() {
       if (!silent) setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.id]);
+
+  const prevTestModeTrip = useRef(isTestMode);
+  useEffect(() => {
+    if (prevTestModeTrip.current && !isTestMode) {
+      load({ force: true });
+    }
+    prevTestModeTrip.current = isTestMode;
+  }, [isTestMode, load]);
 
   const refreshEssentialsData = useCallback(async (tripId: string) => {
     const [pk, tfResult] = await Promise.all([
@@ -1425,11 +978,6 @@ function TripScreen() {
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-  };
-
-  const handleSync = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    load();
   };
 
   const handleAddPackingItem = async () => {

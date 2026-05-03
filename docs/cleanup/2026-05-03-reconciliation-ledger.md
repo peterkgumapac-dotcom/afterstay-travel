@@ -206,6 +206,21 @@ Latest clean branch rerun after backend verification, 2026-05-03:
 - `npx expo export --platform ios --output-dir /tmp/afterstay-reconciliation-ios-latest`
   - Result: exported iOS JS bundle successfully.
 
+Cleanup-only rerun after trip/Home warning reduction, 2026-05-03:
+
+- Removed unused, unrendered trip-screen helper components and imports from `app/(tabs)/trip.tsx`.
+- Tightened hook dependency arrays in `components/AfterStayLoader.tsx` and `hooks/useHomeScreen.ts`.
+- `npx eslint 'components/AfterStayLoader.tsx' 'hooks/useHomeScreen.ts' 'app/(tabs)/trip.tsx' --ext .ts,.tsx`
+  - Result: exit 0, no warnings for those files.
+- `npx tsc --noEmit --pretty false`
+  - Result: exit 0.
+- `npx jest --runInBand`
+  - Result: 5 suites passed, 33 tests passed.
+- `npx expo export --platform android --output-dir /tmp/afterstay-cleanup-android`
+  - Result: exported Android JS bundle successfully.
+- `git diff --check`
+  - Result: exit 0.
+
 Earlier clean branch verification:
 
 - `npx tsc --noEmit --pretty false`
