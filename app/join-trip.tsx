@@ -19,7 +19,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import FormField from '@/components/FormField';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { joinTripByCode, addFlight, getFlights, updateMyTripMemberPreferences } from '@/lib/supabase';
+import { joinTripByCode, addFlight, getFlights, getGroupMembers, updateMyTripMemberPreferences } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { getPrimaryBookerFlights } from '@/lib/flightSharing';
 import { completeOnboarding } from '@/lib/onboardingProgress';
@@ -54,7 +54,11 @@ export default function JoinTripScreen() {
   const [seatNumber, setSeatNumber] = useState('');
   const [sharesStay, setSharesStay] = useState(true);
   const [savingFlight, setSavingFlight] = useState(false);
-  const primaryBookerFlights = useMemo(() => getPrimaryBookerFlights(groupFlights), [groupFlights]);
+  const [primaryBookerName, setPrimaryBookerName] = useState<string | null>(null);
+  const primaryBookerFlights = useMemo(
+    () => getPrimaryBookerFlights(groupFlights, primaryBookerName),
+    [groupFlights, primaryBookerName],
+  );
 
   const buildTravelNotes = (flightNote?: string) => {
     const stayNote = sharesStay ? 'Same stay confirmed' : 'Own stay';
@@ -78,7 +82,12 @@ export default function JoinTripScreen() {
       const result = await joinTripByCode(code.trim(), name.trim());
       await clearPendingInviteCode(code.trim()).catch(() => {});
       setTripInfo(result.trip);
-      const flights = await getFlights(result.tripId).catch(() => [] as Flight[]);
+      const [flights, members] = await Promise.all([
+        getFlights(result.tripId).catch(() => [] as Flight[]),
+        getGroupMembers(result.tripId).catch(() => []),
+      ]);
+      const primary = members.find((member) => member.role === 'Primary');
+      setPrimaryBookerName(primary?.name ?? null);
       setGroupFlights(flights);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase('welcome');

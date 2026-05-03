@@ -27,4 +27,13 @@ describe('getPrimaryBookerFlights', () => {
 
     expect(getPrimaryBookerFlights(flights)).toEqual([baseFlight]);
   });
+
+  it('offers primary booker scanned flights even when passenger text is present', () => {
+    const primaryFlight: Flight = {
+      ...baseFlight,
+      passenger: 'Peter Gumapac',
+    };
+
+    expect(getPrimaryBookerFlights([primaryFlight], 'Peter')).toEqual([primaryFlight]);
+  });
 });

@@ -972,131 +972,34 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
 
   const { data: rpcAuth } = await supabase.auth.getUser();
   const rpcUserId = rpcAuth?.user?.id;
-  if (rpcUserId) {
-    const { data: rpcTrip, error: rpcError } = await supabase.rpc('join_trip_by_invite_code', {
-      p_code: normalizedCode,
-      p_name: cleanedName,
-    });
-    const isMissingRpc =
-      rpcError?.code === 'PGRST202' ||
-      /join_trip_by_invite_code|could not find function|schema cache/i.test(rpcError?.message ?? '');
+  if (!rpcUserId) throw new Error('Please sign in before joining a trip.');
 
-    if (!rpcError && rpcTrip) {
-      const trip = mapTrip(rpcTrip as Record<string, unknown>);
-      notifyMemberJoined(trip.id, cleanedName, rpcUserId).catch(() => {});
-      cachedTripId = trip.id;
-      cachedTrip = undefined;
-      cachedTripUserId = rpcUserId;
-      invalidateTripCache(trip.id);
-      await clearTripLocalData();
-      return { tripId: trip.id, trip };
-    }
+  const { data: rpcTrip, error: rpcError } = await supabase.rpc('join_trip_by_invite_code', {
+    p_code: normalizedCode,
+    p_name: cleanedName,
+  });
+  const isMissingRpc =
+    rpcError?.code === 'PGRST202' ||
+    /join_trip_by_invite_code|could not find function|schema cache/i.test(rpcError?.message ?? '');
 
-    if (rpcError && !isMissingRpc) {
-      throw new Error(rpcError.message || 'Could not join trip');
+  if (rpcError) {
+    if (isMissingRpc) {
+      throw new Error('Trip invite service is updating. Please reopen the app and try the invite code again.');
     }
+    throw new Error(rpcError.message || 'Could not join trip');
   }
 
-  // Look up the invite
-  const { data: invite, error: lookupError } = await supabase
-    .from('trip_invites')
-    .select('trip_id, expires_at, used')
-    .eq('code', normalizedCode)
-    .single();
+  if (!rpcTrip) throw new Error('Invalid invite code');
 
-  if (lookupError || !invite) throw new Error('Invalid invite code');
-  if (new Date(invite.expires_at) < new Date()) throw new Error('This invite has expired');
-
-  // Get trip details
-  const tripId = invite.trip_id as string;
-  const { data: tripData, error: tripError } = await supabase.from(T.trips).select('*').eq('id', tripId).single();
-  if (tripError || !tripData) throw new Error('Trip not found');
-
-  // Add user as trip member with user_id
-  const { data: authData } = await supabase.auth.getUser();
-  const userId = authData?.user?.id;
-  const userEmail = authData?.user?.email?.trim().toLowerCase();
-
-  if (userId) {
-    const { data: existingMember } = await supabase
-      .from(T.groupMembers)
-      .select('id, user_id')
-      .eq('trip_id', tripId)
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (existingMember?.id) {
-      await supabase
-        .from(T.groupMembers)
-        .update({ name: cleanedName })
-        .eq('id', existingMember.id)
-        .then(() => {});
-    } else {
-      let placeholderMember: { id: string } | null = null;
-      if (userEmail) {
-        const { data } = await supabase
-          .from(T.groupMembers)
-          .select('id')
-          .eq('trip_id', tripId)
-          .is('user_id', null)
-          .ilike('email', userEmail)
-          .maybeSingle();
-        placeholderMember = data as { id: string } | null;
-      }
-      if (placeholderMember?.id) {
-        const { error: linkError } = await supabase
-          .from(T.groupMembers)
-          .update({ name: cleanedName, user_id: userId })
-          .eq('id', placeholderMember.id);
-        if (linkError) {
-          // Some deployed RLS policies do not allow invited users to claim an
-          // organizer-created placeholder row because the old row has no user_id.
-          // Fall back to inserting a real linked member so the invite still works.
-          const { error: memberError } = await supabase.from(T.groupMembers).insert({
-            trip_id: tripId,
-            name: cleanedName,
-            role: 'Member',
-            user_id: userId,
-            ...(userEmail ? { email: userEmail } : {}),
-          });
-          if (memberError) throw new Error(`joinTrip: ${memberError.message}`);
-        }
-      } else {
-        const { error: memberError } = await supabase.from(T.groupMembers).insert({
-          trip_id: tripId,
-          name: cleanedName,
-          role: 'Member',
-          user_id: userId,
-          ...(userEmail ? { email: userEmail } : {}),
-        });
-        if (memberError) throw new Error(`joinTrip: ${memberError.message}`);
-      }
-    }
-  } else {
-    const { error: memberError } = await supabase.from(T.groupMembers).insert({
-      trip_id: tripId,
-      name: cleanedName,
-      role: 'Member',
-    });
-    if (memberError) throw new Error(`joinTrip: ${memberError.message}`);
-  }
-
-  // Mark as used for organizer history only. Codes remain reusable until expiry
-  // so one group invite can be shared with multiple travelers.
-  await supabase.from('trip_invites').update({ used: true }).eq('code', normalizedCode);
-
-  // Notify existing members (best-effort, non-blocking)
-  if (userId) {
-    notifyMemberJoined(tripId, cleanedName, userId).catch(() => {});
-  }
-
-  cachedTripId = tripId;
+  const trip = mapTrip(rpcTrip as Record<string, unknown>);
+  notifyMemberJoined(trip.id, cleanedName, rpcUserId).catch(() => {});
+  cachedTripId = trip.id;
   cachedTrip = undefined;
-  cachedTripUserId = userId;
-  invalidateTripCache(tripId);
+  cachedTripUserId = rpcUserId;
+  invalidateTripCache(trip.id);
   await clearTripLocalData();
 
-  return { tripId, trip: mapTrip(tripData) };
+  return { tripId: trip.id, trip };
 }
 
 export interface TripInvite {

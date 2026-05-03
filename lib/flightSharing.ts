@@ -26,12 +26,25 @@ function hasShareableFlightDetails(flight: Flight): boolean {
   );
 }
 
-export function getPrimaryBookerFlights(flights: Flight[]): Flight[] {
+function passengerBelongsToPrimary(passenger: unknown, primaryBookerName?: string | null): boolean {
+  const passengerName = normalizePart(passenger);
+  if (!passengerName) return true;
+
+  const primaryName = normalizePart(primaryBookerName);
+  if (!primaryName) return false;
+  if (passengerName === primaryName) return true;
+
+  const passengerTokens = passengerName.split(/\s+/).filter((part) => part.length > 1);
+  const primaryTokens = primaryName.split(/\s+/).filter((part) => part.length > 1);
+  return passengerTokens.some((part) => primaryTokens.includes(part));
+}
+
+export function getPrimaryBookerFlights(flights: Flight[], primaryBookerName?: string | null): Flight[] {
   const seen = new Set<string>();
   const unique: Flight[] = [];
 
   for (const flight of flights) {
-    if (normalizePart(flight.passenger)) continue;
+    if (!passengerBelongsToPrimary(flight.passenger, primaryBookerName)) continue;
     if (!hasShareableFlightDetails(flight)) continue;
     const key = flightShareKey(flight);
     if (seen.has(key)) continue;

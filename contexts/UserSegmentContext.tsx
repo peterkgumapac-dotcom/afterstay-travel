@@ -10,6 +10,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ProfileCompletionSheet } from '@/components/shared/ProfileCompletionSheet';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { usePathname } from 'expo-router';
 
 import { useAuth } from '@/lib/auth';
 import { cacheGetForUser, cacheSetForUser } from '@/lib/cache';
@@ -142,6 +143,7 @@ async function getProfileWithRetry(userId: string): Promise<Profile | null> {
 
 export function UserSegmentProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const pathname = usePathname();
   const [state, setState] = useState<Omit<UserSegmentState, 'refresh'>>(defaultState);
   const [freshProfileChecked, setFreshProfileChecked] = useState(false);
   const mounted = useRef(true);
@@ -298,10 +300,15 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
     refresh: load,
   };
 
+  const deferHandleGate =
+    pathname?.startsWith('/auth') ||
+    pathname?.startsWith('/join-trip') ||
+    pathname?.startsWith('/onboarding');
   const needsHandle = freshProfileChecked
     && !state.loading
     && !!user
     && !state.isTestMode
+    && !deferHandleGate
     && !!state.profile
     && !state.profile.handle;
   const displayName = state.profile?.fullName ?? user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? '';

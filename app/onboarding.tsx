@@ -50,6 +50,7 @@ import {
   addFlight,
   createTrip,
   getFlights,
+  getGroupMembers,
   getTripById,
   joinTripByCode,
   replaceTripFlights,
@@ -1198,11 +1199,15 @@ function InvitedFlow({
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
   const [bookingRef, setBookingRef] = useState('');
   const [seatNumber, setSeatNumber] = useState('');
+  const [primaryBookerName, setPrimaryBookerName] = useState<string | null>(null);
   const { user } = useAuth();
   const name = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? '';
 
   const AIRLINES = ['Philippine Airlines', 'Cebu Pacific', 'AirAsia', 'Other'];
-  const primaryBookerFlights = useMemo(() => getPrimaryBookerFlights(groupFlights), [groupFlights]);
+  const primaryBookerFlights = useMemo(
+    () => getPrimaryBookerFlights(groupFlights, primaryBookerName),
+    [groupFlights, primaryBookerName],
+  );
   const selectedGroupFlight = primaryBookerFlights.find((f) => f.id === selectedFlightId) ?? primaryBookerFlights[0];
 
   useEffect(() => {
@@ -1211,14 +1216,17 @@ function InvitedFlow({
       const progress = await getOnboardingProgress(user?.id);
       if (cancelled) return;
       if (progress?.stage === 'invited_joined_needs_details' && progress.tripId) {
-        const [trip, flights] = await Promise.all([
+        const [trip, flights, members] = await Promise.all([
           getTripById(progress.tripId),
           getFlights(progress.tripId).catch(() => [] as Flight[]),
+          getGroupMembers(progress.tripId).catch(() => []),
         ]);
         if (cancelled || !trip) return;
-        const primaryFlights = getPrimaryBookerFlights(flights);
+        const primary = members.find((member) => member.role === 'Primary');
+        const primaryFlights = getPrimaryBookerFlights(flights, primary?.name);
         setTripInfo(trip);
-        setGroupFlights(primaryFlights);
+        setPrimaryBookerName(primary?.name ?? null);
+        setGroupFlights(flights);
         setSelectedFlightId(primaryFlights[0]?.id ?? null);
         if (primaryFlights.length > 0) setFlightMode('same');
         setStep(1);
@@ -1238,9 +1246,14 @@ function InvitedFlow({
       const result = await joinTripByCode(code.trim(), name);
       await clearPendingInviteCode(code.trim()).catch(() => {});
       setTripInfo(result.trip);
-      const flights = await getFlights(result.tripId).catch(() => [] as Flight[]);
-      const primaryFlights = getPrimaryBookerFlights(flights);
-      setGroupFlights(primaryFlights);
+      const [flights, members] = await Promise.all([
+        getFlights(result.tripId).catch(() => [] as Flight[]),
+        getGroupMembers(result.tripId).catch(() => []),
+      ]);
+      const primary = members.find((member) => member.role === 'Primary');
+      const primaryFlights = getPrimaryBookerFlights(flights, primary?.name);
+      setPrimaryBookerName(primary?.name ?? null);
+      setGroupFlights(flights);
       setSelectedFlightId(primaryFlights[0]?.id ?? null);
       if (primaryFlights.length > 0) setFlightMode('same');
       await setOnboardingProgress(
