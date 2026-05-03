@@ -151,7 +151,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const router = useRouter();
   const s = useMemo(() => getStyles(colors), [colors]);
 
-  const loadRef = useRef<((silent?: boolean) => Promise<void>) | null>(null);
+  const loadRef = useRef<((silent?: boolean, forceRefresh?: boolean) => Promise<void>) | null>(null);
   const [rawMoments, setRawMoments] = useState<Moment[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -323,7 +323,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       setDismissedIds((prev) => { const next = new Set(prev); next.delete(moment.id); return next; });
     } else if (action === 'save-to-mine') {
       saveGroupPhotoToPrivate(moment.id)
-        .then(() => { loadRef.current?.(true); })
+        .then(() => { loadRef.current?.(true, true); })
         .catch((err) => { if (__DEV__) console.warn('[Moments] save-to-mine failed:', err); });
     }
   }, [handleToggleVisibility, handleSetVisibility, handlePublishMoment]);
@@ -406,7 +406,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   }, [curationDay]);
 
   // Fetch moments + group members + favorites
-  const load = useCallback(async (silent = false) => {
+  const load = useCallback(async (silent = false, forceRefresh = false) => {
     try {
       if (!silent) setLoading(true);
 
@@ -436,8 +436,8 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       }
 
       const [moments, groupMembers, favs] = await Promise.all([
-        withTimeout(getMomentsPromise(tripId ?? '', silent), [] as Moment[]),
-        withTimeout(getGroupMembersPromise(tripId ?? '', silent), [] as GroupMember[]),
+        withTimeout(getMomentsPromise(tripId ?? '', forceRefresh), [] as Moment[]),
+        withTimeout(getGroupMembersPromise(tripId ?? '', forceRefresh), [] as GroupMember[]),
         withTimeout(getMomentFavorites(tripId), {} as MomentFavoriteMap),
       ]);
       setRawMoments(moments);
@@ -486,7 +486,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     const cached = tripId ? getMomentsCached(tripId) : undefined;
     if (cached !== undefined) {
       setLoading(false);
-      load(true);
+      load(true, false);
     } else {
       load();
     }
@@ -494,10 +494,10 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   // Refresh when screen comes back into focus (e.g. after add-moment, new-album)
   const isFocused = useIsFocused();
-  const prevFocused = useRef(false);
+  const prevFocused = useRef(isFocused);
   useEffect(() => {
     if (isFocused && !prevFocused.current) {
-      load(true); // background refresh — no loading spinner
+      load(true, false); // background refresh uses tab cache TTL
     }
     prevFocused.current = isFocused;
   }, [isFocused, load]);
@@ -742,7 +742,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshing}
-                    onRefresh={() => { setRefreshing(true); load(); }}
+                    onRefresh={() => { setRefreshing(true); load(true, true); }}
                     tintColor={colors.accentLt}
                   />
                 }

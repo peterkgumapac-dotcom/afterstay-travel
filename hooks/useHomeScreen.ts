@@ -60,6 +60,7 @@ function destinationPhotoCacheKey(destination: string) {
 
 const HOME_REQUEST_TIMEOUT_MS = 10000;
 const HOME_SLOW_REQUEST_TIMEOUT_MS = 15000;
+const HOME_PERSISTED_SEED_TTL_MS = 5 * 60 * 1000;
 
 function splitTripsByLifecycle(allTripsData: Trip[]) {
   return {
@@ -395,7 +396,9 @@ export function useHomeScreen() {
     let cancelled = false;
     (async () => {
       const memoryTrip = getHomeActiveTripCached();
-      const persistedTrip = memoryTrip === undefined ? await cacheGet<Trip | null>('trip:active', 0) : undefined;
+      const persistedTrip = memoryTrip === undefined
+        ? await cacheGet<Trip | null>('trip:active', HOME_PERSISTED_SEED_TTL_MS)
+        : undefined;
       const contextTrip = segmentActiveTrip ?? null;
       const ct = memoryTrip !== undefined ? memoryTrip : (persistedTrip !== undefined ? persistedTrip : contextTrip);
       const hasTripSeed = ct !== undefined && ct !== null;
@@ -414,7 +417,10 @@ export function useHomeScreen() {
       }
       const id = ct?.id;
       if (id) {
-        const cf = getHomeFlightsCached(id) ?? await cacheGet<Flight[]>(`flights:${id}`, 0); if (!cancelled && cf) setFlights(cf);
+        const cf =
+          getHomeFlightsCached(id) ??
+          (await cacheGet<Flight[]>(`flights:${id}`, HOME_PERSISTED_SEED_TTL_MS));
+        if (!cancelled && cf) setFlights(cf);
         const cm = getHomeMomentsCached(id); if (cm) setMoments(cm);
         const cmem = getHomeMembersCached(id); if (cmem) setMembers(cmem);
         const cp = getHomePlacesCached(id); if (cp) setSavedPlaces(cp);

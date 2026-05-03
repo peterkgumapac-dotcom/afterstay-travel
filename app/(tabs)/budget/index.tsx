@@ -34,7 +34,6 @@ import {
   deleteExpense,
   getActiveTrip,
   getExpenses,
-  getExpenseSummary,
   getGroupMembers,
   getPaymentQrs,
   getUserPaymentQrs,
@@ -143,6 +142,16 @@ function SummaryStrip({ summary, styles }: { summary: MoneySummary; styles: Retu
   );
 }
 
+function summarizeExpenses(expenses: Expense[]): { total: number; byCategory: Record<string, number>; count: number } {
+  const byCategory: Record<string, number> = {};
+  const total = expenses.reduce((sum, expense) => {
+    const category = expense.category || 'Other';
+    byCategory[category] = (byCategory[category] ?? 0) + expense.amount;
+    return sum + expense.amount;
+  }, 0);
+  return { total, byCategory, count: expenses.length };
+}
+
 export default function BudgetScreenWithBoundary() {
   return (
     <TabErrorBoundary name="Budget">
@@ -166,6 +175,7 @@ function BudgetScreen() {
   const modeInit = useRef(false);
   const didInitialBudgetLoad = useRef(false);
   const lastBudgetFocusRefreshAt = useRef(0);
+  const historyLoadingRef = useRef(false);
   const [tab, setTab] = useState<TabId>('expenses');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [budgetLoading, setBudgetLoading] = useState(true);
@@ -276,13 +286,12 @@ function BudgetScreen() {
       const t = await getActiveTrip(force);
       setTrip(t);
       if (t) {
-        const [exps, summary, mems] = await Promise.all([
+        const [exps, mems] = await Promise.all([
           getExpenses(t.id).catch(() => [] as Expense[]),
-          getExpenseSummary(t.id).catch(() => ({ total: 0, byCategory: {}, count: 0 })),
           getGroupMembers(t.id).catch(() => [] as GroupMember[]),
         ]);
         setExpenses(exps);
-        setExpenseSummary(summary);
+        setExpenseSummary(summarizeExpenses(exps));
         setMembers(mems);
         // Auto-detect mode only on first load
         if (!modeInit.current) {
@@ -486,31 +495,38 @@ function BudgetScreen() {
   const [historyFilter, setHistoryFilter] = useState<ExpenseHistoryFilter>('travel');
 
   const loadHistory = useCallback(async () => {
+    if (historyLoadingRef.current) return;
+    historyLoadingRef.current = true;
     if (testModeRef.current) {
       setHistoryExpenses([]);
       setQuickTrips([]);
       setHistoryLoaded(true);
+      historyLoadingRef.current = false;
       return;
     }
-    const [exps, qts] = await Promise.all([
-      getUnifiedExpenseHistory(30).catch(() => [] as UnifiedExpenseHistoryItem[]),
-      getQuickTrips().catch(() => [] as QuickTrip[]),
-    ]);
-    setHistoryExpenses(exps);
-    setQuickTrips(qts);
-    setHistoryLoaded(true);
+    try {
+      const [exps, qts] = await Promise.all([
+        getUnifiedExpenseHistory(30).catch(() => [] as UnifiedExpenseHistoryItem[]),
+        getQuickTrips().catch(() => [] as QuickTrip[]),
+      ]);
+      setHistoryExpenses(exps);
+      setQuickTrips(qts);
+      setHistoryLoaded(true);
+    } finally {
+      historyLoadingRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
-    if (!trip && !historyLoaded) {
+    if (!budgetLoading && !trip && !historyLoaded) {
       loadHistory();
     }
-  }, [historyLoaded, loadHistory, trip]);
+  }, [budgetLoading, historyLoaded, loadHistory, trip]);
 
   useFocusEffect(
     useCallback(() => {
-      if (!trip) loadHistory();
-    }, [loadHistory, trip]),
+      if (!budgetLoading && !trip) loadHistory();
+    }, [budgetLoading, loadHistory, trip]),
   );
 
   useEffect(() => {
