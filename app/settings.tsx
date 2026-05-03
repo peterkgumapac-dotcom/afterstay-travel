@@ -451,6 +451,24 @@ export default function SettingsScreen() {
             <ChevronRight size={18} color={colors.text3} />
           </View>
         </TouchableOpacity>
+        <View style={s.profileActionRow}>
+          <TouchableOpacity style={s.profileActionButton} onPress={openEditProfile} activeOpacity={0.75}>
+            <Camera size={15} color={colors.accent} strokeWidth={1.8} />
+            <Text style={s.profileActionText}>Edit profile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.profileActionButton, !user?.id && { opacity: 0.5 }]}
+            onPress={() => {
+              if (!user?.id) return;
+              router.push({ pathname: '/profile/[userId]', params: { userId: user.id } } as never);
+            }}
+            activeOpacity={0.75}
+            disabled={!user?.id}
+          >
+            <User size={15} color={colors.accent} strokeWidth={1.8} />
+            <Text style={s.profileActionText}>View profile</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Profile completeness */}
         {(() => {
@@ -1204,6 +1222,30 @@ const getDynamicStyles = (c: Record<string, string>) =>
       fontSize: 12,
       color: c.text3,
       marginTop: 2,
+    },
+    profileActionRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginHorizontal: 16,
+      marginTop: 10,
+      marginBottom: 12,
+    },
+    profileActionButton: {
+      flex: 1,
+      minHeight: 42,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.bg2,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+    },
+    profileActionText: {
+      color: c.accent,
+      fontSize: 13,
+      fontWeight: '700',
     },
 
     // Profile completeness
