@@ -37,11 +37,14 @@ function withConcurrency<T>(fn: () => Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     const run = () => {
       fn()
-        .then(resolve)
-        .catch(reject)
-        .finally(() => {
+        .then((value) => {
           activeDownloads--;
           runNext();
+          resolve(value);
+        }, (error) => {
+          activeDownloads--;
+          runNext();
+          reject(error);
         });
     };
 

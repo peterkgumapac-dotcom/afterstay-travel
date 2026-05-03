@@ -30,9 +30,13 @@ function withTimeout<T>(promise: Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Stories timed out')), STORY_TIMEOUT_MS);
     promise
-      .then(resolve)
-      .catch(reject)
-      .finally(() => clearTimeout(timer));
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      }, (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
   });
 }
 
@@ -69,12 +73,12 @@ export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading 
     setLoading(true);
     setFailedImages(new Set());
     withTimeout(getStories())
-      .then((stories) => { if (!cancelled) setGroups(groupByUser(stories)); })
-      .catch((err) => {
+      .then((stories) => {
+        if (!cancelled) setGroups(groupByUser(stories));
+        if (!cancelled) setLoading(false);
+      }, (err) => {
         if (!cancelled) setGroups([]);
         if (__DEV__) console.error('[ExploreStoryRow] getStories failed:', err);
-      })
-      .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };

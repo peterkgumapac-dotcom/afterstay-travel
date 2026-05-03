@@ -56,8 +56,10 @@ export default function CaptureDestinationSheet({ visible, onClose, onSelect }: 
           (t.status === 'Planning' || t.status === 'Active' || t.status === 'Completed'),
         ),
       ))
-      .catch(() => setAvailableTrips([]))
-      .finally(() => setLoading(false));
+      .then(() => setLoading(false), () => {
+        setAvailableTrips([]);
+        setLoading(false);
+      });
   }, [visible]);
 
   return (

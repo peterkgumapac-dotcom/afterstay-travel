@@ -17,9 +17,13 @@ function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), LOAD_TIMEOUT_MS);
     promise
-      .then(resolve)
-      .catch(() => resolve(fallback))
-      .finally(() => clearTimeout(timer));
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      }, () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      });
   });
 }
 

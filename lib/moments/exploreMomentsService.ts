@@ -42,13 +42,16 @@ function mapRpcPost(row: Record<string, unknown>): FeedPost {
 }
 
 function withUploadTimeout<T>(promise: Promise<T>, message: string, ms = 45_000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      const timer = setTimeout(() => reject(new Error(message)), ms);
-      promise.finally(() => clearTimeout(timer)).catch(() => clearTimeout(timer));
-    }),
-  ]);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then((value) => {
+      clearTimeout(timer);
+      resolve(value);
+    }, (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
 }
 
 export async function getExploreFeed(params: ExploreFeedParams = {}): Promise<FeedPost[]> {

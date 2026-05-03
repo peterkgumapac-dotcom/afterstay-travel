@@ -12,9 +12,13 @@ function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), REQUEST_TIMEOUT_MS);
     promise
-      .then(resolve)
-      .catch(reject)
-      .finally(() => clearTimeout(timer));
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      }, (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
   });
 }
 

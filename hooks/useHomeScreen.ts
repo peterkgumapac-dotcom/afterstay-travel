@@ -55,7 +55,7 @@ function resolveHeroLocation(trip: Trip | null, flights: Flight[]) {
 }
 
 function destinationPhotoCacheKey(destination: string) {
-  return `hero:destination-photos:${destination.trim().toLowerCase()}`;
+  return `hero:destination-photos:v3:${destination.trim().toLowerCase()}`;
 }
 
 const HOME_REQUEST_TIMEOUT_MS = 10000;
@@ -65,9 +65,13 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, ms = HOME_REQUEST_TIME
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), ms);
     promise
-      .then(resolve)
-      .catch(() => resolve(fallback))
-      .finally(() => clearTimeout(timer));
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      }, () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      });
   });
 }
 
