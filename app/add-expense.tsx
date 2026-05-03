@@ -235,7 +235,13 @@ export default function AddExpenseScreen() {
   };
 
   const scanReceipt = () => {
-    router.push('/scan-receipt');
+    router.push({
+      pathname: '/scan-receipt',
+      params: {
+        expenseType,
+        ...(expenseType === 'quick-trip' && params.quickTripId ? { quickTripId: params.quickTripId } : {}),
+      },
+    } as never);
   };
 
   const attachPhoto = () => {
@@ -359,7 +365,13 @@ export default function AddExpenseScreen() {
 
           <Pressable
             style={[styles.pickCard, { backgroundColor: colors.card, borderColor: colors.accentBorder }]}
-            onPress={() => router.push({ pathname: '/scan-receipt', params: { expenseType } } as never)}
+            onPress={() => router.push({
+              pathname: '/scan-receipt',
+              params: {
+                expenseType,
+                ...(expenseType === 'quick-trip' && params.quickTripId ? { quickTripId: params.quickTripId } : {}),
+              },
+            } as never)}
           >
             <View style={[styles.pickIconWrap, { backgroundColor: colors.accentBg }]}>
               <ScanLine size={24} color={colors.accent} strokeWidth={2} />

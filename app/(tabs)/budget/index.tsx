@@ -84,6 +84,8 @@ type BudgetState = 'cruising' | 'low' | 'over';
 type BudgetMode = 'budget' | 'group';
 type TabId = 'expenses' | 'savings' | 'settle' | 'fate';
 type MoneySummary = { today: number; week: number; month: number; currency: string };
+type ExpenseHistoryFilter = 'travel' | 'trip' | 'quick-trip' | 'normal';
+type ExpenseTargetAction = 'add' | 'scan';
 
 // ── Category config ──────────────────────────────────────────────────
 
@@ -496,6 +498,8 @@ function BudgetScreen() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [quickTrips, setQuickTrips] = useState<QuickTrip[]>([]);
   const [targetSheetVisible, setTargetSheetVisible] = useState(false);
+  const [targetAction, setTargetAction] = useState<ExpenseTargetAction>('add');
+  const [historyFilter, setHistoryFilter] = useState<ExpenseHistoryFilter>('travel');
 
   const loadHistory = useCallback(async () => {
     if (testModeRef.current) {
@@ -530,10 +534,11 @@ function BudgetScreen() {
     getQuickTrips().then(setQuickTrips).catch(() => {});
   }, [quickTrips.length, targetSheetVisible]);
 
-  const historyTotal = useMemo(
-    () => historyExpenses.filter(e => e.source !== 'standalone').reduce((sum, e) => sum + e.amount, 0),
-    [historyExpenses],
-  );
+  const openTargetSheet = useCallback((action: ExpenseTargetAction = 'add') => {
+    setTargetAction(action);
+    setTargetSheetVisible(true);
+  }, []);
+
   const activeTripSummary = useMemo(
     () => summarizeMoneyByPeriod(expenses.map(e => ({ amount: e.amount, currency: e.currency, date: e.date }))),
     [expenses],
@@ -541,19 +546,30 @@ function BudgetScreen() {
 
   const handleSelectTarget = (target: ExpenseTarget) => {
     setTargetSheetVisible(false);
+    const action = targetAction;
     switch (target.type) {
       case 'trip':
-        router.push('/add-expense' as never);
+        if (action === 'scan') {
+          router.push({ pathname: '/scan-receipt', params: { expenseType: 'trip' } } as never);
+        } else {
+          router.push('/add-expense' as never);
+        }
         break;
       case 'quick-trip':
         if (target.quickTripId === '__new__') {
-          router.push('/quick-trip-create?returnTo=add-expense' as never);
+          router.push(`/quick-trip-create?returnTo=${action === 'scan' ? 'scan-receipt' : 'add-expense'}` as never);
+        } else if (action === 'scan') {
+          router.push({ pathname: '/scan-receipt', params: { expenseType: 'quick-trip', quickTripId: target.quickTripId } } as never);
         } else {
           router.push(`/add-expense?target=quick-trip&quickTripId=${target.quickTripId}` as never);
         }
         break;
       case 'standalone':
-        router.push('/add-expense?target=standalone' as never);
+        if (action === 'scan') {
+          router.push({ pathname: '/scan-receipt', params: { expenseType: 'standalone' } } as never);
+        } else {
+          router.push('/add-expense?target=standalone' as never);
+        }
         break;
       case 'daily-tracker':
         setShowDailySheet(true);
@@ -578,7 +594,24 @@ function BudgetScreen() {
     () => historyExpenses.filter(e => e.source === 'trip' || e.source === 'quick-trip'),
     [historyExpenses],
   );
-  const historySummary = useMemo(() => summarizeMoneyByPeriod(travelExpenses), [travelExpenses]);
+  const filteredHistoryExpenses = useMemo(() => {
+    switch (historyFilter) {
+      case 'trip':
+        return tripExpenses;
+      case 'quick-trip':
+        return quickTripExpenses;
+      case 'normal':
+        return standaloneExpenses;
+      case 'travel':
+      default:
+        return travelExpenses;
+    }
+  }, [historyFilter, quickTripExpenses, standaloneExpenses, travelExpenses, tripExpenses]);
+  const historySummary = useMemo(() => summarizeMoneyByPeriod(filteredHistoryExpenses), [filteredHistoryExpenses]);
+  const historyTotal = useMemo(
+    () => filteredHistoryExpenses.reduce((sum, e) => sum + e.amount, 0),
+    [filteredHistoryExpenses],
+  );
   const standaloneTotal = useMemo(
     () => standaloneExpenses.reduce((sum, e) => sum + e.amount, 0),
     [standaloneExpenses],
@@ -587,9 +620,29 @@ function BudgetScreen() {
   if (!trip && !budgetLoading) {
     const tripTotal = tripExpenses.reduce((s, e) => s + e.amount, 0);
     const quickTotal = quickTripExpenses.reduce((s, e) => s + e.amount, 0);
-    const hasAnyExpenses = historyExpenses.length > 0;
     const hasTravelExpenses = travelExpenses.length > 0;
     const hasNormalExpenses = standaloneExpenses.length > 0;
+    const hasFilteredExpenses = filteredHistoryExpenses.length > 0;
+    const filterTitle = historyFilter === 'normal'
+      ? 'Normal Expenses'
+      : historyFilter === 'trip'
+        ? 'Trips'
+        : historyFilter === 'quick-trip'
+          ? 'Quick Trips'
+          : 'Trips & Quick Trips';
+    const filterSubtitle = historyFilter === 'normal'
+      ? 'Personal logs, separate from travel'
+      : historyFilter === 'trip'
+        ? 'Planned trip spending only'
+        : historyFilter === 'quick-trip'
+          ? 'Quick-trip spending only'
+          : 'Travel spending across trips and quick trips';
+    const filterChips: { id: ExpenseHistoryFilter; label: string; amount: number; count: number }[] = [
+      { id: 'travel', label: 'All Travel', amount: tripTotal + quickTotal, count: travelExpenses.length },
+      { id: 'trip', label: 'Trips', amount: tripTotal, count: tripExpenses.length },
+      { id: 'quick-trip', label: 'Quick Trips', amount: quickTotal, count: quickTripExpenses.length },
+      { id: 'normal', label: 'Normal', amount: standaloneTotal, count: standaloneExpenses.length },
+    ];
 
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -600,7 +653,7 @@ function BudgetScreen() {
           </View>
           <TouchableOpacity
             style={styles.addExpBtn}
-            onPress={() => setTargetSheetVisible(true)}
+            onPress={() => openTargetSheet('add')}
             activeOpacity={0.7}
           >
             <Text style={styles.addExpBtnText}>+ Add Expense</Text>
@@ -630,15 +683,35 @@ function BudgetScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.section}>
             <View style={styles.moneyHero}>
-              <Text style={styles.eyebrow}>Trips & Quick Trips</Text>
+              <Text style={styles.eyebrow}>{filterTitle}</Text>
               <Text style={styles.moneyHeroAmount}>{formatCurrency(historyTotal, historySummary.currency)}</Text>
               <Text style={styles.moneyHeroSub}>
-                {hasTravelExpenses
-                  ? `${travelExpenses.length} recent travel expense${travelExpenses.length !== 1 ? 's' : ''} across trips and quick trips`
-                  : 'Plan a trip or create a quick trip to see travel spending here.'}
+                {hasFilteredExpenses
+                  ? `${filteredHistoryExpenses.length} recent expense${filteredHistoryExpenses.length !== 1 ? 's' : ''} · ${filterSubtitle}`
+                  : historyFilter === 'normal'
+                    ? 'Normal expenses stay here when you just need to log something.'
+                    : 'Plan a trip or create a quick trip to see travel spending here.'}
               </Text>
             </View>
             <SummaryStrip summary={historySummary} styles={styles} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.expenseFilterRow}>
+              {filterChips.map((chip) => {
+                const active = historyFilter === chip.id;
+                return (
+                  <TouchableOpacity
+                    key={chip.id}
+                    style={[styles.expenseFilterChip, active && styles.expenseFilterChipActive]}
+                    onPress={() => setHistoryFilter(chip.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.expenseFilterLabel, active && styles.expenseFilterLabelActive]}>{chip.label}</Text>
+                    <Text style={[styles.expenseFilterMeta, active && styles.expenseFilterMetaActive]}>
+                      {chip.count} · {formatCurrency(chip.amount, historySummary.currency)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
 
           {/* ── SAVINGS TAB (no-trip) ── */}
@@ -646,7 +719,7 @@ function BudgetScreen() {
             <View style={{ gap: 16 }}>
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
-                onScanReceipt={() => router.push('/scan-receipt?expenseType=standalone' as never)}
+                onScanReceipt={() => openTargetSheet('scan')}
               />
               <SavingsGoalCard
                 goal={savingsGoal}
@@ -721,17 +794,17 @@ function BudgetScreen() {
             <View style={{ paddingHorizontal: 16, paddingTop: hasTravelExpenses ? 0 : 8, paddingBottom: 16 }}>
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
-                onScanReceipt={() => router.push('/scan-receipt?expenseType=standalone' as never)}
+                onScanReceipt={() => openTargetSheet('scan')}
               />
             </View>
           )}
-          {tab === 'expenses' && hasTravelExpenses ? (
+          {tab === 'expenses' && hasFilteredExpenses && historyFilter !== 'normal' ? (
             <>
 
               {/* Category breakdown */}
               {(() => {
                 const byCat: Record<string, number> = {};
-                for (const e of travelExpenses) {
+                for (const e of filteredHistoryExpenses) {
                   byCat[e.category] = (byCat[e.category] ?? 0) + e.amount;
                 }
                 const sorted = Object.entries(byCat).sort(([, a], [, b]) => b - a);
@@ -773,7 +846,7 @@ function BudgetScreen() {
                   alignItems: 'center',
                   gap: 12,
                 }}
-                onPress={() => router.push('/scan-receipt?expenseType=standalone' as never)}
+                onPress={() => openTargetSheet('scan')}
                 activeOpacity={0.7}
               >
                 <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
@@ -794,7 +867,7 @@ function BudgetScreen() {
                 {(() => {
                   // Group trip expenses by sourceLabel (trip name)
                   const tripGroups = new Map<string, typeof tripExpenses>();
-                  for (const e of tripExpenses) {
+                  for (const e of historyFilter === 'quick-trip' ? [] : tripExpenses) {
                     const key = e.sourceLabel ?? 'Trip';
                     const arr = tripGroups.get(key) ?? [];
                     arr.push(e);
@@ -803,7 +876,7 @@ function BudgetScreen() {
 
                   // Group quick trip expenses by sourceLabel
                   const qtGroups = new Map<string, typeof quickTripExpenses>();
-                  for (const e of quickTripExpenses) {
+                  for (const e of historyFilter === 'trip' ? [] : quickTripExpenses) {
                     const key = e.sourceLabel ?? 'Quick Trip';
                     const arr = qtGroups.get(key) ?? [];
                     arr.push(e);
@@ -910,30 +983,44 @@ function BudgetScreen() {
           ) : tab === 'expenses' ? (
             <View style={styles.historyEmpty}>
               <Wallet size={32} color={colors.text3} strokeWidth={1.5} />
-              <Text style={styles.historyEmptyTitle}>No travel expenses yet</Text>
+              <Text style={styles.historyEmptyTitle}>
+                {historyFilter === 'normal' ? 'No normal expenses yet' : 'No travel expenses yet'}
+              </Text>
               <Text style={styles.historyEmptySub}>
-                Your Trips and Quick Trips will appear here.{'\n'}Normal expenses stay separate below.
+                {historyFilter === 'normal'
+                  ? 'Use Just Log It when an expense is not part of a trip.'
+                  : 'Your Trips and Quick Trips will appear here.\nNormal expenses stay in their own filter.'}
               </Text>
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                 <TouchableOpacity
                   style={styles.historyCtaBtn}
-                  onPress={() => setTargetSheetVisible(true)}
+                  onPress={() => {
+                    if (historyFilter === 'normal') {
+                      router.push('/add-expense?target=standalone' as never);
+                    } else {
+                      openTargetSheet('add');
+                    }
+                  }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.historyCtaText}>Add Travel Expense</Text>
+                  <Text style={styles.historyCtaText}>
+                    {historyFilter === 'normal' ? 'Just Log It' : 'Add Travel Expense'}
+                  </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.historyCtaBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
-                  onPress={() => router.push('/onboarding' as never)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.historyCtaText, { color: colors.text }]}>Plan a Trip</Text>
-                </TouchableOpacity>
+                {historyFilter !== 'normal' && (
+                  <TouchableOpacity
+                    style={[styles.historyCtaBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
+                    onPress={() => router.push('/onboarding' as never)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.historyCtaText, { color: colors.text }]}>Plan a Trip</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           ) : null}
 
-          {tab === 'expenses' && hasNormalExpenses && (
+          {tab === 'expenses' && historyFilter === 'normal' && hasNormalExpenses && (
             <View style={styles.section}>
               <View style={styles.normalExpenseHeader}>
                 <View>
@@ -1225,7 +1312,7 @@ function BudgetScreen() {
         </View>
         <TouchableOpacity
           style={styles.addBtn}
-          onPress={() => setTargetSheetVisible(true)}
+          onPress={() => openTargetSheet('add')}
           activeOpacity={0.7}
         >
           <Text style={styles.addBtnText}>+ Add</Text>
@@ -1389,7 +1476,7 @@ function BudgetScreen() {
             <View style={styles.section}>
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
-                onScanReceipt={() => router.push('/scan-receipt' as never)}
+                onScanReceipt={() => openTargetSheet('scan')}
               />
             </View>
 
@@ -1633,7 +1720,7 @@ function BudgetScreen() {
           <View style={{ gap: 16 }}>
             <DailyTrackerCard
               onAddExpense={() => setShowDailySheet(true)}
-              onScanReceipt={() => router.push('/scan-receipt' as never)}
+              onScanReceipt={() => openTargetSheet('scan')}
             />
             <SavingsGoalCard
               goal={savingsGoal}
@@ -1826,6 +1913,13 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   summaryTile: { flex: 1, minHeight: 64, backgroundColor: c.card2, borderWidth: 1, borderColor: c.border, borderRadius: 14, padding: 10, justifyContent: 'center' },
   summaryLabel: { fontSize: 10, fontWeight: '700', color: c.text3, textTransform: 'uppercase', letterSpacing: 0.8 },
   summaryAmount: { fontSize: 14, fontWeight: '700', color: c.text, marginTop: 4, letterSpacing: -0.2 },
+  expenseFilterRow: { gap: 8, paddingRight: 16 },
+  expenseFilterChip: { minWidth: 116, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: c.border, backgroundColor: c.card },
+  expenseFilterChipActive: { borderColor: c.accentBorder, backgroundColor: c.accentBg },
+  expenseFilterLabel: { fontSize: 12, fontWeight: '700', color: c.text2 },
+  expenseFilterLabelActive: { color: c.accent },
+  expenseFilterMeta: { fontSize: 10, fontWeight: '600', color: c.text3, marginTop: 3 },
+  expenseFilterMetaActive: { color: c.text2 },
 
   // Budget card
   budgetCard: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 22, padding: 18 },

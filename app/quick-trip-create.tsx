@@ -232,6 +232,9 @@ export default function QuickTripCreateScreen() {
       if (returnTo === 'add-expense') {
         router.dismiss();
         router.push({ pathname: '/add-expense', params: { target: 'quick-trip', quickTripId: id } } as never);
+      } else if (returnTo === 'scan-receipt') {
+        router.dismiss();
+        router.push({ pathname: '/scan-receipt', params: { expenseType: 'quick-trip', quickTripId: id } } as never);
       } else {
         router.dismiss();
         router.push({ pathname: '/quick-trip-detail', params: { quickTripId: id } } as never);

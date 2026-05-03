@@ -37,7 +37,7 @@ export default function ScanReceiptScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
-  const { expenseType } = useLocalSearchParams<{ expenseType?: string }>();
+  const { expenseType, quickTripId } = useLocalSearchParams<{ expenseType?: string; quickTripId?: string }>();
   const receiptTarget = normalizeExpenseTarget(expenseType);
   const [phase, setPhase] = useState<Phase>('picking');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -133,6 +133,7 @@ export default function ScanReceiptScreen() {
             notes: itemLines,
             photoUri: asset.uri,
             ...(receiptTarget ? { target: receiptTarget } : {}),
+            ...(receiptTarget === 'quick-trip' && quickTripId ? { quickTripId } : {}),
           },
         });
       }
@@ -220,6 +221,7 @@ export default function ScanReceiptScreen() {
               splitType: 'Custom',
               receiptSplits: JSON.stringify(splitAmounts),
               ...(receiptTarget ? { target: receiptTarget } : {}),
+              ...(receiptTarget === 'quick-trip' && quickTripId ? { quickTripId } : {}),
             },
           });
         }}
