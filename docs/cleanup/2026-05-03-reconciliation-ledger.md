@@ -107,11 +107,12 @@ Known user-applied migrations from this session:
 
 Still needs explicit verification before the clean OTA:
 
-- `moments` bucket exists and is public.
-- `trip-files` bucket exists and is private.
-- `trip_files` metadata columns exist: `storage_path`, `content_type`, `size_bytes`, `uploaded_by`.
-- Write policies exist for `moments`, `personal_photos`, `feed_posts`, `post_media`, and `trip_files`.
-- Functions exist:
+- `moments` bucket exists and is public. Verified 2026-05-03.
+- `trip-files` bucket exists and is private. Verified 2026-05-03.
+- `trip_files` metadata columns exist: `storage_path`, `content_type`, `size_bytes`, `uploaded_by`. Verified 2026-05-03.
+- Write policies exist for `moments`, `personal_photos`, `feed_posts`, `post_media`, and `trip_files`. Verified 2026-05-03.
+- Storage object policies exist for `trip-files` storage. Verified 2026-05-03.
+- Functions exist and are executable by authenticated users. Verified 2026-05-03:
   - `replace_trip_flights_from_scan`
   - `upsert_own_profile`
   - `update_own_onboarding_state`
@@ -120,7 +121,12 @@ Still needs explicit verification before the clean OTA:
   - `search_public_profiles`
   - `get_public_profiles`
   - `get_public_profile_posts`
-  - `join_trip_by_invite_code` if invite hardening is considered complete
+  - `join_trip_by_invite_code`
+
+Backend cleanup watchlist:
+
+- `upsert_own_profile` currently has both the original 5-argument overload and the newer cover-photo overload. Keep both until old OTA clients are no longer expected, then remove the old overload in a separate reviewed migration.
+- Storage still has older `moments` bucket policies alongside newer scoped policies. They are not blocking the clean OTA, but should be audited separately before any destructive cleanup.
 
 Backend verification attempt from this worktree:
 
@@ -139,6 +145,9 @@ Backend verification attempt from this worktree:
 - Supabase direct DB read-only verification, 2026-05-03:
   - `join_trip_by_invite_code` exists with arguments `p_code text, p_name text DEFAULT NULL::text`.
   - `authenticated_can_execute` returned `true`.
+- Supabase direct DB consolidated read-only verification, 2026-05-03:
+  - All backend checklist rows returned `ok = true`.
+  - Verified `moments` public bucket, `trip-files` private bucket, `trip_files` metadata columns, insert policies for media/file tables, `trip-files` storage policies, and authenticated execute grants for required functions.
 
 New backend file in this clean branch, already applied live:
 
