@@ -90,18 +90,6 @@ function positionOf(m: MomentDisplay): { x: number; y: number } {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function parseHour(t?: string): number {
-  if (!t) return 0;
-  const match = t.match(/(\d+):?(\d*)\s*(am|pm)?/i);
-  if (!match) return 0;
-  let h = parseInt(match[1], 10);
-  const min = match[2] ? parseInt(match[2], 10) : 0;
-  const ampm = match[3]?.toLowerCase();
-  if (ampm === 'pm' && h < 12) h += 12;
-  if (ampm === 'am' && h === 12) h = 0;
-  return h * 60 + min;
-}
-
 const HOME = { x: 55, y: 52 };
 
 // ---------------------------------------------------------------------------
@@ -138,7 +126,7 @@ interface PinProps {
   people: PeopleMap;
 }
 
-function AnimatedPin({ cluster, isRevealed, isCurrent, authorColor, onPress, people }: PinProps) {
+function AnimatedPin({ cluster, isRevealed, isCurrent, authorColor, onPress, people: _people }: PinProps) {
   const { colors } = useTheme();
   const anim = useRef(new Animated.Value(isRevealed ? 1 : 0)).current;
 

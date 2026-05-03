@@ -2,7 +2,6 @@ import { Image } from 'expo-image';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { FEED, PAPER } from '@/components/feed/feedTheme';
 import type { PostMedia } from '@/lib/types';
 
 interface PolaroidCollageProps {

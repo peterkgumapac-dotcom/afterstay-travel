@@ -5,7 +5,6 @@ import {
   Modal,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Image,
   Dimensions,
   Linking,

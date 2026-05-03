@@ -169,7 +169,7 @@ interface BentoCellProps {
   tripId?: string;
 }
 
-function BentoCell({ moment, width, height, selected, selectMode, onPress, onLongPress, colors, tripId }: BentoCellProps) {
+function BentoCell({ moment, width, height, selected, selectMode, onPress, onLongPress, colors, tripId: _tripId }: BentoCellProps) {
   const cellContent = (
     <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.card }}>
       {moment.photo ? (

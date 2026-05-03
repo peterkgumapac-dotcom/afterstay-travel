@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
-import { FolderPlus, Image as ImageIcon, Lock, Plus, Users } from 'lucide-react-native';
+import { Image as ImageIcon, Lock, Plus, Users } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/constants/ThemeContext';
 import { getAlbums } from '@/lib/supabase';

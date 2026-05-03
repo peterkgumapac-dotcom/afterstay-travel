@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -63,21 +63,18 @@ export function CaptionOverlay({
           active={mode === 'auto'}
           onPress={() => { Haptics.selectionAsync(); onModeChange('auto'); }}
           s={s}
-          colors={colors}
         />
         <ModeBtn
           label="Custom"
           active={mode === 'custom'}
           onPress={() => { Haptics.selectionAsync(); onModeChange('custom'); }}
           s={s}
-          colors={colors}
         />
         <ModeBtn
           label="None"
           active={mode === 'none'}
           onPress={() => { Haptics.selectionAsync(); onModeChange('none'); }}
           s={s}
-          colors={colors}
         />
       </View>
 
@@ -110,13 +107,11 @@ function ModeBtn({
   active,
   onPress,
   s,
-  colors,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
   s: ReturnType<typeof getStyles>;
-  colors: ReturnType<typeof useTheme>['colors'];
 }) {
   return (
     <Pressable

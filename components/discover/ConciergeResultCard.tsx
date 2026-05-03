@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Clock, MapPin, Navigation, Plus } from 'lucide-react-native';
+import { Clock, Navigation, Plus } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
 import { useTheme, type ThemeColors } from '@/constants/ThemeContext';

@@ -241,6 +241,22 @@ Broad cleanup gate after warning reductions, 2026-05-03:
 - `npx eslint 'app/**/*.{ts,tsx}' 'components/**/*.{ts,tsx}' 'hooks/**/*.{ts,tsx}' 'lib/**/*.{ts,tsx}' --quiet`
   - Result: exit 0. No error-level lint issues across app, components, hooks, and lib.
 
+Cleanup-only rerun after leaf UI warning reduction, 2026-05-03:
+
+- Removed unused imports/locals from small leaf UI components in budget, discover, loader, and moments.
+- Made the existing Stays accommodation search error state visible instead of silently storing it.
+- Avoided the large Discover tab file and parked Discover simplification work.
+- `npx eslint components/discover/DiscoverPlaceCard.tsx components/discover/StaysTab.tsx components/discover/ConciergeResultCard.tsx components/discover/PlaceDetailSheet.tsx components/discover/PolaroidCollage.tsx components/budget/PaymentQRCard.tsx components/loader/MiniLoader.tsx components/moments/AdjustmentStrip.tsx components/moments/AlbumsGrid.tsx components/moments/BentoLayout.tsx components/moments/CaptionOverlay.tsx components/moments/MapLayout.tsx --ext .ts,.tsx`
+  - Result: exit 0, no warnings for those files.
+- `npx tsc --noEmit --pretty false`
+  - Result: exit 0.
+- `npx jest --runInBand`
+  - Result: 5 suites passed, 33 tests passed.
+- `npx expo export --platform android --output-dir /tmp/afterstay-leaf-cleanup-android`
+  - Result: exported Android JS bundle successfully.
+- `git diff --check`
+  - Result: exit 0.
+
 Earlier clean branch verification:
 
 - `npx tsc --noEmit --pretty false`

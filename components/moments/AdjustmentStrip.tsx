@@ -55,7 +55,7 @@ interface AdjustmentStripProps {
 
 export function AdjustmentStrip({ values, onValueChange, onResetAll }: AdjustmentStripProps) {
   const { colors } = useTheme();
-  const s = useMemo(() => getStyles(colors), [colors]);
+  const s = useMemo(() => getStyles(), []);
   const [activeTool, setActiveTool] = useState<AdjustmentKey | null>(null);
   const lastTap = useRef<{ key: AdjustmentKey; time: number } | null>(null);
 
@@ -156,7 +156,7 @@ export function AdjustmentStrip({ values, onValueChange, onResetAll }: Adjustmen
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 
-const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+const getStyles = () =>
   StyleSheet.create({
     root: {
       paddingBottom: 4,

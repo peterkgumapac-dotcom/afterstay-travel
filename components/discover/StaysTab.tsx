@@ -13,16 +13,15 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { Bed, MapPin, Search, X } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
+import { radius } from '@/constants/theme';
 import { distanceFromPoint } from '@/lib/distance';
 import { searchNearby, placeAutocomplete, getPlaceLocation } from '@/lib/google-places';
-import type { GroupMember, Place, PlaceVote } from '@/lib/types';
+import type { GroupMember, Place } from '@/lib/types';
 import { DiscoverPlaceCard, type DiscoverPlace } from './DiscoverPlaceCard';
 import { mapNearbyToDiscoverPlace } from './shared';
 
@@ -322,6 +321,10 @@ export default function StaysTab({
         </Text>
       )}
 
+      {!loading && error ? (
+        <Text style={s.errorText}>{error}</Text>
+      ) : null}
+
       {/* Loading */}
       {loading && (
         <View style={s.centered}>
@@ -330,7 +333,7 @@ export default function StaysTab({
         </View>
       )}
     </>
-  ), [tripCoords, s, colors.text3, colors.accent, destQuery, handleDestInput, clearDestination, destSuggestions, effectiveLabel, originKind, searchLabel, selectDestination, chip, minRating, loading, effectiveCoords, filtered.length]);
+  ), [tripCoords, s, colors.text3, colors.accent, destQuery, handleDestInput, clearDestination, destSuggestions, effectiveLabel, originKind, searchLabel, selectDestination, chip, minRating, loading, effectiveCoords, filtered.length, error]);
 
   const ListEmpty = useMemo(() => {
     if (loading || effectiveCoords) return null;
@@ -463,6 +466,12 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 12,
       fontWeight: '600',
       color: colors.accent,
+      marginBottom: 10,
+    },
+    errorText: {
+      color: colors.danger,
+      fontSize: 12,
+      fontWeight: '600',
       marginBottom: 10,
     },
     cardWrap: { marginBottom: 10 },

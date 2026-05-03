@@ -3,8 +3,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import { useTheme } from '@/constants/ThemeContext';
-
 interface PaymentQRCardProps {
   qrData: string;
   holderName: string;
@@ -47,7 +45,6 @@ export default function PaymentQRCard({
   bankName,
   refCode,
 }: PaymentQRCardProps) {
-  const { colors } = useTheme();
   const monogram = holderName.charAt(0).toUpperCase();
   const ref = useMemo(() => refCode ?? generateRefCode(), [refCode]);
   const bankLabel = bankName.toUpperCase();
