@@ -294,6 +294,8 @@ export default function AddMomentScreen() {
               throw new Error(
                 'Quick Trip photo upload is being routed through Quick Trip creation. Please choose Personal Album or a Trip for now.',
               );
+            } else if (scope === 'album') {
+              throw new Error('Custom album selection is not ready yet. Choose Just me or The trip group for now.');
             } else {
               setUploadStage(`Saving to Trip Album ${i + 1} of ${pending.length}...`);
               await withUploadTimeout(
@@ -306,7 +308,7 @@ export default function AddMomentScreen() {
                   date,
                   tags,
                   visibility: scope,
-                  isPublic,
+                  isPublic: false,
                   ...(tripId ? { tripId } : {}),
                 }),
                 SINGLE_PHOTO_UPLOAD_TIMEOUT_MS,
@@ -651,35 +653,35 @@ export default function AddMomentScreen() {
                     </Pressable>
                   )}
 
-                  {/* Custom album — routes to album creator */}
+                  {/* Custom album — disabled until album membership is wired */}
                   <Pressable
                     onPress={() => {
-                      scopeTouchedRef.current = true;
-                      setScope('album');
-                      setIsPublic(false);
-                      router.push('/new-album' as never);
+                      Alert.alert(
+                        'Custom albums are coming back soon',
+                        'For now, save privately or to the trip group so the upload is attached correctly.',
+                      );
                     }}
                     style={[
                       styles.scopeRow,
+                      styles.scopeRowDisabled,
                       {
-                        borderColor: scope === 'album' ? colors.accent : colors.border,
-                        backgroundColor: scope === 'album' ? colors.accentBg : colors.card,
+                        borderColor: colors.border,
+                        backgroundColor: colors.card,
                       },
                     ]}
                   >
                     <View
                       style={[
                         styles.scopeIcon,
-                        { backgroundColor: scope === 'album' ? colors.accentLt : colors.card2 },
+                        { backgroundColor: colors.card2 },
                       ]}
                     >
-                      <FolderPlus size={16} color={scope === 'album' ? colors.onBlack : colors.text3} strokeWidth={2} />
+                      <FolderPlus size={16} color={colors.text3} strokeWidth={2} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.scopeTitle, { color: colors.text }]}>A custom album</Text>
-                      <Text style={[styles.scopeSub, { color: colors.text3 }]}>Pick specific people. Optional.</Text>
+                      <Text style={[styles.scopeSub, { color: colors.text3 }]}>Temporarily unavailable.</Text>
                     </View>
-                    <ChevronRight size={16} color={colors.text3} strokeWidth={2} />
                   </Pressable>
                 </View>
               </View>
@@ -1044,6 +1046,9 @@ const getStyles = (colors: ThemeColors) =>
       padding: 14,
       borderWidth: 1.5,
       borderRadius: 14,
+    },
+    scopeRowDisabled: {
+      opacity: 0.58,
     },
     scopeIcon: {
       width: 36,

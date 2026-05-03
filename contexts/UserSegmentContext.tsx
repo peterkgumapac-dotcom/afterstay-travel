@@ -188,6 +188,26 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
         getProfileWithRetry(userId),
       ]);
       const resolvedProfile = profile ?? scopedCachedProfile ?? null;
+      const hasUncertainTripData =
+        !!result.activeTrip ||
+        result.completedTrips.length > 0 ||
+        result.planningTrips.length > 0 ||
+        result.draftTrips.length > 0;
+
+      if (result.uncertain && !hasUncertainTripData) {
+        if (!mounted.current || currentUserIdRef.current !== userId) return;
+        setFreshProfileChecked(!!resolvedProfile);
+        setState((prev) => ({
+          ...prev,
+          profile: resolvedProfile ?? prev.profile,
+          loading: false,
+          ...(prev.isTestMode ? { isTestMode: false, mockData: null, mockKeyLabel: null } : {}),
+        }));
+        if (resolvedProfile) {
+          await cacheSetForUser(userCacheKey(CK_PROFILE, userId), resolvedProfile, userId);
+        }
+        return;
+      }
 
       const realSegment = toSegment(result.status);
 

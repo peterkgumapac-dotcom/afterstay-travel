@@ -3457,18 +3457,22 @@ export async function getTripFilePreviewUrl(storagePath: string, expiresInSecond
 export async function addTripFile(input: Omit<TripFile, 'id'> & { tripId?: string }): Promise<void> {
   const id = await resolveTripId(input.tripId);
   const fileUrl = input.fileUrl || input.storagePath;
-  const { error } = await supabase.from(T.tripFiles).insert({
-    trip_id: id,
-    name: input.fileName,
-    ...(fileUrl ? { file_url: fileUrl } : {}),
-    ...(input.storagePath ? { storage_path: input.storagePath } : {}),
-    ...(input.contentType ? { content_type: input.contentType } : {}),
-    ...(input.sizeBytes ? { size_bytes: input.sizeBytes } : {}),
-    ...(input.uploadedBy ? { uploaded_by: input.uploadedBy } : {}),
-    file_type: input.type,
-    ...(input.notes ? { description: input.notes } : {}),
-    print_required: input.printRequired,
-  });
+  const { error } = await withOperationTimeout(
+    supabase.from(T.tripFiles).insert({
+      trip_id: id,
+      name: input.fileName,
+      ...(fileUrl ? { file_url: fileUrl } : {}),
+      ...(input.storagePath ? { storage_path: input.storagePath } : {}),
+      ...(input.contentType ? { content_type: input.contentType } : {}),
+      ...(input.sizeBytes ? { size_bytes: input.sizeBytes } : {}),
+      ...(input.uploadedBy ? { uploaded_by: input.uploadedBy } : {}),
+      file_type: input.type,
+      ...(input.notes ? { description: input.notes } : {}),
+      print_required: input.printRequired,
+    }),
+    'Saving document details timed out. Please try again.',
+    45_000,
+  );
   if (error) throw new Error(`addTripFile: ${error.message}`);
 }
 
@@ -5406,19 +5410,28 @@ export async function saveGroupPhotoToPrivate(momentId: string): Promise<void> {
   const { data: source, error: fetchErr } = await supabase.from('moments').select('*').eq('id', momentId).single();
   if (fetchErr || !source) throw new Error('saveGroupPhotoToPrivate: moment not found');
 
-  // Insert as private copy owned by current user
-  const { error } = await supabase.from('moments').insert({
+  // Insert as private copy owned by current user. Preserve the current
+  // storage/public-url fields used by new uploads, with legacy photo fallback.
+  const copyRow: Record<string, unknown> = {
     trip_id: source.trip_id,
     user_id: user.id,
     visibility: 'private',
     caption: source.caption,
-    photo: source.photo,
-    hd_url: source.hd_url,
-    blurhash: source.blurhash,
+    public_url: source.public_url ?? source.photo ?? null,
+    storage_path: source.storage_path ?? null,
+    photo: source.photo ?? source.public_url ?? null,
+    hd_url: source.hd_url ?? null,
+    blurhash: source.blurhash ?? null,
     location: source.location,
     taken_at: source.taken_at,
     tags: source.tags,
-  });
+  };
+
+  const { error } = await withOperationTimeout(
+    supabase.from('moments').insert(copyRow),
+    'Saving photo to your collection timed out. Please try again.',
+    45_000,
+  );
   if (error) throw new Error(`saveGroupPhotoToPrivate: ${error.message}`);
 }
 

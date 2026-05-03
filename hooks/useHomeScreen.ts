@@ -61,6 +61,16 @@ function destinationPhotoCacheKey(destination: string) {
 const HOME_REQUEST_TIMEOUT_MS = 10000;
 const HOME_SLOW_REQUEST_TIMEOUT_MS = 15000;
 
+function splitTripsByLifecycle(allTripsData: Trip[]) {
+  const now = Date.now();
+  return {
+    pastTrips: allTripsData.filter(tr => tr.status === 'Completed' && !tr.deletedAt && (tr.endDate ? new Date(tr.endDate).getTime() + 86400000 < now : false)),
+    draftTrips: allTripsData.filter(tr => tr.isDraft === true && !tr.deletedAt),
+    upcomingTrips: allTripsData.filter(tr => tr.status === 'Planning' && !tr.isDraft && !tr.deletedAt && !tr.archivedAt),
+    activeTrips: allTripsData.filter(tr => tr.status === 'Active' && !tr.deletedAt && !tr.archivedAt),
+  };
+}
+
 function withTimeout<T>(promise: Promise<T>, fallback: T, ms = HOME_REQUEST_TIMEOUT_MS): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), ms);
@@ -77,11 +87,20 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, ms = HOME_REQUEST_TIME
 
 export function useHomeScreen() {
   const { user } = useAuth();
-  const { segment, isTestMode, mockData } = useUserSegment();
+  const {
+    segment,
+    isTestMode,
+    mockData,
+    activeTrip: segmentActiveTrip,
+    pastTrips: segmentPastTrips,
+    draftTrips: segmentDraftTrips,
+    loading: segmentLoading,
+  } = useUserSegment();
   const navigation = useNavigation();
   const testModeRef = useRef(isTestMode);
   testModeRef.current = isTestMode;
   const didInitialLoad = useRef(false);
+  const lastFocusRefreshAt = useRef(0);
 
   // ── Raw state ──
   const [_rawTrip, setTrip] = useState<Trip | null>(null);
@@ -89,6 +108,7 @@ export function useHomeScreen() {
   const [moments, setMoments] = useState<Moment[]>([]);
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
   const [showLoader, setShowLoader] = useState(false);
   const [loaderDone, setLoaderDone] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -174,7 +194,10 @@ export function useHomeScreen() {
     if (testModeRef.current) { setLoading(false); setRefreshing(false); return; }
     const { force = false, silent = false } = opts ?? {};
     try {
-      if (!silent) setLoading(true);
+      if (!silent) {
+        setLoading(true);
+        setHistoryHydrated(false);
+      }
       setError(undefined);
 
       let t = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
@@ -222,10 +245,6 @@ export function useHomeScreen() {
           setLoading(false);
           setRefreshing(false);
         }
-      } else if (!silent) {
-        // No active trip should not block Home while returning-user recaps hydrate.
-        setLoading(false);
-        setRefreshing(false);
       }
 
       // Daily tracker
@@ -244,14 +263,19 @@ export function useHomeScreen() {
         withTimeout(getHomeLifetimeStatsPromise(force), null),
       ]);
       setDebugInfo(`User: ${user?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTripsData.length}`);
-      const now = Date.now();
-      setRPastTrips(allTripsData.filter(tr => tr.status === 'Completed' && !tr.deletedAt && (tr.endDate ? new Date(tr.endDate).getTime() + 86400000 < now : false)));
-      setRDraftTrips(allTripsData.filter(tr => tr.isDraft === true && !tr.deletedAt));
-      setRUpcomingTrips(allTripsData.filter(tr => tr.status === 'Planning' && !tr.isDraft && !tr.deletedAt && !tr.archivedAt));
-      setRActiveTrips(allTripsData.filter(tr => tr.status === 'Active' && !tr.deletedAt && !tr.archivedAt));
+      const split = splitTripsByLifecycle(allTripsData);
+      setRPastTrips(split.pastTrips);
+      setRDraftTrips(split.draftTrips);
+      setRUpcomingTrips(split.upcomingTrips);
+      setRActiveTrips(split.activeTrips);
       setRQuickTrips(quick);
       setRStats(stats);
       setRAllTrips(allTripsData);
+      setHistoryHydrated(true);
+      if (!t && !silent) {
+        setLoading(false);
+        setRefreshing(false);
+      }
 
       const completed = allTripsData.filter(tr => tr.status === 'Completed' && !tr.deletedAt);
       if (completed.length > 0) {
@@ -282,7 +306,10 @@ export function useHomeScreen() {
       // Write widget snapshots so headless widget context can read them
       writeWidgetSnapshots().then(() => refreshAllWidgets()).catch(() => {});
     } catch (e: unknown) {
-      if (!silent) setError(e instanceof Error ? e.message : 'Unable to load trip');
+      if (!silent) {
+        setError(e instanceof Error ? e.message : 'Unable to load trip');
+        setHistoryHydrated(true);
+      }
     } finally {
       if (!silent) setLoading(false);
       setRefreshing(false);
@@ -298,13 +325,30 @@ export function useHomeScreen() {
 
   // ── Cache-first init ──
   useEffect(() => {
-    if (testModeRef.current) { setLoaderDone(true); setLoading(false); didInitialLoad.current = true; return; }
-    const ct = getHomeActiveTripCached();
-    if (ct !== undefined) {
-      setTrip(ct);
+    if (testModeRef.current) { setLoaderDone(true); setLoading(false); setHistoryHydrated(true); didInitialLoad.current = true; return; }
+    let cancelled = false;
+    (async () => {
+      const memoryTrip = getHomeActiveTripCached();
+      const persistedTrip = memoryTrip === undefined ? await cacheGet<Trip | null>('trip:active', 0) : undefined;
+      const contextTrip = segmentActiveTrip ?? null;
+      const ct = memoryTrip !== undefined ? memoryTrip : (persistedTrip !== undefined ? persistedTrip : contextTrip);
+      const hasTripSeed = ct !== undefined && ct !== null;
+      const ca = getHomeAllTripsCached();
+      const contextTrips = [
+        ...(segmentPastTrips ?? []),
+        ...(segmentDraftTrips ?? []),
+        ...(contextTrip ? [contextTrip] : []),
+      ];
+      const seededTrips = ca ?? contextTrips;
+
+      if (cancelled) return;
+
+      if (ct !== undefined) {
+        setTrip(ct);
+      }
       const id = ct?.id;
       if (id) {
-        const cf = getHomeFlightsCached(id); if (cf) setFlights(cf);
+        const cf = getHomeFlightsCached(id) ?? await cacheGet<Flight[]>(`flights:${id}`, 0); if (!cancelled && cf) setFlights(cf);
         const cm = getHomeMomentsCached(id); if (cm) setMoments(cm);
         const cmem = getHomeMembersCached(id); if (cmem) setMembers(cmem);
         const cp = getHomePlacesCached(id); if (cp) setSavedPlaces(cp);
@@ -317,22 +361,28 @@ export function useHomeScreen() {
           setTodayCount(te.length);
         }
       }
-      const ca = getHomeAllTripsCached();
-      if (ca) {
-        const now = Date.now();
-        setRPastTrips(ca.filter(t => t.status === 'Completed' && !t.deletedAt && (t.endDate ? new Date(t.endDate).getTime() + 86400000 < now : false)));
-        setRDraftTrips(ca.filter(t => t.isDraft === true && !t.deletedAt));
-        setRUpcomingTrips(ca.filter(t => t.status === 'Planning' && !t.isDraft && !t.deletedAt && !t.archivedAt));
-        setRActiveTrips(ca.filter(t => t.status === 'Active' && !t.deletedAt && !t.archivedAt));
-        setRAllTrips(ca);
+      if (seededTrips.length > 0) {
+        const split = splitTripsByLifecycle(seededTrips);
+        setRPastTrips(split.pastTrips);
+        setRDraftTrips(split.draftTrips);
+        setRUpcomingTrips(split.upcomingTrips);
+        setRActiveTrips(split.activeTrips);
+        setRAllTrips(seededTrips);
+        setHistoryHydrated(true);
       }
       const cq = getHomeQuickTripsCached(); if (cq) setRQuickTrips(cq);
       const cs = getHomeLifetimeStatsCached(); if (cs) setRStats(cs);
-      setLoaderDone(true); setLoading(false);
-      load({ silent: true });
-    } else { load(); }
+      if (!segmentLoading && seededTrips.length === 0) setHistoryHydrated(true);
+      if (hasTripSeed || seededTrips.length > 0 || !segmentLoading) {
+        setLoaderDone(true); setLoading(false);
+        load({ silent: true });
+      } else {
+        load();
+      }
+    })();
     didInitialLoad.current = true;
-  }, [load]);
+    return () => { cancelled = true; };
+  }, [load, segmentActiveTrip, segmentPastTrips, segmentDraftTrips, segmentLoading]);
 
   // ── Focus refresh ──
   useEffect(() => {
@@ -340,9 +390,12 @@ export function useHomeScreen() {
       if (!didInitialLoad.current || testModeRef.current) return;
       const tripId = _rawTrip?.id;
       if (!tripId) return;
+      const now = Date.now();
+      if (now - lastFocusRefreshAt.current < 60_000) return;
+      lastFocusRefreshAt.current = now;
       Promise.all([
-        withTimeout(getHomeActiveTripPromise(true), null as Trip | null),
-        withTimeout(getHomeExpensesPromise(tripId, true), []),
+        withTimeout(getHomeActiveTripPromise(false), null as Trip | null),
+        withTimeout(getHomeExpensesPromise(tripId, false), []),
       ]).then(([ft, ae]) => {
         if (ft) setTrip(ft);
         setTotalSpent(ae.reduce((s, e) => s + e.amount, 0));
@@ -516,7 +569,7 @@ export function useHomeScreen() {
     // Daily tracker
     dailyTrackerOn, dailyTrackerTotal, dailyTrackerCount, dailyTrackerByCat, setDailyTrackerOn,
     // Returning (test-mode-aware)
-    pastTrips, draftTrips, upcomingTrips, activeTrips, quickTrips, allTrips, lifetimeStats,
+          pastTrips, draftTrips, upcomingTrips, activeTrips, quickTrips, allTrips, lifetimeStats, historyHydrated,
     returningMoments: isTestMode ? (mockData?.moments ?? []) as Moment[] : rMoments,
     returningMembers: isTestMode ? (mockData?.members ?? []) as GroupMember[] : rMembers,
     returningSavedPlaces: isTestMode ? (mockData?.places?.filter(p => p.saved) ?? []) as Place[] : rSavedPlaces,

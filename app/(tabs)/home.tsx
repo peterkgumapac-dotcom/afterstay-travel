@@ -215,6 +215,7 @@ function HomeScreen() {
     userAvatar,
     user,
     loading,
+    historyHydrated,
     loaderDone,
     showLoader,
     refreshing,
@@ -404,6 +405,18 @@ function HomeScreen() {
       quickTrips.length > 0 ||
       draftTrips.length > 0 ||
       allTrips.some((t) => !t.deletedAt && !t.isDraft);
+    if (!isTestMode && !historyHydrated && !hasHistory) {
+      return (
+        <AfterStayLoader
+          message="Checking your travel history..."
+          steps={[
+            'Looking for active trips',
+            'Checking past and upcoming trips',
+            'Preparing your travel home',
+          ]}
+        />
+      );
+    }
     if (hasHistory) {
       const displayName = userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || '';
       const handle =

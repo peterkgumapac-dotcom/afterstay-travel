@@ -44,10 +44,11 @@ function mapRpcPost(row: Record<string, unknown>): FeedPost {
   };
 }
 
-function withUploadTimeout<T>(promise: Promise<T>, message: string, ms = 45_000): Promise<T> {
+function withUploadTimeout<T>(promise: PromiseLike<T>, message: string, ms = 45_000): Promise<T> {
+  const wrapped = Promise.resolve(promise);
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms);
-    promise.then((value) => {
+    wrapped.then((value) => {
       clearTimeout(timer);
       resolve(value);
     }, (error) => {
@@ -216,20 +217,24 @@ export async function createExplorePost(input: CreatePostInput): Promise<FeedPos
   const postType = resolvePostType(input.localMediaUris.length, layout);
 
   // Create post row first
-  const { data: post, error: postErr } = await supabase
-    .from('feed_posts')
-    .insert({
-      user_id: user.id,
-      type: postType,
-      caption: input.caption ?? null,
-      location_name: input.locationName ?? null,
-      trip_id: input.tripId ?? null,
-      layout_type: layout,
-      photo_url: null,
-      is_public: true,
-    })
-    .select()
-    .single();
+  const { data: post, error: postErr } = await withUploadTimeout(
+    supabase
+      .from('feed_posts')
+      .insert({
+        user_id: user.id,
+        type: postType,
+        caption: input.caption ?? null,
+        location_name: input.locationName ?? null,
+        trip_id: input.tripId ?? null,
+        layout_type: layout,
+        photo_url: null,
+        is_public: true,
+      })
+      .select()
+      .single(),
+    'Saving public post timed out. Please try again.',
+    45_000,
+  );
 
   if (postErr || !post) throw new Error(`createExplorePost: ${postErr?.message ?? 'insert failed'}`);
 
@@ -255,13 +260,21 @@ export async function createExplorePost(input: CreatePostInput): Promise<FeedPos
       order_index: i,
     }));
 
-    const { error: mediaErr } = await supabase.from('post_media').insert(mediaRows);
+    const { error: mediaErr } = await withUploadTimeout(
+      supabase.from('post_media').insert(mediaRows),
+      'Saving public photos timed out. Please try again.',
+      45_000,
+    );
     if (mediaErr) throw new Error(`createExplorePost media: ${mediaErr.message}`);
 
-    const { count, error: verifyErr } = await supabase
-      .from('post_media')
-      .select('id', { count: 'exact', head: true })
-      .eq('post_id', postId);
+    const { count, error: verifyErr } = await withUploadTimeout(
+      supabase
+        .from('post_media')
+        .select('id', { count: 'exact', head: true })
+        .eq('post_id', postId),
+      'Verifying public photos timed out. Please try again.',
+      30_000,
+    );
     if (verifyErr) throw new Error(`createExplorePost verify: ${verifyErr.message}`);
     if ((count ?? 0) < mediaRows.length) throw new Error('createExplorePost verify: media rows were not saved');
   } catch (err) {
@@ -269,14 +282,22 @@ export async function createExplorePost(input: CreatePostInput): Promise<FeedPos
     if (uploads.length > 0) {
       await supabase.storage.from('moments').remove(uploads.map((upload) => upload.storagePath)).catch(() => {});
     }
-    await supabase.from('feed_posts').delete().eq('id', postId);
+    await withUploadTimeout(
+      supabase.from('feed_posts').delete().eq('id', postId),
+      'Cleaning up failed public post timed out.',
+      20_000,
+    ).catch(() => {});
     throw err;
   }
 
   // Update photo_url on post with the first image (non-critical fallback field)
   if (uploads.length > 0) {
     try {
-      await supabase.from('feed_posts').update({ photo_url: uploads[0].mediaUrl }).eq('id', postId);
+      await withUploadTimeout(
+        supabase.from('feed_posts').update({ photo_url: uploads[0].mediaUrl }).eq('id', postId),
+        'Saving public photo preview timed out.',
+        20_000,
+      );
     } catch (err) {
       // photo_url is a fallback — post_media is the source of truth
       if (__DEV__) console.warn('[exploreMoments] photo_url update failed (non-critical):', err);

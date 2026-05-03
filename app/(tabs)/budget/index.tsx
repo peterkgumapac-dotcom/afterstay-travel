@@ -164,6 +164,8 @@ function BudgetScreen() {
 
   const [mode, setMode] = useState<BudgetMode>('budget');
   const modeInit = useRef(false);
+  const didInitialBudgetLoad = useRef(false);
+  const lastBudgetFocusRefreshAt = useRef(0);
   const [tab, setTab] = useState<TabId>('expenses');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [budgetLoading, setBudgetLoading] = useState(true);
@@ -300,11 +302,19 @@ function BudgetScreen() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    didInitialBudgetLoad.current = true;
+    lastBudgetFocusRefreshAt.current = Date.now();
+    load();
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
-      load(true);
+      if (!didInitialBudgetLoad.current) return;
+      const now = Date.now();
+      if (now - lastBudgetFocusRefreshAt.current < 60_000) return;
+      lastBudgetFocusRefreshAt.current = now;
+      load(false);
     }, [load]),
   );
 
