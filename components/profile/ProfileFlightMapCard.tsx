@@ -62,9 +62,10 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
   const home = project(mapData.homeCoordinates, bounds);
   const totalKm = mapData.totalKm || Math.round(stats.totalMiles * 1.60934);
   const hasMapData = mapData.routes.length > 0 || mapData.destinations.length > 0;
+  const isEmptyProfile = !hasMapData && stats.totalTrips === 0 && stats.totalCountries === 0 && stats.totalNights === 0;
 
   return (
-    <View style={s.card}>
+    <View style={[s.card, isEmptyProfile && s.compactCard]}>
       <View style={s.head}>
         <Text style={s.kicker}>Lifetime · Since {stats.earliestTripDate ? new Date(stats.earliestTripDate).getFullYear() : 'now'}</Text>
         <View style={s.distanceRow}>
@@ -73,8 +74,8 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
         </View>
       </View>
 
-      <View style={s.mapWrap}>
-        <Svg width="100%" height={210} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
+      <View style={[s.mapWrap, isEmptyProfile && s.mapWrapCompact]}>
+        <Svg width="100%" height={isEmptyProfile ? 136 : 210} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
           <Path
             d="M22 68 C82 28 128 48 168 78 C214 110 258 52 338 84 M38 148 C98 112 150 143 196 128 C242 114 282 150 334 124"
             fill="none"
@@ -136,9 +137,11 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
           ) : null;
         })}
         {!hasMapData ? (
-          <View style={s.emptyMap}>
+          <View style={[s.emptyMap, isEmptyProfile && s.emptyMapCompact]}>
             <Plane size={16} color={colors.accent} strokeWidth={1.8} />
-            <Text style={s.emptyMapText}>Add flights to light up this map.</Text>
+            <Text style={s.emptyMapText}>
+              {isEmptyProfile ? 'Trips and flights will light up this map.' : 'Add flights to light up this map.'}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -178,6 +181,9 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     backgroundColor: colors.card,
     overflow: 'hidden',
   },
+  compactCard: {
+    borderRadius: 20,
+  },
   head: {
     paddingHorizontal: 18,
     paddingTop: 18,
@@ -211,6 +217,9 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     height: 218,
     position: 'relative',
   },
+  mapWrapCompact: {
+    height: 148,
+  },
   emptyMap: {
     position: 'absolute',
     left: 18,
@@ -225,6 +234,9 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
+  },
+  emptyMapCompact: {
+    bottom: 18,
   },
   emptyMapText: {
     color: colors.text3,

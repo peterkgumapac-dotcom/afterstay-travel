@@ -25,8 +25,8 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const scrollRef = useRef<ScrollView>(null);
   const x = useRef(new Animated.Value(0)).current;
   const [active, setActive] = useState(0);
-  const segmentWidth = Math.min(226, Math.max(176, width - 138));
-  const thumbWidth = (segmentWidth - 8) / 2;
+  const segmentWidth = Math.min(238, Math.max(184, width - 140));
+  const thumbWidth = segmentWidth / 2;
 
   const indicator = x.interpolate({
     inputRange: [0, width],
@@ -47,6 +47,11 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
     <View style={s.root}>
       <View style={s.segmentRow}>
         <View style={[s.segment, { width: segmentWidth }]}>
+          {(['Profile', 'Memories'] as const).map((label, index) => (
+            <Pressable key={label} style={s.tab} onPress={() => jumpTo(index)}>
+              <Text style={[s.tabText, active === index && s.tabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
           <Animated.View
             style={[
               s.thumb,
@@ -61,11 +66,6 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
               },
             ]}
           />
-          {(['Profile', 'Memories'] as const).map((label, index) => (
-            <Pressable key={label} style={s.tab} onPress={() => jumpTo(index)}>
-              <Text style={[s.tabText, active === index && s.tabTextActive]}>{label}</Text>
-            </Pressable>
-          ))}
         </View>
       </View>
 
@@ -104,29 +104,24 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   segmentRow: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 10,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 6,
     backgroundColor: colors.canvas,
     zIndex: 20,
   },
   segment: {
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
+    height: 32,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     flexDirection: 'row',
-    overflow: 'hidden',
   },
   thumb: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 4,
-    borderRadius: 15,
-    backgroundColor: colors.canvas,
-    borderWidth: 1,
-    borderColor: colors.border,
+    left: 0,
+    bottom: -1,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.accent,
   },
   tab: {
     flex: 1,
@@ -135,8 +130,10 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   tabText: {
     color: colors.text3,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
   tabTextActive: {
     color: colors.text,

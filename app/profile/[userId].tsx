@@ -269,7 +269,7 @@ export default function CompanionProfileScreen() {
               </>
             )}
 
-            {canSeeStats && (
+            {canSeeStats && travelProgress.length > 0 && (
               <>
                 <GroupHeader kicker="TRAVEL PROGRESS" title="Where you've been" colors={colors as any} />
                 <TravelProgressCard items={travelProgress} stats={stats} />

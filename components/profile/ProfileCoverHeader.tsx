@@ -144,6 +144,8 @@ export default function ProfileCoverHeader({
             >
               {followBusy ? (
                 <ActivityIndicator size="small" color={colors.canvas} />
+              ) : isFollowing ? (
+                <Check size={16} color={colors.canvas} />
               ) : (
                 <Plus size={16} color={colors.canvas} />
               )}
@@ -187,7 +189,8 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   levelBadge: {
     position: 'absolute',
     right: 18,
-    bottom: 30,
+    bottom: 72,
+    zIndex: 4,
     minHeight: 34,
     borderRadius: 17,
     backgroundColor: 'rgba(0,0,0,0.56)',
