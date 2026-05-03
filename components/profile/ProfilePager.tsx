@@ -6,10 +6,10 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 
 import { lightColors, useTheme } from '@/constants/ThemeContext';
 
@@ -25,12 +25,10 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const scrollRef = useRef<ScrollView>(null);
   const x = useRef(new Animated.Value(0)).current;
   const [active, setActive] = useState(0);
-  const segmentWidth = Math.min(238, Math.max(184, width - 140));
-  const thumbWidth = (segmentWidth - 6) / 2;
 
-  const indicator = x.interpolate({
+  const dotProgress = x.interpolate({
     inputRange: [0, width],
-    outputRange: [0, 1],
+    outputRange: [0, 10],
     extrapolate: 'clamp',
   });
 
@@ -43,32 +41,10 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
     setActive(index);
   };
 
+  const nextIndex = active === 0 ? 1 : 0;
+
   return (
     <View style={s.root}>
-      <View style={s.segmentRow}>
-        <View style={[s.segment, { width: segmentWidth }]}>
-          <Animated.View
-            style={[
-              s.thumb,
-              {
-                width: thumbWidth,
-                transform: [{
-                  translateX: indicator.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, thumbWidth],
-                  }),
-                }],
-              },
-            ]}
-          />
-          {(['Profile', 'Memories'] as const).map((label, index) => (
-            <Pressable key={label} style={s.tab} onPress={() => jumpTo(index)}>
-              <Text style={[s.tabText, active === index && s.tabTextActive]}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
       <Animated.ScrollView
         ref={scrollRef}
         style={s.pager}
@@ -86,6 +62,27 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
         <View style={[s.page, { width }]}>{profilePage}</View>
         <View style={[s.page, { width }]}>{memoriesPage}</View>
       </Animated.ScrollView>
+
+      <View style={[s.edgeRail, active === 0 ? s.edgeRailRight : s.edgeRailLeft]} pointerEvents="box-none">
+        <Pressable
+          style={s.edgeButton}
+          onPress={() => jumpTo(nextIndex)}
+          accessibilityRole="button"
+          accessibilityLabel={active === 0 ? 'Show memories' : 'Show profile'}
+        >
+          {active === 0 ? (
+            <ChevronRight size={22} color={colors.accent} strokeWidth={2.4} />
+          ) : (
+            <ChevronLeft size={22} color={colors.accent} strokeWidth={2.4} />
+          )}
+        </Pressable>
+      </View>
+
+      <View style={s.dots} pointerEvents="none">
+        <View style={s.dotTrack}>
+          <Animated.View style={[s.dotActive, { transform: [{ translateX: dotProgress }] }]} />
+        </View>
+      </View>
     </View>
   );
 }
@@ -101,52 +98,45 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   page: {
     flex: 1,
   },
-  segmentRow: {
+  edgeRail: {
     position: 'absolute',
-    top: 52,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
+    top: '48%',
     zIndex: 20,
+    elevation: 10,
   },
-  segment: {
-    height: 42,
+  edgeRailRight: {
+    right: 8,
+  },
+  edgeRailLeft: {
+    left: 8,
+  },
+  edgeButton: {
+    width: 42,
+    height: 58,
     borderRadius: 21,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(253,248,235,0.92)',
-    flexDirection: 'row',
-    padding: 3,
-    shadowColor: '#2a1d0d',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  thumb: {
-    position: 'absolute',
-    left: 3,
-    top: 3,
-    bottom: 3,
-    borderRadius: 18,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  tab: {
-    flex: 1,
+    backgroundColor: 'rgba(253,248,235,0.88)',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
   },
-  tabText: {
-    color: colors.text2,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0,
+  dots: {
+    position: 'absolute',
+    bottom: 22,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
-  tabTextActive: {
-    color: colors.text,
+  dotTrack: {
+    width: 18,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(168,145,108,0.22)',
+  },
+  dotActive: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
   },
 });
