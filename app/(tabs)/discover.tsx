@@ -44,6 +44,19 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, searchNearbyPage, placeAutocomplete, getPlaceLocation, type NearbyPlace } from '@/lib/google-places';
 import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS } from '@/lib/category-config';
 import { searchMultiCategory } from '@/lib/multi-category-search';
+import {
+  DEFAULT_PLACE_FILTERS,
+  applyQuickFilter,
+  applyPlaceFilters,
+  countActivePlaceFilters,
+  getFilterContext,
+  getQuickFiltersForContext,
+  matchesDestinationScope,
+  type DestinationScope,
+  type PlaceFilterState,
+  type QuickFilter,
+  type QuickFilterId,
+} from '@/lib/discoverPlaceFilters';
 import DestinationCard from '@/components/discover/DestinationCard';
 import {
   addPlace,
@@ -71,12 +84,15 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'places' | 'stays' | 'concierge' | 'saved';
 type TravelMode = 'walk' | 'car';
 type DistanceOrigin = 'hotel' | 'me';
-type FilterState = {
-  minRating: number;
-  openNow: boolean;
-  nearby: boolean;
-  maxPrice: number;
+type DiscoverOriginKind = 'trip' | 'searched_destination' | 'current_location' | 'none';
+type StarterDestination = {
+  label: string;
+  eyebrow: string;
+  body: string;
+  countryCode: string;
+  coords: { lat: number; lng: number };
 };
+type FilterState = PlaceFilterState;
 
 function destinationToLabel(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -190,41 +206,69 @@ const PLACE_CATEGORY_CHIPS = [
   'Landmark',
 ] as const;
 
-const DEFAULT_FILTERS: FilterState = {
-  minRating: 4.0,
-  openNow: false,
-  nearby: false,
-  maxPrice: 3,
+const DEFAULT_FILTERS = DEFAULT_PLACE_FILTERS;
+
+const DESTINATION_SCOPE_OPTIONS: readonly { id: DestinationScope; label: string; body: string }[] = [
+  { id: 'all', label: 'All', body: 'Everywhere' },
+  { id: 'local', label: 'Local', body: 'Philippines' },
+  { id: 'abroad', label: 'Abroad', body: 'International' },
+] as const;
+
+const QUICK_FILTER_CATEGORY_MAP: Partial<Record<QuickFilterId, typeof PLACE_CATEGORY_CHIPS[number]>> = {
+  food: 'Food',
+  coffee: 'Coffee',
+  beach: 'Beach',
+  activities: 'Activity',
+  worth_the_drive: 'Worth the Drive',
 };
 
-const STARTER_DESTINATIONS = ['Boracay', 'Caticlan', 'Bali', 'Tokyo', 'Cebu'] as const;
+const STARTER_DESTINATIONS: readonly StarterDestination[] = [
+  {
+    label: 'Boracay',
+    eyebrow: 'Beach food',
+    body: 'White Beach cafes, sunset spots, and easy island saves.',
+    countryCode: 'PH',
+    coords: { lat: 11.9674, lng: 121.9248 },
+  },
+  {
+    label: 'Cebu',
+    eyebrow: 'City + coast',
+    body: 'Food halls, heritage stops, beaches, and weekend escapes.',
+    countryCode: 'PH',
+    coords: { lat: 10.3157, lng: 123.8854 },
+  },
+  {
+    label: 'Bali',
+    eyebrow: 'Wellness',
+    body: 'Cafes, beach clubs, temples, villas, and slow mornings.',
+    countryCode: 'ID',
+    coords: { lat: -8.3405, lng: 115.0920 },
+  },
+  {
+    label: 'Tokyo',
+    eyebrow: 'City discovery',
+    body: 'Food alleys, coffee, shopping, nightlife, and hidden stops.',
+    countryCode: 'JP',
+    coords: { lat: 35.6762, lng: 139.6503 },
+  },
+  {
+    label: 'Caticlan',
+    eyebrow: 'Gateway',
+    body: 'Airport-adjacent food, transfers, stays, and Boracay staging.',
+    countryCode: 'PH',
+    coords: { lat: 11.9336, lng: 121.9599 },
+  },
+] as const;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-function countActiveFilters(f: FilterState): number {
-  return (
-    (f.minRating > 0 ? 1 : 0) +
-    (f.openNow ? 1 : 0) +
-    (f.nearby ? 1 : 0) +
-    (f.maxPrice < 3 ? 1 : 0)
+function getStarterDestinationFallback(input: string): StarterDestination | undefined {
+  const normalized = input.trim().toLowerCase();
+  if (!normalized) return undefined;
+  return STARTER_DESTINATIONS.find((destination) =>
+    normalized.includes(destination.label.toLowerCase()) ||
+    destination.label.toLowerCase().includes(normalized),
   );
-}
-
-function applyPlaceFilters(
-  list: readonly DiscoverPlace[],
-  f: FilterState,
-): DiscoverPlace[] {
-  return list.filter((p) => {
-    // Hide hotels/lodging — user already has accommodation
-    const t = (p.t ?? '').toLowerCase();
-    const types = (p.types ?? []).map(s => s.toLowerCase());
-    if (t === 'hotel' || t === 'lodging' || types.includes('lodging') || types.includes('hotel')) return false;
-    if (f.minRating && p.r < f.minRating) return false;
-    if (f.openNow && !p.openNow) return false;
-    // "nearby" filter is applied AFTER distance computation in placesWithDistance
-    if (f.maxPrice < 3 && p.price > f.maxPrice) return false;
-    return true;
-  });
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────
@@ -510,7 +554,9 @@ function DiscoverScreenInner() {
   const [exploreDest, setExploreDest] = useState('');
   const [exploreQuery, setExploreQuery] = useState('');
   const [exploreResults, setExploreResults] = useState<{ placeId: string; description: string }[]>([]);
+  const [exploreFocused, setExploreFocused] = useState(false);
   const exploreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exploreInputRef = useRef<TextInput>(null);
 
   // Wishlist (no-trip saves)
   const [wishlistItems, setWishlistItems] = useState<import('@/lib/types').WishlistItem[]>([]);
@@ -592,9 +638,30 @@ function DiscoverScreenInner() {
   const [tripBudgetCurrency, setTripBudgetCurrency] = useState('PHP');
 
 
-  // Effective coords: trip hotel → explore destination → null
+  // Effective coords: active trip → searched destination/current location → null
   const effectiveCoords = tripCoords ?? exploreCoords;
   const effectiveDest = tripDest || exploreDest;
+  const effectiveOriginKind: DiscoverOriginKind = tripCoords
+    ? 'trip'
+    : exploreCoords && exploreDest === 'Near me'
+      ? 'current_location'
+      : exploreCoords
+        ? 'searched_destination'
+        : 'none';
+  const hasUsableOrigin = !!effectiveCoords;
+  const filterContext = useMemo(() => getFilterContext({
+    hasTrip: !!tripId,
+    hasOrigin: hasUsableOrigin,
+    originKind: effectiveOriginKind,
+    memberCount: tripMembers.length,
+  }), [tripId, hasUsableOrigin, effectiveOriginKind, tripMembers.length]);
+  const quickFilters = useMemo(() => getQuickFiltersForContext(filterContext), [filterContext]);
+  const starterDestinations = useMemo(
+    () => STARTER_DESTINATIONS.filter((destination) =>
+      matchesDestinationScope(destination, filters.destinationScope),
+    ),
+    [filters.destinationScope],
+  );
 
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
@@ -644,40 +711,60 @@ function DiscoverScreenInner() {
     cacheSet('discover:travelMode', m);
   }, []);
 
-  const chooseExploreDestination = useCallback(async (label: string) => {
+  const chooseExploreDestination = useCallback(async (
+    label: string,
+    placeId?: string,
+    fallbackCoords?: { lat: number; lng: number },
+  ) => {
     const cleaned = label.trim();
     if (!cleaned) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setExploreQuery(cleaned);
-    setExploreDest(cleaned);
     setExploreResults([]);
     setPlacesError(null);
     setPlacesLoading(true);
     try {
-      const results = await placeAutocomplete(cleaned);
-      const best = results[0];
-      if (!best) {
-        setExploreCoords(null);
-        setPlaces([]);
-        setPlacesError('Could not find that destination. Try another search.');
-        return;
-      }
-      const loc = await getPlaceLocation(best.placeId);
+      const best = placeId
+        ? { placeId, description: cleaned }
+        : (await placeAutocomplete(cleaned))[0];
+      const loc = best ? await getPlaceLocation(best.placeId) : null;
       if (!loc) {
-        setExploreCoords(null);
-        setPlaces([]);
-        setPlacesError('Could not find that destination. Try another search.');
-        return;
+        if (!fallbackCoords) {
+          setExploreCoords(null);
+          setExploreDest('');
+          setPlaces([]);
+          setPlacesError('Could not find that destination. Try another search.');
+          return;
+        }
+        setExploreCoords(fallbackCoords);
+        setExploreDest(cleaned);
+        setExploreQuery(cleaned);
+      } else {
+        const shortLabel = best?.description.split(',')[0] ?? cleaned;
+        setExploreCoords({ lat: loc.lat, lng: loc.lng });
+        setExploreDest(shortLabel);
+        setExploreQuery(shortLabel);
       }
-      setExploreCoords({ lat: loc.lat, lng: loc.lng });
-      setExploreDest(best.description.split(',')[0] ?? cleaned);
-      setExploreQuery(best.description.split(',')[0] ?? cleaned);
+      setPlaceCategoryChip('All');
+      setQ('');
+      setVisibleCount(20);
       placesCache.current = {};
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] choose destination failed:', err);
-      setExploreCoords(null);
-      setPlaces([]);
-      setPlacesError('Could not find that destination. Try another search.');
+      if (fallbackCoords) {
+        setExploreCoords(fallbackCoords);
+        setExploreDest(cleaned);
+        setExploreQuery(cleaned);
+        setPlaceCategoryChip('All');
+        setQ('');
+        setVisibleCount(20);
+        placesCache.current = {};
+      } else {
+        setExploreCoords(null);
+        setExploreDest('');
+        setPlaces([]);
+        setPlacesError('Could not find that destination. Try another search.');
+      }
     } finally {
       setPlacesLoading(false);
     }
@@ -694,13 +781,26 @@ function DiscoverScreenInner() {
         setPlacesError('Enable location permission or search a destination to find places.');
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced });
+      const loc = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+      ]) ?? await Location.getLastKnownPositionAsync({
+        maxAge: 10 * 60 * 1000,
+        requiredAccuracy: 5000,
+      });
+      if (!loc) {
+        setPlacesError('Current location is unavailable. Search a destination instead.');
+        return;
+      }
       const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
       setUserLocation(coords);
       setExploreCoords(coords);
       setExploreDest('Near me');
       setExploreQuery('Near me');
       setDistanceOrigin('me');
+      setPlaceCategoryChip('All');
+      setQ('');
+      setVisibleCount(20);
       placesCache.current = {};
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] current location failed:', err);
@@ -858,31 +958,16 @@ function DiscoverScreenInner() {
 
   // Search places via Google Places API
   const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false, radius?: number) => {
-    // If no coords but user typed a keyword, auto-geocode it as a destination
     if (!effectiveCoords && keyword?.trim()) {
-      setPlacesLoading(true);
-      try {
-        const results = await placeAutocomplete(keyword);
-        if (results.length > 0) {
-          const loc = await getPlaceLocation(results[0].placeId);
-          if (loc) {
-            setExploreCoords({ lat: loc.lat, lng: loc.lng });
-            setExploreDest(results[0].description.split(',')[0] ?? keyword);
-            setExploreQuery(results[0].description.split(',')[0] ?? keyword);
-            // Will re-trigger via effectiveCoords change
-            return;
-          }
-        }
-      } catch (err) {
-        if (__DEV__) console.warn('[Discover] place autocomplete failed:', err);
-      }
-      setPlacesLoading(false);
       setPlaces([]);
+      setPlacesLoading(false);
+      setPlacesError('Choose a destination or use your location before searching places.');
       return;
     }
     if (!effectiveCoords) {
       setPlaces([]);
       setPlacesLoading(false);
+      setPlacesError(null);
       return;
     }
 
@@ -953,6 +1038,12 @@ function DiscoverScreenInner() {
   // Load places when category chip changes
   useEffect(() => {
     if (tab !== 'places') return;
+    if (!effectiveCoords) {
+      setPlaces([]);
+      setPlacesError(null);
+      setPlacesLoading(false);
+      return;
+    }
     if (placeCategoryChip === 'All') {
       loadAllView();
     } else {
@@ -961,16 +1052,21 @@ function DiscoverScreenInner() {
       const categoryRadius = CATEGORY_RADIUS_MAP[chipKey] ?? DEFAULT_SEARCH_RADIUS;
       searchPlaces(searchConfig?.keyword ?? chipKey, searchConfig?.type, false, categoryRadius);
     }
-  }, [placeCategoryChip, tab, searchPlaces, loadAllView]);
+  }, [placeCategoryChip, tab, searchPlaces, loadAllView, effectiveCoords]);
 
   // Debounced search input
   useEffect(() => {
     if (tab !== 'places') return;
     if (!q.trim()) {
       // Reset to category-based search when query is cleared
-      if (placeCategoryChip === 'All') {
+      if (effectiveCoords && placeCategoryChip === 'All') {
         loadAllView();
       }
+      return;
+    }
+    if (!effectiveCoords) {
+      setPlaces([]);
+      setPlacesError('Choose a destination or use your location before searching places.');
       return;
     }
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -980,7 +1076,7 @@ function DiscoverScreenInner() {
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [q, tab, placeCategoryChip, searchPlaces]);
+  }, [q, tab, placeCategoryChip, searchPlaces, effectiveCoords, loadAllView]);
 
   const savePlaceToWishlist = useCallback(async (placeData: DiscoverPlace) => {
     const { addToWishlist, getWishlist } = await import('@/lib/supabase');
@@ -1205,8 +1301,21 @@ function DiscoverScreenInner() {
 
   // Generate itinerary via Anthropic
 
-  const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
-  const filteredPlaces = useMemo(() => applyPlaceFilters(places, filters), [places, filters]);
+  const voteCountsByName = useMemo(() => new globalThis.Map(
+    savedPlaces.map((p) => [p.name, Object.keys(p.voteByMember ?? {}).length]),
+  ), [savedPlaces]);
+  const placeFilterMetadata = useMemo(() => ({
+    savedNames: saved,
+    recommendedNames: recommended,
+    voteCountsByName,
+    memberCount: tripMembers.length,
+  }), [saved, recommended, voteCountsByName, tripMembers.length]);
+
+  const activeFilterCount = useMemo(() => countActivePlaceFilters(filters), [filters]);
+  const filteredPlaces = useMemo(
+    () => applyPlaceFilters(places, filters, placeFilterMetadata),
+    [places, filters, placeFilterMetadata],
+  );
 
 
   // Pre-compute distances, filter nearby, sort by quality-weighted score.
@@ -1218,17 +1327,26 @@ function DiscoverScreenInner() {
       return { place: p, distanceKm, blendedScore };
     });
     const nearbyRadius = travelMode === 'car' ? 10 : 2;
-    const filtered = filters.nearby
+    const filtered = filters.nearby && hasUsableOrigin
       ? withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= nearbyRadius)
       : withDist;
     return filtered.sort((a, b) => {
-      // Open places first, then by quality score descending
       const openA = a.place.openNow ? 0 : 1;
       const openB = b.place.openNow ? 0 : 1;
       if (openA !== openB) return openA - openB;
+      if (filters.sortMode === 'distance') {
+        return a.distanceKm - b.distanceKm;
+      }
+      if (filters.sortMode === 'rating') {
+        return (b.place.r ?? 0) - (a.place.r ?? 0);
+      }
+      if (filters.sortMode === 'popular') {
+        return (b.place.totalRatings ?? 0) - (a.place.totalRatings ?? 0);
+      }
       return b.blendedScore - a.blendedScore;
     });
-  }, [filteredPlaces, getDistanceKm, filters.nearby, travelMode]);
+  }, [filteredPlaces, getDistanceKm, filters.nearby, filters.sortMode, hasUsableOrigin, travelMode]);
+  const displayPlaces = useMemo(() => placesWithDistance.map(({ place }) => place), [placesWithDistance]);
 
   // Stable filter callbacks — prevent FilterChip re-renders
   const toggleOpenNow = useCallback(() => setFilters((f) => ({ ...f, openNow: !f.openNow })), []);
@@ -1238,6 +1356,91 @@ function DiscoverScreenInner() {
     return { ...f, minRating: next };
   }), []);
   const toggleShowFilters = useCallback(() => setShowFilters((s) => !s), []);
+
+  const isQuickFilterActive = useCallback((id: QuickFilterId): boolean => {
+    const category = QUICK_FILTER_CATEGORY_MAP[id];
+    if (category) return placeCategoryChip === category;
+    switch (id) {
+      case 'saved_ideas':
+        return tab === 'saved' || !!filters.savedOnly;
+      case 'saved':
+        return !!filters.savedOnly;
+      case 'popular':
+        return filters.sortMode === 'popular';
+      case 'top_rated':
+        return filters.minRating >= 4.5 || filters.sortMode === 'rating';
+      case 'budget':
+        return filters.maxPrice <= 2;
+      case 'open_now':
+        return filters.openNow;
+      case 'walkable':
+      case 'near_hotel':
+        return filters.nearby && filters.sortMode === 'distance';
+      case 'recommended':
+        return !!filters.recommendedOnly;
+      case 'needs_votes':
+        return !!filters.needsVotesOnly;
+      default:
+        return false;
+    }
+  }, [filters, placeCategoryChip, tab]);
+
+  const handleQuickFilterPress = useCallback((quickFilter: QuickFilter) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const category = QUICK_FILTER_CATEGORY_MAP[quickFilter.id];
+    if (category) {
+      setTab('places');
+      setPlaceCategoryChip((current) => (current === category ? 'All' : category));
+      setQ('');
+      setVisibleCount(20);
+      return;
+    }
+
+    if (quickFilter.id === 'saved_ideas' && filterContext === 'no_origin') {
+      setTab('saved');
+      return;
+    }
+
+    setTab('places');
+    setVisibleCount(20);
+    setFilters((current) => {
+      if (isQuickFilterActive(quickFilter.id)) {
+        switch (quickFilter.id) {
+          case 'saved_ideas':
+          case 'saved':
+            return { ...current, savedOnly: false };
+          case 'popular':
+            return { ...current, sortMode: 'best' };
+          case 'top_rated':
+            return { ...current, minRating: 0, sortMode: current.sortMode === 'rating' ? 'best' : current.sortMode };
+          case 'budget':
+            return { ...current, maxPrice: DEFAULT_FILTERS.maxPrice };
+          case 'open_now':
+            return { ...current, openNow: false };
+          case 'walkable':
+          case 'near_hotel':
+            return { ...current, nearby: false, sortMode: current.sortMode === 'distance' ? 'best' : current.sortMode };
+          case 'recommended':
+            return { ...current, recommendedOnly: false };
+          case 'needs_votes':
+            return { ...current, needsVotesOnly: false };
+          default:
+            return current;
+        }
+      }
+      return applyQuickFilter(current, quickFilter.id);
+    });
+  }, [filterContext, isQuickFilterActive]);
+
+  const placesEmptyText = useMemo(() => {
+    if (!hasUsableOrigin) return 'Choose a destination, use current location, or browse popular starting points.';
+    if (filters.nearby) return 'No walkable places found. Try Any distance.';
+    if (filters.openNow) return 'No open places found. Try All availability.';
+    if (filters.savedOnly) return 'No saved ideas match this view yet.';
+    if (filters.recommendedOnly) return 'No group recommendations match this view yet.';
+    if (filters.needsVotesOnly) return 'No places need votes right now.';
+    return 'No places match these filters.';
+  }, [filters.nearby, filters.needsVotesOnly, filters.openNow, filters.recommendedOnly, filters.savedOnly, hasUsableOrigin]);
 
   const handleExplore = useCallback((placeId: string | undefined, name: string) => {
     setDetailPlaceId(placeId ?? null);
@@ -1257,6 +1460,7 @@ function DiscoverScreenInner() {
         isRecommended={recommended.has(p.n)}
         onSave={handleSaveToggle}
         onRecommend={handleRecommendToggle}
+        saveActionLabel={tripId ? 'Save to trip' : 'Save for later'}
         onExplore={handleExplore}
         onAddToPlanner={undefined}
         showRecommend={tripMembers.length >= 2}
@@ -1266,7 +1470,7 @@ function DiscoverScreenInner() {
         onVoteTap={handleVoteTap}
       />
     );
-  }, [travelMode, saved, recommended, handleSaveToggle, handleRecommendToggle, handleExplore, tripMembers.length, voteByMemberMap, memberNames, handleVoteTap]);
+  }, [travelMode, saved, recommended, handleSaveToggle, handleRecommendToggle, handleExplore, tripMembers.length, voteByMemberMap, memberNames, handleVoteTap, tripId]);
 
   const CARD_HEIGHT = 128;
 
@@ -1321,11 +1525,23 @@ function DiscoverScreenInner() {
       {/* Destination search — shown when no active trip */}
       {!tripId && (
         <View style={styles.destSearchWrap}>
+          <View style={styles.destSearchHeader}>
+            <Text style={styles.destSearchLabel}>Destination</Text>
+            {effectiveOriginKind !== 'none' && (
+              <Text style={styles.destOriginText}>
+                {effectiveOriginKind === 'current_location' ? 'Using current location' : `Exploring ${effectiveDest}`}
+              </Text>
+            )}
+          </View>
           <TextInput
+            ref={exploreInputRef}
             style={styles.destSearchInput}
-            placeholder="Where do you want to explore?"
+            placeholder="Search a city, island, or neighborhood"
             placeholderTextColor={colors.text3}
+            returnKeyType="search"
             value={exploreQuery}
+            onFocus={() => setExploreFocused(true)}
+            onBlur={() => setTimeout(() => setExploreFocused(false), 120)}
             onChangeText={(text) => {
               setExploreQuery(text);
               if (exploreTimer.current) clearTimeout(exploreTimer.current);
@@ -1335,14 +1551,31 @@ function DiscoverScreenInner() {
                 setExploreResults(results);
               }, 300);
             }}
+            onSubmitEditing={() => {
+              const fallback = getStarterDestinationFallback(exploreQuery);
+              chooseExploreDestination(exploreQuery, undefined, fallback?.coords);
+            }}
           />
-          {exploreResults.length > 0 && (
+          {exploreFocused && exploreQuery.trim().length >= 2 && (
             <View style={styles.destDropdown}>
+              <TouchableOpacity
+                style={styles.destRow}
+                onPress={() => {
+                  const fallback = getStarterDestinationFallback(exploreQuery);
+                  chooseExploreDestination(exploreQuery, undefined, fallback?.coords);
+                }}
+                activeOpacity={0.7}
+              >
+                <Search size={14} color={colors.accent} strokeWidth={2} />
+                <Text style={[styles.destRowText, { color: colors.text }]} numberOfLines={1}>
+                  Search "{exploreQuery.trim()}"
+                </Text>
+              </TouchableOpacity>
               {exploreResults.slice(0, 5).map((r) => (
                 <TouchableOpacity
                   key={r.placeId}
                   style={styles.destRow}
-                  onPress={() => chooseExploreDestination(r.description)}
+                  onPress={() => chooseExploreDestination(r.description, r.placeId)}
                   activeOpacity={0.7}
                 >
                   <MapPin size={14} color={colors.text3} />
@@ -1355,7 +1588,7 @@ function DiscoverScreenInner() {
       )}
 
       {/* Destination overview — AI-generated insights for trip discovery */}
-      {!tripId && exploreDest ? (
+      {!tripId && exploreDest && exploreCoords ? (
         <>
           <DestinationCard destination={exploreDest} coords={exploreCoords} />
           <TouchableOpacity
@@ -1378,7 +1611,7 @@ function DiscoverScreenInner() {
               id === 'places' ? 'Places'
               : id === 'stays' ? 'Stays'
               : id === 'concierge' ? '\u2728 AI'
-              : tripId ? `Saved${saved.size ? ` \u00B7 ${saved.size}` : ''}` : `Wishlist${wishlistItems.length ? ` \u00B7 ${wishlistItems.length}` : ''}`;
+              : tripId ? `Saved${saved.size ? ` \u00B7 ${saved.size}` : ''}` : `Saved Ideas${wishlistItems.length ? ` \u00B7 ${wishlistItems.length}` : ''}`;
             return (
               <TouchableOpacity
                 key={id}
@@ -1449,34 +1682,87 @@ function DiscoverScreenInner() {
               )}
 
               {/* Search */}
-              <View style={styles.searchBox}>
+              <TouchableOpacity
+                style={styles.searchBox}
+                activeOpacity={effectiveCoords ? 1 : 0.75}
+                onPress={() => {
+                  if (effectiveCoords) return;
+                  setPlacesError('Choose a destination above, use Near me, or pick a popular starting point first.');
+                  exploreInputRef.current?.focus();
+                }}
+              >
                 <Search size={16} color={colors.text3} strokeWidth={1.8} />
-                <TextInput
-                  value={q}
-                  onChangeText={setQ}
-                  placeholder="Search restaurants, beaches, activities..."
-                  placeholderTextColor={colors.text3}
-                  style={styles.searchInput}
-                />
-              </View>
+		                <TextInput
+		                  value={q}
+		                  onChangeText={setQ}
+		                  placeholder={effectiveCoords ? 'Search restaurants, beaches, activities...' : 'Pick a destination, then search places'}
+		                  placeholderTextColor={colors.text3}
+		                  style={styles.searchInput}
+		                  editable={!!effectiveCoords}
+		                />
+              </TouchableOpacity>
 
               {!tripId && !effectiveCoords && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.starterDestRow}
-                >
-                  {STARTER_DESTINATIONS.map((destination) => (
+                <View style={styles.starterSection}>
+                  <View style={styles.starterHeaderRow}>
+                    <View>
+                      <Text style={styles.starterHeader}>Popular starting points</Text>
+                      <Text style={styles.starterSubhead}>Filter ideas by local or abroad</Text>
+                    </View>
                     <TouchableOpacity
-                      key={destination}
-                      style={styles.starterDestChip}
                       activeOpacity={0.7}
-                      onPress={() => chooseExploreDestination(destination)}
+                      onPress={() => setTab('saved')}
                     >
-                      <Text style={styles.starterDestText}>{destination}</Text>
+                      <Text style={styles.starterHeaderAction}>Saved Ideas</Text>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                  </View>
+                  <View style={styles.destinationScopeRow}>
+                    {DESTINATION_SCOPE_OPTIONS.map((option) => {
+                      const active = filters.destinationScope === option.id;
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[styles.destinationScopeChip, active && styles.destinationScopeChipActive]}
+                          activeOpacity={0.72}
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setFilters((current) => ({ ...current, destinationScope: option.id }));
+                          }}
+                        >
+                          <Text style={[styles.destinationScopeText, active && styles.destinationScopeTextActive]}>
+                            {option.label}
+                          </Text>
+                          <Text style={[styles.destinationScopeSubtext, active && styles.destinationScopeSubtextActive]}>
+                            {option.body}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.starterDestRow}
+                  >
+                    {starterDestinations.map((destination) => (
+                      <TouchableOpacity
+                        key={destination.label}
+                        style={styles.starterDestCard}
+                        activeOpacity={0.75}
+                        onPress={() => chooseExploreDestination(destination.label, undefined, destination.coords)}
+                      >
+                        <View style={styles.starterDestTopRow}>
+                          <Text style={styles.starterDestEyebrow}>{destination.eyebrow}</Text>
+                          <Text style={styles.starterDestScope}>
+                            {destination.countryCode === 'PH' ? 'Local' : 'Abroad'}
+                          </Text>
+                        </View>
+                        <Text style={styles.starterDestTitle}>{destination.label}</Text>
+                        <Text style={styles.starterDestBody} numberOfLines={2}>{destination.body}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
               )}
 
               {/* Category chips */}
@@ -1506,7 +1792,30 @@ function DiscoverScreenInner() {
                 })}
               </ScrollView>
 
-              {/* Filter toggle */}
+              {/* Adaptive quick filters */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickFilterRow}
+              >
+                {quickFilters.map((quickFilter) => {
+                  const active = isQuickFilterActive(quickFilter.id);
+                  return (
+                    <TouchableOpacity
+                      key={quickFilter.id}
+                      style={[styles.quickFilterChip, active && styles.quickFilterChipActive]}
+                      activeOpacity={0.72}
+                      onPress={() => handleQuickFilterPress(quickFilter)}
+                    >
+                      <Text style={[styles.quickFilterText, active && styles.quickFilterTextActive]}>
+                        {quickFilter.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* More filters toggle */}
               <TouchableOpacity
                 onPress={toggleShowFilters}
                 style={[
@@ -1517,7 +1826,7 @@ function DiscoverScreenInner() {
               >
                 <Filter size={14} color={activeFilterCount > 0 ? colors.accent : colors.text3} strokeWidth={2} />
                 <Text style={{ fontSize: 13, fontWeight: '500', color: activeFilterCount > 0 ? colors.accent : colors.text2 }}>
-                  Filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+                  More filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
                 </Text>
                 <ChevronDown size={14} color={colors.text3} strokeWidth={2} style={{ transform: [{ rotate: showFilters ? '180deg' : '0deg' }] }} />
               </TouchableOpacity>
@@ -1528,6 +1837,22 @@ function DiscoverScreenInner() {
                   entering={FadeInDown.duration(200)}
                   style={styles.filterPanel}
                 >
+                  {!tripId && (
+                    <FilterRow label="Destination scope" colors={colors}>
+                      {DESTINATION_SCOPE_OPTIONS.map((option) => (
+                        <SegBtn
+                          key={option.id}
+                          active={filters.destinationScope === option.id}
+                          onPress={() =>
+                            setFilters((f) => ({ ...f, destinationScope: option.id }))
+                          }
+                          colors={colors}
+                        >
+                          {option.label}
+                        </SegBtn>
+                      ))}
+                    </FilterRow>
+                  )}
                   <FilterRow label="Minimum rating" colors={colors}>
                     {[0, 4.0, 4.5].map((v) => (
                       <SegBtn
@@ -1543,40 +1868,45 @@ function DiscoverScreenInner() {
                     ))}
                   </FilterRow>
                   <FilterRow label="Price" colors={colors}>
-                    {['Free', '$', '$$', '$$$'].map((lbl, i) => (
+                    {['Any', 'Free', '$', '$$', '$$$', '$$$$'].map((lbl, i) => {
+                      const value = i === 0 ? DEFAULT_FILTERS.maxPrice : i - 1;
+                      return (
+                        <SegBtn
+                          key={lbl}
+                          active={filters.maxPrice === value}
+                          onPress={() =>
+                            setFilters((f) => ({ ...f, maxPrice: value }))
+                          }
+                          colors={colors}
+                        >
+                          {lbl}
+                          {i > 1 && i < 5 ? ' or less' : ''}
+                        </SegBtn>
+                      );
+                    })}
+                  </FilterRow>
+                  {hasUsableOrigin && (
+                    <FilterRow label="Distance" colors={colors}>
                       <SegBtn
-                        key={lbl}
-                        active={filters.maxPrice === i}
+                        active={!filters.nearby}
                         onPress={() =>
-                          setFilters((f) => ({ ...f, maxPrice: i }))
+                          setFilters((f) => ({ ...f, nearby: false, sortMode: f.sortMode === 'distance' ? 'best' : f.sortMode }))
                         }
                         colors={colors}
                       >
-                        {lbl}
-                        {i < 3 ? ' or less' : ''}
+                        Any
                       </SegBtn>
-                    ))}
-                  </FilterRow>
-                  <FilterRow label="Distance" colors={colors}>
-                    <SegBtn
-                      active={!filters.nearby}
-                      onPress={() =>
-                        setFilters((f) => ({ ...f, nearby: false }))
-                      }
-                      colors={colors}
-                    >
-                      Any
-                    </SegBtn>
-                    <SegBtn
-                      active={filters.nearby}
-                      onPress={() =>
-                        setFilters((f) => ({ ...f, nearby: true }))
-                      }
-                      colors={colors}
-                    >
-                      {'\u2264'} 2 km
-                    </SegBtn>
-                  </FilterRow>
+                      <SegBtn
+                        active={filters.nearby}
+                        onPress={() =>
+                          setFilters((f) => ({ ...f, nearby: true, sortMode: 'distance' }))
+                        }
+                        colors={colors}
+                      >
+                        {'\u2264'} 2 km
+                      </SegBtn>
+                    </FilterRow>
+                  )}
                   <FilterRow label="Availability" colors={colors}>
                     <SegBtn
                       active={!filters.openNow}
@@ -1598,15 +1928,16 @@ function DiscoverScreenInner() {
                     </SegBtn>
                   </FilterRow>
 
-                  {/* Distance origin + travel mode (moved inside filter panel) */}
-                  <View style={{ marginTop: 8 }}>
-                    <DistanceToggle
-                      anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
-                      travelMode={travelMode}
-                      onAnchorChange={handleAnchorChange}
-                      onTravelModeChange={handleTravelModeChange}
-                    />
-                  </View>
+                  {hasUsableOrigin && (
+                    <View style={{ marginTop: 8 }}>
+                      <DistanceToggle
+                        anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
+                        travelMode={travelMode}
+                        onAnchorChange={handleAnchorChange}
+                        onTravelModeChange={handleTravelModeChange}
+                      />
+                    </View>
+                  )}
 
                   {/* Footer */}
                   <View style={styles.filterFooter}>
@@ -1630,14 +1961,14 @@ function DiscoverScreenInner() {
               {/* Top Picks */}
               {placeCategoryChip === 'All' && !q && (
                 <>
-                  <TopPicksSection places={places} onExplore={handleExplore} distFn={getDistanceKm} />
-                  <TopPicksByCategorySection places={places} onExplore={handleExplore} distFn={getDistanceKm} />
+                  <TopPicksSection places={displayPlaces} onExplore={handleExplore} distFn={getDistanceKm} />
+                  <TopPicksByCategorySection places={displayPlaces} onExplore={handleExplore} distFn={getDistanceKm} />
                 </>
               )}
 
               {/* Results count */}
               <Text style={styles.resultsCount}>
-                {filteredPlaces.length} {filteredPlaces.length === 1 ? 'place' : 'places'}
+                {placesWithDistance.length} {placesWithDistance.length === 1 ? 'place' : 'places'}
               </Text>
 
               {placesError && (
@@ -1650,10 +1981,10 @@ function DiscoverScreenInner() {
                   <MiniLoader message="Finding places..." />
                 </View>
               )}
-              {!placesLoading && !placesError && filteredPlaces.length === 0 && (
+              {!placesLoading && !placesError && placesWithDistance.length === 0 && (
                 <View style={styles.emptyPlaces}>
                   <Text style={styles.emptyText}>
-                    {effectiveCoords ? 'No places match these filters.' : 'Choose a destination to start discovering places.'}
+                    {placesEmptyText}
                   </Text>
                 </View>
               )}
@@ -1724,6 +2055,8 @@ function DiscoverScreenInner() {
               tripId={tripId}
               tripDest={tripDest}
               tripCoords={tripCoords}
+              originCoords={effectiveCoords}
+              originLabel={effectiveDest}
               tripHotel={tripHotel}
               tripGroupSize={tripGroupSize}
               tripMembers={tripMembers}
@@ -1745,9 +2078,9 @@ function DiscoverScreenInner() {
               {wishlistItems.length === 0 ? (
                 <View style={styles.emptyCard}>
                   <Bookmark size={28} color={colors.text3} strokeWidth={1.6} opacity={0.6} />
-                  <Text style={styles.emptyCardTitle}>Your wishlist is empty</Text>
+                  <Text style={styles.emptyCardTitle}>No saved ideas yet</Text>
                   <Text style={styles.emptyCardBody}>
-                    Search a destination and bookmark places to save them here.
+                    Search a destination or use your location, then bookmark places to save them for later.
                   </Text>
                 </View>
               ) : (
@@ -1767,7 +2100,7 @@ function DiscoverScreenInner() {
                         }
                       }}
                       onLongPress={() => {
-                        Alert.alert('Remove from wishlist?', item.name, [
+                        Alert.alert('Remove saved idea?', item.name, [
                           { text: 'Keep', style: 'cancel' },
                           {
                             text: 'Remove',
@@ -1953,6 +2286,8 @@ function DiscoverScreenInner() {
                           isRecommended={recommended.has(p.name)}
                           onSave={handleSaveToggle}
                           onRecommend={handleRecommendToggle}
+                          saveActionLabel="Save to trip"
+                          savedActionLabel="Saved to trip"
                           onAddToPlanner={undefined}
                           showRecommend={tripMembers.length >= 2}
                           voteByMember={p.voteByMember}
@@ -1980,6 +2315,9 @@ function DiscoverScreenInner() {
         <Suspense fallback={<MiniLoader />}>
         <StaysTab
           tripCoords={tripCoords}
+          originCoords={effectiveCoords}
+          originLabel={effectiveDest}
+          originKind={effectiveOriginKind}
           tripId={tripId}
           tripDest={tripDest}
           travelMode={travelMode}
@@ -2021,10 +2359,15 @@ function DiscoverScreenInner() {
         initialName={detailPlaceName}
         saved={saved.has(detailPlaceName)}
         onClose={() => setShowDetail(false)}
-        onRecommend={() => {
+        onSaveToggle={() => {
+          if (detailPlaceName) toggleSave(detailPlaceName);
+        }}
+        saveActionLabel={tripId ? 'Save to trip' : 'Save for later'}
+        savedActionLabel={tripId ? 'Saved to trip' : 'Saved for later'}
+        onRecommend={tripMembers.length >= 2 ? () => {
           setShowDetail(false);
           if (detailPlaceName) toggleRecommend(detailPlaceName);
-        }}
+        } : undefined}
         isRecommended={recommended.has(detailPlaceName)}
       />
       </Suspense>
@@ -2383,18 +2726,120 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text,
       fontSize: 13,
     },
-    starterDestRow: {
+    starterSection: {
+      marginBottom: 8,
+    },
+    starterHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      marginBottom: 9,
+    },
+    starterHeader: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    starterSubhead: {
+      fontSize: 11,
+      color: colors.text3,
+      marginTop: 2,
+    },
+    starterHeaderAction: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.accent,
+    },
+    destinationScopeRow: {
+      flexDirection: 'row',
+      gap: 8,
       paddingHorizontal: 16,
       paddingBottom: 10,
-      gap: 8,
     },
-    starterDestChip: {
+    destinationScopeChip: {
+      flex: 1,
+      minHeight: 54,
       paddingVertical: 8,
-      paddingHorizontal: 13,
-      borderRadius: 999,
+      paddingHorizontal: 10,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      justifyContent: 'center',
+    },
+    destinationScopeChipActive: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentBg,
+    },
+    destinationScopeText: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    destinationScopeTextActive: {
+      color: colors.accent,
+    },
+    destinationScopeSubtext: {
+      fontSize: 9.5,
+      fontWeight: '600',
+      color: colors.text3,
+      textAlign: 'center',
+      marginTop: 2,
+    },
+    destinationScopeSubtextActive: {
+      color: colors.accent,
+    },
+    starterDestRow: {
+      paddingHorizontal: 16,
+      paddingBottom: 8,
+      gap: 10,
+    },
+    starterDestCard: {
+      width: 176,
+      minHeight: 112,
+      padding: 13,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.accentBorder,
       backgroundColor: colors.accentBg,
+    },
+    starterDestTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      marginBottom: 7,
+    },
+    starterDestEyebrow: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: colors.accent,
+      textTransform: 'uppercase',
+      flex: 1,
+    },
+    starterDestScope: {
+      fontSize: 9,
+      fontWeight: '800',
+      color: colors.text2,
+      textTransform: 'uppercase',
+      paddingVertical: 3,
+      paddingHorizontal: 6,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+      overflow: 'hidden',
+    },
+    starterDestTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 6,
+    },
+    starterDestBody: {
+      fontSize: 11.5,
+      lineHeight: 16,
+      color: colors.text3,
     },
     starterDestText: {
       fontSize: 12,
@@ -2426,6 +2871,31 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text2,
     },
     chipTextActive: {
+      color: colors.ink,
+    },
+    quickFilterRow: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      gap: 8,
+    },
+    quickFilterChip: {
+      paddingVertical: 9,
+      paddingHorizontal: 13,
+      borderRadius: 999,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    quickFilterChipActive: {
+      backgroundColor: colors.black,
+      borderColor: colors.black,
+    },
+    quickFilterText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text2,
+    },
+    quickFilterTextActive: {
       color: colors.ink,
     },
 
@@ -2582,7 +3052,26 @@ const getStyles = (colors: ThemeColors) =>
 
     // Destination search
     destSearchWrap: {
-      paddingHorizontal: 16, marginBottom: 8, zIndex: 20,
+      paddingHorizontal: 16, marginBottom: 10, zIndex: 20,
+    },
+    destSearchHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+      gap: 10,
+    },
+    destSearchLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    destOriginText: {
+      flex: 1,
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.text3,
+      textAlign: 'right',
     },
     destSearchInput: {
       backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border,
