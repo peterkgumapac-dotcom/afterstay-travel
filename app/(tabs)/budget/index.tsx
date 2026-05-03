@@ -531,10 +531,9 @@ function BudgetScreen() {
   }, [quickTrips.length, targetSheetVisible]);
 
   const historyTotal = useMemo(
-    () => historyExpenses.reduce((sum, e) => sum + e.amount, 0),
+    () => historyExpenses.filter(e => e.source !== 'standalone').reduce((sum, e) => sum + e.amount, 0),
     [historyExpenses],
   );
-  const historySummary = useMemo(() => summarizeMoneyByPeriod(historyExpenses), [historyExpenses]);
   const activeTripSummary = useMemo(
     () => summarizeMoneyByPeriod(expenses.map(e => ({ amount: e.amount, currency: e.currency, date: e.date }))),
     [expenses],
@@ -575,19 +574,29 @@ function BudgetScreen() {
     () => historyExpenses.filter(e => e.source === 'standalone'),
     [historyExpenses],
   );
+  const travelExpenses = useMemo(
+    () => historyExpenses.filter(e => e.source === 'trip' || e.source === 'quick-trip'),
+    [historyExpenses],
+  );
+  const historySummary = useMemo(() => summarizeMoneyByPeriod(travelExpenses), [travelExpenses]);
+  const standaloneTotal = useMemo(
+    () => standaloneExpenses.reduce((sum, e) => sum + e.amount, 0),
+    [standaloneExpenses],
+  );
 
   if (!trip && !budgetLoading) {
     const tripTotal = tripExpenses.reduce((s, e) => s + e.amount, 0);
     const quickTotal = quickTripExpenses.reduce((s, e) => s + e.amount, 0);
-    const standaloneTotal = standaloneExpenses.reduce((s, e) => s + e.amount, 0);
     const hasAnyExpenses = historyExpenses.length > 0;
+    const hasTravelExpenses = travelExpenses.length > 0;
+    const hasNormalExpenses = standaloneExpenses.length > 0;
 
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>Budget</Text>
-            <Text style={styles.subtitle}>{hasAnyExpenses ? 'Your spending overview' : 'Track your spending'}</Text>
+            <Text style={styles.subtitle}>{hasTravelExpenses ? 'Trips and quick trips' : 'Travel spending'}</Text>
           </View>
           <TouchableOpacity
             style={styles.addExpBtn}
@@ -621,12 +630,12 @@ function BudgetScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.section}>
             <View style={styles.moneyHero}>
-              <Text style={styles.eyebrow}>Personal Spending</Text>
+              <Text style={styles.eyebrow}>Trips & Quick Trips</Text>
               <Text style={styles.moneyHeroAmount}>{formatCurrency(historyTotal, historySummary.currency)}</Text>
               <Text style={styles.moneyHeroSub}>
-                {hasAnyExpenses
-                  ? `${historyExpenses.length} recent expense${historyExpenses.length !== 1 ? 's' : ''} across trips, quick trips, and personal logs`
-                  : 'Start with a receipt, quick expense, or weekly spending target.'}
+                {hasTravelExpenses
+                  ? `${travelExpenses.length} recent travel expense${travelExpenses.length !== 1 ? 's' : ''} across trips and quick trips`
+                  : 'Plan a trip or create a quick trip to see travel spending here.'}
               </Text>
             </View>
             <SummaryStrip summary={historySummary} styles={styles} />
@@ -652,16 +661,15 @@ function BudgetScreen() {
           {/* ── SETTLE UP TAB (no-trip) ── */}
           {tab === 'settle' && (
             <View style={{ gap: 16 }}>
-              {/* Show shared expenses across all sources */}
-              {historyExpenses.filter(e => e.paidBy || e.splitType).length > 0 ? (
+              {/* Show shared travel expenses only. Normal expenses stay separate. */}
+              {travelExpenses.filter(e => e.paidBy || e.splitType).length > 0 ? (
                 <>
                   <Text style={styles.historyLabel}>WHO OWES WHAT</Text>
-                  {historyExpenses
+                  {travelExpenses
                     .filter(e => e.paidBy || e.splitType)
                     .slice(0, 20)
                     .map((e) => {
-                      const badge = e.source === 'standalone' ? 'Personal'
-                        : e.sourceLabel ?? (e.source === 'quick-trip' ? 'Quick Trip' : 'Trip');
+                      const badge = e.sourceLabel ?? (e.source === 'quick-trip' ? 'Quick Trip' : 'Trip');
                       return (
                         <TouchableOpacity
                           key={e.id}
@@ -701,7 +709,7 @@ function BudgetScreen() {
                   <Users size={28} color={colors.text3} strokeWidth={1.5} />
                   <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>No shared expenses</Text>
                   <Text style={{ fontSize: 13, color: colors.text3, textAlign: 'center' }}>
-                    Add expenses with people to see who owes whom.
+                    Add shared trip or quick-trip expenses to see who owes whom.
                   </Text>
                 </View>
               )}
@@ -710,20 +718,20 @@ function BudgetScreen() {
 
           {/* ── EXPENSES TAB (no-trip) ── */}
           {tab === 'expenses' && (
-            <View style={{ paddingHorizontal: 16, paddingTop: hasAnyExpenses ? 0 : 8, paddingBottom: 16 }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: hasTravelExpenses ? 0 : 8, paddingBottom: 16 }}>
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
                 onScanReceipt={() => router.push('/scan-receipt?expenseType=standalone' as never)}
               />
             </View>
           )}
-          {tab === 'expenses' && hasAnyExpenses ? (
+          {tab === 'expenses' && hasTravelExpenses ? (
             <>
 
               {/* Category breakdown */}
               {(() => {
                 const byCat: Record<string, number> = {};
-                for (const e of historyExpenses) {
+                for (const e of travelExpenses) {
                   byCat[e.category] = (byCat[e.category] ?? 0) + e.amount;
                 }
                 const sorted = Object.entries(byCat).sort(([, a], [, b]) => b - a);
@@ -809,9 +817,6 @@ function BudgetScreen() {
                   }
                   for (const [name, items] of qtGroups) {
                     allGroups.push({ key: `qt-${name}`, label: name, items, total: items.reduce((s, e) => s + e.amount, 0) });
-                  }
-                  if (standaloneExpenses.length > 0) {
-                    allGroups.push({ key: 'personal', label: 'Personal', items: standaloneExpenses, total: standaloneExpenses.reduce((s, e) => s + e.amount, 0) });
                   }
 
                   return allGroups.map((group) => {
@@ -905,17 +910,17 @@ function BudgetScreen() {
           ) : tab === 'expenses' ? (
             <View style={styles.historyEmpty}>
               <Wallet size={32} color={colors.text3} strokeWidth={1.5} />
-              <Text style={styles.historyEmptyTitle}>No expenses yet</Text>
+              <Text style={styles.historyEmptyTitle}>No travel expenses yet</Text>
               <Text style={styles.historyEmptySub}>
-                Start with a receipt, quick expense,{'\n'}or weekly spending target.
+                Your Trips and Quick Trips will appear here.{'\n'}Normal expenses stay separate below.
               </Text>
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                 <TouchableOpacity
                   style={styles.historyCtaBtn}
-                  onPress={() => router.push('/scan-receipt?expenseType=standalone' as never)}
+                  onPress={() => setTargetSheetVisible(true)}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.historyCtaText}>Scan Receipt</Text>
+                  <Text style={styles.historyCtaText}>Add Travel Expense</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.historyCtaBtn, { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }]}
@@ -927,6 +932,59 @@ function BudgetScreen() {
               </View>
             </View>
           ) : null}
+
+          {tab === 'expenses' && hasNormalExpenses && (
+            <View style={styles.section}>
+              <View style={styles.normalExpenseHeader}>
+                <View>
+                  <Text style={styles.sectionTitle}>Normal Expenses</Text>
+                  <Text style={styles.historyMeta}>Separate from trips and quick trips</Text>
+                </View>
+                <Text style={styles.historyAmount}>{formatCurrency(standaloneTotal, standaloneExpenses[0]?.currency ?? 'PHP')}</Text>
+              </View>
+              <View style={{ gap: 6 }}>
+                {standaloneExpenses.slice(0, 8).map((e) => (
+                  <SwipeableExpenseRow
+                    key={e.id}
+                    colors={colors}
+                    onEdit={() => router.push({
+                      pathname: '/add-expense',
+                      params: {
+                        editId: e.id,
+                        description: e.description,
+                        amount: String(e.amount),
+                        currency: e.currency,
+                        category: e.category,
+                        date: e.date,
+                      },
+                    })}
+                    onDelete={() => handleDeleteExpense(e.id, e.description)}
+                  >
+                    <TouchableOpacity
+                      style={styles.historyRow}
+                      onPress={() => setDetailExpense({
+                        id: e.id,
+                        description: e.description,
+                        amount: e.amount,
+                        currency: e.currency,
+                        category: e.category as Expense['category'],
+                        date: e.date,
+                        paidBy: e.paidBy,
+                        placeName: e.placeName,
+                      })}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.historyInfo}>
+                        <Text style={styles.historyDesc} numberOfLines={1}>{e.description || 'Expense'}</Text>
+                        <Text style={styles.historyMeta}>{e.category} · {formatDatePHT(e.date)}</Text>
+                      </View>
+                      <Text style={styles.historyAmount}>{formatCurrency(e.amount, e.currency)}</Text>
+                    </TouchableOpacity>
+                  </SwipeableExpenseRow>
+                ))}
+              </View>
+            </View>
+          )}
 
           {/* User-scoped Payment QR codes (visible in all states) */}
           <View style={styles.section}>
@@ -1889,6 +1947,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   historyList: { paddingHorizontal: 16 },
   historyLabel: { fontSize: 10, fontWeight: '700', color: c.text3, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 10 },
   groupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: c.border, marginBottom: 8 },
+  normalExpenseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: 14, backgroundColor: c.card2, borderWidth: 1, borderColor: c.border, borderRadius: 14 },
   historyRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 14, paddingHorizontal: 14,
