@@ -25,7 +25,7 @@ import { radius, spacing } from '@/constants/theme';
 import { getPlaceLocation, placeAutocomplete } from '@/lib/google-places';
 import { addExpense, addExpenseSplits, getActiveTrip, getGroupMembers, getUserPaymentQrs, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
 import type { UserPaymentQr } from '@/lib/supabase';
-import { addQuickTripExpense, getQuickTripCompanions } from '@/lib/quickTrips';
+import { addQuickTripExpense, addQuickTripExpenseSplits, getQuickTripCompanions } from '@/lib/quickTrips';
 import type { QuickTripCompanion } from '@/lib/quickTripTypes';
 import { useAuth } from '@/lib/auth';
 import type { Expense, GroupMember } from '@/lib/types';
@@ -80,6 +80,7 @@ export default function AddExpenseScreen() {
     paidBy?: string;
     splitType?: string;
     receiptSplits?: string; // JSON-encoded per-member amounts from receipt scan
+    receiptPeople?: string; // JSON-encoded names for standalone receipt assignment
   }>();
 
   const isEditing = !!params.editId;
@@ -145,7 +146,6 @@ export default function AddExpenseScreen() {
 
   // Quick trip companions
   const [companions, setCompanions] = useState<QuickTripCompanion[]>([]);
-  const [sharedWith, setSharedWith] = useState<string>(''); // freeform for personal
   const [adHocNames, setAdHocNames] = useState<string[]>([]); // parsed from sharedWith
   const [newPersonName, setNewPersonName] = useState('');
 
@@ -190,7 +190,22 @@ export default function AddExpenseScreen() {
 
     // Load quick trip companions if applicable
     if (params.quickTripId) {
-      getQuickTripCompanions(params.quickTripId).then(setCompanions).catch(() => {});
+      getQuickTripCompanions(params.quickTripId).then((cs) => {
+        setCompanions(cs);
+        if (!paidBy && cs[0]) setPaidBy(cs[0].displayName);
+        setSplitAssignments((prev) => {
+          const next = { ...prev };
+          for (const c of cs) next[c.id] = next[c.id] ?? { selected: true, amount: '' };
+          return next;
+        });
+      }).catch(() => {});
+    }
+
+    if (params.receiptPeople) {
+      try {
+        const names = JSON.parse(params.receiptPeople) as string[];
+        setAdHocNames(names.filter(Boolean));
+      } catch {}
     }
   }, []);
 
@@ -240,6 +255,7 @@ export default function AddExpenseScreen() {
       params: {
         expenseType,
         ...(expenseType === 'quick-trip' && params.quickTripId ? { quickTripId: params.quickTripId } : {}),
+        ...(expenseType === 'personal' && adHocNames.length >= 2 ? { receiptPeople: JSON.stringify(adHocNames) } : {}),
       },
     } as never);
   };
@@ -260,6 +276,31 @@ export default function AddExpenseScreen() {
 
     setSubmitting(true);
     try {
+      const splitAmountsFromReceipt = params.receiptSplits
+        ? (() => {
+            try { return JSON.parse(params.receiptSplits!) as Record<string, number>; } catch { return null; }
+          })()
+        : null;
+      const buildSplitNote = () => {
+        const rows: string[] = [];
+        if (splitAmountsFromReceipt) {
+          for (const [name, value] of Object.entries(splitAmountsFromReceipt)) {
+            if (value > 0) rows.push(`${name}: ${currency} ${value.toFixed(2)}`);
+          }
+        } else if (hasPeople) {
+          const selected = splitPeople.filter((p) => splitAssignments[p.id]?.selected);
+          const people = selected.length > 0 ? selected : splitPeople;
+          for (const person of people) {
+            const custom = Number(splitAssignments[person.id]?.amount);
+            const owed = splitType === 'Custom' && custom > 0 ? custom : n / people.length;
+            rows.push(`${person.name}: ${currency} ${owed.toFixed(2)}`);
+          }
+        }
+        return rows.length > 0 ? `Split:\n${rows.join('\n')}` : '';
+      };
+      const splitNote = buildSplitNote();
+      const combinedNotes = [notes.trim(), expenseType === 'personal' ? splitNote : ''].filter(Boolean).join('\n\n') || undefined;
+
       const expenseData = {
         description: description.trim(),
         amount: n,
@@ -271,20 +312,46 @@ export default function AddExpenseScreen() {
         placeLatitude: placeLatitude ?? undefined,
         placeLongitude: placeLongitude ?? undefined,
         splitType,
-        notes: notes.trim() || undefined,
+        notes: combinedNotes,
         photo: photoUri || undefined,
       };
       if (isEditing) {
         await updateExpense(params.editId!, expenseData);
       } else if (expenseType === 'quick-trip' && params.quickTripId) {
-        await addQuickTripExpense({
+        const paidByCompanion = companions.find((c) => c.displayName === paidBy);
+        const splitTypeForQuickTrip = splitAmountsFromReceipt || splitType !== 'Equal' ? 'custom' : 'even';
+        const quickTripExpenseId = await addQuickTripExpense({
           quickTripId: params.quickTripId,
           amount: n,
           currency,
           description: description.trim(),
+          paidByCompanionId: paidByCompanion?.id,
+          splitType: companions.length > 1 ? splitTypeForQuickTrip : 'record_only',
           occurredAt: expenseDate,
           receiptPhotoUrl: photoUri || undefined,
         });
+        if (quickTripExpenseId && companions.length > 1) {
+          const splits = splitAmountsFromReceipt
+            ? companions
+                .filter((c) => (splitAmountsFromReceipt[c.displayName] ?? 0) > 0)
+                .map((c) => ({ companionId: c.id, amountOwed: splitAmountsFromReceipt[c.displayName] ?? 0 }))
+            : (() => {
+                const selected = companions.filter((c) => splitAssignments[c.id]?.selected);
+                const people = selected.length > 0 ? selected : companions;
+                return people.map((c) => {
+                  const custom = Number(splitAssignments[c.id]?.amount);
+                  return {
+                    companionId: c.id,
+                    amountOwed: splitType === 'Custom' && custom > 0 ? custom : n / people.length,
+                  };
+                });
+              })();
+          if (splits.length > 0) {
+            addQuickTripExpenseSplits(quickTripExpenseId, splits).catch((err) => {
+              if (__DEV__) console.warn('[AddExpense] quick trip splits failed:', err);
+            });
+          }
+        }
       } else if (expenseType === 'personal') {
         await addExpense({ ...expenseData, standalone: true });
       } else {
@@ -370,6 +437,7 @@ export default function AddExpenseScreen() {
               params: {
                 expenseType,
                 ...(expenseType === 'quick-trip' && params.quickTripId ? { quickTripId: params.quickTripId } : {}),
+                ...(expenseType === 'personal' && adHocNames.length >= 2 ? { receiptPeople: JSON.stringify(adHocNames) } : {}),
               },
             } as never)}
           >

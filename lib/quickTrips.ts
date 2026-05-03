@@ -7,6 +7,7 @@ import type {
   QuickTripPhoto,
   QuickTripCompanion,
   QuickTripExpense,
+  QuickTripExpenseSplit,
   CreateQuickTripInput,
 } from './quickTripTypes';
 
@@ -68,6 +69,17 @@ function mapExpense(row: Record<string, unknown>): QuickTripExpense {
     splitType: row.split_type as QuickTripExpense['splitType'],
     occurredAt: row.occurred_at as string,
     receiptPhotoUrl: row.receipt_photo_url as string | undefined,
+    createdAt: row.created_at as string,
+  };
+}
+
+function mapExpenseSplit(row: Record<string, unknown>): QuickTripExpenseSplit {
+  return {
+    id: row.id as string,
+    quickTripExpenseId: row.quick_trip_expense_id as string,
+    companionId: row.companion_id as string,
+    amountOwed: Number(row.amount_owed ?? 0),
+    settledAt: row.settled_at as string | undefined,
     createdAt: row.created_at as string,
   };
 }
@@ -235,25 +247,47 @@ export async function addQuickTripExpense(input: {
   splitType?: 'even' | 'custom' | 'record_only';
   occurredAt?: string;
   receiptPhotoUrl?: string;
-}): Promise<void> {
+}): Promise<string> {
   const { data: authData } = await supabase.auth.getUser();
 
-  const { error } = await supabase.from('quick_trip_expenses').insert({
-    quick_trip_id: input.quickTripId,
-    created_by_user_id: authData?.user?.id ?? null,
-    amount: input.amount,
-    currency: input.currency ?? 'PHP',
-    description: input.description ?? null,
-    paid_by_companion_id: input.paidByCompanionId ?? null,
-    split_type: input.splitType ?? 'even',
-    occurred_at: input.occurredAt ?? new Date().toISOString(),
-    receipt_photo_url: input.receiptPhotoUrl ?? null,
-  });
+  const { data, error } = await supabase
+    .from('quick_trip_expenses')
+    .insert({
+      quick_trip_id: input.quickTripId,
+      created_by_user_id: authData?.user?.id ?? null,
+      amount: input.amount,
+      currency: input.currency ?? 'PHP',
+      description: input.description ?? null,
+      paid_by_companion_id: input.paidByCompanionId ?? null,
+      split_type: input.splitType ?? 'even',
+      occurred_at: input.occurredAt ?? new Date().toISOString(),
+      receipt_photo_url: input.receiptPhotoUrl ?? null,
+    })
+    .select('id')
+    .single();
 
   if (error) throw new Error(`Failed to add expense: ${error.message}`);
 
   // Update denormalized total
   await refreshQuickTripTotal(input.quickTripId);
+  return data.id as string;
+}
+
+/** Add split rows for a quick-trip expense. */
+export async function addQuickTripExpenseSplits(
+  quickTripExpenseId: string,
+  splits: { companionId: string; amountOwed: number }[],
+): Promise<QuickTripExpenseSplit[]> {
+  if (splits.length === 0) return [];
+
+  const rows = splits.map((s) => ({
+    quick_trip_expense_id: quickTripExpenseId,
+    companion_id: s.companionId,
+    amount_owed: s.amountOwed,
+  }));
+  const { data, error } = await supabase.from('quick_trip_expense_splits').insert(rows).select();
+  if (error) throw new Error(`Failed to add quick trip splits: ${error.message}`);
+  return (data ?? []).map((r) => mapExpenseSplit(r as Record<string, unknown>));
 }
 
 /** Delete an expense and update denormalized total. */
