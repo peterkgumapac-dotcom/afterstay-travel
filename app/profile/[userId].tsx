@@ -34,12 +34,13 @@ import {
   getMoments,
   getMutualTrips,
   getProfile,
+  getPublicProfilePosts,
   getSharedMomentsWith,
   toggleFollow,
 } from '@/lib/supabase';
 import type { Profile } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
-import type { CompanionProfile as CompanionProfileType, Flight, Moment, Trip } from '@/lib/types';
+import type { CompanionProfile as CompanionProfileType, FeedPost, Flight, Moment, Trip } from '@/lib/types';
 import { GroupHeader } from '@/components/trip/GroupHeader';
 import { TripCollage } from '@/components/trip/TripCollage';
 import TopTripCard from '@/components/profile/TopTripCard';
@@ -70,6 +71,29 @@ const CARD_H = CARD_W * 1.25;
 
 type TripFilter = 'all' | 'completed' | 'upcoming';
 
+function publicPostToMoment(post: FeedPost): Moment | null {
+  const imageMedia = post.media?.find((media) => media.mediaType === 'image' && media.mediaUrl);
+  const photo = imageMedia?.mediaUrl ?? post.photoUrl;
+  if (!photo) return null;
+
+  return {
+    id: `post:${post.id}`,
+    caption: post.caption ?? '',
+    photo,
+    location: post.locationName,
+    userId: post.userId,
+    date: post.createdAt,
+    tags: [],
+    visibility: 'public',
+    isPublic: true,
+    likesCount: post.likesCount,
+    commentsCount: post.commentsCount,
+    dayNumber: post.dayNumber,
+    latitude: post.latitude,
+    longitude: post.longitude,
+  };
+}
+
 export default function CompanionProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const { user } = useAuth();
@@ -83,6 +107,7 @@ export default function CompanionProfileScreen() {
   const [mutualTrips, setMutualTrips] = useState<Trip[]>([]);
   const [profileFlights, setProfileFlights] = useState<(Flight & { tripId?: string })[]>([]);
   const [sharedMoments, setSharedMoments] = useState<Moment[]>([]);
+  const [publicMoments, setPublicMoments] = useState<Moment[]>([]);
   const [loading, setLoading] = useState(true);
   const [tripFilter, setTripFilter] = useState<TripFilter>('all');
   const [isFollowing, setIsFollowing] = useState(false);
@@ -117,10 +142,16 @@ export default function CompanionProfileScreen() {
       const follow = followResult.status === 'fulfilled' ? followResult.value : { isFollowing: false };
       const resolvedOwnProfile = ownProfileResult.status === 'fulfilled' ? ownProfileResult.value : null;
       const lifetimeStats = lifetimeResult.status === 'fulfilled' ? lifetimeResult.value : null;
-      const moments = viewingSelf
-        ? (await Promise.allSettled(trips.slice(0, 12).map((trip) => getMoments(trip.id))))
-          .flatMap((result) => result.status === 'fulfilled' ? result.value : [])
-        : await getSharedMomentsWith(userId).catch(() => []);
+      const sharedMomentsPromise = viewingSelf
+        ? Promise.allSettled(trips.slice(0, 12).map((trip) => getMoments(trip.id)))
+          .then((results) => results.flatMap((result) => result.status === 'fulfilled' ? result.value : []))
+        : getSharedMomentsWith(userId).catch(() => []);
+      const publicMomentsPromise = viewingSelf
+        ? Promise.resolve([])
+        : getPublicProfilePosts(userId, 24)
+          .then((posts) => posts.map(publicPostToMoment).filter((moment): moment is Moment => !!moment))
+          .catch(() => []);
+      const [moments, publicProfileMoments] = await Promise.all([sharedMomentsPromise, publicMomentsPromise]);
       const flights = (await Promise.allSettled(
         trips.map(async (trip) => {
           const tripFlights = await getFlights(trip.id);
@@ -133,6 +164,7 @@ export default function CompanionProfileScreen() {
       setMutualTrips(trips);
       setProfileFlights(flights);
       setSharedMoments(moments);
+      setPublicMoments(publicProfileMoments);
       setIsFollowing(follow.isFollowing);
     } catch (err) {
       if (__DEV__) console.warn('[Profile] load error:', err);
@@ -224,7 +256,8 @@ export default function CompanionProfileScreen() {
   const isCompanion = profile.companionStatus === 'companion';
   const privacy = profile.companionPrivacy;
   const firstName = profile.fullName.split(' ')[0];
-  const computedStats = buildProfileStatsFromTrips({ trips: mutualTrips, moments: sharedMoments, flights: profileFlights });
+  const profileMoments = isSelf || isCompanion ? sharedMoments : publicMoments;
+  const computedStats = buildProfileStatsFromTrips({ trips: mutualTrips, moments: profileMoments, flights: profileFlights });
   const hasLiveCountryStats = computedStats.countriesList.length > 0;
   const rawStats = profile.lifetimeStats
     ? {
@@ -242,10 +275,10 @@ export default function CompanionProfileScreen() {
   const topTrip = buildTopTrip(mutualTrips);
   const mapData = buildProfileMapData({ trips: mutualTrips, flights: profileFlights, homeBase: profile.homeBase });
   const canSeeStats = isSelf || isCompanion || !!profile.publicStatsEnabled;
-  const memoryPhotoUrls = sharedMoments.map((moment) => moment.photo).filter((url): url is string => !!url);
+  const memoryPhotoUrls = profileMoments.map((moment) => moment.photo).filter((url): url is string => !!url);
   const coverPhotoUrl = buildProfileCoverPhotoUrl({
     explicitCoverUrl: profile.coverPhotoUrl,
-    moments: sharedMoments,
+    moments: profileMoments,
   });
   const profileMomentAuthorKey = (profile.fullName || 'T').charAt(0).toUpperCase();
   const profilePeople: PeopleMap = {
@@ -255,7 +288,7 @@ export default function CompanionProfileScreen() {
       avatar: profile.avatarUrl,
     },
   };
-  const profileMomentDisplays: MomentDisplay[] = sharedMoments.map((moment) => ({
+  const profileMomentDisplays: MomentDisplay[] = profileMoments.map((moment) => ({
     ...moment,
     authorKey: profileMomentAuthorKey,
     authorAvatar: profile.avatarUrl,
@@ -369,11 +402,9 @@ export default function CompanionProfileScreen() {
                   kicker="TRIPS TOGETHER"
                   title="Travel memories"
                   colors={colors as any}
-                  action={
-                    mutualTrips.length > 0 ? (
-                      <Text style={s.link}>All {mutualTrips.length}</Text>
-                    ) : undefined
-                  }
+                  action={mutualTrips.length > 0 ? (
+                    <Text style={s.link}>All {mutualTrips.length}</Text>
+                  ) : undefined}
                 />
 
                 {mutualTrips.length > 1 && (
@@ -408,7 +439,7 @@ export default function CompanionProfileScreen() {
                   <>
                     <TopTripCard
                       trip={filteredTrips[0]}
-                      photoCount={sharedMoments.length}
+                      photoCount={profileMoments.length}
                       photoUrls={memoryPhotoUrls}
                       onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: filteredTrips[0].id } } as never)}
                     />
@@ -425,6 +456,23 @@ export default function CompanionProfileScreen() {
                       </View>
                     ) : null}
                   </>
+                )}
+              </>
+            )}
+
+            {!isCompanion && !isSelf && profile.profileVisibility === 'public' && (
+              <>
+                <GroupHeader
+                  kicker={publicMoments.length > 0 ? `${publicMoments.length} public photos` : undefined}
+                  title="Public moments"
+                  colors={colors as any}
+                />
+                {publicMoments.length > 0 ? (
+                  <MemoriesGrid moments={publicMoments} onMomentPress={handleMomentPress} />
+                ) : (
+                  <View style={[s.emptyCard, { marginHorizontal: 16 }]}>
+                    <Text style={s.emptyCardText}>No public moments yet.</Text>
+                  </View>
                 )}
               </>
             )}
@@ -478,7 +526,7 @@ export default function CompanionProfileScreen() {
               </>
             )}
 
-            {!isCompanion && !isSelf && (
+            {!isCompanion && !isSelf && profile.profileVisibility !== 'public' && (
               <View style={s.section}>
                 <Text style={s.sectionLabel}>Shared Moments</Text>
                 <View style={s.emptyCardDashed}>

@@ -5,6 +5,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { secureStorage } from './secureStorage';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Crypto from 'expo-crypto';
 import { base64ToBytes } from './base64';
 import { clearTripLocalData } from './cache';
 import { invalidateTripCache } from './tabDataCache';
@@ -934,14 +935,20 @@ export async function discardDraftTrip(tripId: string): Promise<void> {
 
 // ---------- TRIP INVITES ----------
 
+const INVITE_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+async function generateInviteCode(length = 10): Promise<string> {
+  const bytes = await Crypto.getRandomBytesAsync(length);
+  return Array.from(bytes, (byte) => INVITE_CODE_ALPHABET[byte % INVITE_CODE_ALPHABET.length]).join('');
+}
+
 export async function createInviteCode(tripId?: string): Promise<string> {
   const id = await resolveTripId(tripId);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
   let lastError: any = null;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    // Generate 6-char alphanumeric code
-    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const code = await generateInviteCode();
     const { error } = await supabase.from('trip_invites').insert({
       trip_id: id,
       code,
@@ -3706,6 +3713,16 @@ export interface PublicProfileRow {
   companionPrivacy?: CompanionPrivacy;
 }
 
+function mapPublicProfileRow(r: Record<string, unknown>): PublicProfileRow {
+  return {
+    id: r.id as string,
+    fullName: (r.full_name as string) ?? 'Traveler',
+    handle: (r.handle as string) ?? undefined,
+    avatarUrl: (r.avatar_url as string) ?? undefined,
+    companionPrivacy: (r.companion_privacy as CompanionPrivacy) ?? undefined,
+  };
+}
+
 export async function getPublicProfiles(userIds: string[]): Promise<PublicProfileRow[]> {
   const ids = [...new Set(userIds.filter(Boolean))];
   if (ids.length === 0) return [];
@@ -3714,26 +3731,14 @@ export async function getPublicProfiles(userIds: string[]): Promise<PublicProfil
     p_user_ids: ids,
   });
   if (!rpcError && Array.isArray(rpcData)) {
-    return rpcData.map((r: Record<string, unknown>) => ({
-      id: r.id as string,
-      fullName: (r.full_name as string) ?? 'Traveler',
-      handle: (r.handle as string) ?? undefined,
-      avatarUrl: (r.avatar_url as string) ?? undefined,
-      companionPrivacy: (r.companion_privacy as CompanionPrivacy) ?? undefined,
-    }));
+    return rpcData.map(mapPublicProfileRow);
   }
 
   const { data } = await supabase
     .from('profiles')
     .select('id, full_name, handle, avatar_url, companion_privacy')
     .in('id', ids);
-  return (data ?? []).map((r: Record<string, unknown>) => ({
-    id: r.id as string,
-    fullName: (r.full_name as string) ?? 'Traveler',
-    handle: (r.handle as string) ?? undefined,
-    avatarUrl: (r.avatar_url as string) ?? undefined,
-    companionPrivacy: (r.companion_privacy as CompanionPrivacy) ?? undefined,
-  }));
+  return (data ?? []).map(mapPublicProfileRow);
 }
 
 /** Search profiles by handle or name. Returns up to 20 results. */
@@ -3752,13 +3757,31 @@ export async function searchProfiles(query: string): Promise<ProfileSearchResult
     p_query: q,
     p_limit: 20,
   });
-  if (!rpcError && Array.isArray(rpcData)) {
-    return rpcData.map((r: Record<string, unknown>) => ({
+  const publicResults = !rpcError && Array.isArray(rpcData)
+    ? rpcData.map((r: Record<string, unknown>) => ({
       id: r.id as string,
       fullName: (r.full_name as string) ?? 'Traveler',
       handle: (r.handle as string) ?? undefined,
       avatarUrl: (r.avatar_url as string) ?? undefined,
-    }));
+    }))
+    : null;
+  if (publicResults) {
+    const companionResults = (await getCompanions().catch(() => []))
+      .filter((p) => {
+        const handle = p.handle?.toLowerCase() ?? '';
+        const name = p.fullName.toLowerCase();
+        const needle = q.toLowerCase();
+        return handle.includes(needle) || name.includes(needle);
+      })
+      .map((p) => ({
+        id: p.id,
+        fullName: p.fullName,
+        handle: p.handle,
+        avatarUrl: p.avatarUrl,
+      }));
+    const merged = new Map<string, ProfileSearchResult>();
+    for (const result of [...companionResults, ...publicResults]) merged.set(result.id, result);
+    return [...merged.values()].slice(0, 20);
   }
 
   const rpcMissingOrBlocked = !!rpcError && (
@@ -4842,7 +4865,9 @@ function mapPublicProfileRpcToProfileRow(row: PublicProfileRpcRow): Record<strin
   };
 }
 
-async function getPublicProfileRpc(targetUserId: string): Promise<PublicProfileRpcRow | null> {
+async function getPublicProfileRpc(
+  targetUserId: string,
+): Promise<{ profile: PublicProfileRpcRow | null; unavailable: boolean }> {
   const { data, error } = await supabase.rpc('get_public_profile', {
     p_user_id: targetUserId,
   });
@@ -4856,11 +4881,13 @@ async function getPublicProfileRpc(targetUserId: string): Promise<PublicProfileR
     if (!canFallback && __DEV__) {
       console.warn('[getPublicProfileRpc] failed:', error.message);
     }
-    return null;
+    return { profile: null, unavailable: canFallback };
   }
 
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
-  return data as PublicProfileRpcRow;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { profile: null, unavailable: false };
+  }
+  return { profile: data as PublicProfileRpcRow, unavailable: false };
 }
 
 /** Get companion status between current user and target. */
@@ -4901,38 +4928,46 @@ export async function getCompanionStatus(targetUserId: string): Promise<Companio
 
 /** Get full companion profile for viewing. */
 export async function getCompanionProfile(targetUserId: string): Promise<CompanionProfile> {
-  const publicProfile = await getPublicProfileRpc(targetUserId);
+  const [publicProfileResult, status] = await Promise.all([
+    getPublicProfileRpc(targetUserId),
+    getCompanionStatus(targetUserId),
+  ]);
+  const publicProfile = publicProfileResult.profile;
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select(
-      'id, full_name, avatar_url, cover_photo_url, handle, bio, home_base, profile_visibility, public_stats_enabled, profile_badges, phone, socials, companion_privacy',
-    )
-    .eq('id', targetUserId)
-    .maybeSingle();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const canReadPrivateProfile = user?.id === targetUserId || status === 'companion';
+  const canUseDirectFallback = canReadPrivateProfile || publicProfileResult.unavailable;
+  const { data: profile } = canUseDirectFallback
+    ? await supabase
+      .from('profiles')
+      .select(
+        'id, full_name, avatar_url, cover_photo_url, handle, bio, home_base, profile_visibility, public_stats_enabled, profile_badges, phone, socials, companion_privacy',
+      )
+      .eq('id', targetUserId)
+      .maybeSingle()
+    : { data: null };
 
   let resolvedProfile = profile as Record<string, unknown> | null;
   if (!resolvedProfile && publicProfile) {
     resolvedProfile = mapPublicProfileRpcToProfileRow(publicProfile);
   }
-  if (!resolvedProfile) {
+  if (!resolvedProfile && publicProfileResult.unavailable) {
     const [fallbackProfile] = await getPublicProfiles([targetUserId]);
-    if (!fallbackProfile) throw new Error('Profile not found');
-    resolvedProfile = {
-      id: fallbackProfile.id,
-      full_name: fallbackProfile.fullName,
-      avatar_url: fallbackProfile.avatarUrl,
-      handle: fallbackProfile.handle,
-      companion_privacy: fallbackProfile.companionPrivacy,
-    };
+    if (fallbackProfile) {
+      resolvedProfile = {
+        id: fallbackProfile.id,
+        full_name: fallbackProfile.fullName,
+        avatar_url: fallbackProfile.avatarUrl,
+        handle: fallbackProfile.handle,
+        companion_privacy: fallbackProfile.companionPrivacy,
+      };
+    }
   }
-
-  const status = await getCompanionStatus(targetUserId);
+  if (!resolvedProfile) throw new Error('Profile not found');
 
   // Count mutual trips
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
   let mutualTripCount = 0;
   if (user) {
     const { data: myTrips } = await supabase.from('group_members').select('trip_id').eq('user_id', user.id);
@@ -5053,7 +5088,17 @@ export async function getCompanions(): Promise<CompanionProfile[]> {
 
   if (companionIds.size === 0) return [];
 
-  const profiles = await getPublicProfiles([...companionIds]);
+  const ids = [...companionIds];
+  const { data: profileRows } = await supabase
+    .from('profiles')
+    .select('id, full_name, handle, avatar_url, companion_privacy')
+    .in('id', ids);
+  let profiles = (profileRows ?? []).map(mapPublicProfileRow);
+
+  const missingIds = ids.filter((id) => !profiles.some((profile) => profile.id === id));
+  if (missingIds.length > 0) {
+    profiles = [...profiles, ...(await getPublicProfiles(missingIds).catch(() => []))];
+  }
 
   return profiles.map((p) => ({
     id: p.id,
@@ -5072,7 +5117,7 @@ export async function getFollowState(targetUserId: string): Promise<FollowState>
   } = await supabase.auth.getUser();
   if (!user) return { isFollowing: false, followersCount: 0, followingCount: 0 };
 
-  const publicProfile = await getPublicProfileRpc(targetUserId);
+  const publicProfile = (await getPublicProfileRpc(targetUserId)).profile;
   if (publicProfile) {
     return {
       isFollowing: !!publicProfile.viewerIsFollowing,
