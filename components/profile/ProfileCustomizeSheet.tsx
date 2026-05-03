@@ -180,6 +180,7 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
                 <Text style={s.photoActionText}>Change profile photo</Text>
               </TouchableOpacity>
             </View>
+            <Text style={s.coverHelp}>Best crop: wide travel photo</Text>
           </View>
 
           <Field label="Name" value={fullName} onChangeText={setFullName} colors={colors} />
@@ -351,6 +352,12 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     flexDirection: 'row',
     gap: 10,
     marginTop: 12,
+  },
+  coverHelp: {
+    color: colors.text3,
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   photoAction: {
     flex: 1,

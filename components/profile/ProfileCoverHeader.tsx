@@ -135,7 +135,9 @@ export default function ProfileCoverHeader({
         </View>
 
         <View style={s.nameRow}>
-          <Text style={s.name}>{fullName || 'Traveler'}</Text>
+          <Text style={s.name} numberOfLines={1} ellipsizeMode="tail">
+            {fullName || 'Traveler'}
+          </Text>
           {companionStatus === 'companion' ? (
             <View style={s.verifiedDot}>
               <Check size={11} color={colors.canvas} strokeWidth={3} />
@@ -303,6 +305,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     gap: 7,
   },
   name: {
+    flexShrink: 1,
     color: colors.text,
     fontSize: 26,
     fontWeight: '800',

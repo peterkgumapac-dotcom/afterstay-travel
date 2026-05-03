@@ -98,7 +98,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
       </View>
 
       <View style={[s.mapWrap, isEmptyProfile && s.mapWrapCompact]}>
-        <Svg width="100%" height={isEmptyProfile ? 116 : 176} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
+        <Svg width="100%" height={isEmptyProfile ? 112 : 160} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
           <Ellipse cx={104} cy={92} rx={70} ry={34} fill={colors.accentBg} opacity={0.45} />
           <Ellipse cx={238} cy={86} rx={92} ry={38} fill={colors.accentBg} opacity={0.36} />
           <Ellipse cx={210} cy={144} rx={48} ry={24} fill={colors.accentBg} opacity={0.32} />
@@ -212,7 +212,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   head: {
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingTop: 12,
   },
   kicker: {
     color: colors.accent,
@@ -229,7 +229,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   distance: {
     color: colors.text,
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '800',
     letterSpacing: 0,
   },
@@ -240,11 +240,11 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     marginBottom: 6,
   },
   mapWrap: {
-    height: 184,
+    height: 168,
     position: 'relative',
   },
   mapWrapCompact: {
-    height: 128,
+    height: 120,
   },
   emptyMap: {
     position: 'absolute',
@@ -274,7 +274,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontSize: 19,
   },
   footer: {
-    minHeight: 66,
+    minHeight: 58,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     flexDirection: 'row',

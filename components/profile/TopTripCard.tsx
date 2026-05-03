@@ -69,7 +69,7 @@ export default function TopTripCard({ trip, photoCount, photoUrls = [], onPress 
 const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    minHeight: 302,
+    minHeight: 282,
     borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: _colors.card,
@@ -77,7 +77,7 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
     borderColor: _colors.border,
   },
   mosaic: {
-    height: 178,
+    height: 164,
     flexDirection: 'row',
     gap: 3,
   },
@@ -95,20 +95,20 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
   },
   fallback: {
     width: '100%',
-    height: 178,
+    height: 164,
     backgroundColor: _colors.accentBg,
   },
   imageShade: {
     position: 'absolute',
-    top: 80,
+    top: 72,
     left: 0,
     right: 0,
-    height: 98,
+    height: 92,
   },
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 14,
+    paddingHorizontal: 13,
+    paddingTop: 12,
+    paddingBottom: 13,
   },
   badge: {
     position: 'absolute',

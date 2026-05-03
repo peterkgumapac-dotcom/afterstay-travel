@@ -200,7 +200,12 @@ export default function CompanionProfileScreen() {
     return (
       <SafeAreaView style={[s.screen, { flex: 1 }]}>
         <View style={s.topbar}>
-          <TouchableOpacity style={s.iconBtn} onPress={handleBackPress} activeOpacity={0.7} hitSlop={12}>
+          <TouchableOpacity
+            style={s.iconBtn}
+            onPress={handleBackPress}
+            activeOpacity={0.7}
+            hitSlop={{ top: 18, bottom: 18, left: 18, right: 18 }}
+          >
             <ArrowLeft size={22} color={colors.text} />
           </TouchableOpacity>
         </View>
@@ -240,7 +245,12 @@ export default function CompanionProfileScreen() {
     <SafeAreaView style={s.screen} edges={['top']}>
       {/* Top bar */}
       <View style={s.topbar} pointerEvents="box-none">
-        <TouchableOpacity style={s.iconBtn} onPress={handleBackPress} activeOpacity={0.7} hitSlop={12}>
+        <TouchableOpacity
+          style={s.iconBtn}
+          onPress={handleBackPress}
+          activeOpacity={0.7}
+          hitSlop={{ top: 18, bottom: 18, left: 18, right: 18 }}
+        >
           <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
         <TouchableOpacity
@@ -586,8 +596,8 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       top: 6,
       left: 0,
       right: 0,
-      zIndex: 5000,
-      elevation: 80,
+      zIndex: 9000,
+      elevation: 120,
       flexDirection: 'row',
       justifyContent: 'space-between',
       paddingHorizontal: 16,

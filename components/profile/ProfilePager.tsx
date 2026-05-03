@@ -93,6 +93,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
           { useNativeDriver: true },
         )}
         onScrollBeginDrag={() => setIsDragging(true)}
+        onScrollEndDrag={() => setIsDragging(false)}
         onMomentumScrollEnd={onMomentumEnd}
       >
         <View style={[s.page, { width }]}>{profilePage}</View>
