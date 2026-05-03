@@ -8,7 +8,7 @@ import { clearTripLocalData, setCacheUserId } from './cache';
 import { clearGoogleSession } from './googleAuth';
 import { supabase, clearTripCache } from './supabase';
 import { clearTabDataCache, setTabDataCacheUserId } from './tabDataCache';
-import { consumePendingInviteCode, storePendingInviteCode } from './pendingInvite';
+import { peekPendingInviteCode, storePendingInviteCode } from './pendingInvite';
 import type { Session, User } from '@supabase/supabase-js';
 import * as Crypto from 'expo-crypto';
 
@@ -119,7 +119,7 @@ async function clearAccountState(): Promise<void> {
 
 async function resumePendingInvite(s: Session | null): Promise<void> {
   if (!s?.user?.id) return;
-  const code = await consumePendingInviteCode().catch(() => null);
+  const code = await peekPendingInviteCode().catch(() => null);
   if (!code) return;
   setTimeout(() => {
     expoRouter.replace({ pathname: '/join-trip', params: { code } });

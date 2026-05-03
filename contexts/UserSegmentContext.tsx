@@ -144,14 +144,12 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
   const { user } = useAuth();
   const [state, setState] = useState<Omit<UserSegmentState, 'refresh'>>(defaultState);
   const [freshProfileChecked, setFreshProfileChecked] = useState(false);
-  const [profileCheckFailed, setProfileCheckFailed] = useState(false);
   const mounted = useRef(true);
   const currentUserIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user?.id) {
       setFreshProfileChecked(false);
-      setProfileCheckFailed(false);
       setState({ ...defaultState, loading: false });
       return;
     }
@@ -159,7 +157,6 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
     const userId = user.id;
     currentUserIdRef.current = userId;
     setFreshProfileChecked(false);
-    setProfileCheckFailed(false);
     setState((prev) => (
       prev.profile && prev.profile.id !== userId
         ? { ...defaultState, loading: true }
@@ -218,7 +215,6 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
       if (!mounted.current || currentUserIdRef.current !== userId) return;
       setFreshProfileChecked(true);
-      setProfileCheckFailed(false);
 
       // When dev override is active, replace trip data with mock data
       let mockData: MockSegmentData | null = null;
@@ -260,7 +256,6 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
       if (__DEV__) console.warn('[UserSegment] load failed:', err);
       if (mounted.current && currentUserIdRef.current === userId) {
         setFreshProfileChecked(false);
-        setProfileCheckFailed(true);
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -283,11 +278,12 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
     refresh: load,
   };
 
-  const needsHandle = (freshProfileChecked || profileCheckFailed)
+  const needsHandle = freshProfileChecked
     && !state.loading
     && !!user
     && !state.isTestMode
-    && (!state.profile || !state.profile.handle);
+    && !!state.profile
+    && !state.profile.handle;
   const displayName = state.profile?.fullName ?? user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? '';
 
   return (

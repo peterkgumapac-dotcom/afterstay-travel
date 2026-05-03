@@ -19,6 +19,14 @@ export async function consumePendingInviteCode(): Promise<string | null> {
   return normalizeInviteCode(code) || null;
 }
 
+export async function clearPendingInviteCode(code?: string): Promise<void> {
+  if (code) {
+    const current = await peekPendingInviteCode();
+    if (current && current !== normalizeInviteCode(code)) return;
+  }
+  await secureStorage.removeItem(PENDING_INVITE_CODE_KEY);
+}
+
 export async function peekPendingInviteCode(): Promise<string | null> {
   const code = await secureStorage.getItem(PENDING_INVITE_CODE_KEY);
   return code ? normalizeInviteCode(code) || null : null;

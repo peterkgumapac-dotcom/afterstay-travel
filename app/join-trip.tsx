@@ -25,6 +25,7 @@ import { getPrimaryBookerFlights } from '@/lib/flightSharing';
 import { completeOnboarding } from '@/lib/onboardingProgress';
 import { formatDatePHT } from '@/lib/utils';
 import type { Flight, Trip } from '@/lib/types';
+import { clearPendingInviteCode } from '@/lib/pendingInvite';
 
 type Phase = 'code' | 'welcome' | 'flight';
 
@@ -75,6 +76,7 @@ export default function JoinTripScreen() {
     setJoining(true);
     try {
       const result = await joinTripByCode(code.trim(), name.trim());
+      await clearPendingInviteCode(code.trim()).catch(() => {});
       setTripInfo(result.trip);
       const flights = await getFlights(result.tripId).catch(() => [] as Flight[]);
       setGroupFlights(flights);

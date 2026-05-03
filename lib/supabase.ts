@@ -1043,17 +1043,6 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
           .maybeSingle();
         placeholderMember = data as { id: string } | null;
       }
-      if (!placeholderMember && cleanedName) {
-        const { data } = await supabase
-          .from(T.groupMembers)
-          .select('id')
-          .eq('trip_id', tripId)
-          .is('user_id', null)
-          .ilike('name', cleanedName)
-          .maybeSingle();
-        placeholderMember = data as { id: string } | null;
-      }
-
       if (placeholderMember?.id) {
         const { error: linkError } = await supabase
           .from(T.groupMembers)
@@ -1436,6 +1425,7 @@ export async function addGroupMember(input: {
     trip_id: id,
     name: input.name.trim(),
     role: input.role ?? 'Member',
+    shares_accommodation: null,
     ...(input.email ? { email: input.email.trim() } : {}),
     ...(input.phone ? { phone: input.phone.trim() } : {}),
   });
@@ -1465,6 +1455,21 @@ export async function updateMyTripMemberPreferences(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error('updateMyTripMemberPreferences: not authenticated');
+
+  const { error: rpcError } = await supabase.rpc('update_own_trip_member_preferences', {
+    p_trip_id: tripId,
+    p_shares_accommodation: input.sharesAccommodation ?? null,
+    p_travel_notes: input.travelNotes ?? null,
+  });
+  if (!rpcError) return;
+
+  const canFallbackToPostgrest =
+    rpcError.code === 'PGRST202' ||
+    rpcError.code === '42883' ||
+    /update_own_trip_member_preferences|could not find function|schema cache/i.test(rpcError.message ?? '');
+  if (!canFallbackToPostgrest) {
+    throw new Error(`updateMyTripMemberPreferences: ${rpcError.message}`);
+  }
 
   const { error } = await supabase
     .from(T.groupMembers)
@@ -1937,18 +1942,43 @@ export async function updateMemberPhoto(memberId: string, localUri: string): Pro
     }
   }
 
-  const { error } = await supabase.from(T.groupMembers).update({ avatar_url: publicUrl }).eq('id', memberId);
-  if (error) throw new Error(`updateMemberPhoto: ${error.message}`);
+  await updateTripMemberContact(memberId, { avatarUrl: publicUrl });
 }
 
 export async function updateMemberEmail(memberId: string, email: string): Promise<void> {
-  const { error } = await supabase.from(T.groupMembers).update({ email }).eq('id', memberId);
-  if (error) throw new Error(`updateMemberEmail: ${error.message}`);
+  await updateTripMemberContact(memberId, { email });
 }
 
 export async function updateMemberPhone(memberId: string, phone: string): Promise<void> {
-  const { error } = await supabase.from(T.groupMembers).update({ phone }).eq('id', memberId);
-  if (error) throw new Error(`updateMemberPhone: ${error.message}`);
+  await updateTripMemberContact(memberId, { phone });
+}
+
+async function updateTripMemberContact(
+  memberId: string,
+  input: { email?: string; phone?: string; avatarUrl?: string },
+): Promise<void> {
+  const { error: rpcError } = await supabase.rpc('update_trip_member_contact', {
+    p_member_id: memberId,
+    p_email: input.email ?? null,
+    p_phone: input.phone ?? null,
+    p_avatar_url: input.avatarUrl ?? null,
+  });
+  if (!rpcError) return;
+
+  const canFallbackToPostgrest =
+    rpcError.code === 'PGRST202' ||
+    rpcError.code === '42883' ||
+    /update_trip_member_contact|could not find function|schema cache/i.test(rpcError.message ?? '');
+  if (!canFallbackToPostgrest) {
+    throw new Error(`updateTripMemberContact: ${rpcError.message}`);
+  }
+
+  const row: Record<string, string> = {};
+  if (input.email != null) row.email = input.email;
+  if (input.phone != null) row.phone = input.phone;
+  if (input.avatarUrl != null) row.avatar_url = input.avatarUrl;
+  const { error } = await supabase.from(T.groupMembers).update(row).eq('id', memberId);
+  if (error) throw new Error(`updateTripMemberContact: ${error.message}`);
 }
 
 // ---------- PACKING ----------

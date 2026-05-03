@@ -60,6 +60,7 @@ import {
 import { scanTripDocuments } from '@/lib/anthropic';
 import { getPrimaryBookerFlights } from '@/lib/flightSharing';
 import { placeAutocomplete, type AutocompleteResult } from '@/lib/google-places';
+import { clearPendingInviteCode } from '@/lib/pendingInvite';
 import {
   clearOnboardingScanReview,
   completeOnboarding,
@@ -1235,6 +1236,7 @@ function InvitedFlow({
     setJoining(true);
     try {
       const result = await joinTripByCode(code.trim(), name);
+      await clearPendingInviteCode(code.trim()).catch(() => {});
       setTripInfo(result.trip);
       const flights = await getFlights(result.tripId).catch(() => [] as Flight[]);
       const primaryFlights = getPrimaryBookerFlights(flights);

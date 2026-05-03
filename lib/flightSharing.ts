@@ -31,6 +31,7 @@ export function getPrimaryBookerFlights(flights: Flight[]): Flight[] {
   const unique: Flight[] = [];
 
   for (const flight of flights) {
+    if (normalizePart(flight.passenger)) continue;
     if (!hasShareableFlightDetails(flight)) continue;
     const key = flightShareKey(flight);
     if (seen.has(key)) continue;
