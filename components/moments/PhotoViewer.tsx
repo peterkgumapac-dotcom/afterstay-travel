@@ -1,16 +1,13 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Heart, Share2, Download, MoreHorizontal, Users, Lock } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { CachedImage } from '@/components/CachedImage';
 import { PhotoCarousel } from './PhotoCarousel';
 import { PhotoActionsSheet, type PhotoAction } from './PhotoActionsSheet';
 import type { MomentDisplay, PeopleMap } from './types';
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 interface PhotoViewerProps {
   moments: MomentDisplay[];

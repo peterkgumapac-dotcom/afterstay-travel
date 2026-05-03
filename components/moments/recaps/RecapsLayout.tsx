@@ -5,7 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import { useTheme } from '@/constants/ThemeContext';
 import type { MomentDisplay } from '../types';
-import { generateTripRecap, type DayRecap } from './generateRecap';
+import { generateTripRecap } from './generateRecap';
 import { MinimalTemplate } from './MinimalTemplate';
 import { PolaroidTemplate } from './PolaroidTemplate';
 

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   ScrollView,
   Share,
   StyleSheet,
@@ -11,7 +10,6 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 
-const SCREEN_W = Dimensions.get('window').width;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -41,7 +39,6 @@ import {
   getTripById,
   getMoments,
   getExpenses,
-  getExpenseSummary,
   getSavedPlaces,
   getGroupMembers,
   getMomentFavorites,
@@ -269,11 +266,6 @@ export default function TripSummaryScreen() {
       .slice(0, 5)
       .map(([tag, count]) => ({ tag, count }));
   }, [moments]);
-
-  const maxDayCount = useMemo(
-    () => Math.max(1, ...momentsByDay.map((d) => d.count)),
-    [momentsByDay],
-  );
 
   const dailyAvg = trip && trip.nights > 0 ? summary.total / trip.nights : 0;
   const receiptCount = useMemo(() => expenses.filter((e) => e.photo).length, [expenses]);

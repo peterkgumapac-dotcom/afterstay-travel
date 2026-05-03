@@ -14,7 +14,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Download, Share2, Shuffle, Sparkles, Users, X } from 'lucide-react-native';
+import { Download, Share2, Shuffle, Users, X } from 'lucide-react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import {
   Canvas,

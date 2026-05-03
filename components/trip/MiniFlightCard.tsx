@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { AlertTriangle, Pencil, Upload } from 'lucide-react-native';
+import { AlertTriangle, Upload } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';

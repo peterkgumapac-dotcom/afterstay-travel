@@ -2,14 +2,12 @@ import React, {
   useCallback,
   useState,
   useRef,
-  useMemo,
   useEffect,
 } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   FlatList,
   Modal,
   Pressable,
@@ -39,9 +37,8 @@ import { springPresets, thresholds, scales } from '@/constants/animations';
 import type { MomentDisplay, PeopleMap } from './types';
 import { PhotoItem, THUMB_SIZE } from './PhotoItem';
 import { PhotoCarousel } from './PhotoCarousel';
-import { PhotoActionsSheet, type PhotoAction } from './PhotoActionsSheet';
+import type { PhotoAction } from './PhotoActionsSheet';
 
-const { width: SCREEN_W } = Dimensions.get('window');
 const NUM_COLS = 3;
 const GRID_GAP = 3;
 

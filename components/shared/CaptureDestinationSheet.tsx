@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -11,12 +10,9 @@ import {
   View,
 } from 'react-native';
 import {
-  Camera,
   ChevronRight,
   FolderHeart,
   MapPin,
-  Sparkles,
-  X,
   Zap,
 } from 'lucide-react-native';
 
