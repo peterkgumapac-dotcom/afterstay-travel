@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 import {
   Alert,
   Dimensions,
@@ -55,7 +55,6 @@ export default function SwipeableTripCard({
   const translateX = useSharedValue(0);
   const rowHeight = useSharedValue<number | null>(null);
   const isRemoving = useSharedValue(false);
-  const [isOpen, setIsOpen] = useState(false);
 
   const handleLayoutAnimation = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -69,7 +68,6 @@ export default function SwipeableTripCard({
       [
         { text: 'Cancel', style: 'cancel', onPress: () => {
           translateX.value = withSpring(0, SPRING_CONFIG);
-          setIsOpen(false);
         }},
         {
           text: 'Delete',
@@ -110,11 +108,9 @@ export default function SwipeableTripCard({
       if (e.translationX < SNAP_THRESHOLD) {
         // Snap open
         translateX.value = withSpring(FULL_OPEN, SPRING_CONFIG);
-        runOnJS(setIsOpen)(true);
       } else {
         // Snap closed
         translateX.value = withSpring(0, SPRING_CONFIG);
-        runOnJS(setIsOpen)(false);
       }
     });
 
@@ -160,21 +156,18 @@ export default function SwipeableTripCard({
   const handleEdit = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     translateX.value = withSpring(0, SPRING_CONFIG);
-    setIsOpen(false);
     onEdit?.();
   };
 
   const handleArchive = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     translateX.value = withSpring(0, SPRING_CONFIG);
-    setIsOpen(false);
     onArchive?.();
   };
 
   const handleRestore = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     translateX.value = withSpring(0, SPRING_CONFIG);
-    setIsOpen(false);
     onRestore?.();
   };
 

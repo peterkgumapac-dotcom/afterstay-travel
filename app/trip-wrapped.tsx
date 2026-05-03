@@ -14,7 +14,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { X } from 'lucide-react-native';
 
-import { useTheme } from '@/constants/ThemeContext';
 import {
   getExpenses,
   getExpenseSummary,
@@ -70,7 +69,6 @@ interface WrappedData {
 }
 
 export default function TripWrappedScreen() {
-  const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { tripId } = useLocalSearchParams<{ tripId: string }>();

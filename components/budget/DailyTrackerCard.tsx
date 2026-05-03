@@ -3,7 +3,6 @@ import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacit
 import { ChevronRight, Plus, Settings2, Trash2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
-import { radius } from '@/constants/theme';
 import { formatCurrency, formatDatePHT } from '@/lib/utils';
 import {
   deleteDailyExpense,

@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Check, Pencil, Trash2, X } from 'lucide-react-native';
+import { Check, Pencil, Trash2 } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
+import { spacing } from '@/constants/theme';
 import { formatCurrency, formatDatePHT } from '@/lib/utils';
 import { getExpenseSplits, settleExpenseSplit } from '@/lib/supabase';
 import type { ExpenseSplit } from '@/lib/supabase';

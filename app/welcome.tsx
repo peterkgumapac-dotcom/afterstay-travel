@@ -109,7 +109,7 @@ export default function WelcomeScreen() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
         keyExtractor={(_, i) => String(i)}
-        renderItem={({ item, index }) => (
+        renderItem={({ item }) => (
           <View style={s.slide}>
             {/* Icon cluster */}
             <View style={s.iconCluster}>

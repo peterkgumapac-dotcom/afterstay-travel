@@ -12,7 +12,6 @@ import * as Haptics from 'expo-haptics';
 import { Link2, X } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
 import { isQRPhPayload, parseQRPh, type QRPhData } from '@/lib/qrph';
 
 interface Props {

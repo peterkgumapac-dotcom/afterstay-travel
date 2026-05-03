@@ -4,10 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
   Circle,
   Line,
-  G,
   Path,
-  Defs,
-  Use,
 } from 'react-native-svg';
 import Animated, {
   useSharedValue,
@@ -23,7 +20,6 @@ import Animated, {
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedLine = Animated.createAnimatedComponent(Line);
-const AnimatedG = Animated.createAnimatedComponent(G);
 
 const HERO_HEIGHT = 300;
 const STAR_COUNT = 16;
