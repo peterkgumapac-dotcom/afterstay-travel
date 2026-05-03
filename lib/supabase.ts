@@ -3917,7 +3917,6 @@ export async function getAllUserTrips(userId?: string, includeDeleted = false): 
     ? unique
     : unique.filter((r) => !r.deleted_at)
 
-  if (__DEV__) console.log(`[getAllUserTrips] User ${uid.slice(0, 8)}: ${result.length} trips (${ownedTrips?.length ?? 0} owned, ${memberTrips?.length ?? 0} member)`)
   return result.map((r) => mapTrip(r as Record<string, unknown>))
 }
 
