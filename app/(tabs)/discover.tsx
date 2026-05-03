@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Keyboard,
   Linking,
   RefreshControl,
   ScrollView,
@@ -725,6 +726,8 @@ function DiscoverScreenInner() {
     const cleaned = label.trim();
     if (!cleaned) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Keyboard.dismiss();
+    setExploreFocused(false);
     setExploreQuery(cleaned);
     setExploreResults([]);
     setPlacesError(null);
@@ -1566,7 +1569,7 @@ function DiscoverScreenInner() {
             <View style={styles.destDropdown}>
               <TouchableOpacity
                 style={styles.destRow}
-                onPress={() => {
+                onPressIn={() => {
                   const fallback = getStarterDestinationFallback(exploreQuery);
                   chooseExploreDestination(exploreQuery, undefined, fallback?.coords);
                 }}
@@ -1581,7 +1584,7 @@ function DiscoverScreenInner() {
                 <TouchableOpacity
                   key={r.placeId}
                   style={styles.destRow}
-                  onPress={() => chooseExploreDestination(r.description, r.placeId)}
+                  onPressIn={() => chooseExploreDestination(r.description, r.placeId)}
                   activeOpacity={0.7}
                 >
                   <MapPin size={14} color={colors.text3} />
