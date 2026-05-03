@@ -14,13 +14,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Archive, CheckCircle, Map, MoreHorizontal, Pencil, Settings, Share2, Trash2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -42,7 +35,6 @@ import { useTheme } from '@/constants/ThemeContext';
 import {
   addPackingItem,
   deletePackingItem,
-  getExpenseSummary,
   getFlights,
   getGroupMembers,
   getPackingList,
@@ -167,37 +159,10 @@ function mapTripToPastDisplay(t: Trip): PastTripDisplay {
   };
 }
 
-// ---------- PULSING DOT ----------
+// ---------- STATUS DOT ----------
 
-function PulsingDot({ color }: { color: string }) {
-  const opacity = useSharedValue(1);
-
-  useEffect(() => {
-    opacity.value = withRepeat(
-      withTiming(0.5, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-    );
-  }, [opacity]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ scale: 1 + (1 - opacity.value) * 0.6 }],
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        {
-          width: 6,
-          height: 6,
-          borderRadius: 99,
-          backgroundColor: color,
-        },
-        animStyle,
-      ]}
-    />
-  );
+function StatusDot({ color }: { color: string }) {
+  return <View style={{ width: 6, height: 6, borderRadius: 99, backgroundColor: color }} />;
 }
 
 // ---------- MAIN SCREEN ----------
@@ -343,12 +308,12 @@ function TripScreen() {
       setPastTripsData(nonDrafts);
 
       // Backfill spent for legacy trips after first paint so tab switching is not blocked.
-      const tripsNeedingSpent = nonDrafts.filter((t) => (t.totalSpent ?? 0) <= 0);
+      const tripsNeedingSpent = nonDrafts.filter((t) => t.status === 'Completed' && (t.totalSpent ?? 0) <= 0);
       if (tripsNeedingSpent.length > 0) {
         Promise.all(
           tripsNeedingSpent.map(async (t) => {
             try {
-              const s = await getExpenseSummary(t.id);
+              const s = await getExpenseSummaryPromise(t.id);
               return [t.id, s.total] as const;
             } catch {
               return [t.id, t.totalSpent ?? 0] as const;
@@ -1119,7 +1084,7 @@ function TripScreen() {
           if (isActive) return (
             <View style={styles.pillWrapper}>
               <View style={styles.activePill}>
-                <PulsingDot color={colors.accent} />
+                <StatusDot color={colors.accent} />
                 <Text style={styles.activePillText}>
                   LIVE · {destLabel.toUpperCase() || 'TRIP'} · {dateRangeLabel.toUpperCase()}
                 </Text>

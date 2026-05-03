@@ -1,15 +1,6 @@
 import { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Plus, Wallet } from 'lucide-react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-  interpolateColor,
-} from 'react-native-reanimated';
-import { useEffect } from 'react';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { formatCurrency } from '@/lib/utils';
@@ -50,25 +41,6 @@ export default function DailyTrackerStrip({
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
-  // Green/red blinking dot
-  const blink = useSharedValue(0);
-  useEffect(() => {
-    if (!enabled) return;
-    blink.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 800 }),
-        withTiming(0, { duration: 800 }),
-      ),
-      -1,
-    );
-  }, [enabled]);
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    opacity: 0.6 + blink.value * 0.4,
-    transform: [{ scale: 0.85 + blink.value * 0.15 }],
-    backgroundColor: interpolateColor(blink.value, [0, 1], ['#4ade80', '#ef4444']),
-  }));
-
   // ── Not enabled — show activation prompt ──
   if (!enabled) {
     return (
@@ -86,12 +58,12 @@ export default function DailyTrackerStrip({
   // ── Enabled — show today's summary ──
   const categories = Object.entries(byCategory).sort(([, a], [, b]) => b - a);
   const maxCat = Math.max(1, ...Object.values(byCategory));
+  const dotColor = todayCount > 0 ? '#4ade80' : '#ef4444';
 
   return (
     <TouchableOpacity style={styles.strip} onPress={onPress} activeOpacity={0.75}>
-      {/* Pulsing dot + label */}
       <View style={styles.left}>
-        <Animated.View style={[styles.dot, pulseStyle]} />
+        <View style={[styles.dot, { backgroundColor: dotColor }]} />
         <View>
           <Text style={styles.label}>Daily Tracker is on</Text>
           <Text style={styles.sub}>
