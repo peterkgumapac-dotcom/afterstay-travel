@@ -221,6 +221,21 @@ Cleanup-only rerun after trip/Home warning reduction, 2026-05-03:
 - `git diff --check`
   - Result: exit 0.
 
+Cleanup-only rerun after Supabase wrapper warning reduction, 2026-05-03:
+
+- Moved daily tracker type imports in `lib/supabase.ts` to the top-level type import.
+- Removed an unused `ensurePhtOffset` helper and unused feed/moment type imports.
+- `npx eslint 'lib/supabase.ts' 'app/add-moment.tsx' 'lib/moments/exploreMomentsService.ts' 'components/trip/EssentialsTab.tsx' --ext .ts,.tsx`
+  - Result: exit 0, no warnings for those files.
+- `npx tsc --noEmit --pretty false`
+  - Result: exit 0.
+- `npx jest --runInBand`
+  - Result: 5 suites passed, 33 tests passed.
+- `npx expo export --platform android --output-dir /tmp/afterstay-supabase-cleanup-android`
+  - Result: exported Android JS bundle successfully.
+- `git diff --check`
+  - Result: exit 0.
+
 Earlier clean branch verification:
 
 - `npx tsc --noEmit --pretty false`

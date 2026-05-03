@@ -17,20 +17,33 @@ import type {
   AlbumMember,
   AlbumMemberRole,
   ChecklistItem,
+  DailyExpense,
+  DailyExpenseCategory,
+  DailyExpensePeriodSummary,
+  DailyExpenseSummary,
+  DailyTrackerSettings,
   Expense,
   Flight,
+  FeedPage,
+  FeedPost,
+  FeedPostComment,
+  FeedPostType,
+  FollowState,
   GroupMember,
   Highlight,
   HighlightType,
   LifetimeStats,
   Moment,
+  MomentComment,
   MomentTag,
-  MomentVisibility,
   PackingItem,
   Place,
   PlaceCategory,
   PlaceSource,
   PlaceVote,
+  SavingsEntry,
+  SavingsGoal,
+  SavingsMilestone,
   Trip,
   TripFile,
   TripFileType,
@@ -45,13 +58,6 @@ import type {
   TripStatus,
   UserSegment,
   UserTier,
-  MomentComment,
-  FeedFilter,
-  FeedPage,
-  FeedPost,
-  FeedPostType,
-  FeedPostComment,
-  FollowState,
   CompanionProfile,
   CompanionPrivacy,
   CompanionStatus,
@@ -362,28 +368,6 @@ function mapTrip(row: Record<string, unknown>): Trip {
     deletedAt: (row.deleted_at as string) ?? undefined,
     archivedAt: (row.archived_at as string) ?? undefined,
   };
-}
-
-/**
- * Supabase returns timestamptz in UTC (e.g. "2026-04-20T03:30:00+00:00").
- * If the original flight time was entered as PHT but stored without offset,
- * the time displays 8 hours ahead. This normalizes by ensuring the ISO string
- * has the +08:00 offset when Supabase returns +00:00 for a PHT timestamp.
- */
-function ensurePhtOffset(iso: string): string {
-  if (!iso) return iso;
-  // If already has +08:00, leave it
-  if (iso.includes('+08:00') || iso.includes('+08')) return iso;
-  // If ends with Z or +00:00, Supabase returned UTC — the original was PHT
-  // Subtract 8h would double-convert. Instead, replace the offset to treat as-is PHT.
-  if (iso.endsWith('Z') || iso.includes('+00:00') || iso.includes('+00')) {
-    return iso
-      .replace(/Z$/, '+08:00')
-      .replace(/\+00:00$/, '+08:00')
-      .replace(/\+00$/, '+08:00');
-  }
-  // No timezone info — assume PHT
-  return iso + '+08:00';
 }
 
 function normalizeFlightDirection(value?: string): Flight['direction'] {
@@ -4407,16 +4391,6 @@ export async function getPersonalPhotos(userId: string): Promise<import('./types
 // DAILY EXPENSE TRACKER
 // ═══════════════════════════════════════════════════════════════════════
 
-import type {
-  DailyExpense,
-  DailyExpenseCategory,
-  DailyExpenseSummary,
-  DailyExpensePeriodSummary,
-  SavingsGoal,
-  SavingsEntry,
-  SavingsMilestone,
-} from '@/lib/types';
-
 export async function getDailyTrackerEnabled(): Promise<boolean> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return false;
@@ -4545,8 +4519,6 @@ export async function getDailyExpensePeriodSummary(
 }
 
 // ── Daily Tracker Settings & CRUD ────────────────────────────────────
-
-import type { DailyTrackerSettings } from './types';
 
 export async function getDailyTrackerSettings(): Promise<DailyTrackerSettings> {
   const { data: authData } = await supabase.auth.getUser();
