@@ -220,9 +220,12 @@ export default function CompanionProfileScreen() {
   const privacy = profile.companionPrivacy;
   const firstName = profile.fullName.split(' ')[0];
   const computedStats = buildProfileStatsFromTrips({ trips: mutualTrips, moments: sharedMoments, flights: profileFlights });
+  const hasLiveCountryStats = computedStats.countriesList.length > 0;
   const stats = profile.lifetimeStats
     ? {
       ...profile.lifetimeStats,
+      totalCountries: hasLiveCountryStats ? computedStats.totalCountries : profile.lifetimeStats.totalCountries,
+      countriesList: hasLiveCountryStats ? computedStats.countriesList : profile.lifetimeStats.countriesList,
       totalMiles: computedStats.totalMiles > 0 ? computedStats.totalMiles : profile.lifetimeStats.totalMiles,
       totalMoments: Math.max(profile.lifetimeStats.totalMoments, computedStats.totalMoments),
     }

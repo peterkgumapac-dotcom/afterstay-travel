@@ -8,6 +8,7 @@ import {
   formatProfileCurrency,
   type ProfileMapCoordinate,
   type ProfileMapData,
+  type ProfileMapDestination,
 } from '@/lib/profileStats';
 import type { LifetimeStats } from '@/lib/types';
 
@@ -18,7 +19,19 @@ interface ProfileFlightMapCardProps {
 
 const VIEW_W = 360;
 const VIEW_H = 210;
-const PAD = 34;
+const PAD = 32;
+
+const COUNTRY_DESTINATIONS: Record<string, ProfileMapDestination> = {
+  Philippines: { code: 'PH', label: 'Philippines', lat: 12.8797, lng: 121.7740, flag: '🇵🇭' },
+  Thailand: { code: 'TH', label: 'Thailand', lat: 15.8700, lng: 100.9925, flag: '🇹🇭' },
+  Vietnam: { code: 'VN', label: 'Vietnam', lat: 14.0583, lng: 108.2772, flag: '🇻🇳' },
+  Indonesia: { code: 'ID', label: 'Indonesia', lat: -0.7893, lng: 113.9213, flag: '🇮🇩' },
+  Singapore: { code: 'SG', label: 'Singapore', lat: 1.3521, lng: 103.8198, flag: '🇸🇬' },
+  Japan: { code: 'JP', label: 'Japan', lat: 36.2048, lng: 138.2529, flag: '🇯🇵' },
+  Korea: { code: 'KR', label: 'Korea', lat: 35.9078, lng: 127.7669, flag: '🇰🇷' },
+  'South Korea': { code: 'KR', label: 'South Korea', lat: 35.9078, lng: 127.7669, flag: '🇰🇷' },
+  'United States': { code: 'US', label: 'United States', lat: 39.8283, lng: -98.5795, flag: '🇺🇸' },
+};
 
 function buildBounds(points: ProfileMapCoordinate[]) {
   const lats = points.map((point) => point.lat);
@@ -47,12 +60,22 @@ function curvePath(from: { x: number; y: number }, to: { x: number; y: number })
   return `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`;
 }
 
+function destinationsForStats(stats: LifetimeStats): ProfileMapDestination[] {
+  return stats.countriesList
+    .map((country) => COUNTRY_DESTINATIONS[country])
+    .filter((destination): destination is ProfileMapDestination => !!destination);
+}
+
 export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMapCardProps) {
   const colors = lightColors;
   const s = getStyles(colors);
+  const countryDestinations = destinationsForStats(stats);
+  const destinations = mapData.routes.length > 0 || countryDestinations.length <= mapData.destinations.length
+    ? mapData.destinations
+    : countryDestinations;
   const allPoints = [
     mapData.homeCoordinates,
-    ...mapData.destinations,
+    ...destinations,
     ...mapData.routes.flatMap((route) => [
       { lat: route.fromLat, lng: route.fromLng },
       { lat: route.toLat, lng: route.toLng },
@@ -61,7 +84,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
   const bounds = buildBounds(allPoints.length > 1 ? allPoints : [mapData.homeCoordinates, { lat: mapData.homeCoordinates.lat + 1, lng: mapData.homeCoordinates.lng + 1 }]);
   const home = project(mapData.homeCoordinates, bounds);
   const totalKm = mapData.totalKm || Math.round(stats.totalMiles * 1.60934);
-  const hasMapData = mapData.routes.length > 0 || mapData.destinations.length > 0;
+  const hasMapData = mapData.routes.length > 0 || destinations.length > 0;
   const isEmptyProfile = !hasMapData && stats.totalTrips === 0 && stats.totalCountries === 0 && stats.totalNights === 0;
 
   return (
@@ -75,7 +98,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
       </View>
 
       <View style={[s.mapWrap, isEmptyProfile && s.mapWrapCompact]}>
-        <Svg width="100%" height={isEmptyProfile ? 136 : 210} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
+        <Svg width="100%" height={isEmptyProfile ? 116 : 176} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
           <Ellipse cx={104} cy={92} rx={70} ry={34} fill={colors.accentBg} opacity={0.45} />
           <Ellipse cx={238} cy={86} rx={92} ry={38} fill={colors.accentBg} opacity={0.36} />
           <Ellipse cx={210} cy={144} rx={48} ry={24} fill={colors.accentBg} opacity={0.32} />
@@ -101,7 +124,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
               />
             );
           })}
-          {mapData.routes.length === 0 && mapData.destinations.map((destination) => {
+          {mapData.routes.length === 0 && destinations.map((destination) => {
             const point = project(destination, bounds);
             return (
               <Path
@@ -118,7 +141,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
           <Circle cx={home.x} cy={home.y} r={6} fill={colors.accent} />
           <Circle cx={home.x} cy={home.y} r={3} fill={colors.canvas} />
           <SvgText x={home.x} y={home.y + 20} fontSize={9} fill={colors.text3} textAnchor="middle">HOME</SvgText>
-          {mapData.destinations.map((destination) => {
+          {destinations.map((destination) => {
             const point = project(destination, bounds);
             return (
               <React.Fragment key={destination.code}>
@@ -128,7 +151,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
             );
           })}
         </Svg>
-        {mapData.destinations.map((destination) => {
+        {destinations.map((destination) => {
           const point = project(destination, bounds);
           return destination.flag ? (
             <Text
@@ -178,7 +201,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
 const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -188,8 +211,8 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     borderRadius: 20,
   },
   head: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingHorizontal: 16,
+    paddingTop: 14,
   },
   kicker: {
     color: colors.accent,
@@ -202,33 +225,33 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
-    marginTop: 12,
+    marginTop: 8,
   },
   distance: {
     color: colors.text,
-    fontSize: 38,
+    fontSize: 32,
     fontWeight: '800',
     letterSpacing: 0,
   },
   distanceUnit: {
     color: colors.text2,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   mapWrap: {
-    height: 218,
+    height: 184,
     position: 'relative',
   },
   mapWrapCompact: {
-    height: 148,
+    height: 128,
   },
   emptyMap: {
     position: 'absolute',
     left: 18,
     right: 18,
     bottom: 12,
-    minHeight: 38,
+    minHeight: 34,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
@@ -248,10 +271,10 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   flag: {
     position: 'absolute',
-    fontSize: 21,
+    fontSize: 19,
   },
   footer: {
-    minHeight: 82,
+    minHeight: 66,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     flexDirection: 'row',
@@ -260,7 +283,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
+    gap: 2,
     borderRightWidth: 1,
     borderRightColor: colors.border,
   },
@@ -269,12 +292,12 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   fvalue: {
     color: colors.text,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '800',
   },
   flabel: {
     color: colors.text3,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 1,

@@ -99,6 +99,18 @@ const COUNTRY_FLAGS: Record<string, string> = {
   US: '🇺🇸',
 };
 
+const PLACE_COUNTRY_FALLBACKS: Record<string, string> = {
+  astoria: 'Philippines',
+  boracay: 'Philippines',
+  caticlan: 'Philippines',
+  cebu: 'Philippines',
+  kalibo: 'Philippines',
+  manila: 'Philippines',
+  palawan: 'Philippines',
+  siargao: 'Philippines',
+  tagaytay: 'Philippines',
+};
+
 function visibleTrip(trip: Trip): boolean {
   return !trip.deletedAt && !trip.isDraft && !trip.archivedAt;
 }
@@ -114,7 +126,12 @@ function tripNights(trip: Trip): number {
 
 function tripCountry(trip: Trip): string | undefined {
   if (trip.country) return trip.country;
-  const parts = (trip.destination || trip.name || '').split(',').map((part) => part.trim()).filter(Boolean);
+  const label = trip.destination || trip.name || '';
+  const parts = label.split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length > 1) return parts[parts.length - 1];
+  const normalized = label.toLowerCase();
+  const fallbackKey = Object.keys(PLACE_COUNTRY_FALLBACKS).find((place) => normalized.includes(place));
+  if (fallbackKey) return PLACE_COUNTRY_FALLBACKS[fallbackKey];
   return parts.length > 1 ? parts[parts.length - 1] : undefined;
 }
 

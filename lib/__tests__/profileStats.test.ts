@@ -68,6 +68,21 @@ describe('profileStats', () => {
     expect(stats.countriesList).toEqual(['Philippines']);
   });
 
+  it('does not count multiple Philippine places as multiple countries', () => {
+    const stats = buildProfileStatsFromTrips({
+      trips: [
+        { ...baseTrip, id: 'boracay', destination: 'Boracay', country: undefined, countryCode: undefined },
+        { ...baseTrip, id: 'cebu', destination: 'Cebu', country: undefined, countryCode: undefined },
+        { ...baseTrip, id: 'caticlan', destination: 'Caticlan', country: undefined, countryCode: undefined },
+      ],
+      moments,
+    });
+
+    expect(stats.totalTrips).toBe(3);
+    expect(stats.totalCountries).toBe(1);
+    expect(stats.countriesList).toEqual(['Philippines']);
+  });
+
   it('prefers lifetime stats when available and derives display helpers', () => {
     const lifetime: LifetimeStats = {
       totalTrips: 13,

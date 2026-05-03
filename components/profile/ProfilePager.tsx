@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   NativeScrollEvent,
@@ -24,6 +24,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const s = getStyles(colors);
   const scrollRef = useRef<ScrollView>(null);
   const x = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
   const [active, setActive] = useState(0);
 
   const dotProgress = x.interpolate({
@@ -42,6 +43,38 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   };
 
   const nextIndex = active === 0 ? 1 : 0;
+  const pulseDirection = active === 0 ? 1 : -1;
+  const pulseTranslate = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, pulseDirection * 7],
+  });
+  const pulseScale = pulse.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [1, 1.06, 1],
+  });
+  const pulseOpacity = pulse.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.72, 1, 0.72],
+  });
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [pulse]);
 
   return (
     <View style={s.root}>
@@ -64,18 +97,31 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
       </Animated.ScrollView>
 
       <View style={[s.edgeRail, active === 0 ? s.edgeRailRight : s.edgeRailLeft]} pointerEvents="box-none">
-        <Pressable
-          style={s.edgeButton}
-          onPress={() => jumpTo(nextIndex)}
-          accessibilityRole="button"
-          accessibilityLabel={active === 0 ? 'Show memories' : 'Show profile'}
+        <Animated.View
+          style={[
+            s.edgePulse,
+            {
+              opacity: pulseOpacity,
+              transform: [
+                { translateX: pulseTranslate },
+                { scale: pulseScale },
+              ],
+            },
+          ]}
         >
-          {active === 0 ? (
-            <ChevronRight size={22} color={colors.accent} strokeWidth={2.4} />
-          ) : (
-            <ChevronLeft size={22} color={colors.accent} strokeWidth={2.4} />
-          )}
-        </Pressable>
+          <Pressable
+            style={s.edgeButton}
+            onPress={() => jumpTo(nextIndex)}
+            accessibilityRole="button"
+            accessibilityLabel={active === 0 ? 'Show memories' : 'Show profile'}
+          >
+            {active === 0 ? (
+              <ChevronRight size={21} color={colors.accent} strokeWidth={2.6} />
+            ) : (
+              <ChevronLeft size={21} color={colors.accent} strokeWidth={2.6} />
+            )}
+          </Pressable>
+        </Animated.View>
       </View>
 
       <View style={s.dots} pointerEvents="none">
@@ -100,7 +146,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   edgeRail: {
     position: 'absolute',
-    top: '48%',
+    top: '45%',
     zIndex: 20,
     elevation: 10,
   },
@@ -110,13 +156,16 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   edgeRailLeft: {
     left: 8,
   },
+  edgePulse: {
+    borderRadius: 22,
+  },
   edgeButton: {
-    width: 42,
-    height: 58,
-    borderRadius: 21,
+    width: 38,
+    height: 50,
+    borderRadius: 19,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(253,248,235,0.88)',
+    backgroundColor: 'rgba(253,248,235,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
   },
