@@ -8,7 +8,6 @@ import {
   Alert,
   Image,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,14 +17,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 import Svg, { Polyline } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -34,7 +25,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
-import EmptyState from '@/components/shared/EmptyState';
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import SwipeableExpenseRow from '@/components/budget/SwipeableExpenseRow';
 import {
@@ -46,15 +37,12 @@ import {
   getExpenseSummary,
   getGroupMembers,
   getPaymentQrs,
-  getTripBalances,
   getUserPaymentQrs,
   removePaymentQr as removePaymentQrSupabase,
   removeUserPaymentQr,
-  settleExpenseSplit,
   updateTripBudgetLimit,
-  updateTripBudgetMode,
 } from '@/lib/supabase';
-import type { MemberBalance, PaymentQr, UserPaymentQr } from '@/lib/supabase';
+import type { PaymentQr, UserPaymentQr } from '@/lib/supabase';
 import { getUnifiedExpenseHistory } from '@/lib/expenseHistory';
 import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
@@ -155,10 +143,6 @@ function SummaryStrip({ summary, styles }: { summary: MoneySummary; styles: Retu
   );
 }
 
-// ── Main screen ──────────────────────────────────────────────────────
-
-import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
-
 export default function BudgetScreenWithBoundary() {
   return (
     <TabErrorBoundary name="Budget">
@@ -209,9 +193,6 @@ function BudgetScreen() {
   const [pendingUserQrUri, setPendingUserQrUri] = useState<string | null>(null);
   const [userQrNameInput, setUserQrNameInput] = useState('');
 
-  // Real split-based balances
-  const [balances, setBalances] = useState<MemberBalance[]>([]);
-
   // Savings + Daily Tracker state
   const [savingsGoal, setSavingsGoal] = useState<SavingsGoal | null>(null);
   const [showSavingsSetup, setShowSavingsSetup] = useState(false);
@@ -231,13 +212,6 @@ function BudgetScreen() {
     }
   }, [user?.id]);
 
-  // Load real balances when expenses or members change
-  useEffect(() => {
-    if (trip?.id && expenses.length > 0 && members.length > 1) {
-      getTripBalances(trip.id, expenses, members).then(setBalances).catch(() => {});
-    }
-  }, [trip?.id, expenses.length, members.length]);
-
   const handleCreateGoal = async (input: { title: string; targetAmount: number; targetCurrency: string; targetDate?: string; destination?: string }) => {
     try {
       const goal = await createSavingsGoal(input);
@@ -256,7 +230,7 @@ function BudgetScreen() {
   const handleLogSavings = async (amount: number, note?: string) => {
     if (!savingsGoal) return;
     try {
-      const { entry, newMilestones } = await addSavingsEntry(savingsGoal.id, amount, note);
+      const { newMilestones } = await addSavingsEntry(savingsGoal.id, amount, note);
       setSavingsGoal((prev) => prev ? { ...prev, currentAmount: prev.currentAmount + amount, celebratedMilestones: [...prev.celebratedMilestones, ...newMilestones] } : prev);
       if (newMilestones.length > 0) {
         setMilestoneToShow(newMilestones[newMilestones.length - 1]);
@@ -1668,7 +1642,6 @@ function BudgetScreen() {
 
                 {displayExpenses.map((e) => {
                   const payer = members.find(m => m.name === e.paidBy) || members[0];
-                  const isOpen = expandedExpense === e.id;
                   const splitCount = members.length || 1;
                   const each = Math.round(e.amount / splitCount);
                   const catConfig = CATEGORIES.find(c => c.matchKey === e.category);
@@ -1738,7 +1711,6 @@ function BudgetScreen() {
             trip={trip}
             expenses={expenses}
             members={members}
-            onBalancesChange={setBalances}
           />
         )}
         {tab === 'settle' && trip && members.length < 2 && (

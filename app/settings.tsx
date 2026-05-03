@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,7 +23,6 @@ import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  AtSign,
   Bell,
   Camera,
   Check,
@@ -32,11 +31,9 @@ import {
   ChevronUp,
   Crown,
   Download,
-  Info,
   ArrowLeft,
   LogOut,
   Moon,
-  Palette,
   Plane,
   QrCode,
   Sun,
@@ -63,8 +60,7 @@ import {
   type UserPaymentQr,
 } from '@/lib/supabase';
 import type { CompanionProfile } from '@/lib/types';
-import type { Trip, UserSegment } from '@/lib/types';
-import { clearPrefsCache, getLocalNotificationPrefs, saveLocalNotificationPrefs } from '@/lib/notificationPrefs';
+import type { Trip } from '@/lib/types';
 
 const CHANGELOG = [
   {
@@ -109,41 +105,9 @@ interface ProfileState {
   socials: ProfileSocials;
 }
 
-interface Notifications {
-  departureReminders: boolean;
-  budgetAlerts: boolean;
-  packingReminders: boolean;
-  groupActivity: boolean;
-  expenseAlerts: boolean;
-  tripLifecycle: boolean;
-  checkInOut: boolean;
-  // Phase controls
-  preTripAlerts: boolean;
-  activeTripAlerts: boolean;
-  postTripAlerts: boolean;
-  // Quiet hours
-  quietHours: { enabled: boolean; startHour: number; endHour: number };
-  // Muted trips
-  mutedTrips: string[];
-}
-
 const STORAGE_PROFILE = 'settings_profile';
 
 const DEFAULT_PROFILE: ProfileState = { name: 'Traveler', avatarUri: '', handle: '', phone: '', socials: {} };
-const DEFAULT_NOTIFICATIONS: Notifications = {
-  departureReminders: true,
-  budgetAlerts: true,
-  packingReminders: true,
-  groupActivity: true,
-  expenseAlerts: true,
-  tripLifecycle: true,
-  checkInOut: true,
-  preTripAlerts: true,
-  activeTripAlerts: true,
-  postTripAlerts: true,
-  quietHours: { enabled: false, startHour: 22, endHour: 7 },
-  mutedTrips: [],
-};
 
 const HANDLE_REGEX = /^[a-z][a-z0-9_]{2,19}$/;
 
@@ -188,7 +152,6 @@ export default function SettingsScreen() {
   const { mode, colors, toggle: toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<ProfileState>(DEFAULT_PROFILE);
-  const [notifications, setNotifications] = useState<Notifications>(DEFAULT_NOTIFICATIONS);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editName, setEditName] = useState('');
@@ -212,7 +175,6 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     loadProfile();
-    loadNotifications();
     loadTrip();
     if (user?.id) getUserPaymentQrs(user.id).then(setUserQrs).catch(() => {});
   }, []);
@@ -237,13 +199,6 @@ export default function SettingsScreen() {
     if (raw) {
       const parsed = JSON.parse(raw);
       setProfile({ ...DEFAULT_PROFILE, ...parsed });
-    }
-  };
-
-  const loadNotifications = async () => {
-    const notificationPrefs = await getLocalNotificationPrefs(user?.id).catch(() => ({}));
-    if (Object.keys(notificationPrefs).length > 0) {
-      setNotifications({ ...DEFAULT_NOTIFICATIONS, ...notificationPrefs });
     }
   };
 
@@ -288,36 +243,6 @@ export default function SettingsScreen() {
       }
     }
   };
-
-  const toggleNotification = useCallback(
-    async (key: keyof Omit<Notifications, 'quietHours' | 'mutedTrips'>) => {
-      const updated = { ...notifications, [key]: !notifications[key] };
-      setNotifications(updated);
-      clearPrefsCache(user?.id);
-      await saveLocalNotificationPrefs(updated, user?.id);
-      if (user?.id) {
-        import('@/lib/supabase').then(({ supabase }) => {
-          supabase.from('profiles').update({ notification_prefs: updated }).eq('id', user!.id).then(() => {});
-        }).catch(() => {});
-      }
-    },
-    [notifications, user?.id],
-  );
-
-  const toggleQuietHours = useCallback(async () => {
-    const updated = {
-      ...notifications,
-      quietHours: { ...notifications.quietHours, enabled: !notifications.quietHours.enabled },
-    };
-    setNotifications(updated);
-    clearPrefsCache(user?.id);
-    await saveLocalNotificationPrefs(updated, user?.id);
-    if (user?.id) {
-      import('@/lib/supabase').then(({ supabase }) => {
-        supabase.from('profiles').update({ notification_prefs: updated }).eq('id', user!.id).then(() => {});
-      }).catch(() => {});
-    }
-  }, [notifications, user?.id]);
 
   const handleSaveProfile = async () => {
     const trimmedName = editName.trim();
@@ -1147,30 +1072,6 @@ function SocialInput({ label, placeholder, prefix, value, onChangeText, colors, 
           </TouchableOpacity>
         ) : null}
       </View>
-    </View>
-  );
-}
-
-function NotifRow({ label, desc, value, onToggle, colors, s }: {
-  label: string;
-  desc: string;
-  value: boolean;
-  onToggle: () => void;
-  colors: Record<string, string>;
-  s: ReturnType<typeof getDynamicStyles>;
-}) {
-  return (
-    <View style={styles.toggleRow}>
-      <View style={{ flex: 1 }}>
-        <Text style={s.toggleLabel}>{label}</Text>
-        <Text style={s.toggleDesc}>{desc}</Text>
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onToggle}
-        trackColor={{ false: colors.border, true: colors.accent }}
-        thumbColor="#fff"
-      />
     </View>
   );
 }

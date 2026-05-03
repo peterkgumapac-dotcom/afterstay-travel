@@ -11,13 +11,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Path, Polyline, Rect, Line } from 'react-native-svg';
 
 import {
   ArrowLeft,
   Hotel,
   Phone,
-  Mail,
   Wifi,
   Key,
   MapPin,
@@ -32,15 +30,12 @@ import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '@/constants/ThemeContext';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import EmptyState from '@/components/shared/EmptyState';
+import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 import { getActiveTrip } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
-
-// ── Main screen ─────────────────────────────────────────────────────────
-
-import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 
 export default function GuideScreenWithBoundary() {
   return (
@@ -104,7 +99,7 @@ function GuideScreen() {
     } catch { return ''; }
   })();
 
-  const copyToClipboard = async (text: string, label: string) => {
+  const copyToClipboard = async (text: string) => {
     await Clipboard.setStringAsync(text);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
@@ -288,7 +283,7 @@ function GuideScreen() {
               {trip.wifiSsid && (
                 <TouchableOpacity
                   style={styles.infoCard}
-                  onPress={() => copyToClipboard(trip.wifiPassword ?? trip.wifiSsid!, 'WiFi password')}
+                  onPress={() => copyToClipboard(trip.wifiPassword ?? trip.wifiSsid!)}
                   activeOpacity={0.7}
                 >
                   <Wifi size={18} color={colors.accent} />
@@ -304,7 +299,7 @@ function GuideScreen() {
               {trip.doorCode && (
                 <TouchableOpacity
                   style={styles.infoCard}
-                  onPress={() => copyToClipboard(trip.doorCode!, 'Door code')}
+                  onPress={() => copyToClipboard(trip.doorCode!)}
                   activeOpacity={0.7}
                 >
                   <Key size={18} color={colors.accent} />
@@ -318,7 +313,7 @@ function GuideScreen() {
               {trip.bookingRef && (
                 <TouchableOpacity
                   style={styles.infoCard}
-                  onPress={() => copyToClipboard(trip.bookingRef!, 'Booking reference')}
+                  onPress={() => copyToClipboard(trip.bookingRef!)}
                   activeOpacity={0.7}
                 >
                   <Hotel size={18} color={colors.accent} />

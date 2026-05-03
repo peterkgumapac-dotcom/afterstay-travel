@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useHomeScreen } from '@/hooks/useHomeScreen';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
@@ -12,14 +11,11 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { Compass, MapPin, Plane, Trash2, Users, X } from 'lucide-react-native';
+import { Compass, MapPin } from 'lucide-react-native';
 
-import { useAuth } from '@/lib/auth';
-import { useUserSegment } from '@/contexts/UserSegmentContext';
 import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import AfterStayLoader from '@/components/AfterStayLoader';
@@ -36,7 +32,6 @@ import { TripActiveCard } from '@/components/home/TripActiveCard';
 import { TripCompletedCard } from '@/components/home/TripCompletedCard';
 import EmptyState from '@/components/shared/EmptyState';
 import ReturningUserHome from '@/components/home/ReturningUserHome';
-import LivingPostcardLoader from '@/components/loader/LivingPostcardLoader';
 import DailyTrackerStrip from '@/components/home/DailyTrackerStrip';
 import { TripReadinessCard } from '@/components/home/TripReadinessCard';
 import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
@@ -48,53 +43,13 @@ import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
 import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 import {
-  supabase,
-  getAllUserTrips,
-  getActiveTrip,
-  getExpenses,
-  getFlights,
-  getGroupMembers,
-  getLifetimeStats,
-  getMoments,
-  getSavedPlaces,
   archiveTrip,
-  discardDraftTrip,
-  softDeleteTrip,
-  restoreTrip,
-  getDailyTrackerEnabled,
   setDailyTrackerEnabled,
-  getDailyExpenseSummary,
   addDailyExpense,
 } from '@/lib/supabase';
-import {
-  getHomeActiveTripPromise,
-  getHomeActiveTripCached,
-  getHomeFlightsCached,
-  getHomeMomentsCached,
-  getHomeMembersCached,
-  getHomePlacesCached,
-  getHomeExpensesCached,
-  getHomeAllTripsCached,
-  getHomeQuickTripsCached,
-  getHomeLifetimeStatsCached,
-  getHomeAllTripsPromise,
-  getHomeQuickTripsPromise,
-  getHomeLifetimeStatsPromise,
-  getHomeFlightsPromise,
-  getHomeMomentsPromise,
-  getHomeMembersPromise,
-  getHomePlacesPromise,
-  getHomeExpensesPromise,
-} from '@/hooks/useTabHomeData';
-import { getQuickTrips } from '@/lib/quickTrips';
-import { fetchDestinationPhotos } from '@/lib/google-places';
-import type { Flight, GroupMember, LifetimeStats, Moment, Place, Trip } from '@/lib/types';
-import type { QuickTrip } from '@/lib/quickTripTypes';
-import { setHotelCoords } from '@/lib/config';
+import type { Flight, Trip } from '@/lib/types';
 import { formatDatePHT, formatTimePHT } from '@/lib/utils';
 import { getTripDayMetrics, inferFlightLeg, sortFlightsByTime } from '@/lib/tripState';
-
-const DEST_PHOTO_CACHE_KEY = 'hero:destination-photos';
 
 /* ── Section header matching prototype's GroupHeader ── */
 function SectionHeader({ kicker, title, action }: { kicker: string; title: string; action?: React.ReactNode }) {
@@ -267,17 +222,13 @@ function HomeScreen() {
     debugInfo,
     hotelPhotos,
     heroLocation,
-    isPlaneTransport,
     showFlightFeatures,
     isTestMode,
-    segment,
     load,
     refresh,
-    setRefreshing,
     setSavedPlaces,
     setManualPhaseOverride,
     clearManualPhaseOverride,
-    setShowLoader,
   } = h;
 
   // UI-only state (not data)
