@@ -174,12 +174,13 @@ order by table_name;
 -- 9) @test1 candidates for targeted media/upload retesting.
 select
   'test1_profiles' as check_name,
-  id,
-  email,
-  handle,
-  full_name,
-  created_at
-from public.profiles
-where lower(handle) in ('test1', '@test1')
-   or email ilike '%test1%'
-order by created_at desc;
+  p.id,
+  u.email,
+  p.handle,
+  p.full_name,
+  p.created_at
+from public.profiles p
+left join auth.users u on u.id = p.id
+where lower(p.handle) in ('test1', '@test1')
+   or u.email ilike '%test1%'
+order by p.created_at desc;
