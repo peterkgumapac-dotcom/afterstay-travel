@@ -42,3 +42,14 @@ android/
 *.tsbuildinfo
 expo.env
 .design/
+
+# Local agent/tooling artifacts
+.agents/
+.claude/
+skills-lock.json
+BACKEND_EXTRACT.md
+CODEX_HANDOFF_MEDIA_MILESTONE.md
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/supabase/
