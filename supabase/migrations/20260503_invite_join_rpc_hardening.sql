@@ -119,6 +119,7 @@ drop policy if exists "trips_select_via_invite" on public.trips;
 -- Explicit invite policies: admins can manage invite rows; joiners use the RPC.
 alter table public.trip_invites enable row level security;
 
+drop policy if exists "trip_invites_select" on public.trip_invites;
 drop policy if exists "trip_invites_select_admin" on public.trip_invites;
 create policy "trip_invites_select_admin"
 on public.trip_invites
@@ -128,6 +129,7 @@ using (
   and public.is_trip_admin(trip_id, auth.uid())
 );
 
+drop policy if exists "trip_invites_insert" on public.trip_invites;
 drop policy if exists "trip_invites_insert_admin" on public.trip_invites;
 create policy "trip_invites_insert_admin"
 on public.trip_invites

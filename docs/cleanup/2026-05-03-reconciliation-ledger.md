@@ -128,14 +128,25 @@ Backend verification attempt from this worktree:
   - Result: blocked by Supabase CLI 401 login-role error, requiring `SUPABASE_DB_PASSWORD`.
 - Supabase Management API with local `SUPABASE_ACCESS_TOKEN`
   - Result: blocked with HTTP 401 Unauthorized.
-- Because live SQL could not be verified from this machine context, do not publish OTA until the verification SQL is run in Supabase SQL Editor or a valid DB credential is provided.
+- Supabase SQL Editor live apply, 2026-05-03:
+  - `supabase/migrations/20260503_invite_join_rpc_hardening.sql`
+  - Result: `Success. No rows returned`.
+  - Local migration was patched before apply to also drop stale broad `trip_invites_select` and `trip_invites_insert` policies.
+- Supabase SQL Editor live policy verification, 2026-05-03:
+  - `group_members_insert` is now admin-only: `auth.uid() is not null and is_trip_admin(trip_id, auth.uid())`.
+  - `trip_invites_delete_admin`, `trip_invites_insert_admin`, `trip_invites_select_admin`, and `trip_invites_update_admin` are present.
+  - Old broad `trip_invites_select`, old broad `trip_invites_insert`, and `trips_select_via_invite` did not appear in the verification result.
+- Supabase direct DB read-only verification, 2026-05-03:
+  - `join_trip_by_invite_code` exists with arguments `p_code text, p_name text DEFAULT NULL::text`.
+  - `authenticated_can_execute` returned `true`.
 
-New pending backend file in this clean branch:
+New backend file in this clean branch, already applied live:
 
 - `supabase/migrations/20260503_invite_join_rpc_hardening.sql`
   - Creates `join_trip_by_invite_code(text, text)`.
   - Restricts direct `group_members` inserts to trip admins.
   - Makes invite rows admin-managed.
+  - Drops stale broad reusable-invite read/write policies that survived the first draft.
 - `supabase/verification/20260503_invite_join_rpc_verification.sql`
   - Read-only confirmation for the RPC and policies.
 
