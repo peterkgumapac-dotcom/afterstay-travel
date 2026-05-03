@@ -146,7 +146,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   edgeRail: {
     position: 'absolute',
-    top: '45%',
+    top: '54%',
     zIndex: 20,
     elevation: 10,
   },

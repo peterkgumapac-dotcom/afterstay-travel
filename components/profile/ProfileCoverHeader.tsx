@@ -60,7 +60,7 @@ export default function ProfileCoverHeader({
   const tags = buildTags(stats, homeBase);
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
   const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
-  const coverHeight = hasCoverVisual ? Math.min(256, Math.max(224, width * 0.58)) : 208;
+  const coverHeight = hasCoverVisual ? Math.min(280, Math.max(248, width * 0.64)) : 232;
 
   return (
     <View style={s.container}>
@@ -111,13 +111,13 @@ export default function ProfileCoverHeader({
         ) : null}
         <Svg
           width={width}
-          height={58}
-          viewBox={`0 0 ${width} 58`}
+          height={34}
+          viewBox={`0 0 ${width} 34`}
           style={s.wave}
           pointerEvents="none"
         >
           <Path
-            d={`M0 36 C ${width * 0.22} 12 ${width * 0.56} 54 ${width} 32 L ${width} 58 L 0 58 Z`}
+            d={`M0 22 C ${width * 0.24} 6 ${width * 0.56} 36 ${width} 18 L ${width} 34 L 0 34 Z`}
             fill={colors.canvas}
           />
         </Svg>
@@ -143,7 +143,12 @@ export default function ProfileCoverHeader({
           ) : null}
         </View>
         {handle ? <Text style={s.handle}>@{handle}</Text> : null}
-        {bio ? <Text style={s.bio}>{bio}</Text> : null}
+        {bio ? (
+          <View style={s.aboutInline}>
+            <Text style={s.aboutLabel}>{isSelf ? 'About you' : 'About'}</Text>
+            <Text style={s.bio}>{bio}</Text>
+          </View>
+        ) : null}
 
         <View style={s.tags}>
           {tags.map((tag) => (
@@ -222,7 +227,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   levelBadge: {
     position: 'absolute',
     right: 18,
-    bottom: 42,
+    bottom: 32,
     zIndex: 4,
     minHeight: 30,
     borderRadius: 15,
@@ -256,17 +261,17 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontWeight: '800',
   },
   sheet: {
-    marginTop: -34,
+    marginTop: 0,
     paddingHorizontal: 18,
-    paddingTop: 42,
+    paddingTop: 54,
     paddingBottom: 10,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
     backgroundColor: colors.canvas,
   },
   avatarWrap: {
     position: 'absolute',
-    top: -52,
+    top: -58,
     left: 18,
     width: 94,
     height: 94,
@@ -317,11 +322,21 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontWeight: '700',
     marginTop: 4,
   },
+  aboutInline: {
+    marginTop: 9,
+    gap: 3,
+  },
+  aboutLabel: {
+    color: colors.text3,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
   bio: {
     color: colors.text2,
     fontSize: 13,
     lineHeight: 18,
-    marginTop: 6,
   },
   tags: {
     flexDirection: 'row',

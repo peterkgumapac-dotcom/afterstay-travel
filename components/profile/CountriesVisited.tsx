@@ -29,20 +29,26 @@ export default function CountriesVisited({ countries }: CountriesVisitedProps) {
 const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   row: {
     paddingHorizontal: 16,
-    gap: 12,
+    gap: 8,
   },
   item: {
-    width: 72,
+    minHeight: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 7,
+    paddingHorizontal: 11,
   },
   flag: {
-    fontSize: 34,
+    fontSize: 21,
   },
   name: {
     color: colors.text2,
-    fontSize: 11,
-    fontWeight: '600',
-    maxWidth: 72,
+    fontSize: 12,
+    fontWeight: '700',
+    maxWidth: 120,
   },
 });

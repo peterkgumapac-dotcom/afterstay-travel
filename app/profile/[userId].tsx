@@ -87,18 +87,13 @@ export default function CompanionProfileScreen() {
   const isSelf = user?.id === userId;
 
   const handleBackPress = useCallback(() => {
-    if (isSelf) {
-      router.push('/settings' as never);
-      return;
-    }
-
     if (router.canGoBack()) {
       router.back();
       return;
     }
 
     router.replace('/(tabs)/home' as never);
-  }, [isSelf, router]);
+  }, [router]);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -438,19 +433,14 @@ export default function CompanionProfileScreen() {
 
             {countries.length > 0 && canSeeStats && (
               <>
-                <GroupHeader kicker={`${countries.length} countries`} title="Countries visited" colors={colors as any} />
+                <GroupHeader
+                  kicker={`${countries.length} ${countries.length === 1 ? 'country' : 'countries'}`}
+                  title="Countries visited"
+                  colors={colors as any}
+                />
                 <CountriesVisited countries={countries} />
               </>
             )}
-
-            {profile.bio ? (
-              <View style={s.section}>
-                <Text style={s.sectionLabel}>About {isSelf ? 'You' : firstName}</Text>
-                <View style={s.aboutCard}>
-                  <Text style={s.aboutText}>{profile.bio}</Text>
-                </View>
-              </View>
-            ) : null}
 
             {!isCompanion && !isSelf && (
               <View style={s.section}>
@@ -593,20 +583,20 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     },
     topbar: {
       position: 'absolute',
-      top: 8,
+      top: 6,
       left: 0,
       right: 0,
-      zIndex: 1000,
-      elevation: 40,
+      zIndex: 5000,
+      elevation: 80,
       flexDirection: 'row',
       justifyContent: 'space-between',
-      paddingHorizontal: 18,
-      paddingVertical: 4,
+      paddingHorizontal: 16,
+      paddingVertical: 6,
     },
     iconBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: 'rgba(31,27,23,0.7)',
@@ -758,19 +748,6 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       textAlign: 'center',
       lineHeight: 18,
     },
-    aboutCard: {
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-      padding: 16,
-    },
-    aboutText: {
-      color: colors.text2,
-      fontSize: 14,
-      lineHeight: 21,
-    },
-
     // ── Filter chips (matching SummaryTab) ──
     filterRow: {
       flexDirection: 'row',

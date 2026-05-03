@@ -3827,13 +3827,13 @@ export async function getPublicProfilePosts(userId: string, limit = 20, offset =
 }
 
 async function uploadProfileImage(userId: string, localUri: string, kind: 'avatar' | 'cover'): Promise<string> {
-  const compressed = await compressImage(localUri, kind === 'cover' ? 1600 : 500, kind === 'cover' ? 0.72 : 0.58);
+  const prepared = kind === 'cover' ? localUri : await compressImage(localUri, 500, 0.58);
   const timestamp = Date.now();
-  const filename = localUri.split('/').pop() ?? `${kind}.jpg`;
+  const filename = `${kind}.jpg`;
   const storagePath = `profiles/${userId}/${kind}-${timestamp}-${filename}`;
 
-  const bytes = await readFileAsBytes(compressed);
-  const contentType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  const bytes = await readFileAsBytes(prepared);
+  const contentType = 'image/jpeg';
   const column = kind === 'cover' ? 'cover_photo_url' : 'avatar_url';
 
   const buckets = ['avatars', 'moments'] as const;

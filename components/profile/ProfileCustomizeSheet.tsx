@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { lightColors, useTheme } from '@/constants/ThemeContext';
+import { optimizeProfileCover } from '@/lib/compressImage';
 import { updateProfile, uploadProfileCoverPhoto, uploadProfilePhoto, type Profile } from '@/lib/supabase';
 
 interface ProfileCustomizeSheetProps {
@@ -85,12 +86,14 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
       mediaTypes: ['images'],
       quality: 0.82,
       allowsEditing: true,
-      aspect: [16, 9],
+      aspect: [8, 5],
     });
     if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
     setSaving(true);
     try {
-      const url = await uploadProfileCoverPhoto(profile.id, result.assets[0].uri);
+      const optimizedUri = await optimizeProfileCover(asset.uri, asset.width, asset.height);
+      const url = await uploadProfileCoverPhoto(profile.id, optimizedUri);
       setCoverUrl(url);
       onSaved();
     } catch (error) {
