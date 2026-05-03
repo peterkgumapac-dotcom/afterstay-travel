@@ -45,26 +45,28 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
 
   return (
     <View style={s.root}>
-      <View style={[s.segment, { left: (width - segmentWidth) / 2, width: segmentWidth }]}>
-        <Animated.View
-          style={[
-            s.thumb,
-            {
-              width: thumbWidth,
-              transform: [{
-                translateX: indicator.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, thumbWidth],
-                }),
-              }],
-            },
-          ]}
-        />
-        {(['Profile', 'Memories'] as const).map((label, index) => (
-          <Pressable key={label} style={s.tab} onPress={() => jumpTo(index)}>
-            <Text style={[s.tabText, active === index && s.tabTextActive]}>{label}</Text>
-          </Pressable>
-        ))}
+      <View style={s.segmentRow}>
+        <View style={[s.segment, { width: segmentWidth }]}>
+          <Animated.View
+            style={[
+              s.thumb,
+              {
+                width: thumbWidth,
+                transform: [{
+                  translateX: indicator.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, thumbWidth],
+                  }),
+                }],
+              },
+            ]}
+          />
+          {(['Profile', 'Memories'] as const).map((label, index) => (
+            <Pressable key={label} style={s.tab} onPress={() => jumpTo(index)}>
+              <Text style={[s.tabText, active === index && s.tabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
 
       <Animated.ScrollView
@@ -91,6 +93,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
 const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: colors.canvas,
   },
   pager: {
     flex: 1,
@@ -98,10 +101,15 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   page: {
     flex: 1,
   },
-  segment: {
-    position: 'absolute',
-    top: 12,
+  segmentRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 10,
+    paddingBottom: 8,
+    backgroundColor: colors.canvas,
     zIndex: 20,
+  },
+  segment: {
     height: 38,
     borderRadius: 19,
     borderWidth: 1,
