@@ -171,6 +171,21 @@ export default function CompanionProfileScreen() {
     router.push({ pathname: '/group-chat', params: { tripId: sharedTrip.id } } as never);
   };
 
+  const handleMorePress = () => {
+    if (isSelf) {
+      router.push('/settings');
+      return;
+    }
+    Alert.alert(
+      profile?.fullName ? `${profile.fullName}` : 'Traveler',
+      'Choose what you want to do next.',
+      [
+        { text: 'Message', onPress: handleMessagePress },
+        { text: 'Close', style: 'cancel' },
+      ],
+    );
+  };
+
   // Filtered trips
   const filteredTrips = (() => {
     if (tripFilter === 'completed') return mutualTrips.filter(t => t.status === 'Completed');
@@ -233,11 +248,7 @@ export default function CompanionProfileScreen() {
         <TouchableOpacity
           style={s.iconBtn}
           activeOpacity={0.7}
-          onPress={() => {
-            if (isSelf) {
-              router.push('/settings');
-            }
-          }}
+          onPress={handleMorePress}
         >
           <MoreHorizontal size={22} color={colors.text} />
         </TouchableOpacity>
