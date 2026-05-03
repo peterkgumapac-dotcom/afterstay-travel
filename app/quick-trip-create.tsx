@@ -42,6 +42,7 @@ export default function QuickTripCreateScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const { returnTo, photoUris } = useLocalSearchParams<{ returnTo?: string; photoUris?: string }>();
+  const canCreateWithoutPhotos = returnTo === 'scan-receipt';
 
   // Phase
   const [phase, setPhase] = useState<Phase>('photos');
@@ -212,7 +213,7 @@ export default function QuickTripCreateScreen() {
   };
 
   const handleSave = async () => {
-    if (!placeName.trim() || !category || photos.length === 0) return;
+    if (!placeName.trim() || !category || (!canCreateWithoutPhotos && photos.length === 0)) return;
     setSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -255,11 +256,11 @@ export default function QuickTripCreateScreen() {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Select Photos</Text>
           <TouchableOpacity
-            onPress={() => { if (photos.length > 0) setPhase('review'); }}
-            style={[styles.headerBtn, photos.length === 0 && { opacity: 0.3 }]}
-            disabled={photos.length === 0}
+            onPress={() => { if (photos.length > 0 || canCreateWithoutPhotos) setPhase('review'); }}
+            style={[styles.headerBtn, photos.length === 0 && !canCreateWithoutPhotos && { opacity: 0.3 }]}
+            disabled={photos.length === 0 && !canCreateWithoutPhotos}
           >
-            <Text style={styles.nextText}>Next</Text>
+            <Text style={styles.nextText}>{photos.length === 0 && canCreateWithoutPhotos ? 'Skip' : 'Next'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -321,8 +322,8 @@ export default function QuickTripCreateScreen() {
         <Text style={styles.headerTitle}>New Quick Trip</Text>
         <TouchableOpacity
           onPress={handleSave}
-          style={[styles.saveBtn, (!placeName.trim() || !category || saving) && { opacity: 0.4 }]}
-          disabled={!placeName.trim() || !category || saving}
+          style={[styles.saveBtn, (!placeName.trim() || !category || (!canCreateWithoutPhotos && photos.length === 0) || saving) && { opacity: 0.4 }]}
+          disabled={!placeName.trim() || !category || (!canCreateWithoutPhotos && photos.length === 0) || saving}
           activeOpacity={0.7}
         >
           {saving ? (

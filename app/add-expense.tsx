@@ -117,6 +117,7 @@ export default function AddExpenseScreen() {
   const [memberObjects, setMemberObjects] = useState<GroupMember[]>([]);
   const [splitAssignments, setSplitAssignments] = useState<Record<string, { selected: boolean; amount: string }>>({});
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // Auto-fetch lat/lng when placeName is pre-filled from scan-receipt
   useEffect(() => {
@@ -283,10 +284,12 @@ export default function AddExpenseScreen() {
   };
 
   const save = async () => {
+    if (submittingRef.current) return;
     const n = Number(amount);
     if (!description.trim()) return Alert.alert('Description required');
     if (!Number.isFinite(n) || n <= 0) return Alert.alert('Amount must be a positive number');
 
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const splitAmountsFromReceipt = params.receiptSplits
@@ -297,8 +300,9 @@ export default function AddExpenseScreen() {
       const buildSplitNote = () => {
         const rows: string[] = [];
         if (splitAmountsFromReceipt) {
-          for (const [name, value] of Object.entries(splitAmountsFromReceipt)) {
-            if (value > 0) rows.push(`${name}: ${currency} ${value.toFixed(2)}`);
+          const nameById = new Map(splitPeople.map((person) => [person.id, person.name]));
+          for (const [assignee, value] of Object.entries(splitAmountsFromReceipt)) {
+            if (value > 0) rows.push(`${nameById.get(assignee) ?? assignee}: ${currency} ${value.toFixed(2)}`);
           }
         } else if (hasPeople) {
           const selected = splitPeople.filter((p) => splitAssignments[p.id]?.selected);
@@ -357,8 +361,8 @@ export default function AddExpenseScreen() {
         if (quickTripExpenseId && companions.length > 1) {
           const splits = splitAmountsFromReceipt
             ? companions
-                .filter((c) => (splitAmountsFromReceipt[c.displayName] ?? 0) > 0)
-                .map((c) => ({ companionId: c.id, amountOwed: splitAmountsFromReceipt[c.displayName] ?? 0 }))
+                .filter((c) => (splitAmountsFromReceipt[c.id] ?? splitAmountsFromReceipt[c.displayName] ?? 0) > 0)
+                .map((c) => ({ companionId: c.id, amountOwed: splitAmountsFromReceipt[c.id] ?? splitAmountsFromReceipt[c.displayName] ?? 0 }))
             : (() => {
                 const selected = companions.filter((c) => splitAssignments[c.id]?.selected);
                 const people = selected.length > 0 ? selected : companions;
@@ -371,9 +375,7 @@ export default function AddExpenseScreen() {
                 });
               })();
           if (splits.length > 0) {
-            addQuickTripExpenseSplits(quickTripExpenseId, splits).catch((err) => {
-              if (__DEV__) console.warn('[AddExpense] quick trip splits failed:', err);
-            });
+            await addQuickTripExpenseSplits(quickTripExpenseId, splits);
           }
         }
       } else if (expenseType === 'quick-trip') {
@@ -389,14 +391,14 @@ export default function AddExpenseScreen() {
           try {
             const splitAmounts = JSON.parse(params.receiptSplits) as Record<string, number>;
             const splits = memberObjects
-              .filter((m) => (splitAmounts[m.name] ?? 0) > 0)
+              .filter((m) => (splitAmounts[m.id] ?? splitAmounts[m.name] ?? 0) > 0)
               .map((m) => ({
                 memberId: m.id,
                 memberName: m.name,
-                amount: splitAmounts[m.name] ?? 0,
+                amount: splitAmounts[m.id] ?? splitAmounts[m.name] ?? 0,
               }));
             if (splits.length > 0) {
-              addExpenseSplits(newExpense.id, tripId, splits).catch(() => {});
+              await addExpenseSplits(newExpense.id, tripId, splits);
             }
           } catch (err) {
             if (__DEV__) console.warn('[AddExpense] receipt splits failed:', err);
@@ -415,7 +417,7 @@ export default function AddExpenseScreen() {
                 amount: splitType === 'Custom' && custom > 0 ? custom : n / selected.length,
               };
             });
-            addExpenseSplits(newExpense.id, tripId, splits).catch(() => {});
+            await addExpenseSplits(newExpense.id, tripId, splits);
           }
         }
         // Auto-create equal splits for group expenses
@@ -427,7 +429,7 @@ export default function AddExpenseScreen() {
             memberName: m.name,
             amount: perPerson,
           }));
-          addExpenseSplits(newExpense.id, tripId, splits).catch(() => {});
+          await addExpenseSplits(newExpense.id, tripId, splits);
         }
         // Notify group members about new expense (best-effort, non-blocking)
         if (user?.id && members.length >= 2) {
@@ -444,6 +446,7 @@ export default function AddExpenseScreen() {
     } catch (e: any) {
       Alert.alert('Save failed', e?.message ?? 'Unknown error');
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };

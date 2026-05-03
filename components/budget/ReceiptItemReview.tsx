@@ -7,7 +7,7 @@ import { formatCurrency } from '@/lib/utils';
 import type { GroupMember } from '@/lib/types';
 import type { ReceiptLineItem } from '@/lib/anthropic';
 
-type Assignment = 'shared' | string; // 'shared' or member name
+type Assignment = 'shared' | string; // 'shared' or member id
 
 interface Props {
   items: ReceiptLineItem[];
@@ -47,7 +47,7 @@ export function ReceiptItemReview({
   const showAssignPicker = useCallback((index: number) => {
     const options = [
       { label: 'Shared (split equally)', value: 'shared' },
-      ...members.map(m => ({ label: m.name, value: m.name })),
+      ...members.map(m => ({ label: m.name, value: m.id })),
     ];
     Alert.alert(
       `Assign "${items[index].name}"`,
@@ -65,26 +65,27 @@ export function ReceiptItemReview({
   // Calculate per-person totals
   const summary = useMemo(() => {
     const sharedTotal = items.reduce(
-      (sum, item, i) => assignments[i] === 'shared' ? sum + item.amount * item.qty : sum,
+      (sum, item, i) => assignments[i] === 'shared' ? sum + item.amount : sum,
       0,
     );
     const sharedCount = members.length || 1;
     const perPersonShared = sharedTotal / sharedCount;
 
     const personal: Record<string, number> = {};
-    for (const m of members) personal[m.name] = perPersonShared;
+    for (const m of members) personal[m.id] = perPersonShared;
 
     items.forEach((item, i) => {
       if (assignments[i] !== 'shared') {
-        const name = assignments[i];
-        personal[name] = (personal[name] ?? 0) + item.amount * item.qty;
+        const memberId = assignments[i];
+        personal[memberId] = (personal[memberId] ?? 0) + item.amount;
       }
     });
 
     return { sharedTotal, sharedCount, perPersonShared, personal };
   }, [items, assignments, members]);
 
-  const total = items.reduce((s, item) => s + item.amount * item.qty, 0);
+  const total = items.reduce((s, item) => s + item.amount, 0);
+  const memberNameById = useMemo(() => new Map(members.map((m) => [m.id, m.name])), [members]);
 
   return (
     <View style={styles.container}>
@@ -114,11 +115,11 @@ export function ReceiptItemReview({
                   {item.qty > 1 ? `${item.qty}× ` : ''}{item.name}
                 </Text>
                 <Text style={styles.itemAssign}>
-                  {isShared ? `🤝 Shared (÷${summary.sharedCount})` : `👤 ${assigned}`}
+                  {isShared ? `🤝 Shared (÷${summary.sharedCount})` : `👤 ${memberNameById.get(assigned) ?? 'Traveler'}`}
                 </Text>
               </View>
               <Text style={styles.itemAmount}>
-                {formatCurrency(item.amount * item.qty, currency)}
+                {formatCurrency(item.amount, currency)}
               </Text>
             </TouchableOpacity>
           );
@@ -133,7 +134,7 @@ export function ReceiptItemReview({
             <View key={m.id} style={styles.breakdownRow}>
               <Text style={styles.breakdownName}>{m.name}</Text>
               <Text style={styles.breakdownAmount}>
-                {formatCurrency(summary.personal[m.name] ?? 0, currency)}
+                {formatCurrency(summary.personal[m.id] ?? 0, currency)}
               </Text>
             </View>
           ))}

@@ -48,48 +48,52 @@ export default function ScanReceiptScreen() {
   const [errorMsg, setErrorMsg] = useState('');
   const [scannedData, setScannedData] = useState<ScannedReceipt | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [scanStep, setScanStep] = useState(0);
   const didLaunch = useRef(false);
 
+  const loadMembersForTarget = async () => {
+    if (receiptTarget === 'quick-trip' && quickTripId) {
+      const companions = await getQuickTripCompanions(quickTripId).catch(() => []);
+      return companions.map((c) => ({
+        id: c.id,
+        name: c.displayName,
+        role: 'Member',
+        userId: c.userId ?? '',
+      } satisfies GroupMember));
+    }
+    if (receiptTarget === 'quick-trip' || receiptTarget === 'daily-tracker') return [];
+    if (receiptTarget === 'standalone' && receiptPeople) {
+      try {
+        const names = JSON.parse(receiptPeople) as string[];
+        return names.filter(Boolean).map((name, index) => ({
+          id: `adhoc-${index}`,
+          name,
+          role: 'Member',
+          userId: '',
+        } satisfies GroupMember));
+      } catch {
+        return [];
+      }
+    }
+    const trip = await getActiveTrip().catch(() => null);
+    if (!trip) return [];
+    return getGroupMembers(trip.id).catch(() => []);
+  };
+
   // Load group members for item assignment
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      if (receiptTarget === 'quick-trip' && quickTripId) {
-        const companions = await getQuickTripCompanions(quickTripId).catch(() => []);
-        setMembers(companions.map((c) => ({
-          id: c.id,
-          name: c.displayName,
-          role: 'Member',
-          userId: c.userId ?? '',
-        } satisfies GroupMember)));
-        return;
-      }
-      if (receiptTarget === 'quick-trip' && !quickTripId) {
-        setMembers([]);
-        return;
-      }
-      if (receiptTarget === 'daily-tracker') {
-        setMembers([]);
-        return;
-      }
-      if (receiptTarget === 'standalone' && receiptPeople) {
-        try {
-          const names = JSON.parse(receiptPeople) as string[];
-          setMembers(names.filter(Boolean).map((name, index) => ({
-            id: `adhoc-${index}`,
-            name,
-            role: 'Member',
-            userId: '',
-          } satisfies GroupMember)));
-        } catch {}
-        return;
-      }
-      const trip = await getActiveTrip().catch(() => null);
-      if (trip) {
-        const mems = await getGroupMembers(trip.id).catch(() => []);
-        setMembers(mems);
-      }
+      setMembersLoading(true);
+      const mems = await loadMembersForTarget();
+      if (!cancelled) setMembers(mems);
+      if (!cancelled) setMembersLoading(false);
     })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickTripId, receiptPeople, receiptTarget]);
 
   const pickImage = async (source: 'camera' | 'gallery') => {
@@ -151,7 +155,10 @@ export default function ScanReceiptScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      if (receiptTarget !== 'daily-tracker' && scanned.items.length > 0 && members.length >= 2) {
+      const reviewMembers = membersLoading ? await loadMembersForTarget() : members;
+      if (reviewMembers.length !== members.length) setMembers(reviewMembers);
+
+      if (receiptTarget !== 'daily-tracker' && scanned.items.length > 0 && reviewMembers.length >= 2) {
         // Show item review for assignment
         setScannedData(scanned);
         setPhase('review');
@@ -231,7 +238,7 @@ export default function ScanReceiptScreen() {
               const qtyStr = item.qty > 1 ? `${item.qty}\u00D7 ` : '';
               const assignStr =
                 item.assignedTo === 'shared' ? `(shared \u00F7${result.sharedCount})` : `(${item.assignedTo})`;
-              return `${qtyStr}${item.name} \u2014 \u20B1${(item.amount * item.qty).toFixed(0)} ${assignStr}`;
+              return `${qtyStr}${item.name} \u2014 \u20B1${item.amount.toFixed(0)} ${assignStr}`;
             })
             .join('\n');
 
@@ -239,14 +246,14 @@ export default function ScanReceiptScreen() {
           const splitAmounts: Record<string, number> = {};
           const sharedTotal = result.items
             .filter((i) => i.assignedTo === 'shared')
-            .reduce((s, i) => s + i.amount * i.qty, 0);
+            .reduce((s, i) => s + i.amount, 0);
           const perHead = sharedTotal / result.sharedCount;
           for (const m of members) {
-            splitAmounts[m.name] = perHead;
+            splitAmounts[m.id] = perHead;
           }
           for (const item of result.items) {
             if (item.assignedTo !== 'shared') {
-              splitAmounts[item.assignedTo] = (splitAmounts[item.assignedTo] ?? 0) + item.amount * item.qty;
+              splitAmounts[item.assignedTo] = (splitAmounts[item.assignedTo] ?? 0) + item.amount;
             }
           }
 

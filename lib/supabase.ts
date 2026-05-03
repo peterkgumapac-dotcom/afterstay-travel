@@ -642,6 +642,7 @@ export async function getStandaloneExpenses(limit = 30): Promise<Expense[]> {
     .from(T.expenses)
     .select('*')
     .is('trip_id', null)
+    .is('daily_category', null)
     .eq('user_id', userId)
     .order('expense_date', { ascending: false })
     .limit(limit);
