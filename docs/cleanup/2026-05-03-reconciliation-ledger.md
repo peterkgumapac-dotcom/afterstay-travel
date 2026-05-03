@@ -236,6 +236,11 @@ Cleanup-only rerun after Supabase wrapper warning reduction, 2026-05-03:
 - `git diff --check`
   - Result: exit 0.
 
+Broad cleanup gate after warning reductions, 2026-05-03:
+
+- `npx eslint 'app/**/*.{ts,tsx}' 'components/**/*.{ts,tsx}' 'hooks/**/*.{ts,tsx}' 'lib/**/*.{ts,tsx}' --quiet`
+  - Result: exit 0. No error-level lint issues across app, components, hooks, and lib.
+
 Earlier clean branch verification:
 
 - `npx tsc --noEmit --pretty false`
@@ -260,6 +265,11 @@ ADB snapshot:
   - `adb devices` returned no attached devices.
   - `emulator -list-avds` returned no configured AVD names in this shell.
   - Android live smoke remains pending until a physical device or emulator is attached.
+- ADB retry after cleanup commits, 2026-05-03:
+  - Local AVDs found via full SDK emulator path: `AfterStay_QA`, `Pixel_10_Pro`.
+  - `AfterStay_QA` launched headless but remained `offline` in `adb devices`.
+  - `Pixel_10_Pro` launch exited before registering with ADB.
+  - Android live smoke remains blocked until a physical device or a bootable emulator is visible as `device`.
 
 ## Agent Resume Rules
 
