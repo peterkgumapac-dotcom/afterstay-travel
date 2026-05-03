@@ -50,6 +50,8 @@ export function SavingsMilestoneModal({ visible, milestone, currentAmount, curre
   );
 }
 
+export default SavingsMilestoneModal;
+
 const getStyles = (c: ThemeColors) =>
   StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },

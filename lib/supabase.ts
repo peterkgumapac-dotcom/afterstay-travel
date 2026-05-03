@@ -972,7 +972,19 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
           .from(T.groupMembers)
           .update({ name: userName, user_id: userId })
           .eq('id', placeholderMember.id);
-        if (linkError) throw new Error(`joinTrip: ${linkError.message}`);
+        if (linkError) {
+          // Some deployed RLS policies do not allow invited users to claim an
+          // organizer-created placeholder row because the old row has no user_id.
+          // Fall back to inserting a real linked member so the invite still works.
+          const { error: memberError } = await supabase.from(T.groupMembers).insert({
+            trip_id: tripId,
+            name: userName,
+            role: 'Member',
+            user_id: userId,
+            ...(userEmail ? { email: userEmail } : {}),
+          });
+          if (memberError) throw new Error(`joinTrip: ${memberError.message}`);
+        }
       } else {
         const { error: memberError } = await supabase.from(T.groupMembers).insert({
           trip_id: tripId,
