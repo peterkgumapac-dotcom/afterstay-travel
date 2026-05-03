@@ -3,7 +3,7 @@ import {
   View, TouchableOpacity, StyleSheet, Animated,
   Modal, Pressable, Text, Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Plus, Camera, Receipt, Plane, Package, Zap,
@@ -23,6 +23,7 @@ export const FloatingActionButton: React.FC = () => {
   const { colors } = useTheme();
   const s = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
@@ -37,6 +38,7 @@ export const FloatingActionButton: React.FC = () => {
   }, []);
 
   const isPlane = !transport || transport === 'plane';
+  const isBudgetRoute = pathname.includes('/budget');
 
   const actions: FabAction[] = useMemo(() => {
     const items: FabAction[] = [
@@ -101,6 +103,8 @@ export const FloatingActionButton: React.FC = () => {
   const rotation = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '135deg'] });
   const pulseScale = pulseAnim;
   const pulseOpacity = pulseAnim.interpolate({ inputRange: [1, 1.5], outputRange: [0.4, 0] });
+
+  if (isBudgetRoute) return null;
 
   return (
     <>
