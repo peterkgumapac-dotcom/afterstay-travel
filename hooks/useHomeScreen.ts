@@ -222,6 +222,10 @@ export function useHomeScreen() {
           setLoading(false);
           setRefreshing(false);
         }
+      } else if (!silent) {
+        // No active trip should not block Home while returning-user recaps hydrate.
+        setLoading(false);
+        setRefreshing(false);
       }
 
       // Daily tracker
