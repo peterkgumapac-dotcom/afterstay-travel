@@ -173,6 +173,8 @@ export interface WishlistItem {
   address?: string;
   destination?: string;
   notes?: string;
+  sourcePostId?: string;
+  sourceTripId?: string;
   createdAt: string;
 }
 

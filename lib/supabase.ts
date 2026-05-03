@@ -10,6 +10,7 @@ import { clearTripLocalData } from './cache'
 import { invalidateTripCache } from './tabDataCache'
 import { compressImage } from './compressImage'
 import { MS_PER_DAY } from './utils'
+import { buildWishlistRow } from './wishlist'
 
 import type {
   Album,
@@ -3391,6 +3392,8 @@ function mapWishlistItem(row: Record<string, unknown>): WishlistItem {
     address: (row.address as string) ?? undefined,
     destination: (row.destination as string) ?? undefined,
     notes: (row.notes as string) ?? undefined,
+    sourcePostId: (row.source_post_id as string) ?? undefined,
+    sourceTripId: (row.source_trip_id as string) ?? undefined,
     createdAt: (row.created_at as string) ?? new Date().toISOString(),
   }
 }
@@ -3415,21 +3418,39 @@ export async function addToWishlist(item: Omit<WishlistItem, 'id' | 'createdAt'>
   const userId = authData?.user?.id
   if (!userId) throw new Error('Not authenticated')
 
-  const { error } = await supabase.from('wishlist').insert({
-    user_id: userId,
-    name: item.name,
-    category: item.category ?? null,
-    google_place_id: item.googlePlaceId ?? null,
-    photo_url: item.photoUrl ?? null,
-    rating: item.rating ?? null,
-    total_ratings: item.totalRatings ?? null,
-    latitude: item.latitude ?? null,
-    longitude: item.longitude ?? null,
-    address: item.address ?? null,
-    destination: item.destination ?? null,
-    notes: item.notes ?? null,
-  })
-  if (error) throw new Error(`addToWishlist: ${error.message}`)
+  const row = buildWishlistRow(userId, item)
+
+  if (row.google_place_id) {
+    const { data: existing, error: findError } = await supabase
+      .from('wishlist')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('google_place_id', row.google_place_id)
+      .maybeSingle()
+
+    if (findError) throw new Error(`addToWishlist lookup: ${findError.message}`)
+
+    if (existing?.id) {
+      const { error } = await supabase.from('wishlist').update(row).eq('id', existing.id)
+      if (error) throw new Error(`addToWishlist: ${error.message}`)
+      return
+    }
+  }
+
+  const { error } = await supabase.from('wishlist').insert(row)
+  if (!error) return
+
+  if (error.code === '23505' && row.google_place_id) {
+    const { error: updateError } = await supabase
+      .from('wishlist')
+      .update(row)
+      .eq('user_id', userId)
+      .eq('google_place_id', row.google_place_id)
+    if (!updateError) return
+    throw new Error(`addToWishlist: ${updateError.message}`)
+  }
+
+  throw new Error(`addToWishlist: ${error.message}`)
 }
 
 export async function removeFromWishlist(id: string): Promise<void> {
