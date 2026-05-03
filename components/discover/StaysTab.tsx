@@ -53,7 +53,8 @@ interface StaysTabProps {
   tripMembers: GroupMember[];
   memberNames: Record<string, string>;
   savedPlaces: Place[];
-  onSave: (name: string) => void;
+  savedNames?: Set<string>;
+  onSavePlace: (place: DiscoverPlace) => void;
   onExplore: (placeId: string | undefined, name: string) => void;
 }
 
@@ -67,7 +68,8 @@ export default function StaysTab({
   tripMembers,
   memberNames,
   savedPlaces,
-  onSave,
+  savedNames,
+  onSavePlace,
   onExplore,
 }: StaysTabProps) {
   const { colors } = useTheme();
@@ -92,8 +94,8 @@ export default function StaysTab({
 
   const effectiveCoords = tripCoords ?? searchCoords;
   const savedSet = useMemo(
-    () => new Set(savedPlaces.map((p) => p.name.toLowerCase())),
-    [savedPlaces],
+    () => savedNames ?? new Set(savedPlaces.map((p) => p.name)),
+    [savedNames, savedPlaces],
   );
 
   // ── Search function ──────────────────────────────────────────────
@@ -215,9 +217,9 @@ export default function StaysTab({
         place={item}
         distanceKm={distMap[item.placeId ?? item.n] ?? 0}
         travelMode={travelMode}
-        isSaved={savedSet.has(item.n.toLowerCase())}
+        isSaved={savedSet.has(item.n)}
         isRecommended={false}
-        onSave={onSave}
+        onSave={() => onSavePlace(item)}
         onRecommend={() => {}}
         onExplore={onExplore}
         showRecommend={tripMembers.length >= 2}
@@ -225,7 +227,7 @@ export default function StaysTab({
         memberNames={memberNames}
       />
     </View>
-  ), [distMap, travelMode, savedSet, onSave, onExplore, tripMembers.length, memberNames]);
+  ), [distMap, travelMode, savedSet, onSavePlace, onExplore, tripMembers.length, memberNames]);
 
   const ListHeader = useMemo(() => (
     <>

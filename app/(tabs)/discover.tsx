@@ -186,6 +186,8 @@ const DEFAULT_FILTERS: FilterState = {
   maxPrice: 3,
 };
 
+const STARTER_DESTINATIONS = ['Boracay', 'Caticlan', 'Bali', 'Tokyo', 'Cebu'] as const;
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function countActiveFilters(f: FilterState): number {
@@ -481,7 +483,7 @@ function DiscoverScreenInner() {
     cacheSet(EXPLORE_MOMENTS_LAUNCH_KEY, true);
   }, []);
 
-  const [tab, setTab] = useState<TabId>(segment === 'returning' || segment === 'new' ? 'stays' : 'places');
+  const [tab, setTab] = useState<TabId>('places');
   const [travelMode, setTravelMode] = useState<TravelMode>('walk');
   const [distanceOrigin, setDistanceOrigin] = useState<DistanceOrigin>('hotel');
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -631,6 +633,72 @@ function DiscoverScreenInner() {
     cacheSet('discover:travelMode', m);
   }, []);
 
+  const chooseExploreDestination = useCallback(async (label: string) => {
+    const cleaned = label.trim();
+    if (!cleaned) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setExploreQuery(cleaned);
+    setExploreDest(cleaned);
+    setExploreResults([]);
+    setPlacesError(null);
+    setPlacesLoading(true);
+    try {
+      const results = await placeAutocomplete(cleaned);
+      const best = results[0];
+      if (!best) {
+        setExploreCoords(null);
+        setPlaces([]);
+        setPlacesError('Could not find that destination. Try another search.');
+        return;
+      }
+      const loc = await getPlaceLocation(best.placeId);
+      if (!loc) {
+        setExploreCoords(null);
+        setPlaces([]);
+        setPlacesError('Could not find that destination. Try another search.');
+        return;
+      }
+      setExploreCoords({ lat: loc.lat, lng: loc.lng });
+      setExploreDest(best.description.split(',')[0] ?? cleaned);
+      setExploreQuery(best.description.split(',')[0] ?? cleaned);
+      placesCache.current = {};
+    } catch (err) {
+      if (__DEV__) console.warn('[DiscoverScreen] choose destination failed:', err);
+      setExploreCoords(null);
+      setPlaces([]);
+      setPlacesError('Could not find that destination. Try another search.');
+    } finally {
+      setPlacesLoading(false);
+    }
+  }, []);
+
+  const useCurrentLocationForExplore = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPlacesError(null);
+    setPlacesLoading(true);
+    try {
+      const Location = require('expo-location') as typeof import('expo-location');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setPlacesError('Enable location permission or search a destination to find places.');
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced });
+      const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+      setUserLocation(coords);
+      setExploreCoords(coords);
+      setExploreDest('Near me');
+      setExploreQuery('Near me');
+      setDistanceOrigin('me');
+      placesCache.current = {};
+    } catch (err) {
+      if (__DEV__) console.warn('[DiscoverScreen] current location failed:', err);
+      setPlacesError('Could not get your location. Search a destination instead.');
+    } finally {
+      setPlacesLoading(false);
+    }
+  }, []);
+
   // Restore cached anchor/travel mode (after switchToMyLocation is defined)
   useEffect(() => {
     cacheGet<'hotel' | 'me'>('discover:anchor').then((v) => {
@@ -737,6 +805,18 @@ function DiscoverScreenInner() {
   }, []);
 
   // Load saved places when Saved tab is selected or tripId changes
+  const loadWishlist = useCallback(async () => {
+    if (tripId) return;
+    try {
+      const { getWishlist } = await import('@/lib/supabase');
+      const items = await getWishlist().catch(() => []);
+      setWishlistItems(items);
+      setSaved(new Set(items.map((item) => item.name)));
+    } catch (e) {
+      if (__DEV__) console.warn('[DiscoverScreen] load wishlist failed:', e);
+    }
+  }, [tripId]);
+
   const loadSavedPlaces = useCallback(async () => {
     if (!tripId) return;
     setSavedLoading(true);
@@ -753,20 +833,17 @@ function DiscoverScreenInner() {
 
   useEffect(() => {
     if (tripId) loadSavedPlaces();
-  }, [tripId, loadSavedPlaces]);
+    else loadWishlist();
+  }, [tripId, loadSavedPlaces, loadWishlist]);
 
   useEffect(() => {
     if (tab === 'saved' && tripId) {
       loadSavedPlaces();
     }
     if (tab === 'saved' && !tripId) {
-      // Load wishlist
-      (async () => {
-        const { getWishlist } = await import('@/lib/supabase');
-        setWishlistItems(await getWishlist().catch(() => []));
-      })();
+      loadWishlist();
     }
-  }, [tab, tripId, loadSavedPlaces]);
+  }, [tab, tripId, loadSavedPlaces, loadWishlist]);
 
   // Search places via Google Places API
   const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false, radius?: number) => {
@@ -894,8 +971,25 @@ function DiscoverScreenInner() {
     };
   }, [q, tab, placeCategoryChip, searchPlaces]);
 
+  const savePlaceToWishlist = useCallback(async (placeData: DiscoverPlace) => {
+    const { addToWishlist, getWishlist } = await import('@/lib/supabase');
+    await addToWishlist({
+      name: placeData.n,
+      category: placeData.types ? resolveCategory(placeData.types) : undefined,
+      googlePlaceId: placeData.placeId,
+      photoUrl: placeData.img,
+      rating: placeData.r,
+      totalRatings: placeData.totalRatings,
+      latitude: placeData.lat,
+      longitude: placeData.lng,
+      destination: effectiveDest || undefined,
+    });
+    setWishlistItems(await getWishlist());
+  }, [effectiveDest]);
+
   const toggleSave = useCallback(async (name: string) => {
     // Optimistic local update
+    const wasSaved = saved.has(name);
     setSaved((s) => {
       const next = new Set(s);
       if (next.has(name)) {
@@ -950,31 +1044,31 @@ function DiscoverScreenInner() {
       }
     } else {
       // No trip — save to wishlist
+      if (wasSaved) {
+        try {
+          const existing = wishlistItems.find((item) => item.name === name);
+          if (existing) {
+            const { removeFromWishlist } = await import('@/lib/supabase');
+            await removeFromWishlist(existing.id);
+            setWishlistItems((prev) => prev.filter((item) => item.id !== existing.id));
+          }
+        } catch {
+          Alert.alert('Error', 'Something went wrong. Please try again.');
+          setSaved((s) => { const next = new Set(s); next.add(name); return next; });
+        }
+        return;
+      }
       const placeData = places.find((p) => p.n === name);
       if (placeData) {
         try {
-          const { addToWishlist } = await import('@/lib/supabase');
-          await addToWishlist({
-            name: placeData.n,
-            category: placeData.types ? resolveCategory(placeData.types) : undefined,
-            googlePlaceId: placeData.placeId,
-            photoUrl: placeData.img,
-            rating: placeData.r,
-            totalRatings: placeData.totalRatings,
-            latitude: placeData.lat,
-            longitude: placeData.lng,
-            destination: effectiveDest || undefined,
-          });
-          // Refresh wishlist
-          const { getWishlist } = await import('@/lib/supabase');
-          setWishlistItems(await getWishlist());
+          await savePlaceToWishlist(placeData);
         } catch {
           Alert.alert('Error', 'Something went wrong. Please try again.');
           setSaved((s) => { const next = new Set(s); next.delete(name); return next; });
         }
       }
     }
-  }, [tripId, savedPlaces, places, effectiveDest]);
+  }, [tripId, savedPlaces, places, saved, wishlistItems, savePlaceToWishlist]);
 
   const toggleRecommend = useCallback(async (name: string) => {
     // Optimistic local update
@@ -1048,6 +1142,43 @@ function DiscoverScreenInner() {
   const handleSaveToggle = useCallback((name: string) => {
     toggleSave(name);
   }, [toggleSave]);
+
+  const handleSavePlaceCard = useCallback(async (placeData: DiscoverPlace) => {
+    if (tripId) {
+      toggleSave(placeData.n);
+      return;
+    }
+
+    const wasSaved = saved.has(placeData.n);
+    setSaved((s) => {
+      const next = new Set(s);
+      if (wasSaved) next.delete(placeData.n);
+      else next.add(placeData.n);
+      return next;
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    try {
+      if (wasSaved) {
+        const existing = wishlistItems.find((item) => item.name === placeData.n);
+        if (existing) {
+          const { removeFromWishlist } = await import('@/lib/supabase');
+          await removeFromWishlist(existing.id);
+          setWishlistItems((prev) => prev.filter((item) => item.id !== existing.id));
+        }
+      } else {
+        await savePlaceToWishlist(placeData);
+      }
+    } catch {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+      setSaved((s) => {
+        const next = new Set(s);
+        if (wasSaved) next.add(placeData.n);
+        else next.delete(placeData.n);
+        return next;
+      });
+    }
+  }, [tripId, toggleSave, saved, wishlistItems, savePlaceToWishlist]);
 
   const handleRecommendToggle = useCallback((name: string) => {
     toggleRecommend(name);
@@ -1200,16 +1331,7 @@ function DiscoverScreenInner() {
                 <TouchableOpacity
                   key={r.placeId}
                   style={styles.destRow}
-                  onPress={async () => {
-                    const loc = await getPlaceLocation(r.placeId);
-                    if (loc) {
-                      setExploreCoords({ lat: loc.lat, lng: loc.lng });
-                      setExploreDest(r.description.split(',')[0] ?? r.description);
-                      setExploreQuery(r.description.split(',')[0] ?? r.description);
-                      setExploreResults([]);
-                      placesCache.current = {};
-                    }
-                  }}
+                  onPress={() => chooseExploreDestination(r.description)}
                   activeOpacity={0.7}
                 >
                   <MapPin size={14} color={colors.text3} />
@@ -1294,6 +1416,27 @@ function DiscoverScreenInner() {
           }
           ListHeaderComponent={
             <>
+              {!tripId && !effectiveCoords && (
+                <View style={styles.noTripPrompt}>
+                  <View style={styles.noTripPromptIcon}>
+                    <MapPin size={16} color={colors.accent} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.noTripPromptTitle}>Explore without a trip</Text>
+                    <Text style={styles.noTripPromptBody}>
+                      Search a destination or use your location to find food, coffee, beaches, and places worth saving.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.nearMeBtn}
+                    activeOpacity={0.7}
+                    onPress={useCurrentLocationForExplore}
+                  >
+                    <Text style={styles.nearMeText}>Near me</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* Search */}
               <View style={styles.searchBox}>
                 <Search size={16} color={colors.text3} strokeWidth={1.8} />
@@ -1305,6 +1448,25 @@ function DiscoverScreenInner() {
                   style={styles.searchInput}
                 />
               </View>
+
+              {!tripId && !effectiveCoords && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.starterDestRow}
+                >
+                  {STARTER_DESTINATIONS.map((destination) => (
+                    <TouchableOpacity
+                      key={destination}
+                      style={styles.starterDestChip}
+                      activeOpacity={0.7}
+                      onPress={() => chooseExploreDestination(destination)}
+                    >
+                      <Text style={styles.starterDestText}>{destination}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
 
               {/* Category chips */}
               <ScrollView
@@ -1479,7 +1641,9 @@ function DiscoverScreenInner() {
               )}
               {!placesLoading && !placesError && filteredPlaces.length === 0 && (
                 <View style={styles.emptyPlaces}>
-                  <Text style={styles.emptyText}>No places match these filters.</Text>
+                  <Text style={styles.emptyText}>
+                    {effectiveCoords ? 'No places match these filters.' : 'Choose a destination to start discovering places.'}
+                  </Text>
                 </View>
               )}
             </>
@@ -1811,7 +1975,8 @@ function DiscoverScreenInner() {
           tripMembers={tripMembers}
           memberNames={memberNames}
           savedPlaces={savedPlaces}
-          onSave={toggleSave}
+          savedNames={saved}
+          onSavePlace={handleSavePlaceCard}
           onExplore={handleExplore}
         />
         </Suspense>
@@ -2147,6 +2312,48 @@ const getStyles = (colors: ThemeColors) =>
     },
 
     // Search
+    noTripPrompt: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginHorizontal: 16,
+      marginBottom: 12,
+      padding: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    noTripPromptIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accentBg,
+    },
+    noTripPromptTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 2,
+    },
+    noTripPromptBody: {
+      fontSize: 11.5,
+      lineHeight: 16,
+      color: colors.text3,
+    },
+    nearMeBtn: {
+      paddingVertical: 8,
+      paddingHorizontal: 11,
+      borderRadius: 999,
+      backgroundColor: colors.black,
+    },
+    nearMeText: {
+      fontSize: 11.5,
+      fontWeight: '700',
+      color: colors.onBlack,
+    },
     searchBox: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2164,6 +2371,24 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
       color: colors.text,
       fontSize: 13,
+    },
+    starterDestRow: {
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      gap: 8,
+    },
+    starterDestChip: {
+      paddingVertical: 8,
+      paddingHorizontal: 13,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      backgroundColor: colors.accentBg,
+    },
+    starterDestText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.accent,
     },
 
     // Chips
