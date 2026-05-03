@@ -34,8 +34,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme, type ThemeColors } from '@/constants/ThemeContext';
-import { spacing, radius } from '@/constants/theme';
+import { useTheme } from '@/constants/ThemeContext';
 import type { MomentVisibility } from '@/lib/types';
 
 const { height: SCREEN_H } = Dimensions.get('window');

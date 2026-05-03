@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import { Share2 } from 'lucide-react-native';
-import WrappedCard, { CARD_WIDTH, CARD_HEIGHT } from './WrappedCard';
+import { CARD_WIDTH, CARD_HEIGHT } from './WrappedCard';
 import { formatDatePHT } from '@/lib/utils';
 
 interface ShareCardProps {

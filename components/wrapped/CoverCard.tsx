@@ -1,6 +1,6 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import WrappedCard, { CARD_WIDTH, CARD_HEIGHT } from './WrappedCard';
+import WrappedCard from './WrappedCard';
 import { formatDatePHT } from '@/lib/utils';
 
 interface CoverCardProps {

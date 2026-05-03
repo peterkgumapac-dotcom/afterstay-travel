@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { Edit3, Share2, CheckSquare, Trash2, X } from 'lucide-react-native';
+import { Edit3, Share2, CheckSquare, Trash2 } from 'lucide-react-native';
 import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, Platform } from 'react-native';
 
