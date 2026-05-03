@@ -25,6 +25,11 @@ export interface StatusResult {
   draftTrips: Trip[];
   isLoading: boolean;
   error: Error | null;
+  /**
+   * True when status came from stale/offline fallback or all network/RLS
+   * attempts failed. Callers should avoid treating `new` as authoritative.
+   */
+  uncertain?: boolean;
 }
 
 /**
@@ -109,6 +114,7 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
         draftTrips,
         isLoading: false,
         error: null,
+        uncertain: false,
       };
 
       // Cache for offline fallback
@@ -126,7 +132,7 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
   // All attempts failed — fallback to cache or 'new'
   const cached = await getCachedStatus(userId);
   if (cached) {
-    return { ...cached, isLoading: false, error: lastError };
+    return { ...cached, isLoading: false, error: lastError, uncertain: true };
   }
   return {
     status: 'new',
@@ -136,6 +142,7 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
     draftTrips: [],
     isLoading: false,
     error: lastError,
+    uncertain: true,
   };
 }
 

@@ -12,8 +12,8 @@ export function setCacheUserId(userId: string | undefined) {
   _userId = userId;
 }
 
-function scopedKey(key: string): string {
-  return _userId ? `${PREFIX}${_userId}:${key}` : `${PREFIX}anon:${key}`;
+function scopedKey(key: string, userId = _userId): string {
+  return userId ? `${PREFIX}${userId}:${key}` : `${PREFIX}anon:${key}`;
 }
 
 interface Entry<T> {
@@ -25,13 +25,21 @@ interface Entry<T> {
 const DEFAULT_TTL_MS = 30 * 60 * 1000;
 
 export async function cacheGet<T>(key: string, ttlMs: number = DEFAULT_TTL_MS): Promise<T | undefined> {
+  return cacheGetForUser<T>(key, _userId, ttlMs);
+}
+
+export async function cacheGetForUser<T>(
+  key: string,
+  userId: string | undefined,
+  ttlMs: number = DEFAULT_TTL_MS,
+): Promise<T | undefined> {
   try {
-    const raw = await AsyncStorage.getItem(scopedKey(key));
+    const raw = await AsyncStorage.getItem(scopedKey(key, userId));
     if (!raw) return undefined;
     const entry = JSON.parse(raw) as Entry<T>;
     if (ttlMs > 0 && Date.now() - entry.t > ttlMs) {
       // Expired — remove stale entry
-      AsyncStorage.removeItem(scopedKey(key)).catch(() => {});
+      AsyncStorage.removeItem(scopedKey(key, userId)).catch(() => {});
       return undefined;
     }
     return entry.v;
@@ -41,9 +49,17 @@ export async function cacheGet<T>(key: string, ttlMs: number = DEFAULT_TTL_MS): 
 }
 
 export async function cacheSet<T>(key: string, value: T): Promise<void> {
+  return cacheSetForUser(key, value, _userId);
+}
+
+export async function cacheSetForUser<T>(
+  key: string,
+  value: T,
+  userId: string | undefined,
+): Promise<void> {
   try {
     const entry: Entry<T> = { t: Date.now(), v: value };
-    await AsyncStorage.setItem(scopedKey(key), JSON.stringify(entry));
+    await AsyncStorage.setItem(scopedKey(key, userId), JSON.stringify(entry));
   } catch {
     // Best-effort only.
   }

@@ -131,19 +131,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), 3000);
-
     migrateSessionToSecureStore().then(() => withAuthTimeout(supabase.auth.getSession(), 'Session restore timed out.'))
       .then(async ({ data: { session: s } }) => {
         applyAccountScope(s);
         await ensureSessionProfile(s);
         setSession(s);
         await resumePendingInvite(s);
-        clearTimeout(timeout);
         setLoading(false);
       }, () => {
         // Ignore — stay on login screen
-        clearTimeout(timeout);
         setLoading(false);
       });
 

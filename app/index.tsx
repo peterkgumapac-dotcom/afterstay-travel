@@ -53,6 +53,18 @@ export default function Index() {
             result.completedTrips.length + result.planningTrips.length + (result.activeTrip ? 1 : 0),
           );
 
+        if (result.uncertain || result.error) {
+          if (__DEV__) console.warn('[Index] trip status uncertain — avoiding new-user redirect:', result.error);
+          const cachedFlag = await cacheGet<boolean>(`onboarding_complete:${session.user.id}`);
+          const cachedProgress = await getOnboardingProgress(session.user.id);
+          if (cachedProgress && isOnboardingIncomplete(cachedProgress)) {
+            setTarget(cachedProgress.stage === 'planning_draft' ? 'home' : 'onboarding');
+          } else {
+            setTarget(cachedFlag === false ? 'welcome' : 'home');
+          }
+          return;
+        }
+
         if (result.status !== 'new') {
           // User has trips — restore the flag and skip onboarding
           await cacheSet(`onboarding_complete:${session.user.id}`, true);

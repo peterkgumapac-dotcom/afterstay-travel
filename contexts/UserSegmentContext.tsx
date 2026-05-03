@@ -12,7 +12,7 @@ import { ProfileCompletionSheet } from '@/components/shared/ProfileCompletionShe
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '@/lib/auth';
-import { cacheGet, cacheSet } from '@/lib/cache';
+import { cacheGetForUser, cacheSetForUser } from '@/lib/cache';
 import {
   deriveUserStatus,
   type UserStatus,
@@ -144,17 +144,22 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
   const { user } = useAuth();
   const [state, setState] = useState<Omit<UserSegmentState, 'refresh'>>(defaultState);
   const [freshProfileChecked, setFreshProfileChecked] = useState(false);
+  const [profileCheckFailed, setProfileCheckFailed] = useState(false);
   const mounted = useRef(true);
+  const currentUserIdRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user?.id) {
       setFreshProfileChecked(false);
+      setProfileCheckFailed(false);
       setState({ ...defaultState, loading: false });
       return;
     }
 
     const userId = user.id;
+    currentUserIdRef.current = userId;
     setFreshProfileChecked(false);
+    setProfileCheckFailed(false);
     setState((prev) => (
       prev.profile && prev.profile.id !== userId
         ? { ...defaultState, loading: true }
@@ -163,13 +168,13 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
     // 1. Instant from cache
     const [cachedProfile, cachedSegment, cachedTrip] = await Promise.all([
-      cacheGet<Profile>(userCacheKey(CK_PROFILE, userId)),
-      cacheGet<UserSegment>(userCacheKey(CK_SEGMENT, userId)),
-      cacheGet<Trip>(userCacheKey(CK_ACTIVE, userId)),
+      cacheGetForUser<Profile>(userCacheKey(CK_PROFILE, userId), userId),
+      cacheGetForUser<UserSegment>(userCacheKey(CK_SEGMENT, userId), userId),
+      cacheGetForUser<Trip>(userCacheKey(CK_ACTIVE, userId), userId),
     ]);
     const scopedCachedProfile = cachedProfile?.id === userId ? cachedProfile : null;
 
-    if (cachedSegment && mounted.current) {
+    if (cachedSegment && mounted.current && currentUserIdRef.current === userId) {
       setState((prev) => ({
         ...prev,
         segment: cachedSegment,
@@ -211,8 +216,9 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
         lifetimeStats = await getLifetimeStats(userId).catch(() => null);
       }
 
-      if (!mounted.current) return;
+      if (!mounted.current || currentUserIdRef.current !== userId) return;
       setFreshProfileChecked(true);
+      setProfileCheckFailed(false);
 
       // When dev override is active, replace trip data with mock data
       let mockData: MockSegmentData | null = null;
@@ -244,16 +250,17 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
       // Update cache
       await Promise.all([
-        resolvedProfile ? cacheSet(userCacheKey(CK_PROFILE, userId), resolvedProfile) : Promise.resolve(),
-        cacheSet(userCacheKey(CK_SEGMENT, userId), segment),
+        resolvedProfile ? cacheSetForUser(userCacheKey(CK_PROFILE, userId), resolvedProfile, userId) : Promise.resolve(),
+        cacheSetForUser(userCacheKey(CK_SEGMENT, userId), segment, userId),
         result.activeTrip
-          ? cacheSet(userCacheKey(CK_ACTIVE, userId), result.activeTrip)
-          : cacheSet(userCacheKey(CK_ACTIVE, userId), null),
+          ? cacheSetForUser(userCacheKey(CK_ACTIVE, userId), result.activeTrip, userId)
+          : cacheSetForUser(userCacheKey(CK_ACTIVE, userId), null, userId),
       ]);
     } catch (err) {
       if (__DEV__) console.warn('[UserSegment] load failed:', err);
-      if (mounted.current) {
+      if (mounted.current && currentUserIdRef.current === userId) {
         setFreshProfileChecked(false);
+        setProfileCheckFailed(true);
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -266,16 +273,21 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     mounted.current = true;
+    currentUserIdRef.current = user?.id ?? null;
     load();
     return () => { mounted.current = false; };
-  }, [load]);
+  }, [load, user?.id]);
 
   const value: UserSegmentState = {
     ...state,
     refresh: load,
   };
 
-  const needsHandle = freshProfileChecked && !state.loading && !!user && !state.isTestMode && (!state.profile || !state.profile.handle);
+  const needsHandle = (freshProfileChecked || profileCheckFailed)
+    && !state.loading
+    && !!user
+    && !state.isTestMode
+    && (!state.profile || !state.profile.handle);
   const displayName = state.profile?.fullName ?? user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? '';
 
   return (
