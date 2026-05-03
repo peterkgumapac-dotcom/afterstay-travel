@@ -226,6 +226,10 @@ ADB snapshot:
 - Device: `emulator-5554`, package `com.afterstay.travel`, version `1.3.0`.
 - Launch did not show a native crash.
 - Current installed app surfaced a dev LogBox toast from `ExploreStoryRow` story timeout. The clean branch downgrades that recoverable optional-story failure from `console.error` to a quiet dev log.
+- Latest ADB attempt after backend/code verification:
+  - `adb devices` returned no attached devices.
+  - `emulator -list-avds` returned no configured AVD names in this shell.
+  - Android live smoke remains pending until a physical device or emulator is attached.
 
 ## Agent Resume Rules
 
