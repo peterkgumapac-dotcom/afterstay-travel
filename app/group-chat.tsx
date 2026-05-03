@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { ArrowLeft, Send } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,6 +29,7 @@ export default function GroupChatScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { tripId: paramTripId } = useLocalSearchParams<{ tripId?: string }>();
   const { user } = useAuth();
   const flatListRef = useRef<FlatList>(null);
 
@@ -46,15 +47,15 @@ export default function GroupChatScreen() {
     let unsubscribe: (() => void) | null = null;
 
     (async () => {
-      const trip = await getActiveTrip().catch(() => null);
-      if (!trip) return;
-      setTripId(trip.id);
+      const resolvedTripId = paramTripId || (await getActiveTrip().catch(() => null))?.id;
+      if (!resolvedTripId) return;
+      setTripId(resolvedTripId);
 
-      const existing = await getChatMessages(trip.id).catch(() => []);
+      const existing = await getChatMessages(resolvedTripId).catch(() => []);
       setMessages(existing);
 
       // Subscribe to new messages
-      unsubscribe = subscribeToChatMessages(trip.id, (msg) => {
+      unsubscribe = subscribeToChatMessages(resolvedTripId, (msg) => {
         setMessages((prev) => {
           // Deduplicate
           if (prev.some((m) => m.id === msg.id)) return prev;
@@ -64,7 +65,7 @@ export default function GroupChatScreen() {
     })();
 
     return () => { unsubscribe?.(); };
-  }, []);
+  }, [paramTripId]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -94,7 +95,7 @@ export default function GroupChatScreen() {
     } finally {
       setSending(false);
     }
-  }, [text, tripId, sending, myName]);
+  }, [text, tripId, sending, myName, user?.id]);
 
   const goToProfile = useCallback((userId?: string) => {
     if (!userId) return;
@@ -125,7 +126,7 @@ export default function GroupChatScreen() {
         </View>
       </View>
     );
-  }, [myName, styles]);
+  }, [goToProfile, myName, styles]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>

@@ -42,6 +42,7 @@ export function OverviewTab({
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const hasAccom = !!(trip?.accommodation || trip?.address);
+  const hasMemberSetup = (member: GroupMember) => member.sharesAccommodation !== undefined || !!member.travelNotes?.trim();
 
   return (
     <>
@@ -110,6 +111,26 @@ export function OverviewTab({
                       : '○ Added manually'
                 }
               </Text>
+              {hasMemberSetup(m) ? (
+                <View style={styles.memberSetupRow}>
+                  {m.sharesAccommodation !== undefined ? (
+                    <View style={styles.memberSetupChip}>
+                      <Hotel size={10} color={colors.accent} strokeWidth={2} />
+                      <Text style={styles.memberSetupText}>
+                        {m.sharesAccommodation ? 'Same stay' : 'Own stay'}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {m.travelNotes ? (
+                    <View style={styles.memberSetupChip}>
+                      <Plane size={10} color={colors.accent} strokeWidth={2} />
+                      <Text style={styles.memberSetupText} numberOfLines={1}>
+                        {m.travelNotes}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
             <TouchableOpacity
               style={styles.memberChatBtn}
@@ -346,6 +367,29 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 11,
       color: colors.text3,
       marginTop: 2,
+    },
+    memberSetupRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: 7,
+    },
+    memberSetupChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      maxWidth: 190,
+      paddingVertical: 4,
+      paddingHorizontal: 7,
+      borderRadius: 999,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    memberSetupText: {
+      fontSize: 10,
+      color: colors.accent,
+      fontWeight: '700',
     },
     memberChatBtn: {
       width: 32,

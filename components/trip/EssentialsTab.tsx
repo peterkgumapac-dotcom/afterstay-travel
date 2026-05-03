@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Check, Download, FileText } from 'lucide-react-native';
+import { Swipeable } from 'react-native-gesture-handler';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+import { Check, Download, FileText, Pencil, Trash2, X } from 'lucide-react-native';
 import type { TripFile } from '@/lib/types';
 import { GroupHeader } from './GroupHeader';
 import type { ThemeColors } from './tripConstants';
@@ -17,7 +20,14 @@ interface EssentialsTabProps {
   colors: ThemeColors;
   addingItem: boolean;
   newItemText: string;
-  onToggleItem: (group: string, item: string) => void;
+  editingItemId: string | null;
+  editingItemText: string;
+  onToggleItem: (itemId: string) => void;
+  onStartEditItem: (itemId: string, itemText: string) => void;
+  onSetEditingItemText: (text: string) => void;
+  onSaveEditingItem: () => void;
+  onCancelEditingItem: () => void;
+  onDeleteItem: (itemId: string, itemText: string) => void;
   onSetAddingItem: (v: boolean) => void;
   onSetNewItemText: (t: string) => void;
   onAddItem: () => void;
@@ -33,7 +43,14 @@ export function EssentialsTab({
   colors,
   addingItem,
   newItemText,
+  editingItemId,
+  editingItemText,
   onToggleItem,
+  onStartEditItem,
+  onSetEditingItemText,
+  onSaveEditingItem,
+  onCancelEditingItem,
+  onDeleteItem,
   onSetAddingItem,
   onSetNewItemText,
   onAddItem,
@@ -42,6 +59,25 @@ export function EssentialsTab({
   onFilePress,
 }: EssentialsTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
+
+  const renderPackingActions = (itemId: string, itemText: string) => (
+    <Animated.View entering={FadeIn.duration(150)} style={styles.packingActions}>
+      <Pressable
+        style={[styles.actionCircle, { backgroundColor: colors.accent }]}
+        onPress={() => onStartEditItem(itemId, itemText)}
+        accessibilityLabel={`Edit ${itemText}`}
+      >
+        <Pencil size={15} color={colors.bg} strokeWidth={2.5} />
+      </Pressable>
+      <Pressable
+        style={[styles.actionCircle, { backgroundColor: colors.danger }]}
+        onPress={() => onDeleteItem(itemId, itemText)}
+        accessibilityLabel={`Delete ${itemText}`}
+      >
+        <Trash2 size={15} color="#fff" strokeWidth={2.5} />
+      </Pressable>
+    </Animated.View>
+  );
 
   return (
     <>
@@ -86,36 +122,65 @@ export function EssentialsTab({
           />
           <View style={styles.packingList}>
             {items.map((it) => (
-              <Pressable
-                key={it.t}
-                onPress={() => onToggleItem(group, it.t)}
-                style={[
-                  styles.packingRow,
-                  { opacity: it.d ? 0.7 : 1 },
-                ]}
+              <Swipeable
+                key={it.id}
+                renderRightActions={() => renderPackingActions(it.id, it.t)}
+                overshootRight={false}
+                friction={2}
+                rightThreshold={36}
+                onSwipeableOpen={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
               >
-                <View
-                  style={[
-                    styles.checkbox,
-                    it.d && styles.checkboxChecked,
-                  ]}
-                >
-                  {it.d && (
-                    <Check size={12} color={colors.onBlack} strokeWidth={3} />
+                {editingItemId === it.id ? (
+                  <View style={styles.editItemRow}>
+                    <TextInput
+                      style={styles.editItemInput}
+                      value={editingItemText}
+                      onChangeText={onSetEditingItemText}
+                      autoFocus
+                      returnKeyType="done"
+                      onSubmitEditing={onSaveEditingItem}
+                      placeholder="Item name"
+                      placeholderTextColor={colors.text3}
+                    />
+                    <Pressable style={styles.editIconBtn} onPress={onCancelEditingItem} accessibilityLabel="Cancel edit">
+                      <X size={16} color={colors.text3} strokeWidth={2.4} />
+                    </Pressable>
+                    <Pressable style={[styles.editSaveBtn, { backgroundColor: colors.accent }]} onPress={onSaveEditingItem}>
+                      <Check size={16} color={colors.bg} strokeWidth={2.6} />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={() => onToggleItem(it.id)}
+                    style={[
+                      styles.packingRow,
+                      { opacity: it.d ? 0.7 : 1 },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.checkbox,
+                        it.d && styles.checkboxChecked,
+                      ]}
+                    >
+                      {it.d && (
+                        <Check size={12} color={colors.onBlack} strokeWidth={3} />
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.packingItemText,
+                        it.d && styles.packingItemDone,
+                      ]}
+                    >
+                      {it.t}
+                    </Text>
+                    <View style={styles.packingByChip}>
+                      <Text style={styles.packingByText}>{it.by}</Text>
+                    </View>
+                  </Pressable>
                   )}
-                </View>
-                <Text
-                  style={[
-                    styles.packingItemText,
-                    it.d && styles.packingItemDone,
-                  ]}
-                >
-                  {it.t}
-                </Text>
-                <View style={styles.packingByChip}>
-                  <Text style={styles.packingByText}>{it.by}</Text>
-                </View>
-              </Pressable>
+              </Swipeable>
             ))}
           </View>
         </View>
@@ -271,6 +336,53 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 10,
       color: colors.text3,
       fontWeight: '600',
+    },
+    packingActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 10,
+    },
+    actionCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    editItemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      borderRadius: 12,
+    },
+    editItemInput: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    editIconBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card2,
+    },
+    editSaveBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     filesHeader: {
       flexDirection: 'row',

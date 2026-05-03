@@ -2,12 +2,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -27,14 +27,24 @@ const SLIDE_DURATION = 4500; // 4.5s per slide
 const DEST_PHOTO_TIMEOUT_MS = 10000;
 
 const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
+const HERO_ACCENT_SETS = [
+  ['#0f2f2f', '#d8ab7a', '#f3e6c8'],
+  ['#23344d', '#e0b173', '#f5eddc'],
+  ['#40251b', '#c9652b', '#efd4a4'],
+  ['#172a40', '#8bb7c8', '#efd2a0'],
+] as const;
 
 function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), DEST_PHOTO_TIMEOUT_MS);
     promise
-      .then(resolve)
-      .catch(() => resolve(fallback))
-      .finally(() => clearTimeout(timer));
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      }, () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      });
   });
 }
 
@@ -61,6 +71,14 @@ export const AnticipationHero: React.FC<Props> = ({
 }) => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const displayTitle = hotelName || destination || 'Your Trip';
+  const displaySubtitle = hotelName ? destination : dateRange;
+  const accentSet = useMemo(() => {
+    const seed = (destination || hotelName || 'afterstay')
+      .split('')
+      .reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    return HERO_ACCENT_SETS[seed % HERO_ACCENT_SETS.length];
+  }, [destination, hotelName]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextIndex, setNextIndex] = useState(1);
   const [failedUrls, setFailedUrls] = useState<Set<string>>(() => new Set());
@@ -98,7 +116,7 @@ export const AnticipationHero: React.FC<Props> = ({
   // Fetch destination photos when no hotel photos are available, or when hotel images fail.
   const [destPhotos, setDestPhotos] = useState<string[]>([]);
   const destinationCacheKey = useMemo(
-    () => `dest_photos:v2:${destination.trim().toLowerCase()}`,
+    () => `dest_photos:v4:${destination.trim().toLowerCase()}`,
     [destination],
   );
 
@@ -195,42 +213,72 @@ export const AnticipationHero: React.FC<Props> = ({
     },
     [heroPhotos.length],
   );
-  const fallbackPhoto = destPhotos.find((url) => !failedUrls.has(url)) ?? null;
+  const renderDesignedHero = () => (
+    <>
+      <LinearGradient
+        colors={[accentSet[0], colors.bg2, colors.bg]}
+        locations={[0, 0.56, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.sun, { backgroundColor: accentSet[1] }]} />
+      <View style={[styles.orbit, styles.orbitOne, { borderColor: accentSet[2] }]} />
+      <View style={[styles.orbit, styles.orbitTwo, { borderColor: accentSet[1] }]} />
+      <View style={styles.horizon}>
+        <View style={[styles.hill, styles.hillBack, { backgroundColor: accentSet[0] }]} />
+        <View style={[styles.hill, styles.hillMid, { backgroundColor: colors.card }]} />
+        <View style={[styles.hill, styles.hillFront, { backgroundColor: colors.bg }]} />
+      </View>
+      <View style={styles.routeLine} />
+      <View style={[styles.routeDot, styles.routeDotStart]} />
+      <View style={[styles.routeDot, styles.routeDotEnd, { backgroundColor: accentSet[1] }]} />
+    </>
+  );
 
   if (heroPhotos.length === 0) {
-    // No hotel photos — show destination photo or gradient fallback
     return (
       <View style={styles.outerWrap}>
         <View style={[styles.container, { backgroundColor: colors.card }]}>
-          {fallbackPhoto ? (
-            <>
-              <Animated.View style={[StyleSheet.absoluteFill, kenBurnsStyle]}>
-                <Image
-                  source={{ uri: fallbackPhoto }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                  onError={() => handleImageError(fallbackPhoto)}
-                />
-              </Animated.View>
-              <LinearGradient
-                colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']}
-                style={StyleSheet.absoluteFill}
-              />
-            </>
-          ) : (
-            <LinearGradient
-              colors={[colors.accentDim, colors.bg]}
-              style={StyleSheet.absoluteFill}
-            />
-          )}
-          <View style={styles.emptyHero}>
-            <Text style={[styles.emptyDestination, fallbackPhoto && { textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }]}>
-              {destination || 'Your Trip'}
-            </Text>
-            <Text style={[styles.emptyDateRange, fallbackPhoto && { color: 'rgba(255,255,255,0.85)' }]}>{dateRange}</Text>
-            {hotelName ? (
-              <Text style={[styles.emptyHotel, fallbackPhoto && { color: 'rgba(255,255,255,0.7)' }]}>{hotelName}</Text>
-            ) : null}
+          {renderDesignedHero()}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.08)', 'rgba(0,0,0,0.58)']}
+            locations={[0, 0.5, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.bottomInfo}>
+            <View style={styles.confirmRow}>
+              {verified && (
+                <View style={styles.confirmBadge}>
+                  <Text style={styles.confirmText}>{'\u2713'} Confirmed</Text>
+                </View>
+              )}
+              {bookingRef && <Text style={styles.refText}>{bookingRef}</Text>}
+            </View>
+            <Text style={styles.hotelName}>{displayTitle}</Text>
+            {displaySubtitle ? <Text style={styles.roomInfo}>{displaySubtitle}</Text> : null}
+            {members.length > 0 && (
+              <View style={styles.groupRow}>
+                {members.map((m, i) => (
+                  <View
+                    key={m.id}
+                    style={[
+                      styles.groupAvatar,
+                      {
+                        backgroundColor: MEMBER_COLORS[i % MEMBER_COLORS.length],
+                        marginLeft: i === 0 ? 0 : -8,
+                        zIndex: members.length - i,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.groupAvatarText}>{m.name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                ))}
+                <Text style={styles.groupText}>
+                  {members.length === 1
+                    ? 'Solo traveler'
+                    : `You + ${members.length - 1} traveler${members.length > 2 ? 's' : ''}`}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -245,7 +293,7 @@ export const AnticipationHero: React.FC<Props> = ({
           <Image
             source={{ uri: heroPhotos[currentIndex] }}
             style={StyleSheet.absoluteFill}
-            resizeMode="cover"
+            contentFit="cover"
             onError={() => handleImageError(heroPhotos[currentIndex])}
           />
         </Animated.View>
@@ -257,7 +305,7 @@ export const AnticipationHero: React.FC<Props> = ({
               <Image
                 source={{ uri: heroPhotos[nextIndex] }}
                 style={StyleSheet.absoluteFill}
-                resizeMode="cover"
+                contentFit="cover"
                 onError={() => handleImageError(heroPhotos[nextIndex])}
               />
             </Animated.View>
@@ -307,11 +355,11 @@ export const AnticipationHero: React.FC<Props> = ({
           </View>
 
           {/* Hotel name */}
-          <Text style={styles.hotelName}>{hotelName || destination || 'Your Trip'}</Text>
+          <Text style={styles.hotelName}>{displayTitle}</Text>
 
           {/* Room info */}
-          {(roomInfo || (!hotelName && dateRange)) && (
-            <Text style={styles.roomInfo}>{roomInfo || dateRange}</Text>
+          {(roomInfo || (!hotelName && dateRange) || displaySubtitle) && (
+            <Text style={styles.roomInfo}>{roomInfo || (!hotelName ? dateRange : displaySubtitle)}</Text>
           )}
 
           {/* Group member avatars */}
@@ -446,29 +494,89 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       fontSize: 11,
       marginLeft: 10,
     },
-    emptyHero: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 24,
+    sun: {
+      position: 'absolute',
+      top: 34,
+      right: 34,
+      width: 84,
+      height: 84,
+      borderRadius: 42,
+      opacity: 0.9,
     },
-    emptyDestination: {
-      fontSize: 28,
-      fontWeight: '600',
-      color: colors.text,
-      letterSpacing: -0.5,
-      textAlign: 'center',
+    orbit: {
+      position: 'absolute',
+      borderWidth: 1,
+      opacity: 0.22,
+      transform: [{ rotate: '-12deg' }],
     },
-    emptyDateRange: {
-      fontSize: 13,
-      color: colors.text2,
-      marginTop: 6,
-      textAlign: 'center',
+    orbitOne: {
+      top: 64,
+      left: -42,
+      width: 260,
+      height: 100,
+      borderRadius: 130,
     },
-    emptyHotel: {
-      fontSize: 12,
-      color: colors.text3,
-      marginTop: 4,
-      textAlign: 'center',
+    orbitTwo: {
+      top: 112,
+      right: -58,
+      width: 240,
+      height: 88,
+      borderRadius: 120,
+    },
+    horizon: {
+      ...StyleSheet.absoluteFillObject,
+      overflow: 'hidden',
+    },
+    hill: {
+      position: 'absolute',
+      bottom: -74,
+      borderTopLeftRadius: 999,
+      borderTopRightRadius: 999,
+      opacity: 0.94,
+    },
+    hillBack: {
+      left: -80,
+      width: 260,
+      height: 150,
+      opacity: 0.48,
+    },
+    hillMid: {
+      right: -70,
+      width: 300,
+      height: 166,
+      opacity: 0.78,
+    },
+    hillFront: {
+      left: 70,
+      right: -30,
+      height: 120,
+      opacity: 0.82,
+    },
+    routeLine: {
+      position: 'absolute',
+      left: 44,
+      right: 46,
+      bottom: 96,
+      borderTopWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: 'rgba(255,255,255,0.32)',
+      transform: [{ rotate: '-7deg' }],
+    },
+    routeDot: {
+      position: 'absolute',
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: 'rgba(255,255,255,0.78)',
+      borderWidth: 2,
+      borderColor: 'rgba(15,13,11,0.6)',
+    },
+    routeDotStart: {
+      left: 46,
+      bottom: 88,
+    },
+    routeDotEnd: {
+      right: 48,
+      bottom: 116,
     },
   });

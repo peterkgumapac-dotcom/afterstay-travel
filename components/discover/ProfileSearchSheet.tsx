@@ -90,7 +90,10 @@ export default function ProfileSearchSheet({ visible, onClose }: ProfileSearchSh
       } catch (err) {
         if (requestId !== requestRef.current) return;
         setResults([]);
-        setError(err instanceof Error ? err.message : 'Search failed. Try again.');
+        const message = err instanceof Error ? err.message : 'Search failed. Try again.';
+        setError(message.includes('latest profile backend update')
+          ? `${message} You can still open profiles from trip members and posts.`
+          : message);
       } finally {
         if (requestId === requestRef.current) setLoading(false);
       }
@@ -280,6 +283,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: PAPER.inkLight,
     textAlign: 'center',
+    paddingHorizontal: 24,
+    lineHeight: 21,
   },
   hintText: {
     fontSize: 14,

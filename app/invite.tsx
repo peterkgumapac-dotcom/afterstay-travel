@@ -8,6 +8,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -19,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { createInviteCode, getActiveTrip, getInvites, type TripInvite } from '@/lib/supabase';
+import { createInviteCode, getActiveTrip, getInvites, getOrCreateInviteCode, type TripInvite } from '@/lib/supabase';
 
 export default function InviteScreen() {
   const { colors } = useTheme();
@@ -30,19 +31,20 @@ export default function InviteScreen() {
   const [loading, setLoading] = useState(false);
   const [tripName, setTripName] = useState('');
   const [history, setHistory] = useState<TripInvite[]>([]);
+  const [emailRecipient, setEmailRecipient] = useState('');
 
-  const generateCode = useCallback(async () => {
+  const generateCode = useCallback(async (forceNew = false) => {
     setLoading(true);
     try {
       const trip = await getActiveTrip();
       if (!trip) { Alert.alert('No active trip'); setLoading(false); return; }
       setTripName(trip.destination || trip.name);
-      const newCode = await createInviteCode(trip.id);
+      const newCode = forceNew ? await createInviteCode(trip.id) : await getOrCreateInviteCode(trip.id);
       setCode(newCode);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // Refresh history after generating
       const invites = await getInvites(trip.id);
       setHistory(invites);
+      if (forceNew) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to create invite');
     } finally {
@@ -78,6 +80,13 @@ export default function InviteScreen() {
 
   const handleEmail = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!code) return;
+    const recipient = emailRecipient.trim();
+    if (recipient && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+      Alert.alert('Check the email', 'Enter a valid email address, or leave it blank to choose someone in your mail app.');
+      return;
+    }
+
     const subject = encodeURIComponent(`Join my trip to ${tripName} on AfterStay`);
     const body = encodeURIComponent(
       `Hey!\n\nI'd love for you to join my trip to ${tripName} on AfterStay.\n\n` +
@@ -86,8 +95,17 @@ export default function InviteScreen() {
       `If the app is installed, open: ${inviteLink}\n\n` +
       `See you there!`
     );
-    const mailUrl = `mailto:?subject=${subject}&body=${body}`;
-    await Linking.openURL(mailUrl);
+    const mailUrl = `mailto:${recipient ? encodeURIComponent(recipient) : ''}?subject=${subject}&body=${body}`;
+    try {
+      const canOpen = await Linking.canOpenURL(mailUrl);
+      if (canOpen) {
+        await Linking.openURL(mailUrl);
+      } else {
+        await Share.share({ message: shareMessage });
+      }
+    } catch {
+      await Share.share({ message: shareMessage });
+    }
   };
 
   const handleCopy = async () => {
@@ -113,7 +131,7 @@ export default function InviteScreen() {
         {!code ? (
           <Pressable
             style={({ pressed }) => [styles.generateBtn, pressed && { opacity: 0.8 }]}
-            onPress={generateCode}
+            onPress={() => generateCode()}
             disabled={loading}
           >
             {loading ? (
@@ -142,6 +160,24 @@ export default function InviteScreen() {
               <Text style={styles.qrHint}>Scan to open the invite</Text>
             </View>
 
+            <View style={styles.emailCard}>
+              <Text style={styles.emailLabel}>EMAIL INVITE</Text>
+              <TextInput
+                value={emailRecipient}
+                onChangeText={setEmailRecipient}
+                placeholder="friend@example.com"
+                placeholderTextColor={colors.text3}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="emailAddress"
+                style={styles.emailInput}
+              />
+              <Text style={styles.emailHint}>
+                Optional. Leave blank to choose a contact in your email app.
+              </Text>
+            </View>
+
             {/* Share actions */}
             <View style={styles.actions}>
               <Pressable style={styles.actionBtn} onPress={handleShare}>
@@ -156,7 +192,7 @@ export default function InviteScreen() {
 
               <Pressable style={styles.actionBtn} onPress={handleEmail}>
                 <Mail size={18} color={colors.accent} strokeWidth={1.8} />
-                <Text style={styles.actionText}>Share via Email</Text>
+                <Text style={styles.actionText}>Send email invite</Text>
               </Pressable>
 
               <Pressable style={styles.actionBtn} onPress={handleCopy}>
@@ -166,7 +202,7 @@ export default function InviteScreen() {
             </View>
 
             {/* New code */}
-            <Pressable onPress={generateCode} style={styles.newCodeBtn}>
+            <Pressable onPress={() => generateCode(true)} style={styles.newCodeBtn}>
               <Text style={styles.newCodeText}>Generate new code</Text>
             </Pressable>
 
@@ -282,6 +318,38 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       color: colors.text3,
       fontWeight: '600',
       marginTop: spacing.xs,
+    },
+
+    // Email invite
+    emailCard: {
+      padding: spacing.lg,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      gap: spacing.sm,
+    },
+    emailLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.text3,
+      letterSpacing: 1.4,
+    },
+    emailInput: {
+      minHeight: 46,
+      paddingHorizontal: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      color: colors.text,
+      fontSize: 15,
+      fontWeight: '600',
+      backgroundColor: colors.bg,
+    },
+    emailHint: {
+      fontSize: 11,
+      color: colors.text3,
+      lineHeight: 16,
     },
 
     // Actions

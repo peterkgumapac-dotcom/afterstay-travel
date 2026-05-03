@@ -593,13 +593,19 @@ function DiscoverScreenInner() {
   const [showVotingSheet, setShowVotingSheet] = useState(false);
   const [votingPlace, setVotingPlace] = useState<Place | null>(null);
   const { user } = useAuth();
-  const currentMemberId = useMemo(
-    () => tripMembers.find((m) => m.userId === user?.id)?.id ?? '',
-    [tripMembers, user?.id],
-  );
-  const memberNames = useMemo(
-    () => Object.fromEntries(tripMembers.map((m) => [m.id, m.name])),
+  const votableTripMembers = useMemo(
+    () => tripMembers.filter((member) => !!member.userId),
     [tripMembers],
+  );
+  const currentMemberId = useMemo(
+    () => votableTripMembers.find((m) => m.userId === user?.id)?.id ?? '',
+    [votableTripMembers, user?.id],
+  );
+  const votableMemberCount = votableTripMembers.length;
+  const canGroupVote = votableMemberCount >= 2 && !!currentMemberId;
+  const memberNames = useMemo(
+    () => Object.fromEntries(votableTripMembers.map((m) => [m.id, m.name])),
+    [votableTripMembers],
   );
 
   // Stable vote-by-member lookup to prevent React.memo bail-outs
@@ -616,9 +622,9 @@ function DiscoverScreenInner() {
     () => savedPlaces.filter((p) => {
       if (p.vote !== 'Pending') return false;
       const votes = p.voteByMember ?? {};
-      return Object.keys(votes).length < tripMembers.length;
+      return Object.keys(votes).length < votableMemberCount;
     }),
-    [savedPlaces, tripMembers],
+    [savedPlaces, votableMemberCount],
   );
   const votedPlaces = useMemo(
     () => savedPlaces.filter((p) => p.voteByMember && Object.keys(p.voteByMember).length > 0 && p.vote !== 'Pending'),
@@ -653,8 +659,8 @@ function DiscoverScreenInner() {
     hasTrip: !!tripId,
     hasOrigin: hasUsableOrigin,
     originKind: effectiveOriginKind,
-    memberCount: tripMembers.length,
-  }), [tripId, hasUsableOrigin, effectiveOriginKind, tripMembers.length]);
+    memberCount: votableMemberCount,
+  }), [tripId, hasUsableOrigin, effectiveOriginKind, votableMemberCount]);
   const quickFilters = useMemo(() => getQuickFiltersForContext(filterContext), [filterContext]);
   const starterDestinations = useMemo(
     () => STARTER_DESTINATIONS.filter((destination) =>
@@ -1197,8 +1203,8 @@ function DiscoverScreenInner() {
       try {
         await voteOnPlace(existingPlace.id, '\uD83D\uDC4D Yes' as PlaceVote);
         // Record member vote and notify group
-        if (currentMemberId && tripMembers.length >= 2) {
-          const updated = await voteAsMember(existingPlace.id, currentMemberId, '👍 Yes' as PlaceVote, tripMembers.length);
+        if (canGroupVote) {
+          const updated = await voteAsMember(existingPlace.id, currentMemberId, '👍 Yes' as PlaceVote, votableMemberCount);
           setSavedPlaces((prev) => prev.map((p) => (p.id === existingPlace.id ? { ...p, voteByMember: updated } : p)));
           if (tripId && user) {
             notifyGroupOfRecommendation(tripId, name, existingPlace.id, user.user_metadata?.name ?? 'Someone', user.id).catch(() => {});
@@ -1243,7 +1249,7 @@ function DiscoverScreenInner() {
         }
       }
     }
-  }, [tripId, savedPlaces, places]);
+  }, [tripId, savedPlaces, places, canGroupVote, currentMemberId, votableMemberCount, user]);
 
   // Stable callbacks so DiscoverPlaceCard React.memo actually works
   const handleSaveToggle = useCallback((name: string) => {
@@ -1308,8 +1314,8 @@ function DiscoverScreenInner() {
     savedNames: saved,
     recommendedNames: recommended,
     voteCountsByName,
-    memberCount: tripMembers.length,
-  }), [saved, recommended, voteCountsByName, tripMembers.length]);
+    memberCount: votableMemberCount,
+  }), [saved, recommended, voteCountsByName, votableMemberCount]);
 
   const activeFilterCount = useMemo(() => countActivePlaceFilters(filters), [filters]);
   const filteredPlaces = useMemo(
@@ -1463,14 +1469,14 @@ function DiscoverScreenInner() {
         saveActionLabel={tripId ? 'Save to trip' : 'Save for later'}
         onExplore={handleExplore}
         onAddToPlanner={undefined}
-        showRecommend={tripMembers.length >= 2}
+        showRecommend={canGroupVote}
         voteByMember={voteByMemberMap[p.n]}
         memberNames={memberNames}
-        totalMembers={tripMembers.length}
+        totalMembers={votableMemberCount}
         onVoteTap={handleVoteTap}
       />
     );
-  }, [travelMode, saved, recommended, handleSaveToggle, handleRecommendToggle, handleExplore, tripMembers.length, voteByMemberMap, memberNames, handleVoteTap, tripId]);
+  }, [travelMode, saved, recommended, handleSaveToggle, handleRecommendToggle, handleExplore, canGroupVote, voteByMemberMap, memberNames, votableMemberCount, handleVoteTap, tripId]);
 
   const CARD_HEIGHT = 128;
 
@@ -2059,7 +2065,7 @@ function DiscoverScreenInner() {
               originLabel={effectiveDest}
               tripHotel={tripHotel}
               tripGroupSize={tripGroupSize}
-              tripMembers={tripMembers}
+              tripMembers={votableTripMembers}
               tripBudget={tripBudget}
               tripBudgetCurrency={tripBudgetCurrency}
               savedNames={saved}
@@ -2154,7 +2160,7 @@ function DiscoverScreenInner() {
               ) : (
                 <>
                   {/* ── Group Voting Section ── */}
-                  {tripMembers.length >= 2 && (
+                  {votableMemberCount >= 2 && (
                     <View style={styles.votingSection}>
                       <View style={styles.votingSectionHeader}>
                         <Users size={16} color={colors.accent} strokeWidth={2} />
@@ -2201,7 +2207,7 @@ function DiscoverScreenInner() {
                                 <View style={styles.votingInfo}>
                                   <Text style={styles.votingName} numberOfLines={1}>{p.name}</Text>
                                   <Text style={styles.votingMeta}>
-                                    {voted}/{tripMembers.length} voted{yes > 0 ? ` · ${yes} yes` : ''}
+                                    {voted}/{votableMemberCount} voted{yes > 0 ? ` · ${yes} yes` : ''}
                                   </Text>
                                 </View>
                                 <ChevronRight size={16} color={colors.text3} />
@@ -2289,10 +2295,10 @@ function DiscoverScreenInner() {
                           saveActionLabel="Save to trip"
                           savedActionLabel="Saved to trip"
                           onAddToPlanner={undefined}
-                          showRecommend={tripMembers.length >= 2}
+                          showRecommend={canGroupVote}
                           voteByMember={p.voteByMember}
                           memberNames={memberNames}
-                          totalMembers={tripMembers.length}
+                          totalMembers={votableMemberCount}
                           onVoteTap={() => {
                             setVotingPlace(p);
                             setShowVotingSheet(true);
@@ -2321,7 +2327,7 @@ function DiscoverScreenInner() {
           tripId={tripId}
           tripDest={tripDest}
           travelMode={travelMode}
-          tripMembers={tripMembers}
+          tripMembers={votableTripMembers}
           memberNames={memberNames}
           savedPlaces={savedPlaces}
           savedNames={saved}
@@ -2364,7 +2370,7 @@ function DiscoverScreenInner() {
         }}
         saveActionLabel={tripId ? 'Save to trip' : 'Save for later'}
         savedActionLabel={tripId ? 'Saved to trip' : 'Saved for later'}
-        onRecommend={tripMembers.length >= 2 ? () => {
+        onRecommend={canGroupVote ? () => {
           setShowDetail(false);
           if (detailPlaceName) toggleRecommend(detailPlaceName);
         } : undefined}
@@ -2378,7 +2384,8 @@ function DiscoverScreenInner() {
         visible={showVotingSheet}
         onClose={() => setShowVotingSheet(false)}
         place={votingPlace}
-        members={tripMembers}
+        pendingPlaces={pendingVotePlaces}
+        members={votableTripMembers}
         currentMemberId={currentMemberId}
         onVoteUpdated={(placeId, votes) => {
           setSavedPlaces((prev) =>

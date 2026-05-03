@@ -65,7 +65,10 @@ function RootLayoutInner() {
     return (
       <NavThemeProvider value={navTheme}>
         <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
-        <AfterStayLoader />
+        <AfterStayLoader
+          message="Opening AfterStay..."
+          steps={['Restoring your session', 'Preparing your travel workspace', 'Checking account data']}
+        />
       </NavThemeProvider>
     );
   }
@@ -87,63 +90,88 @@ function RootLayoutInner() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="trip-planner"
-          options={{ presentation: 'modal', title: 'Trip Planner', headerShown: true, animation: 'fade_from_bottom', animationDuration: 300 }}
+          options={{
+            presentation: 'modal',
+            title: 'Trip Planner',
+            headerShown: true,
+            animation: 'fade_from_bottom',
+            animationDuration: 300,
+          }}
         />
         <Stack.Screen
           name="add-expense"
-          options={{ presentation: 'modal', title: 'Add Expense', headerShown: true, animation: 'slide_from_bottom', animationDuration: 250 }}
+          options={{
+            presentation: 'modal',
+            title: 'Add Expense',
+            headerShown: true,
+            animation: 'slide_from_bottom',
+            animationDuration: 250,
+          }}
         />
-        <Stack.Screen
-          name="add-place"
-          options={{ presentation: 'modal', title: 'Add Place', headerShown: true }}
-        />
+        <Stack.Screen name="add-place" options={{ presentation: 'modal', title: 'Add Place', headerShown: true }} />
         <Stack.Screen
           name="add-moment"
-          options={{ presentation: 'modal', title: 'Add Moment', headerShown: true, animation: 'slide_from_bottom', animationDuration: 250 }}
+          options={{
+            presentation: 'modal',
+            title: 'Add Moment',
+            headerShown: true,
+            animation: 'slide_from_bottom',
+            animationDuration: 250,
+          }}
         />
         <Stack.Screen
           name="compose-moment"
-          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom', animationDuration: 250 }}
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+            animation: 'slide_from_bottom',
+            animationDuration: 250,
+          }}
         />
-        <Stack.Screen
-          name="add-member"
-          options={{ presentation: 'modal', title: 'Add Member', headerShown: true }}
-        />
-        <Stack.Screen
-          name="scan-trip"
-          options={{ presentation: 'modal', title: 'Scan Trip', headerShown: true }}
-        />
-        <Stack.Screen
-          name="invite"
-          options={{ presentation: 'modal', title: 'Invite Members', headerShown: true }}
-        />
-        <Stack.Screen
-          name="join-trip"
-          options={{ presentation: 'modal', title: 'Join Trip', headerShown: true }}
-        />
+        <Stack.Screen name="add-member" options={{ presentation: 'modal', title: 'Add Member', headerShown: true }} />
+        <Stack.Screen name="scan-trip" options={{ presentation: 'modal', title: 'Scan Trip', headerShown: true }} />
+        <Stack.Screen name="invite" options={{ presentation: 'modal', title: 'Invite Members', headerShown: true }} />
+        <Stack.Screen name="join-trip" options={{ presentation: 'modal', title: 'Join Trip', headerShown: true }} />
         <Stack.Screen
           name="profile/[userId]"
-          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom', animationDuration: 250 }}
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+            animation: 'slide_from_bottom',
+            animationDuration: 250,
+          }}
         />
-        <Stack.Screen
-          name="group-chat"
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="add-file"
-          options={{ presentation: 'modal', title: 'Add File', headerShown: true }}
-        />
+        <Stack.Screen name="group-chat" options={{ headerShown: false }} />
+        <Stack.Screen name="add-file" options={{ presentation: 'modal', title: 'Add File', headerShown: true }} />
         <Stack.Screen
           name="moments-slideshow"
-          options={{ presentation: 'fullScreenModal', title: 'Photo Gallery', headerShown: false, animation: 'fade', animationDuration: 200 }}
+          options={{
+            presentation: 'fullScreenModal',
+            title: 'Photo Gallery',
+            headerShown: false,
+            animation: 'fade',
+            animationDuration: 200,
+          }}
         />
         <Stack.Screen
           name="trip-overview"
-          options={{ presentation: 'modal', title: 'Trip Overview', headerShown: true, animation: 'fade_from_bottom', animationDuration: 300 }}
+          options={{
+            presentation: 'modal',
+            title: 'Trip Overview',
+            headerShown: true,
+            animation: 'fade_from_bottom',
+            animationDuration: 300,
+          }}
         />
         <Stack.Screen
           name="scan-receipt"
-          options={{ presentation: 'modal', title: 'Scan Receipt', headerShown: true, animation: 'slide_from_bottom', animationDuration: 250 }}
+          options={{
+            presentation: 'modal',
+            title: 'Scan Receipt',
+            headerShown: true,
+            animation: 'slide_from_bottom',
+            animationDuration: 250,
+          }}
         />
         <Stack.Screen
           name="place-details"
@@ -177,26 +205,14 @@ function RootLayoutInner() {
           name="notification-settings"
           options={{ presentation: 'modal', title: 'Notifications', headerShown: false }}
         />
-        <Stack.Screen
-          name="create-post"
-          options={{ presentation: 'modal', title: 'New Post', headerShown: false }}
-        />
+        <Stack.Screen name="create-post" options={{ presentation: 'modal', title: 'New Post', headerShown: false }} />
         <Stack.Screen
           name="trip-memory"
           options={{ presentation: 'modal', title: 'Trip Memory', headerShown: false }}
         />
-        <Stack.Screen
-          name="new-album"
-          options={{ presentation: 'modal', title: 'New Album', headerShown: false }}
-        />
-        <Stack.Screen
-          name="album-detail"
-          options={{ presentation: 'modal', title: 'Album', headerShown: false }}
-        />
-        <Stack.Screen
-          name="welcome"
-          options={{ headerShown: false }}
-        />
+        <Stack.Screen name="new-album" options={{ presentation: 'modal', title: 'New Album', headerShown: false }} />
+        <Stack.Screen name="album-detail" options={{ presentation: 'modal', title: 'Album', headerShown: false }} />
+        <Stack.Screen name="welcome" options={{ headerShown: false }} />
         <Stack.Screen
           name="trip-wrapped"
           options={{ presentation: 'fullScreenModal', headerShown: false, animation: 'fade' }}
@@ -205,7 +221,6 @@ function RootLayoutInner() {
     </NavThemeProvider>
   );
 }
-
 
 function RootLayout() {
   const [loaded, error] = useFonts({

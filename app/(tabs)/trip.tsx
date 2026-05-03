@@ -46,6 +46,7 @@ import { useTheme } from '@/constants/ThemeContext';
 import { colors as themeColors } from '@/constants/theme';
 import {
   addPackingItem,
+  deletePackingItem,
   getActiveTrip,
   getExpenseSummary,
   getFlights,
@@ -57,11 +58,12 @@ import {
   getAllUserTrips,
   getPastTrips,
   togglePacked,
+  updatePackingItem,
   updateMemberEmail,
   updateMemberPhone,
   updateMemberPhoto,
   updateTripProperty,
-  createInviteCode,
+  getOrCreateInviteCode,
   removeGroupMember,
   finishTrip,
   archiveTrip,
@@ -692,6 +694,8 @@ function TripScreen() {
   }, [user?.id, membersData]);
   const [flightsData, setFlightsData] = useState<Flight[]>([]);
   const [packingItems, setPackingItems] = useState<PackingItem[]>([]);
+  const [editingPackingId, setEditingPackingId] = useState<string | null>(null);
+  const [editingPackingText, setEditingPackingText] = useState('');
   const [filesData, setFilesData] = useState<TripFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<TripFile | null>(null);
   const [activeTripSpent, setActiveTripSpent] = useState(0);
@@ -920,23 +924,81 @@ function TripScreen() {
     return { total, done };
   }, [packingState]);
 
-  const togglePackingItem = (group: string, itemText: string) => {
+  const togglePackingItem = (itemId: string) => {
+    const item = packingItems.find((it) => it.id === itemId);
+    if (!item) return;
     setPackingItems((prev) =>
       prev.map((it) =>
-        it.item === itemText ? { ...it, packed: !it.packed } : it,
+        it.id === itemId ? { ...it, packed: !it.packed } : it,
       ),
     );
-    const item = packingItems.find((it) => it.item === itemText);
-    if (item) {
-      togglePacked(item.id, !item.packed).catch(() => {
-        // revert on failure
-        setPackingItems((prev) =>
-          prev.map((it) =>
-            it.item === itemText ? { ...it, packed: !it.packed } : it,
-          ),
-        );
-      });
+    togglePacked(item.id, !item.packed).catch(() => {
+      // revert on failure
+      setPackingItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId ? { ...it, packed: item.packed } : it,
+        ),
+      );
+    });
+  };
+
+  const startEditingPackingItem = (itemId: string, itemText: string) => {
+    setEditingPackingId(itemId);
+    setEditingPackingText(itemText);
+  };
+
+  const cancelEditingPackingItem = () => {
+    setEditingPackingId(null);
+    setEditingPackingText('');
+  };
+
+  const saveEditingPackingItem = async () => {
+    const itemId = editingPackingId;
+    const text = editingPackingText.trim();
+    if (!itemId) return;
+    const previous = packingItems.find((it) => it.id === itemId);
+    if (!previous) {
+      cancelEditingPackingItem();
+      return;
     }
+    if (!text) {
+      Alert.alert('Item name required', 'Add a name or delete the item instead.');
+      return;
+    }
+    if (text === previous.item) {
+      cancelEditingPackingItem();
+      return;
+    }
+
+    setPackingItems((prev) => prev.map((it) => (it.id === itemId ? { ...it, item: text } : it)));
+    cancelEditingPackingItem();
+    try {
+      await updatePackingItem(itemId, { item: text });
+    } catch {
+      setPackingItems((prev) => prev.map((it) => (it.id === itemId ? previous : it)));
+      Alert.alert('Update failed', 'Could not update this packing item. Please try again.');
+    }
+  };
+
+  const deletePackingListItem = (itemId: string, itemText: string) => {
+    Alert.alert('Delete packing item?', `"${itemText}" will be removed from this trip.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          const previous = packingItems;
+          setPackingItems((prev) => prev.filter((it) => it.id !== itemId));
+          if (editingPackingId === itemId) cancelEditingPackingItem();
+          try {
+            await deletePackingItem(itemId);
+          } catch {
+            setPackingItems(previous);
+            Alert.alert('Delete failed', 'Could not delete this packing item. Please try again.');
+          }
+        },
+      },
+    ]);
   };
 
   const pastTripsDisplay = useMemo(
@@ -1219,11 +1281,15 @@ function TripScreen() {
         inviteEmail: member.email || undefined,
       });
       Linking.openURL(url).catch(() => {});
+    } else if (action === 'message') {
+      setEditMember(null);
+      if (!trip?.id) return;
+      router.push({ pathname: '/group-chat', params: { tripId: trip.id } } as never);
     } else if (action === 'invite') {
       setEditMember(null);
       if (!trip) return;
       try {
-        const inviteCode = await createInviteCode(trip.id);
+        const inviteCode = await getOrCreateInviteCode(trip.id);
         const webLink = `https://afterstay.travel/join/${inviteCode}`;
         const deepLink = `afterstay://join-trip?code=${inviteCode}`;
         const msg =
@@ -1232,12 +1298,12 @@ function TripScreen() {
           `Tap to join: ${webLink}\n\n` +
           `If the app is installed, open: ${deepLink}`;
         const target = member.phone
-          ? `sms:${member.phone}?body=${encodeURIComponent(msg)}`
+          ? `sms:${encodeURIComponent(member.phone)}?body=${encodeURIComponent(msg)}`
           : member.email
-            ? `mailto:${member.email}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(msg)}`
+            ? `mailto:${encodeURIComponent(member.email)}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(msg)}`
             : null;
         if (target) {
-          Linking.openURL(target).catch(() => {});
+          Linking.openURL(target).catch(() => Share.share({ message: msg }).catch(() => router.push('/invite')));
         } else {
           Share.share({ message: msg }).catch(() => router.push('/invite'));
         }
@@ -1308,6 +1374,10 @@ function TripScreen() {
   };
 
   const handleMemberChat = async (member: GroupMember) => {
+    if (member.userId && trip?.id) {
+      router.push({ pathname: '/group-chat', params: { tripId: trip.id } } as never);
+      return;
+    }
     if (member.phone) {
       const url = `sms:${member.phone}`;
       try {
@@ -1570,7 +1640,14 @@ function TripScreen() {
             colors={colors}
             addingItem={addingItem}
             newItemText={newItemText}
+            editingItemId={editingPackingId}
+            editingItemText={editingPackingText}
             onToggleItem={togglePackingItem}
+            onStartEditItem={startEditingPackingItem}
+            onSetEditingItemText={setEditingPackingText}
+            onSaveEditingItem={saveEditingPackingItem}
+            onCancelEditingItem={cancelEditingPackingItem}
+            onDeleteItem={deletePackingListItem}
             onSetAddingItem={setAddingItem}
             onSetNewItemText={setNewItemText}
             onAddItem={handleAddPackingItem}
@@ -1619,6 +1696,11 @@ function TripScreen() {
                   </Text>
                 </View>
                 <View style={styles.sheetActions}>
+                  {editMember.userId && (
+                    <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('message')}>
+                      <Text style={styles.sheetBtnAccent}>Message in Trip Chat</Text>
+                    </Pressable>
+                  )}
                   {!editMember.userId && (
                     <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('invite')}>
                       <Text style={styles.sheetBtnAccent}>Send Invite Link</Text>

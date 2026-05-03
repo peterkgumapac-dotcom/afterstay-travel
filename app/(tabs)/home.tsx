@@ -97,25 +97,13 @@ import { getTripDayMetrics, inferFlightLeg, sortFlightsByTime } from '@/lib/trip
 const DEST_PHOTO_CACHE_KEY = 'hero:destination-photos';
 
 /* ── Section header matching prototype's GroupHeader ── */
-function SectionHeader({
-  kicker,
-  title,
-  action,
-}: {
-  kicker: string;
-  title: string;
-  action?: React.ReactNode;
-}) {
+function SectionHeader({ kicker, title, action }: { kicker: string; title: string; action?: React.ReactNode }) {
   const { colors } = useTheme();
   return (
     <View style={sectionHeaderStyles.container}>
       <View>
-        <Text style={[sectionHeaderStyles.kicker, { color: colors.text3 }]}>
-          {kicker}
-        </Text>
-        <Text style={[sectionHeaderStyles.title, { color: colors.text }]}>
-          {title}
-        </Text>
+        <Text style={[sectionHeaderStyles.kicker, { color: colors.text3 }]}>{kicker}</Text>
+        <Text style={[sectionHeaderStyles.title, { color: colors.text }]}>{title}</Text>
       </View>
       {action}
     </View>
@@ -151,7 +139,10 @@ function cleanLocationText(value?: string | null) {
 
 function shortLocationLabel(value: string) {
   const normalized = cleanLocationText(value);
-  const parts = normalized.split(',').map((part) => part.trim()).filter(Boolean);
+  const parts = normalized
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
   return parts.length >= 2 ? `${parts[0]}, ${parts[1]}` : normalized;
 }
 
@@ -172,13 +163,17 @@ function resolvePlanningLocation(trip: Trip, flights: Flight[]) {
   }
 
   const sortedFlights = sortFlightsByTime(flights);
-  const outbound = sortedFlights.find((flight) => inferFlightLeg(flight, flights) === 'outbound' && cleanLocationText(flight.to));
+  const outbound = sortedFlights.find(
+    (flight) => inferFlightLeg(flight, flights) === 'outbound' && cleanLocationText(flight.to),
+  );
   if (outbound?.to) {
     const label = shortLocationLabel(outbound.to);
     return { query: outbound.to, label, source: 'flight' as const };
   }
 
-  const returnFlight = sortedFlights.find((flight) => inferFlightLeg(flight, flights) === 'return' && cleanLocationText(flight.from));
+  const returnFlight = sortedFlights.find(
+    (flight) => inferFlightLeg(flight, flights) === 'return' && cleanLocationText(flight.from),
+  );
   if (returnFlight?.from) {
     const label = shortLocationLabel(returnFlight.from);
     return { query: returnFlight.from, label, source: 'flight' as const };
@@ -209,16 +204,10 @@ function CollapsibleSection({
         accessibilityLabel={`${title}, ${open ? 'collapse' : 'expand'}`}
       >
         <View>
-          <Text style={[sectionHeaderStyles.kicker, { color: colors.text3 }]}>
-            {kicker}
-          </Text>
-          <Text style={[sectionHeaderStyles.title, { color: colors.text }]}>
-            {title}
-          </Text>
+          <Text style={[sectionHeaderStyles.kicker, { color: colors.text3 }]}>{kicker}</Text>
+          <Text style={[sectionHeaderStyles.title, { color: colors.text }]}>{title}</Text>
         </View>
-        <Text style={{ color: colors.text3, fontSize: 12, fontWeight: '600' }}>
-          {open ? 'Hide' : 'Show'}
-        </Text>
+        <Text style={{ color: colors.text3, fontSize: 12, fontWeight: '600' }}>{open ? 'Hide' : 'Show'}</Text>
       </Pressable>
       {open && children}
     </View>
@@ -241,16 +230,54 @@ function HomeScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
   const h = useHomeScreen();
   const {
-    trip, phase, hasPhaseOverride, flights, phaseFlight, moments, savedPlaces, members,
-    totalSpent, todaySpent, todayCount,
-    dailyTrackerOn, dailyTrackerTotal, dailyTrackerCount, dailyTrackerByCat, setDailyTrackerOn,
-    pastTrips, draftTrips, upcomingTrips, activeTrips, quickTrips, allTrips, lifetimeStats,
-    returningMoments, returningMembers, returningSavedPlaces,
-    userName, userAvatar, user,
-    loading, loaderDone, showLoader, refreshing, error, debugInfo,
-    hotelPhotos, heroLocation, isPlaneTransport, showFlightFeatures,
-    isTestMode, segment,
-    load, refresh, setRefreshing, setSavedPlaces, setManualPhaseOverride, clearManualPhaseOverride, setShowLoader,
+    trip,
+    phase,
+    hasPhaseOverride,
+    flights,
+    phaseFlight,
+    moments,
+    savedPlaces,
+    members,
+    totalSpent,
+    todaySpent,
+    todayCount,
+    dailyTrackerOn,
+    dailyTrackerTotal,
+    dailyTrackerCount,
+    dailyTrackerByCat,
+    setDailyTrackerOn,
+    pastTrips,
+    draftTrips,
+    upcomingTrips,
+    activeTrips,
+    quickTrips,
+    allTrips,
+    lifetimeStats,
+    returningMoments,
+    returningMembers,
+    returningSavedPlaces,
+    userName,
+    userAvatar,
+    user,
+    loading,
+    loaderDone,
+    showLoader,
+    refreshing,
+    error,
+    debugInfo,
+    hotelPhotos,
+    heroLocation,
+    isPlaneTransport,
+    showFlightFeatures,
+    isTestMode,
+    segment,
+    load,
+    refresh,
+    setRefreshing,
+    setSavedPlaces,
+    setManualPhaseOverride,
+    clearManualPhaseOverride,
+    setShowLoader,
   } = h;
 
   // UI-only state (not data)
@@ -265,18 +292,16 @@ function HomeScreen() {
   // Data state, effects, test mode — all in useHomeScreen hook above
 
   // Resolve current user's group member ID
-  const currentMemberId = useMemo(
-    () => members.find((m) => m.userId === user?.id)?.id ?? '',
-    [members, user?.id],
-  );
+  const currentMemberId = useMemo(() => members.find((m) => m.userId === user?.id)?.id ?? '', [members, user?.id]);
 
   // Places needing group votes
   const pendingVotePlaces = useMemo(
-    () => savedPlaces.filter((p) => {
-      if (p.vote !== 'Pending') return false;
-      const votes = p.voteByMember ?? {};
-      return Object.keys(votes).length < members.length;
-    }),
+    () =>
+      savedPlaces.filter((p) => {
+        if (p.vote !== 'Pending') return false;
+        const votes = p.voteByMember ?? {};
+        return Object.keys(votes).length < members.length;
+      }),
     [savedPlaces, members],
   );
 
@@ -285,20 +310,16 @@ function HomeScreen() {
   }, []);
 
   const handleVoteUpdated = useCallback((placeId: string, votes: Record<string, any>) => {
-    setSavedPlaces((prev) =>
-      prev.map((p) => (p.id === placeId ? { ...p, voteByMember: votes } : p)),
-    );
+    setSavedPlaces((prev) => prev.map((p) => (p.id === placeId ? { ...p, voteByMember: votes } : p)));
   }, []);
 
   // Realtime vote updates from other members
-  useVoteSubscription(trip?.id ?? null, useCallback(
-    (placeId: string, voteByMember: Record<string, any>, vote: any) => {
-      setSavedPlaces((prev) =>
-        prev.map((p) => (p.id === placeId ? { ...p, voteByMember, vote } : p)),
-      );
-    },
-    [],
-  ));
+  useVoteSubscription(
+    trip?.id ?? null,
+    useCallback((placeId: string, voteByMember: Record<string, any>, vote: any) => {
+      setSavedPlaces((prev) => prev.map((p) => (p.id === placeId ? { ...p, voteByMember, vote } : p)));
+    }, []),
+  );
 
   // Hide tab bar during initial load
   useEffect(() => {
@@ -320,7 +341,7 @@ function HomeScreen() {
 
   // Date range label (hotelPhotos now comes from hook)
   const dateRange = useMemo(
-    () => trip ? `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}` : '',
+    () => (trip ? `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}` : ''),
     [trip?.startDate, trip?.endDate],
   );
 
@@ -336,54 +357,69 @@ function HomeScreen() {
     [trip?.id, trip?.startDate, trip?.endDate, trip?.status, clockNow],
   );
   const totalNights = countdown.totalDays;
-  const openTripOverview = useCallback((section?: 'flights') => {
-    if (trip?.id) {
-      router.push({
-        pathname: '/trip-overview',
-        params: section ? { tripId: trip.id, section } : { tripId: trip.id },
-      } as never);
-    } else {
-      router.push('/trip-overview' as never);
-    }
-  }, [router, trip?.id]);
+  const openTripOverview = useCallback(
+    (section?: 'flights') => {
+      if (trip?.id) {
+        router.push({
+          pathname: '/trip-overview',
+          params: section ? { tripId: trip.id, section } : { tripId: trip.id },
+        } as never);
+      } else {
+        router.push('/trip-overview' as never);
+      }
+    },
+    [router, trip?.id],
+  );
 
   // Notification count for bell badge
-  const notifProps = useMemo(() => ({
-    dayOfTrip: countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1,
-    totalDays: countdown.totalDays,
-    daysLeft: countdown.daysLeft,
-    spent: totalSpent,
-    budget: trip?.budgetLimit ?? 0,
-    savedPlaces,
-    members,
-    destination: trip?.destination ?? '',
-  }), [countdown, totalSpent, trip?.budgetLimit, trip?.destination, savedPlaces, members]);
+  const notifProps = useMemo(
+    () => ({
+      dayOfTrip: countdown.status === 'active' ? (countdown.dayNumber ?? 1) : 1,
+      totalDays: countdown.totalDays,
+      daysLeft: countdown.daysLeft,
+      spent: totalSpent,
+      budget: trip?.budgetLimit ?? 0,
+      savedPlaces,
+      members,
+      destination: trip?.destination ?? '',
+    }),
+    [countdown, totalSpent, trip?.budgetLimit, trip?.destination, savedPlaces, members],
+  );
   // Single notification state — shared with both badge count and sheet
   const { notifications: dbNotifications, unreadCount: dbUnread, markRead, markAllRead } = useNotifications();
   const notifCount = useNotificationCount(notifProps, dbUnread);
 
   // Room info
   const roomInfo = useMemo(
-    () => trip?.roomType
-      ? `${trip.roomType} × 2 · ${totalNights} nights · ${dateRange}`
-      : undefined,
+    () => (trip?.roomType ? `${trip.roomType} × 2 · ${totalNights} nights · ${dateRange}` : undefined),
     [trip?.roomType, totalNights, dateRange],
   );
 
   const planningLocation = useMemo(
-    () => trip ? resolvePlanningLocation(trip, flights) : { query: '', label: '', source: 'none' as const },
+    () => (trip ? resolvePlanningLocation(trip, flights) : { query: '', label: '', source: 'none' as const }),
     [trip, flights],
   );
-  const planningLocationTitle = planningLocation.source === 'destination'
-    ? `Top 5 in ${planningLocation.label}`
-    : planningLocation.label
-      ? `Top 5 near ${planningLocation.label}`
-      : 'Unlock local picks';
+  const planningLocationTitle =
+    planningLocation.source === 'destination'
+      ? `Top 5 in ${planningLocation.label}`
+      : planningLocation.label
+        ? `Top 5 near ${planningLocation.label}`
+        : 'Unlock local picks';
 
   // Show branded loader until both: 3s minimum passed AND data loaded
   // In test mode, skip loader entirely — mock data is synchronous
   if (!isTestMode && (!loaderDone || loading)) {
-    return <AfterStayLoader />;
+    return (
+      <AfterStayLoader
+        message="Loading your trip..."
+        steps={[
+          'Checking active trip',
+          'Loading flights and companions',
+          'Preparing budget and places',
+          'Refreshing your travel story',
+        ]}
+      />
+    );
   }
 
   // Hook already returns test-mode-aware values for pastTrips, draftTrips, etc.
@@ -416,10 +452,12 @@ function HomeScreen() {
       activeTrips.length > 0 ||
       quickTrips.length > 0 ||
       draftTrips.length > 0 ||
-      allTrips.some(t => !t.deletedAt && !t.isDraft);
+      allTrips.some((t) => !t.deletedAt && !t.isDraft);
     if (hasHistory) {
       const displayName = userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || '';
-      const handle = user?.email?.split('@')[0] || (displayName.length > 0 ? displayName.toLowerCase().replace(/\s+/g, '') : 'traveler');
+      const handle =
+        user?.email?.split('@')[0] ||
+        (displayName.length > 0 ? displayName.toLowerCase().replace(/\s+/g, '') : 'traveler');
       return (
         <View style={{ flex: 1 }}>
           <ReturningUserHome
@@ -511,13 +549,7 @@ function HomeScreen() {
         />
         <ScrollView
           contentContainerStyle={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={refresh}
-              tintColor={colors.accentLt}
-            />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accentLt} />}
         >
           <EmptyState
             icon={Compass}
@@ -529,14 +561,23 @@ function HomeScreen() {
             onSecondary={() => router.push('/join-trip')}
           />
           <TouchableOpacity
-            style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border }}
+            style={{
+              marginTop: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingVertical: 12,
+              paddingHorizontal: 20,
+              backgroundColor: colors.card,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
             onPress={() => router.push('/(tabs)/discover')}
             activeOpacity={0.7}
           >
             <MapPin size={16} color={colors.accent} strokeWidth={2} />
-            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
-              Discover places to visit
-            </Text>
+            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>Discover places to visit</Text>
           </TouchableOpacity>
           {__DEV__ && debugInfo.length > 0 && (
             <Text style={{ marginTop: 12, color: colors.text3, fontSize: 10, fontFamily: 'monospace' }}>
@@ -562,13 +603,7 @@ function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={refresh}
-            tintColor={colors.accentLt}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accentLt} />}
       >
         {/* 1. Top bar */}
         <ProfileRow
@@ -609,11 +644,7 @@ function HomeScreen() {
 
         {/* 3. Phase card */}
         <View style={styles.phaseSection}>
-          <Animated.View
-            key={phase}
-            entering={FadeIn.duration(350)}
-            exiting={FadeOut.duration(200)}
-          >
+          <Animated.View key={phase} entering={FadeIn.duration(350)} exiting={FadeOut.duration(200)}>
             {phase === 'inflight' ? (
               (() => {
                 return (
@@ -630,28 +661,19 @@ function HomeScreen() {
                 );
               })()
             ) : phase === 'arrived' ? (
-              <ArrivedCard
-                destination={trip.destination}
-                hotelName={trip.accommodation}
-                onStart={goExplore}
-              />
+              <ArrivedCard destination={trip.destination} hotelName={trip.accommodation} onStart={goExplore} />
             ) : phase === 'active' ? (
               <TripActiveCard
                 trip={trip}
-                dayOfTrip={
-                  countdown.status === 'active'
-                    ? countdown.dayNumber ?? 1
-                    : 1
-                }
+                dayOfTrip={countdown.status === 'active' ? (countdown.dayNumber ?? 1) : 1}
                 totalDays={countdown.totalDays}
-                daysLeft={
-                  countdown.daysLeft
-                }
+                daysLeft={countdown.daysLeft}
                 budgetStatus={(() => {
                   const b = trip.budgetLimit ?? 0;
                   if (b <= 0) return 'cruising';
                   const pctSpent = totalSpent / b;
-                  const pctTime = (countdown.status === 'active' ? (countdown.dayNumber ?? 1) : 1) / countdown.totalDays;
+                  const pctTime =
+                    (countdown.status === 'active' ? (countdown.dayNumber ?? 1) : 1) / countdown.totalDays;
                   if (pctSpent > 1) return 'over';
                   if (pctSpent > pctTime * 1.15) return 'low';
                   return 'cruising';
@@ -682,40 +704,29 @@ function HomeScreen() {
                 <Text style={styles.draftHint}>
                   Upload your booking confirmation to unlock countdown, flights, and weather
                 </Text>
-	                <TouchableOpacity
-	                  style={styles.draftUploadBtn}
-	                  onPress={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
-	                  activeOpacity={0.7}
-	                >
+                <TouchableOpacity
+                  style={styles.draftUploadBtn}
+                  onPress={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.draftUploadText}>Upload Booking</Text>
                 </TouchableOpacity>
               </View>
             ) : phase === 'upcoming' ? (
               <CountdownCard
-                tripStartISO={
-                  phaseFlight?.departTime ??
-                  trip.startDate
-                }
+                tripStartISO={phaseFlight?.departTime ?? trip.startDate}
                 status={'upcoming'}
                 dayNumber={undefined}
                 totalDays={countdown.totalDays}
                 dateLabel={
-                  phaseFlight?.departTime
-                    ? formatDatePHT(
-                        phaseFlight.departTime,
-                      )
-                    : formatDatePHT(trip.startDate)
+                  phaseFlight?.departTime ? formatDatePHT(phaseFlight.departTime) : formatDatePHT(trip.startDate)
                 }
                 onBoard={boardFlight}
               />
             ) : null}
           </Animated.View>
           {hasPhaseOverride && phase !== 'completed' && phase !== 'planning' && phase !== 'upcoming' ? (
-            <TouchableOpacity
-              style={styles.resetPhaseBtn}
-              onPress={clearManualPhaseOverride}
-              activeOpacity={0.75}
-            >
+            <TouchableOpacity style={styles.resetPhaseBtn} onPress={clearManualPhaseOverride} activeOpacity={0.75}>
               <Text style={styles.resetPhaseText}>Reset to schedule</Text>
             </TouchableOpacity>
           ) : null}
@@ -731,37 +742,39 @@ function HomeScreen() {
             members={members}
             savedPlaces={savedPlaces}
             onScanBooking={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
-	            onAction={(key) => {
-	              switch (key) {
-	                case 'flights': openTripOverview('flights'); break;
-	                case 'accommodation': openTripOverview(); break;
-	                case 'members': router.push('/add-member' as never); break;
-	                case 'places': router.push('/(tabs)/discover' as never); break;
-	                case 'budget': router.push('/(tabs)/budget' as never); break;
-	                default: openTripOverview();
-	              }
-	            }}
+            onAction={(key) => {
+              switch (key) {
+                case 'flights':
+                  openTripOverview('flights');
+                  break;
+                case 'accommodation':
+                  openTripOverview();
+                  break;
+                case 'members':
+                  router.push('/add-member' as never);
+                  break;
+                case 'places':
+                  router.push('/(tabs)/discover' as never);
+                  break;
+                case 'budget':
+                  router.push('/(tabs)/budget' as never);
+                  break;
+                default:
+                  openTripOverview();
+              }
+            }}
           />
         )}
 
         {/* 3c. Top picks — keep this high on the page so planning does not dead-end */}
         {planningLocation.query ? (
           <>
-            <SectionHeader
-              kicker="Curated for you"
-              title={planningLocationTitle}
-            />
-            <HomeTopPicks
-              destination={planningLocation.query}
-              hotelName={trip.accommodation || undefined}
-            />
+            <SectionHeader kicker="Curated for you" title={planningLocationTitle} />
+            <HomeTopPicks destination={planningLocation.query} hotelName={trip.accommodation || undefined} />
           </>
         ) : (
           <>
-            <SectionHeader
-              kicker="Curated for you"
-              title={planningLocationTitle}
-            />
+            <SectionHeader kicker="Curated for you" title={planningLocationTitle} />
             <View style={styles.discoverFallbackCard}>
               <Text style={styles.discoverFallbackTitle}>Add a destination or booking to unlock local picks</Text>
               <Text style={styles.discoverFallbackBody}>
@@ -797,7 +810,7 @@ function HomeScreen() {
 
         {/* 4. Moments preview — first after trip card */}
         <SectionHeader
-          kicker={`Moments · Day ${countdown.status === 'active' ? countdown.dayNumber ?? 1 : 1}`}
+          kicker={`Moments · Day ${countdown.status === 'active' ? (countdown.dayNumber ?? 1) : 1}`}
           title="Trip so far"
         />
         <HomeMomentsPreview
@@ -809,41 +822,50 @@ function HomeScreen() {
         {/* 5. Weather — collapsible */}
         <CollapsibleSection
           kicker="Weather"
-          title={phase === 'active'
-            ? `${trip.destination ?? 'Destination'} right now`
-            : `${trip.destination ?? 'Destination'} this week`}
+          title={
+            phase === 'active'
+              ? `${trip.destination ?? 'Destination'} right now`
+              : `${trip.destination ?? 'Destination'} this week`
+          }
         >
           <WeatherForecastCard destination={trip.destination} />
         </CollapsibleSection>
 
-	        {/* 6. Flight card — only for plane transport or existing flights */}
-	        {showFlightFeatures && (() => {
-	          const visibleFlights = sortFlightsByTime(flights)
-	            .map((flight) => ({ flight, direction: inferFlightLeg(flight, flights) }))
-	            .filter((item, index, arr) => arr.findIndex((other) => other.flight.id === item.flight.id) === index);
-	          const fallbackDirection = phase === 'active' ? 'return' : 'outbound';
-	          const firstFlight = visibleFlights[0]?.flight;
-	          const title = visibleFlights.length > 1
-	            ? 'Trip flights'
-	            : `Flight to ${firstFlight?.to ?? (phase === 'active' ? 'Home' : trip.destination ?? 'Destination')}`;
-          return (
-            <>
-              <SectionHeader
-                kicker={`Transit · ${visibleFlights.length > 1 ? 'Round trip' : fallbackDirection === 'return' ? 'Return' : 'Outbound'}`}
-                title={title}
-              />
-	              <View style={styles.flightStack}>
-	                {visibleFlights.length > 0 ? (
-	                  visibleFlights.map(({ flight, direction }) => (
-	                    <FlightCard key={flight.id} flight={flight} direction={direction} onAddFlight={() => openTripOverview('flights')} />
-	                  ))
-	                ) : (
-	                  <FlightCard direction={fallbackDirection} onAddFlight={() => openTripOverview('flights')} />
-	                )}
-	              </View>
-            </>
-          );
-        })()}
+        {/* 6. Flight card — only for plane transport or existing flights */}
+        {showFlightFeatures &&
+          (() => {
+            const visibleFlights = sortFlightsByTime(flights)
+              .map((flight) => ({ flight, direction: inferFlightLeg(flight, flights) }))
+              .filter((item, index, arr) => arr.findIndex((other) => other.flight.id === item.flight.id) === index);
+            const fallbackDirection = phase === 'active' ? 'return' : 'outbound';
+            const firstFlight = visibleFlights[0]?.flight;
+            const title =
+              visibleFlights.length > 1
+                ? 'Trip flights'
+                : `Flight to ${firstFlight?.to ?? (phase === 'active' ? 'Home' : (trip.destination ?? 'Destination'))}`;
+            return (
+              <>
+                <SectionHeader
+                  kicker={`Transit · ${visibleFlights.length > 1 ? 'Round trip' : fallbackDirection === 'return' ? 'Return' : 'Outbound'}`}
+                  title={title}
+                />
+                <View style={styles.flightStack}>
+                  {visibleFlights.length > 0 ? (
+                    visibleFlights.map(({ flight, direction }) => (
+                      <FlightCard
+                        key={flight.id}
+                        flight={flight}
+                        direction={direction}
+                        onAddFlight={() => openTripOverview('flights')}
+                      />
+                    ))
+                  ) : (
+                    <FlightCard direction={fallbackDirection} onAddFlight={() => openTripOverview('flights')} />
+                  )}
+                </View>
+              </>
+            );
+          })()}
 
         {/* Bottom spacer for FAB clearance */}
         <View style={{ height: 80 }} />

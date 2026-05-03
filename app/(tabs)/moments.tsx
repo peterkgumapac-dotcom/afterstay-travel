@@ -25,9 +25,13 @@ function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve(fallback), TAB_LOAD_TIMEOUT_MS);
     promise
-      .then(resolve)
-      .catch(() => resolve(fallback))
-      .finally(() => clearTimeout(timer));
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      }, () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      });
   });
 }
 
@@ -95,8 +99,12 @@ function MomentsScreen() {
     }
 
     withTimeout(getAllTripsPromise(true), [] as Trip[])
-      .then(applyTrips)
-      .finally(() => { if (!cancelled) setLoadingTrips(false); });
+      .then((trips) => {
+        applyTrips(trips);
+        if (!cancelled) setLoadingTrips(false);
+      }, () => {
+        if (!cancelled) setLoadingTrips(false);
+      });
 
     // Always fetch quick trips
     withTimeout(getQuickTrips(), [] as QuickTrip[])

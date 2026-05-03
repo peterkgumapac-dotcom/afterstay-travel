@@ -48,6 +48,8 @@ interface AIConciergeProps {
   tripId: string | null;
   tripDest: string;
   tripCoords: { lat: number; lng: number } | null;
+  originCoords?: { lat: number; lng: number } | null;
+  originLabel?: string;
   tripHotel: string;
   tripGroupSize: number;
   tripMembers: GroupMember[];
@@ -65,6 +67,8 @@ export default function AIConcierge({
   tripId,
   tripDest,
   tripCoords,
+  originCoords,
+  originLabel,
   tripHotel,
   tripGroupSize,
   tripMembers,
@@ -95,8 +99,8 @@ export default function AIConcierge({
   const [searchLabel, setSearchLabel] = useState('');
   const destTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const effectiveCoords = tripCoords ?? searchCoords;
-  const effectiveDest = tripDest || searchLabel;
+  const effectiveCoords = tripCoords ?? originCoords ?? searchCoords;
+  const effectiveDest = tripDest || originLabel || searchLabel;
   const isGroup = tripMembers.length >= 2;
 
   // ── Handlers ────────────────────────────────────────────────────

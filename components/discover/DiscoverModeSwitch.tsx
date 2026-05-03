@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Compass, MapPin } from 'lucide-react-native';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -26,6 +26,10 @@ export default function DiscoverModeSwitch({ mode, onModeChange }: DiscoverModeS
   const { colors } = useTheme();
   const isPaper = mode === 'explore_moments';
   const pillX = useSharedValue(mode === 'explore_moments' ? 0 : 1);
+
+  useEffect(() => {
+    pillX.value = withTiming(mode === 'explore_moments' ? 0 : 1, { duration: DURATION });
+  }, [mode, pillX]);
 
   const handlePress = useCallback((id: DiscoverMode) => {
     if (id === mode) return;

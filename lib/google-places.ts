@@ -4,6 +4,7 @@
 import { supabase } from './supabase';
 
 const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place';
+const WIKIPEDIA_SUMMARY_BASE = 'https://en.wikipedia.org/api/rest_v1/page/summary';
 const PUBLIC_PLACES_KEY =
   process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ||
   process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY ||
@@ -60,7 +61,14 @@ async function resolvePhotoUrl(photoRef: string, maxWidth = 800): Promise<string
     photo_reference: photoRef,
     key: PUBLIC_PLACES_KEY,
   });
-  return `${PLACES_BASE}/photo?${params.toString()}`;
+  const photoUrl = `${PLACES_BASE}/photo?${params.toString()}`;
+  try {
+    const res = await fetch(photoUrl, { redirect: 'follow' });
+    if (res.ok && res.url) return res.url;
+  } catch (err) {
+    if (__DEV__) console.warn('[google-places] direct photo resolution failed:', err);
+  }
+  return photoUrl;
 }
 
 async function directSearch(query: string, fields?: string): Promise<any | null> {
@@ -121,6 +129,33 @@ async function directAutocomplete(
   }
 }
 
+async function directNearby(payload: {
+  lat: number;
+  lng: number;
+  radius?: number;
+  type?: string;
+  keyword?: string;
+  pagetoken?: string;
+}): Promise<any | null> {
+  if (!PUBLIC_PLACES_KEY) return null;
+  try {
+    const params = new URLSearchParams({
+      location: `${payload.lat},${payload.lng}`,
+      radius: String(payload.radius || 5000),
+      key: PUBLIC_PLACES_KEY,
+    });
+    if (payload.type) params.set('type', payload.type);
+    if (payload.keyword) params.set('keyword', payload.keyword);
+    if (payload.pagetoken) params.set('pagetoken', payload.pagetoken);
+    const res = await fetch(`${PLACES_BASE}/nearbysearch/json?${params.toString()}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch (err) {
+    if (__DEV__) console.warn('[google-places] direct nearby failed:', err);
+    return null;
+  }
+}
+
 // Pick the best exterior/place photo — avoid food close-ups and product shots.
 function pickBestPhotoRef(photos: any[] | undefined): string | null {
   if (!photos || photos.length === 0) return null;
@@ -138,6 +173,37 @@ async function resolvePhotos(photos: any[] | undefined, count = 1, maxWidth = 12
     .filter(Boolean) as string[];
   const urls = await Promise.all(refs.map((ref) => resolvePhotoUrl(ref, maxWidth)));
   return urls.filter((u): u is string => u !== null);
+}
+
+function destinationTitles(destination: string): string[] {
+  const clean = destination.trim().replace(/\s+/g, ' ');
+  const withoutCountry = clean.split(',')[0]?.trim() ?? clean;
+  const withoutParen = withoutCountry.replace(/\s*\([^)]*\)\s*/g, '').trim();
+  const titles = [withoutParen, withoutCountry, clean]
+    .filter(Boolean)
+    .map((title) => {
+      if (/boracay|caticlan|godofredo|mph/i.test(title)) return 'Boracay';
+      if (/palawan|coron|usu/i.test(title)) return 'Palawan';
+      return title;
+    });
+  return Array.from(new Set(titles));
+}
+
+async function fetchWikimediaPhoto(destination: string): Promise<string | null> {
+  for (const title of destinationTitles(destination)) {
+    try {
+      const res = await fetch(`${WIKIPEDIA_SUMMARY_BASE}/${encodeURIComponent(title)}`, {
+        headers: { 'User-Agent': 'AfterStayTravel/1.0' },
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const url = data?.originalimage?.source ?? data?.thumbnail?.source;
+      if (typeof url === 'string' && url.startsWith('https://')) return url;
+    } catch (err) {
+      if (__DEV__) console.warn('[google-places] wikimedia fallback failed:', err);
+    }
+  }
+  return null;
 }
 
 export async function searchPlace(
@@ -175,6 +241,7 @@ export async function fetchDestinationPhotos(
   count = 6,
 ): Promise<string[]> {
   if (!destination) return [];
+  const collected: string[] = [];
   const queries = [
     `${destination} travel destination`,
     `${destination} landmark`,
@@ -186,9 +253,14 @@ export async function fetchDestinationPhotos(
       ?? await directSearch(query, 'photos');
     const photos: any[] = data?.candidates?.[0]?.photos ?? [];
     const urls = await resolvePhotos(photos, count, 1200);
-    if (urls.length > 0) return urls;
+    for (const url of urls) {
+      if (!collected.includes(url)) collected.push(url);
+      if (collected.length >= count) return collected;
+    }
   }
-  return [];
+  const fallback = await fetchWikimediaPhoto(destination);
+  if (fallback && !collected.includes(fallback)) collected.push(fallback);
+  return collected;
 }
 
 export interface NearbyPlace {
@@ -232,16 +304,20 @@ export async function searchNearby(
   radius = 5000,
 ): Promise<NearbySearchResult> {
   if (!coords) return { places: [] };
-  const data = await callProxy<any>('nearby', {
+  const payload = {
     lat: coords.lat,
     lng: coords.lng,
     radius,
     type,
     keyword,
-  });
+  };
+  const proxyData = await callProxy<any>('nearby', payload);
+  const data = proxyData?.results?.length
+    ? proxyData
+    : await directNearby(payload) ?? proxyData;
   if (!data?.results) return { places: [] };
 
-  const places: NearbyPlace[] = (data.results as any[]).map((place: any) => ({
+  const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => ({
     place_id: place.place_id,
     name: place.name,
     rating: place.rating ?? 0,
@@ -251,10 +327,10 @@ export async function searchNearby(
     lat: place.geometry?.location?.lat ?? 0,
     lng: place.geometry?.location?.lng ?? 0,
     open_now: place.opening_hours?.open_now,
-    photo_url: place.resolved_photo_url ?? null,
+    photo_url: place.resolved_photo_url ?? (pickBestPhotoRef(place.photos) ? await resolvePhotoUrl(pickBestPhotoRef(place.photos)!, 800) : null),
     types: place.types ?? [],
     editorial_summary: place.editorial_summary ?? undefined,
-  }));
+  })));
 
   return { places, nextPageToken: data.next_page_token ?? undefined };
 }
@@ -263,10 +339,14 @@ export async function searchNearby(
 export async function searchNearbyPage(
   pageToken: string,
 ): Promise<NearbySearchResult> {
-  const data = await callProxy<any>('nearby', { pagetoken: pageToken, lat: 0, lng: 0 });
+  const payload = { pagetoken: pageToken, lat: 0, lng: 0 };
+  const proxyData = await callProxy<any>('nearby', payload);
+  const data = proxyData?.results?.length
+    ? proxyData
+    : await directNearby(payload) ?? proxyData;
   if (!data?.results) return { places: [] };
 
-  const places: NearbyPlace[] = (data.results as any[]).map((place: any) => ({
+  const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => ({
     place_id: place.place_id,
     name: place.name,
     rating: place.rating ?? 0,
@@ -276,10 +356,10 @@ export async function searchNearbyPage(
     lat: place.geometry?.location?.lat ?? 0,
     lng: place.geometry?.location?.lng ?? 0,
     open_now: place.opening_hours?.open_now,
-    photo_url: place.resolved_photo_url ?? null,
+    photo_url: place.resolved_photo_url ?? (pickBestPhotoRef(place.photos) ? await resolvePhotoUrl(pickBestPhotoRef(place.photos)!, 800) : null),
     types: place.types ?? [],
     editorial_summary: place.editorial_summary ?? undefined,
-  }));
+  })));
 
   return { places, nextPageToken: data.next_page_token ?? undefined };
 }

@@ -55,11 +55,16 @@ export default function JoinTripScreen() {
   const [savingFlight, setSavingFlight] = useState(false);
   const primaryBookerFlights = useMemo(() => getPrimaryBookerFlights(groupFlights), [groupFlights]);
 
-  const saveSharingPreference = async () => {
+  const buildTravelNotes = (flightNote?: string) => {
+    const stayNote = sharesStay ? 'Same stay confirmed' : 'Own stay';
+    return [stayNote, flightNote].filter(Boolean).join(' · ');
+  };
+
+  const saveSharingPreference = async (flightNote?: string) => {
     if (!tripInfo) return;
     await updateMyTripMemberPreferences(tripInfo.id, {
       sharesAccommodation: sharesStay,
-      travelNotes: sharesStay ? 'Confirmed shared accommodation' : 'Has separate accommodation',
+      travelNotes: buildTravelNotes(flightNote),
     }).catch(() => {});
   };
 
@@ -86,7 +91,7 @@ export default function JoinTripScreen() {
     if (!flightNumber.trim() || !tripInfo) return;
     setSavingFlight(true);
     try {
-      await saveSharingPreference();
+      await saveSharingPreference(`Different flight${seatNumber.trim() ? ` · seat ${seatNumber.trim()}` : ''}`);
       await addFlight({
         tripId: tripInfo.id,
         direction: 'Outbound',
@@ -109,7 +114,7 @@ export default function JoinTripScreen() {
   };
 
   const handleSkipFlight = async () => {
-    if (tripInfo) await saveSharingPreference();
+    if (tripInfo) await saveSharingPreference('Flight later');
     await completeOnboarding(user?.id);
     router.replace('/(tabs)/home' as never);
   };
@@ -118,7 +123,12 @@ export default function JoinTripScreen() {
     if (!tripInfo) return;
     setSavingFlight(true);
     try {
-      await saveSharingPreference();
+      const copiedCount = primaryBookerFlights.length;
+      await saveSharingPreference(
+        copiedCount > 0
+          ? `Same flight${copiedCount > 1 ? 's' : ''} as organizer${seatNumber.trim() ? ` · seat ${seatNumber.trim()}` : ''}`
+          : 'Flight later',
+      );
 
       const results = await Promise.allSettled(primaryBookerFlights.map((sharedFlight) => addFlight({
         tripId: tripInfo.id,

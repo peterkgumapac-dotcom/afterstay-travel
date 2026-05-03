@@ -47,6 +47,9 @@ const STAY_SEARCH: Record<StayChip, { type: string; keyword: string }> = {
 
 interface StaysTabProps {
   tripCoords: { lat: number; lng: number } | null;
+  originCoords?: { lat: number; lng: number } | null;
+  originLabel?: string;
+  originKind?: 'trip' | 'searched_destination' | 'current_location' | 'none';
   tripId: string | null;
   tripDest: string;
   travelMode: 'walk' | 'car';
@@ -62,6 +65,9 @@ interface StaysTabProps {
 
 export default function StaysTab({
   tripCoords,
+  originCoords,
+  originLabel,
+  originKind = 'none',
   tripId,
   tripDest,
   travelMode,
@@ -92,7 +98,8 @@ export default function StaysTab({
   // Filter state
   const [minRating, setMinRating] = useState(0);
 
-  const effectiveCoords = tripCoords ?? searchCoords;
+  const effectiveCoords = tripCoords ?? originCoords ?? searchCoords;
+  const effectiveLabel = tripDest || originLabel || searchLabel;
   const savedSet = useMemo(
     () => savedNames ?? new Set(savedPlaces.map((p) => p.name)),
     [savedNames, savedPlaces],
@@ -221,13 +228,15 @@ export default function StaysTab({
         isRecommended={false}
         onSave={() => onSavePlace(item)}
         onRecommend={() => {}}
+        saveActionLabel={tripId ? 'Save to trip' : 'Save for later'}
+        savedActionLabel={tripId ? 'Saved to trip' : 'Saved for later'}
         onExplore={onExplore}
         showRecommend={tripMembers.length >= 2}
         voteByMember={{}}
         memberNames={memberNames}
       />
     </View>
-  ), [distMap, travelMode, savedSet, onSavePlace, onExplore, tripMembers.length, memberNames]);
+  ), [distMap, travelMode, savedSet, onSavePlace, onExplore, tripMembers.length, memberNames, s.cardWrap, tripId]);
 
   const ListHeader = useMemo(() => (
     <>
@@ -263,8 +272,8 @@ export default function StaysTab({
               ))}
             </View>
           )}
-          {searchLabel ? (
-            <Text style={s.searchingLabel}>Showing stays near {searchLabel}</Text>
+          {effectiveLabel && (originKind !== 'none' || searchLabel) ? (
+            <Text style={s.searchingLabel}>Showing stays near {effectiveLabel}</Text>
           ) : null}
         </View>
       )}
@@ -321,7 +330,7 @@ export default function StaysTab({
         </View>
       )}
     </>
-  ), [tripCoords, s, destQuery, handleDestInput, clearDestination, destSuggestions, searchLabel, selectDestination, chip, minRating, loading, effectiveCoords, filtered.length]);
+  ), [tripCoords, s, colors.text3, colors.accent, destQuery, handleDestInput, clearDestination, destSuggestions, effectiveLabel, originKind, searchLabel, selectDestination, chip, minRating, loading, effectiveCoords, filtered.length]);
 
   const ListEmpty = useMemo(() => {
     if (loading || effectiveCoords) return null;
@@ -336,7 +345,7 @@ export default function StaysTab({
         </Text>
       </View>
     );
-  }, [loading, effectiveCoords, s, tripCoords]);
+  }, [loading, effectiveCoords, s, colors.text3, tripCoords]);
 
   return (
     <FlatList

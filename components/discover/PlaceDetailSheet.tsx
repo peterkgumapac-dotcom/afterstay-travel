@@ -46,6 +46,8 @@ interface Props {
   saved?: boolean;
   onClose: () => void;
   onSaveToggle?: () => void;
+  saveActionLabel?: string;
+  savedActionLabel?: string;
   distanceKm?: number;
   travelMode?: 'walk' | 'car';
   /** Called when user taps "Recommend to Group" */
@@ -168,6 +170,8 @@ export const PlaceDetailSheet: React.FC<Props> = ({
   saved = false,
   onClose,
   onSaveToggle,
+  saveActionLabel = 'Save',
+  savedActionLabel = 'Saved',
   distanceKm,
   travelMode = 'walk',
   onRecommend,
@@ -329,7 +333,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
                     <Bookmark size={20} color={colors.text2} />
                   )}
                   <Text style={[s.actionLabel, saved && { color: colors.accent }]}>
-                    {saved ? 'Saved' : 'Save'}
+                    {saved ? savedActionLabel : saveActionLabel}
                   </Text>
                 </TouchableOpacity>
 
@@ -343,7 +347,7 @@ export const PlaceDetailSheet: React.FC<Props> = ({
                   >
                     <Users size={20} color={isRecommended ? colors.accent : colors.text2} />
                     <Text style={[s.actionLabel, isRecommended && { color: colors.accent }]}>
-                      {isRecommended ? 'Recommended' : 'Recommend'}
+                      {isRecommended ? 'Recommended' : 'Recommend to group'}
                     </Text>
                   </TouchableOpacity>
                 )}

@@ -66,10 +66,12 @@ async function getFirebaseAccessToken(): Promise<string | null> {
 
 function stringifyData(data: Record<string, unknown> = {}): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(data).map(([key, value]) => [
-      key,
-      typeof value === 'string' ? value : JSON.stringify(value),
-    ]),
+    Object.entries(data)
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([key, value]) => [
+        key,
+        typeof value === 'string' ? value : JSON.stringify(value),
+      ]),
   );
 }
 
@@ -111,6 +113,13 @@ serve(async (req) => {
       }
     }
 
+    const notificationData = {
+      ...(record.data ?? {}),
+      type: record.data?.type ?? record.type,
+      tripId: record.data?.tripId ?? record.trip_id,
+      notificationId: record.id,
+    };
+
     if (profile.fcm_token) {
       const firebaseProjectId = Deno.env.get('FIREBASE_PROJECT_ID');
       const accessToken = await getFirebaseAccessToken();
@@ -130,7 +139,7 @@ serve(async (req) => {
                   title: `AfterStay · ${record.title}`,
                   body: record.body,
                 },
-                data: stringifyData(record.data ?? {}),
+                data: stringifyData(notificationData),
                 android: {
                   priority: 'HIGH',
                   notification: {
@@ -188,7 +197,7 @@ serve(async (req) => {
         sound: 'default',
         title: `AfterStay · ${record.title}`,
         body: record.body,
-        data: record.data ?? {},
+        data: notificationData,
         channelId: 'afterstay',
         priority: 'high',
         ttl: 3600,

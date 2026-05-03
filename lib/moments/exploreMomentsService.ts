@@ -1,10 +1,12 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
-import { base64ToBytes } from '@/lib/base64';
 import { compressImage } from '@/lib/compressImage';
 import { getPublicProfiles, searchProfiles as searchPublicProfiles, supabase } from '@/lib/supabase';
 import type { FeedPost, PostMedia, PostTag, Story } from '@/lib/types';
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY ?? '';
 
 // ── Feed ────────────────────────────────────────────────────────
 
@@ -54,6 +56,50 @@ function withUploadTimeout<T>(promise: Promise<T>, message: string, ms = 45_000)
   });
 }
 
+function encodeStoragePath(path: string): string {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
+async function uploadLocalFileToStorage(input: {
+  bucket: string;
+  path: string;
+  fileUri: string;
+  contentType: string;
+  upsert?: boolean;
+  timeoutMs?: number;
+}): Promise<void> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token || SUPABASE_KEY;
+  const fileUri = input.fileUri.startsWith('/') ? `file://${input.fileUri}` : input.fileUri;
+  const url = `${SUPABASE_URL}/storage/v1/object/${input.bucket}/${encodeStoragePath(input.path)}`;
+  const result = await withUploadTimeout(
+    FileSystem.uploadAsync(url, fileUri, {
+      httpMethod: 'POST',
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': input.contentType,
+        'x-upsert': input.upsert ? 'true' : 'false',
+      },
+    }),
+    'Photo upload timed out. Please check your connection and try again.',
+    input.timeoutMs ?? 150_000,
+  );
+  if (result.status < 200 || result.status >= 300) {
+    let message = result.body || `HTTP ${result.status}`;
+    try {
+      const parsed = JSON.parse(result.body) as { message?: string; error?: string };
+      message = parsed.message || parsed.error || message;
+    } catch {
+      // Storage may return plain text.
+    }
+    throw new Error(message);
+  }
+}
+
 export async function getExploreFeed(params: ExploreFeedParams = {}): Promise<FeedPost[]> {
   const { mode = 'recent', locationName, limit = 20, offset = 0 } = params;
 
@@ -79,20 +125,6 @@ interface CreatePostInput {
   localMediaUris: string[];
 }
 
-async function readFileAsBytes(uri: string): Promise<Uint8Array> {
-  if (uri.startsWith('file://') || uri.startsWith('/')) {
-    const fetchUri = uri.startsWith('/') ? `file://${uri}` : uri;
-    const response = await fetch(fetchUri);
-    const buffer = await response.arrayBuffer();
-    return new Uint8Array(buffer);
-  }
-  // content:// URIs (Android picker) — must use FileSystem
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  return base64ToBytes(base64);
-}
-
 async function uploadMedia(
   userId: string,
   postId: string,
@@ -106,13 +138,14 @@ async function uploadMedia(
   const storagePath = `posts/${userId}/${postId}/${index}.jpg`;
   const contentType = 'image/jpeg';
 
-  const bytes = await readFileAsBytes(uploadUri);
-
-  const { error } = await supabase.storage
-    .from('moments')
-    .upload(storagePath, bytes, { contentType, upsert: true });
-
-  if (error) throw new Error(`uploadMedia: ${error.message}`);
+  await uploadLocalFileToStorage({
+    bucket: 'moments',
+    path: storagePath,
+    fileUri: uploadUri,
+    contentType,
+    upsert: true,
+    timeoutMs: 150_000,
+  });
 
   const { data: urlData } = supabase.storage.from('moments').getPublicUrl(storagePath);
   return { storagePath, mediaUrl: urlData.publicUrl };
@@ -401,13 +434,14 @@ export async function createStory(input: {
   const storagePath = `stories/${user.id}/${storyId}.${ext}`;
   const contentType = 'image/jpeg';
 
-  const bytes = await readFileAsBytes(compressedUri);
-
-  const { error: uploadErr } = await supabase.storage
-    .from('moments')
-    .upload(storagePath, bytes, { contentType, upsert: true });
-
-  if (uploadErr) throw new Error(`createStory upload: ${uploadErr.message}`);
+  await uploadLocalFileToStorage({
+    bucket: 'moments',
+    path: storagePath,
+    fileUri: compressedUri,
+    contentType,
+    upsert: true,
+    timeoutMs: 150_000,
+  });
 
   const { data: urlData } = supabase.storage.from('moments').getPublicUrl(storagePath);
   if (!urlData.publicUrl) throw new Error('createStory: public URL could not be generated');

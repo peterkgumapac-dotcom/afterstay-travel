@@ -144,10 +144,26 @@ export default function NotificationSettingsScreen() {
         .single();
       if (error) throw new Error(`Notification insert failed: ${error.message}`);
 
-      const { error: pushError } = await supabase.functions.invoke('send-push-notification', {
+      const { data: pushResult, error: pushError } = await supabase.functions.invoke('send-push-notification', {
         body: { type: 'INSERT', record: data },
       });
       if (pushError) throw new Error(`Push function failed: ${pushError.message}`);
+      if (typeof pushResult === 'string' && /no token|quiet hours|missing/i.test(pushResult)) {
+        throw new Error(pushResult === 'No token'
+          ? 'No push token is saved for this device yet. Close and reopen the app, then try again.'
+          : pushResult);
+      }
+      if (
+        pushResult &&
+        typeof pushResult === 'object' &&
+        'ok' in pushResult &&
+        (pushResult as { ok?: boolean }).ok === false
+      ) {
+        const result = pushResult as { provider?: string; error?: string; code?: string };
+        throw new Error(
+          `${result.provider ?? 'Push'} delivery failed${result.code ? ` (${result.code})` : ''}: ${result.error ?? 'unknown error'}`,
+        );
+      }
 
       Alert.alert('Test sent', 'If your device token is valid, the push should arrive shortly.');
     } catch (err) {

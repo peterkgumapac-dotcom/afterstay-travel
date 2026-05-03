@@ -54,6 +54,8 @@ interface DiscoverPlaceCardProps {
   isRecommended: boolean;
   onSave: (name: string) => void;
   onRecommend: (name: string) => void;
+  saveActionLabel?: string;
+  savedActionLabel?: string;
   onExplore?: (placeId: string | undefined, name: string) => void;
   onAddToPlanner?: (place: DiscoverPlace) => void;
   /** Whether to show the recommend-to-group button */
@@ -75,6 +77,8 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
   isSaved,
   onSave,
   onRecommend,
+  saveActionLabel = 'Save',
+  savedActionLabel = 'Saved',
   onExplore,
   onAddToPlanner,
   showRecommend,
@@ -243,7 +247,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
         style={styles.bookmarkBtn}
         activeOpacity={0.6}
         accessibilityRole="button"
-        accessibilityLabel={isSaved ? 'Unsave' : 'Save'}
+          accessibilityLabel={isSaved ? `Remove from ${savedActionLabel.toLowerCase()}` : saveActionLabel}
         hitSlop={8}
       >
         <Svg

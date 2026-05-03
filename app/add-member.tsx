@@ -17,7 +17,7 @@ import {
 import FormField from '@/components/FormField';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { addGroupMember, createInviteCode, getActiveTrip } from '@/lib/supabase';
+import { addGroupMember, getActiveTrip, getOrCreateInviteCode } from '@/lib/supabase';
 
 export default function AddMemberScreen() {
   const router = useRouter();
@@ -32,7 +32,7 @@ export default function AddMemberScreen() {
   const sendInvite = async (targetEmail?: string, targetPhone?: string) => {
     const trip = await getActiveTrip();
     if (!trip) return Alert.alert('No active trip', 'Create or select a trip before inviting members.');
-    const inviteCode = await createInviteCode(trip.id);
+    const inviteCode = await getOrCreateInviteCode(trip.id);
     const webLink = `https://afterstay.travel/join/${inviteCode}`;
     const deepLink = `afterstay://join-trip?code=${inviteCode}`;
     const message =
@@ -43,10 +43,10 @@ export default function AddMemberScreen() {
 
     try {
       if (targetPhone) {
-        await Linking.openURL(`sms:${targetPhone}?body=${encodeURIComponent(message)}`);
+        await Linking.openURL(`sms:${encodeURIComponent(targetPhone)}?body=${encodeURIComponent(message)}`);
       } else if (targetEmail) {
         await Linking.openURL(
-          `mailto:${targetEmail}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(message)}`,
+          `mailto:${encodeURIComponent(targetEmail)}?subject=${encodeURIComponent('Join our trip on AfterStay')}&body=${encodeURIComponent(message)}`,
         );
       } else {
         await Share.share({ message });
@@ -84,7 +84,8 @@ export default function AddMemberScreen() {
           {
             text: 'Send invite',
             onPress: () => {
-              void sendInvite(trimmedEmail || undefined, trimmedPhone || undefined).finally(() => router.back());
+              void sendInvite(trimmedEmail || undefined, trimmedPhone || undefined)
+                .then(() => router.back(), () => router.back());
             },
           },
         ],

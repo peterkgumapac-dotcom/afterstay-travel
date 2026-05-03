@@ -77,9 +77,13 @@ function GuideScreen() {
   const loadTrip = useCallback((force = false) => {
     if (testModeRef.current) { setRefreshing(false); return; }
     getActiveTrip(force)
-      .then((t) => { if (t) setTrip(t); })
-      .catch((err) => { if (__DEV__) console.warn('[Guide] loadTrip failed:', err); })
-      .finally(() => setRefreshing(false));
+      .then((t) => {
+        if (t) setTrip(t);
+        setRefreshing(false);
+      }, (err) => {
+        if (__DEV__) console.warn('[Guide] loadTrip failed:', err);
+        setRefreshing(false);
+      });
   }, []);
 
   useEffect(() => { loadTrip(); }, [loadTrip]);

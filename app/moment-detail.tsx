@@ -35,9 +35,10 @@ export default function MomentDetailScreen() {
       .then((moments) => {
         const found = moments.find((m) => m.id === momentId);
         setMoment(found ?? null);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+        setLoading(false);
+      }, () => {
+        setLoading(false);
+      });
   }, [momentId, tripId]);
 
   const handleShare = useCallback(() => {

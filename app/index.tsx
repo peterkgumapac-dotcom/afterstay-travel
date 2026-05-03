@@ -45,7 +45,13 @@ export default function Index() {
         // Derive status from Supabase trips.
         // Retries are built into deriveUserStatus (auth token race on cold start)
         const result = await deriveUserStatus(session.user.id);
-        if (__DEV__) console.log('[Index] derived status:', result.status, '| trips:', result.completedTrips.length + result.planningTrips.length + (result.activeTrip ? 1 : 0));
+        if (__DEV__)
+          console.log(
+            '[Index] derived status:',
+            result.status,
+            '| trips:',
+            result.completedTrips.length + result.planningTrips.length + (result.activeTrip ? 1 : 0),
+          );
 
         if (result.status !== 'new') {
           // User has trips — restore the flag and skip onboarding
@@ -58,14 +64,25 @@ export default function Index() {
         if (__DEV__) console.error('[Index] error deriving status:', err);
         const cachedFlag = await cacheGet<boolean>(`onboarding_complete:${session.user.id}`);
         const cachedProgress = await getOnboardingProgress(session.user.id);
-        if (cachedProgress && isOnboardingIncomplete(cachedProgress)) setTarget(cachedProgress.stage === 'planning_draft' ? 'home' : 'onboarding');
+        if (cachedProgress && isOnboardingIncomplete(cachedProgress))
+          setTarget(cachedProgress.stage === 'planning_draft' ? 'home' : 'onboarding');
         else setTarget(cachedFlag ? 'home' : 'welcome');
       }
     })();
   }, [session, loading]);
 
   if (loading || (session && target === null)) {
-    return <AfterStayLoader />;
+    return (
+      <AfterStayLoader
+        message={loading ? 'Opening AfterStay...' : 'Finding your trip state...'}
+        steps={[
+          'Checking your session',
+          'Looking for onboarding progress',
+          'Loading trips for this account',
+          'Sending you to the right screen',
+        ]}
+      />
+    );
   }
 
   if (!session) return <Redirect href="/auth/login" />;
