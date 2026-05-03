@@ -5,7 +5,6 @@ import AfterStayLoader from '@/components/AfterStayLoader';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { getOnboardingProgress, isOnboardingIncomplete } from '@/lib/onboardingProgress';
 import { deriveUserStatus } from '@/lib/userStatus';
-import { supabase } from '@/lib/supabase';
 
 export default function Index() {
   const { session, loading } = useAuth();
@@ -37,10 +36,6 @@ export default function Index() {
           setTarget('home');
           return;
         }
-
-        // Ensure Supabase auth token is fully propagated before querying
-        const { data: authData } = await supabase.auth.getUser();
-        if (__DEV__) console.log('[Index] auth user:', authData.user?.id?.slice(0, 8));
 
         // Derive status from Supabase trips.
         // Retries are built into deriveUserStatus (auth token race on cold start)

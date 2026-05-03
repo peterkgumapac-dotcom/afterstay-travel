@@ -229,12 +229,6 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
         await setSegmentOverride(null);
       }
 
-      // Fetch lifetime stats for returning users
-      let lifetimeStats: LifetimeStats | null = null;
-      if (realSegment !== 'new') {
-        lifetimeStats = await getLifetimeStats(userId).catch(() => null);
-      }
-
       if (!mounted.current || currentUserIdRef.current !== userId) return;
       setFreshProfileChecked(true);
 
@@ -243,7 +237,8 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
       let activeTrip = result.activeTrip;
       let pastTrips = result.completedTrips;
       let draftTrips = result.draftTrips;
-      let finalStats = lifetimeStats;
+      let finalStats: LifetimeStats | null = null;
+      const shouldFetchLifetimeStats = realSegment !== 'new' && !(isTestMode && mockKey);
 
       if (isTestMode && mockKey) {
         mockData = getMockDataForKey(mockKey);
@@ -253,18 +248,27 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
         finalStats = mockData.lifetimeStats;
       }
 
-      setState({
+      setState((prev) => ({
         segment,
         profile: resolvedProfile,
         activeTrip,
         pastTrips,
         draftTrips,
-        lifetimeStats: finalStats,
+        lifetimeStats: finalStats ?? prev.lifetimeStats,
         loading: false,
         isTestMode,
         mockData,
         mockKeyLabel: mockKey ? MOCK_LABELS[mockKey] : null,
-      });
+      }));
+
+      if (shouldFetchLifetimeStats) {
+        getLifetimeStats(userId).then((stats) => {
+          if (!stats || !mounted.current || currentUserIdRef.current !== userId) return;
+          setState((prev) => ({ ...prev, lifetimeStats: stats }));
+        }).catch(() => {
+          /* non-blocking */
+        });
+      }
 
       // Update cache
       await Promise.all([

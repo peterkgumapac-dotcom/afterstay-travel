@@ -185,6 +185,7 @@ export function useHomeScreen() {
   }, [_rawTrip?.heroImageUrl]);
 
   const [destPhotos, setDestPhotos] = useState<string[]>([]);
+  const destPhotoKeyRef = useRef<string | null>(null);
   const heroLocation = useMemo(
     () => resolveHeroLocation(_rawTrip, flights),
     [_rawTrip, flights],
@@ -192,21 +193,35 @@ export function useHomeScreen() {
   useEffect(() => {
     if (parsedHotelPhotos.length > 0 || coverPhotos.length > 0) {
       setDestPhotos([]);
+      destPhotoKeyRef.current = null;
       return;
     }
-    if (!heroLocation) return;
+    if (!heroLocation) {
+      setDestPhotos([]);
+      destPhotoKeyRef.current = null;
+      return;
+    }
     let cancelled = false;
     const cacheKey = destinationPhotoCacheKey(heroLocation);
-    setDestPhotos([]);
     (async () => {
       const cached = await cacheGet<string[]>(cacheKey);
-      if (cached?.length && !cancelled) { setDestPhotos(cached); return; }
+      if (cached?.length && !cancelled) {
+        destPhotoKeyRef.current = cacheKey;
+        setDestPhotos(cached);
+        return;
+      }
       const photos = await withTimeout(
         fetchDestinationPhotos(heroLocation),
         [] as string[],
         HOME_REQUEST_TIMEOUT_MS,
       );
-      if (!cancelled && photos.length > 0) { setDestPhotos(photos); await cacheSet(cacheKey, photos); }
+      if (!cancelled && photos.length > 0) {
+        destPhotoKeyRef.current = cacheKey;
+        setDestPhotos(photos);
+        await cacheSet(cacheKey, photos);
+      } else if (!cancelled && destPhotoKeyRef.current !== cacheKey) {
+        setDestPhotos([]);
+      }
     })();
     return () => { cancelled = true; };
   }, [coverPhotos.length, heroLocation, parsedHotelPhotos.length]);
@@ -239,6 +254,14 @@ export function useHomeScreen() {
         setHistoryHydrated(false);
       }
       setError(undefined);
+
+      const allTripsPromise = withTimeout(
+        getHomeAllTripsPromise(force),
+        [] as Trip[],
+        HOME_SLOW_REQUEST_TIMEOUT_MS,
+      );
+      const quickTripsPromise = withTimeout(getHomeQuickTripsPromise(force), [] as QuickTrip[]);
+      const lifetimeStatsPromise = withTimeout(getHomeLifetimeStatsPromise(force), null);
 
       let t = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
       if (!t && !force) {
@@ -303,9 +326,9 @@ export function useHomeScreen() {
 
       // Returning-user data
       const [allTripsData, quick, stats] = await Promise.all([
-        withTimeout(getHomeAllTripsPromise(force), [] as Trip[], HOME_SLOW_REQUEST_TIMEOUT_MS),
-        withTimeout(getHomeQuickTripsPromise(force), [] as QuickTrip[]),
-        withTimeout(getHomeLifetimeStatsPromise(force), null),
+        allTripsPromise,
+        quickTripsPromise,
+        lifetimeStatsPromise,
       ]);
       setDebugInfo(`User: ${user?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTripsData.length}`);
       const split = splitTripsByLifecycle(allTripsData);

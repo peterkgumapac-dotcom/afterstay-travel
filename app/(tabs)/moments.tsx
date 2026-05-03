@@ -10,8 +10,13 @@ import { PhotoCarousel } from '@/components/moments/PhotoCarousel';
 import type { MomentDisplay } from '@/components/moments/types';
 import { useTheme } from '@/constants/ThemeContext';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
-import { getAllTripsPromise, getAllTripsCached } from '@/hooks/useTrips';
-import { getQuickTrips, getQuickTripPhotos } from '@/lib/quickTrips';
+import {
+  getAllTripsPromise,
+  getAllTripsCached,
+  getQuickTripsPromise,
+  getQuickTripsCached,
+} from '@/hooks/useTrips';
+import { getQuickTripPhotos } from '@/lib/quickTrips';
 import { formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 import type { QuickTrip, QuickTripPhoto } from '@/lib/quickTripTypes';
@@ -92,13 +97,17 @@ function MomentsScreen() {
     };
 
     const cachedAll = getAllTripsCached();
+    const cachedQuickTrips = getQuickTripsCached();
     if (cachedAll) {
       applyTrips(cachedAll);
     } else {
       setLoadingTrips(true);
     }
+    if (cachedQuickTrips) {
+      setQuickTrips(cachedQuickTrips);
+    }
 
-    withTimeout(getAllTripsPromise(true), [] as Trip[])
+    withTimeout(getAllTripsPromise(false), [] as Trip[])
       .then((trips) => {
         applyTrips(trips);
         if (!cancelled) setLoadingTrips(false);
@@ -106,9 +115,8 @@ function MomentsScreen() {
         if (!cancelled) setLoadingTrips(false);
       });
 
-    // Always fetch quick trips
-    withTimeout(getQuickTrips(), [] as QuickTrip[])
-      .then((trips) => { if (!cancelled) setQuickTrips(trips); })
+    withTimeout(getQuickTripsPromise(false), [] as QuickTrip[])
+      .then((trips) => { if (!cancelled) setQuickTrips(trips); });
 
     return () => { cancelled = true; };
   }, [isTestMode, segActiveTrip]);

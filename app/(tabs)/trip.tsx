@@ -258,6 +258,7 @@ function TripScreen() {
   const [archivedTripsData, setArchivedTripsData] = useState<Trip[]>([]);
   const [quickTripsData, setQuickTripsData] = useState<QuickTrip[]>([]);
   const [highlightsData, setHighlightsData] = useState<Highlight[]>([]);
+  const loadSeq = useRef(0);
   const [lifetimeStats, setLifetimeStats] = useState<{
     totalTrips: number;
     totalCountries: number;
@@ -294,6 +295,7 @@ function TripScreen() {
   const load = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
     if (testModeRef.current) { setLoading(false); setRefreshing(false); return; }
     const { force = false, silent = false } = opts ?? {};
+    const seq = ++loadSeq.current;
     try {
       const t = await getActiveTripPromise(force);
       setTrip(t);
@@ -337,19 +339,31 @@ function TripScreen() {
       setDraftTripsData(drafts);
       setArchivedTripsData(archived);
 
-      // Backfill spent for trips missing total_spent (legacy data)
-      const enriched = await Promise.all(
-        nonDrafts.map(async (t) => {
-          if ((t.totalSpent ?? 0) > 0) return t;
-          try {
-            const s = await getExpenseSummary(t.id);
-            return { ...t, totalSpent: s.total } as Trip;
-          } catch {
-            return t;
-          }
-        }),
-      );
-      setPastTripsData(enriched);
+      setPastTripsData(nonDrafts);
+
+      // Backfill spent for legacy trips after first paint so tab switching is not blocked.
+      const tripsNeedingSpent = nonDrafts.filter((t) => (t.totalSpent ?? 0) <= 0);
+      if (tripsNeedingSpent.length > 0) {
+        Promise.all(
+          tripsNeedingSpent.map(async (t) => {
+            try {
+              const s = await getExpenseSummary(t.id);
+              return [t.id, s.total] as const;
+            } catch {
+              return [t.id, t.totalSpent ?? 0] as const;
+            }
+          }),
+        ).then((rows) => {
+          if (loadSeq.current !== seq) return;
+          const totals = new globalThis.Map(rows);
+          setPastTripsData((current) => current.map((t) => {
+            const total = totals.get(t.id);
+            return total === undefined ? t : { ...t, totalSpent: total };
+          }));
+        }).catch(() => {
+          /* best-effort background backfill */
+        });
+      }
     } catch (e) {
       if (__DEV__) console.warn('[TripScreen] load trip data failed:', e);
     } finally {
@@ -448,9 +462,13 @@ function TripScreen() {
     const cachedAllTrips = getAllTripsCached(true);
     const cachedQuickTrips = getQuickTripsCached();
     const cachedStats = getLifetimeStatsCached();
+    const hasCachedSurface =
+      cachedTrip !== undefined ||
+      !!cachedAllTrips ||
+      !!cachedQuickTrips ||
+      !!cachedStats;
     if (cachedTrip !== undefined) {
       setTrip(cachedTrip);
-      setLoading(false);
     }
     if (cachedAllTrips) {
       const drafts = cachedAllTrips.filter((t) => t.isDraft === true && !t.deletedAt);
@@ -462,11 +480,8 @@ function TripScreen() {
     }
     if (cachedQuickTrips) setQuickTripsData(cachedQuickTrips);
     if (cachedStats) setLifetimeStats(cachedStats);
-    if (cachedTrip !== undefined) {
-      load({ silent: true });
-    } else {
-      load();
-    }
+    if (hasCachedSurface) setLoading(false);
+    load({ silent: hasCachedSurface });
   }, [load]);
 
   // Derived display data
