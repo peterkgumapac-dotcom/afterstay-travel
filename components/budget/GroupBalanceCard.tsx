@@ -18,11 +18,9 @@ import {
   getTripBalances,
   getTripSplits,
   settleExpenseSplit,
-  unsettleExpenseSplit,
   getPaymentQrs,
-  getUserPaymentQrs,
 } from '@/lib/supabase';
-import type { MemberBalance, PaymentQr, UserPaymentQr } from '@/lib/supabase';
+import type { MemberBalance, PaymentQr } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
 import type { Expense, GroupMember, Trip } from '@/lib/types';
 import type { ExpenseSplit } from '@/lib/supabase';
@@ -133,7 +131,6 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
   const [balances, setBalances] = useState<MemberBalance[]>([]);
   const [splits, setSplits] = useState<ExpenseSplit[]>([]);
   const [paymentQrs, setPaymentQrs] = useState<PaymentQr[]>([]);
-  const [userQrs, setUserQrs] = useState<UserPaymentQr[]>([]);
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [settleEdge, setSettleEdge] = useState<DebtEdge | null>(null);
   const [settling, setSettling] = useState(false);
@@ -205,28 +202,6 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
       Alert.alert('Error', 'Failed to settle. Try again.');
     } finally {
       setSettling(false);
-    }
-  }, [splits, expenses, members, loadBalances]);
-
-  // Unsettle flow
-  const handleUnsettle = useCallback(async (edge: DebtEdge) => {
-    try {
-      const creditorExpenseIds = new Set(
-        expenses.filter((e) => {
-          const payer = members.find((m) => m.name === e.paidBy);
-          return payer && payer.id === edge.to;
-        }).map((e) => e.id),
-      );
-      const toUnsettle = splits.filter(
-        (sp) => sp.settled && sp.memberId === edge.from && creditorExpenseIds.has(sp.expenseId),
-      );
-      for (const sp of toUnsettle) {
-        await unsettleExpenseSplit(sp.id);
-      }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      await loadBalances();
-    } catch {
-      Alert.alert('Error', 'Failed to unsettle.');
     }
   }, [splits, expenses, members, loadBalances]);
 

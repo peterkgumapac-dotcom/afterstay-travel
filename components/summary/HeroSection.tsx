@@ -2,7 +2,7 @@ import React from 'react';
 import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Calendar, MapPin, Users } from 'lucide-react-native';
+import { ArrowLeft, Calendar, MapPin } from 'lucide-react-native';
 import type { ThemeColors } from '@/constants/ThemeContext';
 import type { GroupMember } from '@/lib/types';
 

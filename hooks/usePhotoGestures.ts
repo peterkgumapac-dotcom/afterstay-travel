@@ -2,20 +2,13 @@ import { useCallback } from 'react';
 import * as Haptics from 'expo-haptics';
 import {
   Gesture,
-  GestureType,
-  PanGesture,
-  TapGesture,
-  LongPressGesture,
-  PinchGesture,
 } from 'react-native-gesture-handler';
 import {
   runOnJS,
   SharedValue,
   useSharedValue,
   withSpring,
-  withDecay,
   withTiming,
-  Easing,
 } from 'react-native-reanimated';
 import { springPresets, thresholds } from '@/constants/animations';
 
@@ -78,7 +71,6 @@ export function usePhotoGestures(options: UsePhotoGesturesOptions) {
     .failOffsetY([-10, 10])
     .onUpdate((event) => {
       'worklet';
-      const velocity = event.velocityX;
       const translation = event.translationX;
 
       // Edge resistance

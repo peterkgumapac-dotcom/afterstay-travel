@@ -257,6 +257,26 @@ Cleanup-only rerun after leaf UI warning reduction, 2026-05-03:
 - `git diff --check`
   - Result: exit 0.
 
+Cleanup-only rerun after small hook/screen warning reduction, 2026-05-03:
+
+- Removed unused imports, dead helpers, and unused destructured values from:
+  - `hooks/usePhotoGestures.ts`
+  - `components/home/ReturningUserHome.tsx`
+  - `components/budget/GroupBalanceCard.tsx`
+  - `components/moments/CommentSheet.tsx`
+  - small detail/wrapped/summary screens and utility hooks.
+- Kept public component prop contracts intact where callers may still pass values.
+- `npx eslint hooks/usePhotoGestures.ts components/home/ReturningUserHome.tsx components/budget/GroupBalanceCard.tsx components/moments/CommentSheet.tsx app/album-detail.tsx app/moment-detail.tsx app/trip-overview.tsx components/summary/HeroSection.tsx components/wrapped/WrappedCard.tsx hooks/usePhotoAdjustments.ts hooks/useUserStatus.ts lib/qrph.ts --ext .ts,.tsx`
+  - Result: exit 0, no warnings for those files.
+- `npx tsc --noEmit --pretty false`
+  - Result: exit 0.
+- `npx jest --runInBand`
+  - Result: 5 suites passed, 33 tests passed.
+- `npx expo export --platform android --output-dir /tmp/afterstay-small-cleanup-android`
+  - Result: exported Android JS bundle successfully.
+- `git diff --check`
+  - Result: exit 0.
+
 Earlier clean branch verification:
 
 - `npx tsc --noEmit --pretty false`

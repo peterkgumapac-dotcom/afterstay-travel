@@ -19,7 +19,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MessageCircle, Send, Trash2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { spacing, radius } from '@/constants/theme';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { addComment, deleteComment, getComments } from '@/lib/supabase';
@@ -124,7 +123,7 @@ export default function CommentSheet({ visible, momentId, members = [], onClose,
       setMentionStart(-1);
       onCountChange?.(momentId, comments.length + 1);
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
-    } catch (err) {
+    } catch {
       Alert.alert('Failed', 'Could not post comment. Try again.');
     }
     setSending(false);

@@ -14,8 +14,6 @@ import { useTheme } from '@/constants/ThemeContext';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-type ThemeColors = ReturnType<typeof useTheme>['colors'];
-
 interface WrappedCardProps {
   /** Background color for the card */
   bg?: string;
@@ -35,7 +33,7 @@ export default function WrappedCard({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const viewShotRef = useRef<ViewShot>(null);
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const styles = useMemo(() => getStyles(), []);
 
   const handleShare = useCallback(async () => {
     try {
@@ -84,7 +82,7 @@ export default function WrappedCard({
   );
 }
 
-const getStyles = (colors: ThemeColors) =>
+const getStyles = () =>
   StyleSheet.create({
     outer: {
       position: 'relative',

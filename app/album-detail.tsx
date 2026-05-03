@@ -26,7 +26,7 @@ const PEOPLE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#7f3712', '#9a7d52'];
 export default function AlbumDetailScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const s = useMemo(() => getStyles(colors), [colors]);
+  const s = useMemo(() => getStyles(), []);
   const params = useLocalSearchParams<{ albumId?: string; name?: string; momentCount?: string }>();
 
   const albumId = params.albumId ?? '';
@@ -182,9 +182,7 @@ export default function AlbumDetailScreen() {
   );
 }
 
-type ThemeColors = ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors'];
-
-const getStyles = (colors: ThemeColors) =>
+const getStyles = () =>
   StyleSheet.create({
     container: { flex: 1 },
     // Cover

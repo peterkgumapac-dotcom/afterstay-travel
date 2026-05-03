@@ -7,7 +7,6 @@
  */
 
 import { useMemo, useCallback, useState } from 'react';
-import { IDENTITY } from '@/hooks/useFilmFilters';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

@@ -5,7 +5,6 @@ import {
   deriveUserStatus,
   refreshUserStatus,
   type UserStatus,
-  type StatusResult,
 } from '@/lib/userStatus';
 import type { Trip } from '@/lib/types';
 

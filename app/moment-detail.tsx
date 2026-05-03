@@ -50,7 +50,7 @@ export default function MomentDetailScreen() {
     });
   }, [moment]);
 
-  const s = useMemo(() => getStyles(colors), [colors]);
+  const s = useMemo(() => getStyles(), []);
 
   if (loading) {
     return (
@@ -119,7 +119,7 @@ export default function MomentDetailScreen() {
   );
 }
 
-const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
+const getStyles = () =>
   StyleSheet.create({
     container: {
       flex: 1,

@@ -73,13 +73,11 @@ export function parseQRPh(raw: string): QRPhData | null {
   const tags = parseTLV(trimmed);
 
   // Find merchant account info — tags 26-51, look for com.p2pqrpay or ph.ppmi.p2m
-  let merchantTag = '';
   let merchantValue = '';
   for (let t = 26; t <= 51; t++) {
     const key = t.toString().padStart(2, '0');
     const val = tags.get(key);
     if (val && (val.includes('com.p2pqrpay') || val.includes('ph.ppmi.p2m'))) {
-      merchantTag = key;
       merchantValue = val;
       break;
     }

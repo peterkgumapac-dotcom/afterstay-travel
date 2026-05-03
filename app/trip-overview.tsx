@@ -174,18 +174,6 @@ function ProgressBar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
-  if (!value) return null;
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
 function CopyRow({
   label,
   value,

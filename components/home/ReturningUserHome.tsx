@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import {
   Alert,
-  Image,
+  Dimensions,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,7 +22,6 @@ import {
   Compass,
   FilePen,
   Globe,
-  MapPin,
   Moon,
   Plus,
   TreePalm,
@@ -30,9 +29,7 @@ import {
 } from 'lucide-react-native';
 
 import ProfileRow from './ProfileRow';
-import { HomeMomentsPreview } from './HomeMomentsPreview';
 import { TripCollage } from '@/components/trip/TripCollage';
-import QuickTripRow from '@/components/quick-trips/QuickTripRow';
 import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
@@ -44,7 +41,7 @@ import type { LifetimeStats } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
-const { width: SCREEN_W } = require('react-native').Dimensions.get('window');
+const { width: SCREEN_W } = Dimensions.get('window');
 const ALBUM_W = SCREEN_W - 56;
 const ALBUM_H = Math.round(ALBUM_W * 0.65);
 
@@ -97,9 +94,6 @@ export default function ReturningUserHome({
   upcomingTrips = [],
   activeTrips = [],
   quickTrips,
-  lifetimeStats,
-  recentMoments = [],
-  recentMembers = [],
   savedPlaces = [],
   onPlanTrip,
   onTripPress,
@@ -107,7 +101,6 @@ export default function ReturningUserHome({
   onUpcomingTripPress,
   onArchiveDraft,
   onQuickTripPress,
-  onAddQuickTrip,
   onAddMoment,
   onBellPress,
   onSeeAllTrips,
@@ -119,8 +112,6 @@ export default function ReturningUserHome({
   const { colors } = useTheme();
   const router = useRouter();
   const s = useMemo(() => getStyles(colors), [colors]);
-  const firstName = userName.split(' ')[0] || 'Traveler';
-  const recentTrips = pastTrips.slice(0, 3);
   const hasDrafts = draftTrips.length > 0;
   const hasUpcoming = activeTrips.length > 0 || upcomingTrips.length > 0 || draftTrips.some((t) => t.status === 'Planning');
 
@@ -285,7 +276,6 @@ export default function ReturningUserHome({
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.albumScroll} contentContainerStyle={s.albumScrollContent}>
               {allRecentTrips.slice(0, 6).map((t) => {
-                const flag = COUNTRY_FLAGS[t.countryCode ?? ''] ?? '\u{1F30D}';
                 const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
                 return (
                   <AnimatedPressable
