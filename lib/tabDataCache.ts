@@ -115,6 +115,7 @@ export function invalidateTripCache(tripId?: string): void {
   }
   invalidateCache('trips:');
   invalidateCache('activeTrip');
+  invalidateCache('home:');
 }
 
 /**

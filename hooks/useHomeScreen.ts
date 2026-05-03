@@ -62,9 +62,8 @@ const HOME_REQUEST_TIMEOUT_MS = 10000;
 const HOME_SLOW_REQUEST_TIMEOUT_MS = 15000;
 
 function splitTripsByLifecycle(allTripsData: Trip[]) {
-  const now = Date.now();
   return {
-    pastTrips: allTripsData.filter(tr => tr.status === 'Completed' && !tr.deletedAt && (tr.endDate ? new Date(tr.endDate).getTime() + 86400000 < now : false)),
+    pastTrips: allTripsData.filter(tr => tr.status === 'Completed' && !tr.deletedAt),
     draftTrips: allTripsData.filter(tr => tr.isDraft === true && !tr.deletedAt),
     upcomingTrips: allTripsData.filter(tr => tr.status === 'Planning' && !tr.isDraft && !tr.deletedAt && !tr.archivedAt),
     activeTrips: allTripsData.filter(tr => tr.status === 'Active' && !tr.deletedAt && !tr.archivedAt),
@@ -82,6 +81,27 @@ function withTimeout<T>(promise: Promise<T>, fallback: T, ms = HOME_REQUEST_TIME
         clearTimeout(timer);
         resolve(fallback);
       });
+  });
+}
+
+type TimedValue<T> =
+  | { status: 'ok'; value: T }
+  | { status: 'timeout' }
+  | { status: 'error'; error: unknown };
+
+function withTimeoutStatus<T>(promise: Promise<T>, ms = HOME_REQUEST_TIMEOUT_MS): Promise<TimedValue<T>> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ status: 'timeout' }), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve({ status: 'ok', value });
+      },
+      (error) => {
+        clearTimeout(timer);
+        resolve({ status: 'error', error });
+      },
+    );
   });
 }
 
@@ -159,6 +179,10 @@ export function useHomeScreen() {
       return Array.isArray(p) ? p.filter((u: unknown) => typeof u === 'string' && (u as string).startsWith('http')) : [];
     } catch { return []; }
   }, [_rawTrip?.hotelPhotos]);
+  const coverPhotos = useMemo(() => {
+    const url = _rawTrip?.heroImageUrl?.trim();
+    return url?.startsWith('http') ? [url] : [];
+  }, [_rawTrip?.heroImageUrl]);
 
   const [destPhotos, setDestPhotos] = useState<string[]>([]);
   const heroLocation = useMemo(
@@ -166,7 +190,7 @@ export function useHomeScreen() {
     [_rawTrip, flights],
   );
   useEffect(() => {
-    if (parsedHotelPhotos.length > 0) {
+    if (parsedHotelPhotos.length > 0 || coverPhotos.length > 0) {
       setDestPhotos([]);
       return;
     }
@@ -185,9 +209,25 @@ export function useHomeScreen() {
       if (!cancelled && photos.length > 0) { setDestPhotos(photos); await cacheSet(cacheKey, photos); }
     })();
     return () => { cancelled = true; };
-  }, [heroLocation, parsedHotelPhotos.length]);
+  }, [coverPhotos.length, heroLocation, parsedHotelPhotos.length]);
 
-  const hotelPhotos = parsedHotelPhotos.length > 0 ? parsedHotelPhotos : destPhotos;
+  const hotelPhotos =
+    parsedHotelPhotos.length > 0 ? parsedHotelPhotos :
+    coverPhotos.length > 0 ? coverPhotos :
+    destPhotos;
+
+  const clearActiveTripSurface = useCallback(() => {
+    setTrip(null);
+    setFlights([]);
+    setMoments([]);
+    setMembers([]);
+    setSavedPlaces([]);
+    setHotelCoords(0, 0);
+    setTotalSpent(0);
+    setTodaySpent(0);
+    setTodayCount(0);
+    cacheSet('trip:active', null).catch(() => {});
+  }, []);
 
   // ── Main loader ──
   const load = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
@@ -205,8 +245,13 @@ export function useHomeScreen() {
         await new Promise(r => setTimeout(r, 800));
         t = await withTimeout(getActiveTrip(true), null as Trip | null);
       }
-      setTrip(t);
-      if (t) { await cacheSet('trip:active', t); if (t.hotelLat && t.hotelLng) setHotelCoords(t.hotelLat, t.hotelLng); }
+      if (t) {
+        setTrip(t);
+        await cacheSet('trip:active', t);
+        if (t.hotelLat && t.hotelLng) setHotelCoords(t.hotelLat, t.hotelLng);
+      } else {
+        clearActiveTripSurface();
+      }
 
       if (t) {
         const [fs, ms, mems, places] = await Promise.all([
@@ -301,8 +346,6 @@ export function useHomeScreen() {
         else { setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? ''); if (user.user_metadata?.avatar_url) setUserAvatar(user.user_metadata.avatar_url); }
       }
 
-      if (!t) { setFlights([]); setMoments([]); }
-
       // Write widget snapshots so headless widget context can read them
       writeWidgetSnapshots().then(() => refreshAllWidgets()).catch(() => {});
     } catch (e: unknown) {
@@ -314,7 +357,7 @@ export function useHomeScreen() {
       if (!silent) setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [clearActiveTripSurface, user]);
 
   // ── Toggle-off recovery ──
   const prevTestMode = useRef(isTestMode);
@@ -394,10 +437,18 @@ export function useHomeScreen() {
       if (now - lastFocusRefreshAt.current < 60_000) return;
       lastFocusRefreshAt.current = now;
       Promise.all([
-        withTimeout(getHomeActiveTripPromise(false), null as Trip | null),
+        withTimeoutStatus(getHomeActiveTripPromise(false)),
         withTimeout(getHomeExpensesPromise(tripId, false), []),
-      ]).then(([ft, ae]) => {
-        if (ft) setTrip(ft);
+      ]).then(([tripResult, ae]) => {
+        if (tripResult.status === 'ok') {
+          if (tripResult.value) {
+            setTrip(tripResult.value);
+          } else {
+            clearActiveTripSurface();
+            load({ force: true, silent: true }).catch(() => {});
+            return;
+          }
+        }
         setTotalSpent(ae.reduce((s, e) => s + e.amount, 0));
         const ti = new Date().toISOString().slice(0, 10);
         const te = ae.filter(e => e.date === ti);
@@ -406,7 +457,7 @@ export function useHomeScreen() {
       }).catch(() => {});
     });
     return unsub;
-  }, [navigation, _rawTrip?.id]);
+  }, [clearActiveTripSurface, load, navigation, _rawTrip?.id]);
 
   // ── Brief branded loader minimum ──
   useEffect(() => {
@@ -430,8 +481,16 @@ export function useHomeScreen() {
 
     (async () => {
       try {
-        const freshTrip = await withTimeout(getHomeActiveTripPromise(true), currentTrip);
-        const activeTrip = freshTrip ?? currentTrip;
+        const freshTripResult = await withTimeoutStatus(getHomeActiveTripPromise(true));
+        let activeTrip: Trip = currentTrip;
+        if (freshTripResult.status === 'ok') {
+          if (!freshTripResult.value) {
+            clearActiveTripSurface();
+            await load({ force: true, silent: true });
+            return;
+          }
+          activeTrip = freshTripResult.value;
+        }
         setTrip(activeTrip);
         if (activeTrip.hotelLat && activeTrip.hotelLng) setHotelCoords(activeTrip.hotelLat, activeTrip.hotelLng);
 
@@ -488,7 +547,7 @@ export function useHomeScreen() {
         setRefreshing(false);
       }
     })();
-  }, [_rawTrip, dailyTrackerOn, load, user?.id]);
+  }, [_rawTrip, clearActiveTripSurface, dailyTrackerOn, load, user?.id]);
 
   // Override flights/moments/members/savedPlaces in test mode too
   const effectiveFlights = useMemo(

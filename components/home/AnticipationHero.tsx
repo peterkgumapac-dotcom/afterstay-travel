@@ -57,6 +57,7 @@ interface Props {
   roomInfo?: string;
   bookingRef?: string;
   members?: GroupMember[];
+  resolveDestinationFallback?: boolean;
 }
 
 export const AnticipationHero: React.FC<Props> = ({
@@ -68,6 +69,7 @@ export const AnticipationHero: React.FC<Props> = ({
   roomInfo,
   bookingRef,
   members = [],
+  resolveDestinationFallback = true,
 }) => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -121,7 +123,7 @@ export const AnticipationHero: React.FC<Props> = ({
   );
 
   useEffect(() => {
-    if (visiblePhotos.length > 0 || !destination) return;
+    if (!resolveDestinationFallback || visiblePhotos.length > 0 || !destination) return;
     let cancelled = false;
     setDestPhotos([]);
     (async () => {
@@ -152,7 +154,7 @@ export const AnticipationHero: React.FC<Props> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [destination, destinationCacheKey, visiblePhotos.length]);
+  }, [destination, destinationCacheKey, resolveDestinationFallback, visiblePhotos.length]);
 
   const heroPhotos = useMemo(
     () => visiblePhotos.length > 0 ? visiblePhotos : destPhotos.filter((url) => !failedUrls.has(url)),
