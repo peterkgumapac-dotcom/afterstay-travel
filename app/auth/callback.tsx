@@ -8,12 +8,12 @@ export default function AuthCallback() {
   const { session } = useAuth();
 
   useEffect(() => {
-    // The AuthProvider's deep link handler in lib/auth.ts
-    // handles token extraction and session exchange.
-    // This screen just waits for session to appear, then redirects.
-
-    // Fallback: if session doesn't appear in 5s, go home anyway
-    const timeout = setTimeout(() => router.replace('/'), 5000);
+    const timeout = setTimeout(() => {
+      router.replace({
+        pathname: '/auth/login',
+        params: { error: 'Magic link expired or network failed. Please request a new link.' },
+      });
+    }, 10000);
     return () => clearTimeout(timeout);
   }, [router]);
 

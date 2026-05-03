@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   View,
   Text,
@@ -31,6 +31,21 @@ import ConstellationHero from '@/components/auth/ConstellationHero';
 type Panel = 'root' | 'email' | 'sent';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LOGIN_TIMEOUT_MS = 12_000;
+
+function withLoginTimeout<T>(promise: PromiseLike<T>, message: string, ms = LOGIN_TIMEOUT_MS): Promise<T> {
+  const wrapped = Promise.resolve(promise);
+  return Promise.race([
+    wrapped,
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms);
+      wrapped.then(
+        () => clearTimeout(timer),
+        () => clearTimeout(timer),
+      );
+    }),
+  ]);
+}
 
 /* ─── SVG Icons — exact copies from prototype ─── */
 
@@ -421,6 +436,7 @@ export default function LoginScreen() {
   const { colors } = useTheme();
   const { signIn, signInWithMagicLink, session } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ error?: string }>();
 
   const [panel, setPanel] = useState<Panel>('root');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -438,6 +454,14 @@ export default function LoginScreen() {
     }
   }, [session, router]);
 
+  useEffect(() => {
+    if (params.error) {
+      setError(params.error);
+      setPanel('email');
+      setLoading(false);
+    }
+  }, [params.error]);
+
   const isEmailValid = EMAIL_REGEX.test(email.trim());
 
   const handleAuthAction = async () => {
@@ -445,43 +469,49 @@ export default function LoginScreen() {
     setLoading(true);
     setError(null);
 
-    if (isSignUp) {
-      const { data, error: err } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-      });
-      if (err) {
-        setLoading(false);
-        setError(err.message);
-      } else if (data.session) {
-        // Automatically signed in
-        router.replace('/');
+    try {
+      if (isSignUp) {
+        const { data, error: err } = await withLoginTimeout(
+          supabase.auth.signUp({
+            email: email.trim(),
+            password: password,
+          }),
+          'Sign up timed out. Please check your connection and try again.',
+        );
+        if (err) {
+          setError(err.message);
+        } else if (data.session) {
+          router.replace('/');
+        } else {
+          Alert.alert('Verify your email', 'We sent a confirmation link to your email. Please check it to complete registration.');
+        }
       } else {
-        setLoading(false);
-        Alert.alert('Verify your email', 'We sent a confirmation link to your email. Please check it to complete registration.');
+        const { error: err } = await signIn(email.trim(), password);
+        if (err) setError(err);
       }
-    } else {
-      const { error: err } = await signIn(email.trim(), password);
-      if (err) {
-        setLoading(false);
-        setError(err);
-      }
+    } catch (err: any) {
+      setError(err?.message ?? 'Network error. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
-    // Success: session useEffect handles redirect
   };
 
   const handleSendMagicLink = async () => {
     if (!isEmailValid) return;
     setLoading(true);
     setError(null);
-    const { error: err } = await signInWithMagicLink(email.trim());
-    if (err) {
-      setError(err);
+    try {
+      const { error: err } = await signInWithMagicLink(email.trim());
+      if (err) {
+        setError(err);
+      } else {
+        setSentTarget({ kind: 'email', target: email.trim() });
+        setPanel('sent');
+      }
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not send magic link. Please check your connection and try again.');
+    } finally {
       setLoading(false);
-    } else {
-      setLoading(false);
-      setSentTarget({ kind: 'email', target: email.trim() });
-      setPanel('sent');
     }
   };
 
@@ -557,30 +587,33 @@ export default function LoginScreen() {
                   try {
                     setLoading(true);
                     setError(null);
-                    const response = await beginGoogleSignIn();
+                    const response = await withLoginTimeout(
+                      beginGoogleSignIn(),
+                      'Google sign-in timed out. Please try again.',
+                      20_000,
+                    );
                     const idToken = response.data?.idToken;
                     if (!idToken) {
-                      setLoading(false);
                       Alert.alert('Sign-In Error', 'No ID token received from Google');
                       return;
                     }
-                    const { error: googleErr } = await supabase.auth.signInWithIdToken({
-                      provider: 'google',
-                      token: idToken,
-                    });
+                    const { error: googleErr } = await withLoginTimeout(
+                      supabase.auth.signInWithIdToken({
+                        provider: 'google',
+                        token: idToken,
+                      }),
+                      'Google sign-in timed out. Please check your connection and try again.',
+                    );
                     if (googleErr) {
-                      setLoading(false);
                       Alert.alert('Sign-In Error', googleErr.message);
-                    } else {
-                      // Session useEffect handles redirect; timeout as safety net
-                      setTimeout(() => setLoading(false), 5000);
                     }
                   } catch (e: unknown) {
-                    setLoading(false);
                     const err = e as { code?: string; message?: string };
-                    if (err.code === 'SIGN_IN_CANCELLED') return;
-                    if (err.code === 'IN_PROGRESS') return;
-                    Alert.alert('Google Sign-In failed', err.message ?? 'Unknown error');
+                    if (err.code !== 'SIGN_IN_CANCELLED' && err.code !== 'IN_PROGRESS') {
+                      Alert.alert('Google Sign-In failed', err.message ?? 'Unknown error');
+                    }
+                  } finally {
+                    setLoading(false);
                   }
                 }}
                 icon={<GoogleIcon />}

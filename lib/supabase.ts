@@ -82,7 +82,7 @@ const safeStorage = isNode ? noopStorage : secureStorage;
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
     storage: safeStorage,
-    autoRefreshToken: true,
+    autoRefreshToken: false,
     persistSession: true,
     detectSessionInUrl: false,
   },

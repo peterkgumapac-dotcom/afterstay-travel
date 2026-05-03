@@ -42,10 +42,26 @@ SplashScreen.preventAutoHideAsync();
 
 function RootLayoutInner() {
   const { mode, colors: c } = useTheme();
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading, user } = useAuth();
   usePushNotifications();
   useBackgroundTasks();
   useAppUpdates();
+  const appState = useRef(AppState.currentState);
+
+  // Refresh Android widgets when app comes to foreground, after auth exists.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && next === 'active') {
+        if (user?.id) {
+          refreshAllWidgets().catch((err) => {
+            if (__DEV__) console.warn('[Widgets] refresh failed:', err);
+          });
+        }
+      }
+      appState.current = next;
+    });
+    return () => sub.remove();
+  }, [user?.id]);
 
   const navTheme = {
     ...(mode === 'dark' ? DarkTheme : DefaultTheme),
@@ -243,18 +259,6 @@ function RootLayout() {
   useEffect(() => {
     if (loaded) SplashScreen.hideAsync();
   }, [loaded]);
-
-  // Refresh Android widgets when app comes to foreground
-  const appState = useRef(AppState.currentState);
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (appState.current.match(/inactive|background/) && next === 'active') {
-        refreshAllWidgets();
-      }
-      appState.current = next;
-    });
-    return () => sub.remove();
-  }, []);
 
   if (!loaded) return null;
 

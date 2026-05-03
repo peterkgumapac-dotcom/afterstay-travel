@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as Linking from 'expo-linking';
 import { router as expoRouter } from 'expo-router';
+import { AppState, type AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { secureStorage } from './secureStorage';
 import { clearTripLocalData, setCacheUserId } from './cache';
@@ -34,6 +35,31 @@ const AuthContext = createContext<AuthContextType>({
  * After migration, the key is deleted from AsyncStorage so this only runs once.
  */
 const SUPABASE_SESSION_KEY = 'sb-' + (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').replace(/https?:\/\//, '').split('.')[0] + '-auth-token';
+const AUTH_TIMEOUT_MS = 12_000;
+const PROFILE_TIMEOUT_MS = 8_000;
+
+function withAuthTimeout<T>(promise: PromiseLike<T>, message: string, ms = AUTH_TIMEOUT_MS): Promise<T> {
+  const wrapped = Promise.resolve(promise);
+  return Promise.race([
+    wrapped,
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms);
+      wrapped.then(
+        () => clearTimeout(timer),
+        () => clearTimeout(timer),
+      );
+    }),
+  ]);
+}
+
+function authErrorMessage(err: unknown, fallback = 'Network error. Please check your connection and try again.'): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'object' && err && 'message' in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return fallback;
+}
 
 async function migrateSessionToSecureStore(): Promise<void> {
   try {
@@ -63,7 +89,11 @@ async function ensureSessionProfile(s: Session | null): Promise<void> {
   if (!user?.id) return;
 
   const { getProfile, ensureProfile } = await import('./supabase');
-  const existing = await getProfile(user.id).catch(() => null);
+  const existing = await withAuthTimeout(
+    getProfile(user.id).catch(() => null),
+    'Profile lookup timed out.',
+    PROFILE_TIMEOUT_MS,
+  ).catch(() => null);
   if (existing) return;
 
   const name =
@@ -72,9 +102,9 @@ async function ensureSessionProfile(s: Session | null): Promise<void> {
     user.email?.split('@')[0] ||
     'Traveler';
 
-  await ensureProfile(user.id, name).catch(async (err) => {
+  await withAuthTimeout(ensureProfile(user.id, name), 'Profile setup timed out.', PROFILE_TIMEOUT_MS).catch(async (err) => {
     if (__DEV__) console.warn('[auth] ensureProfile failed, retrying:', err);
-    await ensureProfile(user.id, name).catch(() => {});
+    await withAuthTimeout(ensureProfile(user.id, name), 'Profile setup timed out.', PROFILE_TIMEOUT_MS).catch(() => {});
   });
 }
 
@@ -93,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 3000);
 
-    migrateSessionToSecureStore().then(() => supabase.auth.getSession())
+    migrateSessionToSecureStore().then(() => withAuthTimeout(supabase.auth.getSession(), 'Session restore timed out.'))
       .then(async ({ data: { session: s } }) => {
         applyAccountScope(s);
         await ensureSessionProfile(s);
@@ -124,6 +154,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    const updateAutoRefresh = (state: AppStateStatus = AppState.currentState) => {
+      const task = session && state === 'active'
+        ? supabase.auth.startAutoRefresh()
+        : supabase.auth.stopAutoRefresh();
+
+      task.catch((err) => {
+        if (__DEV__ && active) console.warn('[auth] auto-refresh lifecycle failed:', err);
+      });
+    };
+
+    updateAutoRefresh();
+    const sub = AppState.addEventListener('change', updateAutoRefresh);
+
+    return () => {
+      active = false;
+      sub.remove();
+    };
+  }, [session]);
+
   // Handle deep link callbacks (OAuth + invite)
   useEffect(() => {
     const handleDeepLink = async (url: string) => {
@@ -143,7 +195,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const codeMatch = url.match(/[?&]code=([^&#]+)/);
         if (codeMatch) {
-          await supabase.auth.exchangeCodeForSession(codeMatch[1]);
+          await withAuthTimeout(
+            supabase.auth.exchangeCodeForSession(codeMatch[1]),
+            'Magic link sign-in timed out. Please try again.',
+          ).catch((err) => {
+            expoRouter.replace({
+              pathname: '/auth/login',
+              params: { error: authErrorMessage(err, 'Magic link failed. Please request a new link.') },
+            });
+          });
           return;
         }
         const fragment = url.split('#')[1];
@@ -152,7 +212,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const accessToken = params.get('access_token');
           const refreshToken = params.get('refresh_token');
           if (accessToken && refreshToken) {
-            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+            await withAuthTimeout(
+              supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }),
+              'Magic link sign-in timed out. Please try again.',
+            ).catch((err) => {
+              expoRouter.replace({
+                pathname: '/auth/login',
+                params: { error: authErrorMessage(err, 'Magic link failed. Please request a new link.') },
+              });
+            });
           }
         }
         return;
@@ -180,19 +248,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (!error) {
-      const { data } = await supabase.auth.getSession();
+    try {
+      const { error } = await withAuthTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        'Sign in timed out. Please check your connection and try again.',
+      );
+      if (error) return { error: error.message };
+
+      const { data } = await withAuthTimeout(
+        supabase.auth.getSession(),
+        'Session restore timed out. Please try again.',
+      );
       applyAccountScope(data.session);
       await ensureSessionProfile(data.session);
       setSession(data.session);
+      return { error: null };
+    } catch (err) {
+      return { error: authErrorMessage(err) };
     }
-    return { error: error?.message ?? null };
   };
 
   const signInWithMagicLink = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({ email });
-    return { error: error?.message ?? null };
+    try {
+      const { error } = await withAuthTimeout(
+        supabase.auth.signInWithOtp({
+          email,
+          options: {
+            emailRedirectTo: Linking.createURL('/auth/callback'),
+          },
+        }),
+        'Sending magic link timed out. Please check your connection and try again.',
+      );
+      return { error: error?.message ?? null };
+    } catch (err) {
+      return { error: authErrorMessage(err, 'Could not send magic link. Please check your connection and try again.') };
+    }
   };
 
   const signOut = async () => {
