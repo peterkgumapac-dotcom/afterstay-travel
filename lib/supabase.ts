@@ -3736,8 +3736,9 @@ export async function getPublicProfiles(userIds: string[]): Promise<PublicProfil
 
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, handle, avatar_url, companion_privacy')
-    .in('id', ids);
+    .select('id, full_name, handle, avatar_url, companion_privacy, profile_visibility')
+    .in('id', ids)
+    .eq('profile_visibility', 'public');
   return (data ?? []).map(mapPublicProfileRow);
 }
 
@@ -3752,6 +3753,19 @@ export async function searchProfiles(query: string): Promise<ProfileSearchResult
     .slice(0, 80)
     .trim();
   if (q.length < 2) return [];
+  const companionResults = (await getCompanions().catch(() => []))
+    .filter((p) => {
+      const handle = p.handle?.toLowerCase() ?? '';
+      const name = p.fullName.toLowerCase();
+      const needle = q.toLowerCase();
+      return handle.includes(needle) || name.includes(needle);
+    })
+    .map((p) => ({
+      id: p.id,
+      fullName: p.fullName,
+      handle: p.handle,
+      avatarUrl: p.avatarUrl,
+    }));
 
   const { data: rpcData, error: rpcError } = await supabase.rpc('search_public_profiles', {
     p_query: q,
@@ -3766,19 +3780,6 @@ export async function searchProfiles(query: string): Promise<ProfileSearchResult
     }))
     : null;
   if (publicResults) {
-    const companionResults = (await getCompanions().catch(() => []))
-      .filter((p) => {
-        const handle = p.handle?.toLowerCase() ?? '';
-        const name = p.fullName.toLowerCase();
-        const needle = q.toLowerCase();
-        return handle.includes(needle) || name.includes(needle);
-      })
-      .map((p) => ({
-        id: p.id,
-        fullName: p.fullName,
-        handle: p.handle,
-        avatarUrl: p.avatarUrl,
-      }));
     const merged = new Map<string, ProfileSearchResult>();
     for (const result of [...companionResults, ...publicResults]) merged.set(result.id, result);
     return [...merged.values()].slice(0, 20);
@@ -3797,7 +3798,8 @@ export async function searchProfiles(query: string): Promise<ProfileSearchResult
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, full_name, handle, avatar_url')
+    .select('id, full_name, handle, avatar_url, profile_visibility')
+    .eq('profile_visibility', 'public')
     .or(`handle.ilike.%${q}%,full_name.ilike.%${q}%`)
     .limit(20);
   if (error) {
@@ -3809,18 +3811,24 @@ export async function searchProfiles(query: string): Promise<ProfileSearchResult
     );
   }
   if (rpcMissingOrBlocked && (!data || data.length === 0)) {
+    if (companionResults.length > 0) return companionResults.slice(0, 20);
     throw new Error('Traveler search needs the latest profile backend update.');
   }
-  if (!data) return [];
-  return data.map((r: Record<string, unknown>) => ({
+  const directResults = (data ?? []).map((r: Record<string, unknown>) => ({
     id: r.id as string,
     fullName: r.full_name as string,
     handle: r.handle as string | undefined,
     avatarUrl: r.avatar_url as string | undefined,
   }));
+  const merged = new Map<string, ProfileSearchResult>();
+  for (const result of [...companionResults, ...directResults]) merged.set(result.id, result);
+  return [...merged.values()].slice(0, 20);
 }
 
 export async function getPublicProfilePosts(userId: string, limit = 20, offset = 0): Promise<FeedPost[]> {
+  const [publicProfile] = await getPublicProfiles([userId]).catch(() => []);
+  if (!publicProfile) return [];
+
   const { data: rpcData, error: rpcError } = await supabase.rpc('get_public_profile_posts', {
     p_user_id: userId,
     p_limit: limit,
@@ -4938,7 +4946,7 @@ export async function getCompanionProfile(targetUserId: string): Promise<Compani
     data: { user },
   } = await supabase.auth.getUser();
   const canReadPrivateProfile = user?.id === targetUserId || status === 'companion';
-  const canUseDirectFallback = canReadPrivateProfile || publicProfileResult.unavailable;
+  const canUseDirectFallback = canReadPrivateProfile;
   const { data: profile } = canUseDirectFallback
     ? await supabase
       .from('profiles')

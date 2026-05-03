@@ -33,7 +33,7 @@ interface EssentialsTabProps {
   onSetNewItemText: (t: string) => void;
   onAddItem: () => void;
   onUpload: () => void;
-  onDownload: (url: string) => void;
+  onDownload: (file: TripFile) => void;
   onFilePress?: (file: TripFile) => void;
   onRetryFiles?: () => void;
 }
@@ -248,7 +248,7 @@ export function EssentialsTab({
                 accessibilityLabel={`Download ${f.fileName}`}
                 onPress={(e) => {
                   e.stopPropagation();
-                  if (f.fileUrl) onDownload(f.fileUrl);
+                  onDownload(f);
                 }}
               >
                 <Download size={14} color={colors.text} />

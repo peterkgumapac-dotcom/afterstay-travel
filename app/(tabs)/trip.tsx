@@ -47,6 +47,7 @@ import {
   getGroupMembers,
   getPackingList,
   getTripFiles,
+  getTripFilePreviewUrl,
   getHighlights,
   togglePacked,
   updatePackingItem,
@@ -1027,11 +1028,19 @@ function TripScreen() {
     router.push({ pathname: '/add-file', params: trip?.id ? { tripId: trip.id } : {} } as never);
   };
 
-  const handleDownload = async (fileUrl: string) => {
+  const handleDownload = async (file: TripFile) => {
     try {
+      const fileUrl = file.storagePath
+        ? await getTripFilePreviewUrl(file.storagePath)
+        : file.fileUrl;
+      if (!fileUrl) {
+        Alert.alert('File unavailable', 'A fresh private file link could not be created. Please refresh and try again.');
+        return;
+      }
       await WebBrowser.openBrowserAsync(fileUrl);
-    } catch {
-      if (__DEV__) console.warn('Failed to open browser:', fileUrl);
+    } catch (err) {
+      if (__DEV__) console.warn('Failed to open file:', err);
+      Alert.alert('Open failed', 'Could not open this file. Please try again.');
     }
   };
 

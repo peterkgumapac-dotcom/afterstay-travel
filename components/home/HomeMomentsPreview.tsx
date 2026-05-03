@@ -116,12 +116,12 @@ export function HomeMomentsPreview({
 
   const router = useRouter();
 
-  if (moments.length === 0) {
+  if (moments.length === 0 || allPhotos.length === 0) {
     return (
       <View style={styles.wrapper}>
         <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
           <Camera size={24} color={colors.text3} strokeWidth={1.5} />
-          <Text style={styles.emptyText}>No moments yet</Text>
+          <Text style={styles.emptyText}>{moments.length === 0 ? 'No moments yet' : 'No photos yet'}</Text>
           <TouchableOpacity
             style={styles.emptyBtn}
             activeOpacity={0.7}
