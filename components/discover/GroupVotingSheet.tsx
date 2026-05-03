@@ -139,7 +139,7 @@ export default function GroupVotingSheet({
 
   const handleVote = useCallback(
     async (vote: PlaceVote) => {
-      if (!place || voting) return
+      if (!place || voting || !currentMemberId) return
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
 
       // Optimistic update
@@ -347,7 +347,7 @@ export default function GroupVotingSheet({
                   myVote === '👍 Yes' && s.voteBtnActive,
                 ]}
                 onPress={() => handleVote('👍 Yes')}
-                disabled={voting}
+                disabled={voting || !currentMemberId}
                 activeOpacity={0.7}
               >
                 <ThumbsUp
@@ -372,7 +372,7 @@ export default function GroupVotingSheet({
                   myVote === '👎 No' && s.voteBtnNoActive,
                 ]}
                 onPress={() => handleVote('👎 No')}
-                disabled={voting}
+                disabled={voting || !currentMemberId}
                 activeOpacity={0.7}
               >
                 <ThumbsDown
