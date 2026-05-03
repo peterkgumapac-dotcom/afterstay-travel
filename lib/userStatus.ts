@@ -40,7 +40,6 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) {
       const delay = attempt === 1 ? 800 : 1500;
-      if (__DEV__) console.log(`[deriveUserStatus] attempt ${attempt + 1}/${3} after ${delay}ms delay`);
       await new Promise((r) => setTimeout(r, delay));
     }
 
@@ -48,13 +47,11 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
       // Ensure Supabase auth is ready before querying
       const { data: authData, error: authError } = await supabase.auth.getUser();
       if (authError || !authData.user) {
-        if (__DEV__) console.log(`[deriveUserStatus] auth not ready on attempt ${attempt + 1}`);
         lastError = authError ?? new Error('Auth not ready');
         continue;
       }
 
       const trips = await getAllUserTrips(userId);
-      if (__DEV__) console.log(`[deriveUserStatus] attempt ${attempt + 1}: ${trips.length} trips`);
 
       if (trips.length === 0 && attempt === 0) {
         // Might be auth race on first attempt only — retry once
@@ -120,16 +117,13 @@ export async function deriveUserStatus(userId: string): Promise<StatusResult> {
         JSON.stringify({ ...result, userId, cachedAt: Date.now() }),
       );
 
-      if (__DEV__) console.log(`[deriveUserStatus] final status: ${status}`);
       return result;
     } catch (error) {
-      if (__DEV__) console.log(`[deriveUserStatus] attempt ${attempt + 1} error:`, error);
       lastError = error as Error;
     }
   }
 
   // All attempts failed — fallback to cache or 'new'
-  if (__DEV__) console.log('[deriveUserStatus] all attempts failed, falling back');
   const cached = await getCachedStatus(userId);
   if (cached) {
     return { ...cached, isLoading: false, error: lastError };

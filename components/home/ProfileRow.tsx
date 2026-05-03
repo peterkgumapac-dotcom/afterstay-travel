@@ -28,7 +28,6 @@ export default function ProfileRow({
   const initial = firstName.charAt(0).toUpperCase();
 
   const goToSettings = () => {
-    if (__DEV__) console.log('[ProfileRow] Settings tapped');
     router.push('/settings');
   };
 
