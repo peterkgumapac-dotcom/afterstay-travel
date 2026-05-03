@@ -572,7 +572,7 @@ export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> 
   // Trips owned by user (is_draft must not be true — allow null and false).
   // Fetch a small window, then filter deleted/archived locally so one stale
   // duplicate cannot hide the next valid planning trip.
-  const { data: owned } = await supabase
+  const { data: owned, error: ownedError } = await supabase
     .from(T.trips)
     .select('*')
     .eq('user_id', userId)
@@ -582,7 +582,7 @@ export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> 
     .limit(20);
 
   // Trips where user is a member (covers invited members)
-  const { data: memberTrips } = await supabase
+  const { data: memberTrips, error: memberError } = await supabase
     .from(T.trips)
     .select('*, group_members!inner(user_id)')
     .eq('group_members.user_id', userId)
@@ -590,6 +590,17 @@ export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> 
     .or('is_draft.is.null,is_draft.eq.false')
     .order('start_date', { ascending: true })
     .limit(20);
+
+  if (ownedError && memberError) {
+    throw new Error(`getActiveTrip: ${ownedError.message}; ${memberError.message}`);
+  }
+
+  // If one query errors and the other returns no usable rows, keep the previous
+  // cache state uncertain instead of caching a false "no active trip".
+  if ((ownedError || memberError) && ((owned ?? []).length + (memberTrips ?? []).length === 0)) {
+    const message = ownedError?.message ?? memberError?.message ?? 'Trip lookup failed';
+    throw new Error(`getActiveTrip: ${message}`);
+  }
 
   // Merge and pick earliest
   const allRows = [...(owned ?? []), ...(memberTrips ?? [])];

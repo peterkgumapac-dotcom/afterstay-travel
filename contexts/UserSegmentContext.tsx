@@ -31,6 +31,10 @@ const DEV_ALLOWED_EMAIL = 'peterkgumapac@gmail.com';
 
 /** Set a mock key override for testing. Pass null to clear. */
 export async function setSegmentOverride(key: MockKey | null): Promise<void> {
+  if (!__DEV__) {
+    await AsyncStorage.removeItem(DEV_OVERRIDE_KEY);
+    return;
+  }
   if (key) {
     await AsyncStorage.setItem(DEV_OVERRIDE_KEY, key);
   } else {
@@ -40,6 +44,10 @@ export async function setSegmentOverride(key: MockKey | null): Promise<void> {
 
 /** Read the current mock key override (null = no override). */
 export async function getSegmentOverride(): Promise<MockKey | null> {
+  if (!__DEV__) {
+    await AsyncStorage.removeItem(DEV_OVERRIDE_KEY);
+    return null;
+  }
   const val = await AsyncStorage.getItem(DEV_OVERRIDE_KEY);
   if (!val) return null;
   // Validate it's a known mock key
@@ -217,7 +225,7 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
       let segment = realSegment;
       let isTestMode = false;
       let mockKey: MockKey | null = null;
-      if (user.email === DEV_ALLOWED_EMAIL) {
+      if (__DEV__ && user.email === DEV_ALLOWED_EMAIL) {
         mockKey = await getSegmentOverride();
         if (mockKey) {
           const parsed = parseMockKey(mockKey);
@@ -225,7 +233,7 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
           isTestMode = true;
         }
       } else {
-        // Clear test mode if email is no longer whitelisted
+        // Clear test mode if email is no longer whitelisted or this is a release build.
         await setSegmentOverride(null);
       }
 

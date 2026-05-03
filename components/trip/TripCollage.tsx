@@ -8,7 +8,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { Image } from 'expo-image';
-import { supabase } from '@/lib/supabase';
+import { getMoments, supabase } from '@/lib/supabase';
 
 const GAP = 2;
 
@@ -35,25 +35,11 @@ function shuffle<T>(arr: T[]): T[] {
 
 /** Fetch random moment photos for a trip. */
 async function fetchTripPhotos(tripId: string, maxPhotos: number): Promise<string[]> {
-  const { data } = await supabase
-    .from('moments')
-    .select('public_url, storage_path')
-    .eq('trip_id', tripId)
-    .limit(maxPhotos);
-
-  if (!data || data.length === 0) return [];
-
-  const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
-  const urls = data
-    .map((row) => {
-      let url = row.public_url as string | undefined;
-      if (!url || url.endsWith('/')) {
-        const sp = row.storage_path as string | undefined;
-        if (sp && SUPABASE_URL) url = `${SUPABASE_URL}/storage/v1/object/public/moments/${sp}`;
-      }
-      return url;
-    })
-    .filter(Boolean) as string[];
+  const moments = await getMoments(tripId);
+  const urls = moments
+    .map((moment) => moment.photo)
+    .filter((url): url is string => !!url && !url.endsWith('/'))
+    .slice(0, maxPhotos);
 
   return shuffle(urls);
 }

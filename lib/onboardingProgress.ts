@@ -62,7 +62,6 @@ export function isOnboardingIncomplete(progress?: OnboardingProgress | null): bo
 export async function getOnboardingProgress(userId?: string): Promise<OnboardingProgress | undefined> {
   const cacheKey = keyFor(PROGRESS_KEY, userId);
   const cached = normalizeProgress(await cacheGet<unknown>(cacheKey, 0));
-  if (isOnboardingIncomplete(cached)) return cached;
 
   if (userId) {
     try {
