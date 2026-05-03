@@ -69,15 +69,15 @@ export default function TopTripCard({ trip, photoCount, photoUrls = [], onPress 
 const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    minHeight: 282,
-    borderRadius: 18,
+    minHeight: 246,
+    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: _colors.card,
     borderWidth: 1,
     borderColor: _colors.border,
   },
   mosaic: {
-    height: 164,
+    height: 138,
     flexDirection: 'row',
     gap: 3,
   },
@@ -86,7 +86,7 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
     height: '100%',
   },
   sideRail: {
-    width: 104,
+    width: 96,
     gap: 3,
   },
   sideImage: {
@@ -95,20 +95,20 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
   },
   fallback: {
     width: '100%',
-    height: 164,
+    height: 138,
     backgroundColor: _colors.accentBg,
   },
   imageShade: {
     position: 'absolute',
-    top: 72,
+    top: 56,
     left: 0,
     right: 0,
-    height: 92,
+    height: 82,
   },
   content: {
     paddingHorizontal: 13,
-    paddingTop: 12,
-    paddingBottom: 13,
+    paddingTop: 10,
+    paddingBottom: 11,
   },
   badge: {
     position: 'absolute',
@@ -129,7 +129,7 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
   },
   destination: {
     color: _colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0,
   },
@@ -144,7 +144,7 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: 8,
+    marginTop: 6,
   },
   meta: {
     color: _colors.text2,
@@ -155,7 +155,7 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
     flexDirection: 'row',
     alignItems: 'center',
     gap: 18,
-    marginTop: 14,
+    marginTop: 10,
   },
   actionItem: {
     flexDirection: 'row',

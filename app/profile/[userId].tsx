@@ -4,6 +4,7 @@ import {
   Alert,
   Dimensions,
   Linking,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -58,7 +59,9 @@ import {
   buildProfileMapData,
   buildProfileStatsFromTrips,
   buildTravelProgressItems,
+  buildTravelProgressItemsFromTrips,
   buildTopTrip,
+  normalizeStatsCountries,
 } from '@/lib/profileStats';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -203,14 +206,13 @@ export default function CompanionProfileScreen() {
     return (
       <SafeAreaView style={[s.screen, { flex: 1 }]}>
         <View style={s.topbar}>
-          <TouchableOpacity
+          <Pressable
             style={s.iconBtn}
             onPress={handleBackPress}
-            activeOpacity={0.7}
             hitSlop={{ top: 18, bottom: 18, left: 18, right: 18 }}
           >
             <ArrowLeft size={22} color={colors.text} />
-          </TouchableOpacity>
+          </Pressable>
         </View>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
           <Text style={s.emptyText}>Profile not found or private</Text>
@@ -224,7 +226,7 @@ export default function CompanionProfileScreen() {
   const firstName = profile.fullName.split(' ')[0];
   const computedStats = buildProfileStatsFromTrips({ trips: mutualTrips, moments: sharedMoments, flights: profileFlights });
   const hasLiveCountryStats = computedStats.countriesList.length > 0;
-  const stats = profile.lifetimeStats
+  const rawStats = profile.lifetimeStats
     ? {
       ...profile.lifetimeStats,
       totalCountries: hasLiveCountryStats ? computedStats.totalCountries : profile.lifetimeStats.totalCountries,
@@ -233,8 +235,10 @@ export default function CompanionProfileScreen() {
       totalMoments: Math.max(profile.lifetimeStats.totalMoments, computedStats.totalMoments),
     }
     : computedStats;
+  const stats = normalizeStatsCountries(rawStats);
   const countries = buildCountriesVisited(stats);
-  const travelProgress = buildTravelProgressItems(stats);
+  const tripProgress = buildTravelProgressItemsFromTrips(mutualTrips);
+  const travelProgress = tripProgress.length > 0 ? tripProgress : buildTravelProgressItems(stats);
   const topTrip = buildTopTrip(mutualTrips);
   const mapData = buildProfileMapData({ trips: mutualTrips, flights: profileFlights, homeBase: profile.homeBase });
   const canSeeStats = isSelf || isCompanion || !!profile.publicStatsEnabled;
@@ -268,21 +272,20 @@ export default function CompanionProfileScreen() {
     <SafeAreaView style={s.screen} edges={['top']}>
       {/* Top bar */}
       <View style={s.topbar} pointerEvents="box-none">
-        <TouchableOpacity
+        <Pressable
           style={s.iconBtn}
           onPress={handleBackPress}
-          activeOpacity={0.7}
-          hitSlop={{ top: 18, bottom: 18, left: 18, right: 18 }}
+          hitSlop={{ top: 26, bottom: 26, left: 26, right: 26 }}
         >
           <ArrowLeft size={22} color={colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity
+        </Pressable>
+        <Pressable
           style={s.iconBtn}
-          activeOpacity={0.7}
           onPress={handleMorePress}
+          hitSlop={{ top: 24, bottom: 24, left: 24, right: 24 }}
         >
           <MoreHorizontal size={22} color={colors.text} />
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       <ProfilePager
@@ -626,25 +629,25 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     },
     topbar: {
       position: 'absolute',
-      top: 6,
+      top: 4,
       left: 0,
       right: 0,
-      zIndex: 9000,
-      elevation: 120,
+      zIndex: 100000,
+      elevation: 1000,
       flexDirection: 'row',
       justifyContent: 'space-between',
       paddingHorizontal: 16,
-      paddingVertical: 6,
+      paddingVertical: 4,
     },
     iconBtn: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
+      width: 46,
+      height: 46,
+      borderRadius: 23,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(31,27,23,0.7)',
+      backgroundColor: 'rgba(31,27,23,0.58)',
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: 'rgba(255,255,255,0.28)',
     },
     scroll: {
       paddingBottom: 96,

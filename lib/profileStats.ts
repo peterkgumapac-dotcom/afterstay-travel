@@ -109,6 +109,22 @@ const PLACE_COUNTRY_FALLBACKS: Record<string, string> = {
   palawan: 'Philippines',
   siargao: 'Philippines',
   tagaytay: 'Philippines',
+  'hoi an': 'Vietnam',
+};
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  korea: 'South Korea',
+  'republic of korea': 'South Korea',
+  ph: 'Philippines',
+  philippines: 'Philippines',
+  thailand: 'Thailand',
+  vietnam: 'Vietnam',
+  indonesia: 'Indonesia',
+  singapore: 'Singapore',
+  japan: 'Japan',
+  'south korea': 'South Korea',
+  'united states': 'United States',
+  usa: 'United States',
 };
 
 function visibleTrip(trip: Trip): boolean {
@@ -128,11 +144,34 @@ function tripCountry(trip: Trip): string | undefined {
   if (trip.country) return trip.country;
   const label = trip.destination || trip.name || '';
   const parts = label.split(',').map((part) => part.trim()).filter(Boolean);
-  if (parts.length > 1) return parts[parts.length - 1];
+  if (parts.length > 1) return normalizeCountryName(parts[parts.length - 1]) ?? parts[parts.length - 1];
   const normalized = label.toLowerCase();
   const fallbackKey = Object.keys(PLACE_COUNTRY_FALLBACKS).find((place) => normalized.includes(place));
   if (fallbackKey) return PLACE_COUNTRY_FALLBACKS[fallbackKey];
   return parts.length > 1 ? parts[parts.length - 1] : undefined;
+}
+
+export function normalizeCountryName(value?: string | null): string | undefined {
+  const raw = (value ?? '').trim();
+  if (!raw) return undefined;
+  const normalized = raw.toLowerCase().replace(/\s+/g, ' ');
+  if (COUNTRY_ALIASES[normalized]) return COUNTRY_ALIASES[normalized];
+  const fallbackKey = Object.keys(PLACE_COUNTRY_FALLBACKS).find((place) => normalized.includes(place));
+  if (fallbackKey) return PLACE_COUNTRY_FALLBACKS[fallbackKey];
+  return COUNTRY_CODES[raw] ? raw : undefined;
+}
+
+export function normalizeStatsCountries(stats: LifetimeStats): LifetimeStats {
+  const normalizedCountries = stats.countriesList
+    .map((country) => normalizeCountryName(country))
+    .filter((country): country is string => !!country);
+  const countriesList = [...new Set(normalizedCountries)];
+
+  return {
+    ...stats,
+    totalCountries: countriesList.length,
+    countriesList,
+  };
 }
 
 function countryCode(name: string): string {
@@ -268,7 +307,7 @@ export function buildProfileStatsFromTrips({ trips, moments = [], flights = [] }
   const flightMap = buildProfileMapData({ trips: visible, flights });
 
   for (const trip of visible) {
-    const country = tripCountry(trip);
+    const country = normalizeCountryName(tripCountry(trip));
     if (country) countries.add(country);
   }
 
@@ -289,7 +328,7 @@ export function buildProfileStatsFromTrips({ trips, moments = [], flights = [] }
 }
 
 export function buildCountriesVisited(stats: LifetimeStats): CountryVisited[] {
-  return stats.countriesList.map((name) => {
+  return [...new Set(stats.countriesList.map((name) => normalizeCountryName(name)).filter((name): name is string => !!name))].map((name) => {
     const code = countryCode(name);
     return {
       code,
@@ -300,7 +339,7 @@ export function buildCountriesVisited(stats: LifetimeStats): CountryVisited[] {
 }
 
 export function buildTravelProgressItems(stats: LifetimeStats, maxItems = 4): TravelProgressItem[] {
-  const countries = stats.countriesList.slice(0, maxItems);
+  const countries = [...new Set(stats.countriesList.map((name) => normalizeCountryName(name)).filter((name): name is string => !!name))].slice(0, maxItems);
   const denominator = Math.max(1, countries.length - 1);
 
   return countries.map((name, index) => {
@@ -312,6 +351,28 @@ export function buildTravelProgressItems(stats: LifetimeStats, maxItems = 4): Tr
       progress: countries.length <= 1 ? 1 : index / denominator,
     };
   });
+}
+
+export function buildTravelProgressItemsFromTrips(trips: Trip[], maxItems = 4): TravelProgressItem[] {
+  const visible = trips.filter(visibleTrip);
+  const stops = visible.map((trip) => {
+    const rawLabel = trip.destination || trip.name;
+    const country = normalizeCountryName(tripCountry(trip));
+    const code = trip.countryCode ?? (country ? countryCode(country) : extractAirportCode(rawLabel) ?? rawLabel.slice(0, 2).toUpperCase());
+    return {
+      code,
+      label: rawLabel.replace(/,\s*(Philippines|Thailand|Vietnam|Indonesia|Singapore|Japan|South Korea|Korea|United States)$/i, ''),
+      flag: COUNTRY_FLAGS[country ? countryCode(country) : code] ?? '🌍',
+    };
+  }).filter((item) => !!item.label);
+
+  const uniqueStops = [...new Map(stops.map((stop) => [`${stop.label.toLowerCase()}-${stop.code}`, stop])).values()].slice(0, maxItems);
+  const denominator = Math.max(1, uniqueStops.length - 1);
+
+  return uniqueStops.map((stop, index) => ({
+    ...stop,
+    progress: uniqueStops.length <= 1 ? 1 : index / denominator,
+  }));
 }
 
 export function buildAchievementBadges(stats: LifetimeStats): AchievementBadge[] {

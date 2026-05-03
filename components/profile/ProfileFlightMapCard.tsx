@@ -98,7 +98,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
       </View>
 
       <View style={[s.mapWrap, isEmptyProfile && s.mapWrapCompact]}>
-        <Svg width="100%" height={isEmptyProfile ? 112 : 160} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
+        <Svg width="100%" height={isEmptyProfile ? 104 : 132} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
           <Ellipse cx={104} cy={92} rx={70} ry={34} fill={colors.accentBg} opacity={0.45} />
           <Ellipse cx={238} cy={86} rx={92} ry={38} fill={colors.accentBg} opacity={0.36} />
           <Ellipse cx={210} cy={144} rx={48} ry={24} fill={colors.accentBg} opacity={0.32} />
@@ -201,7 +201,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
 const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    borderRadius: 16,
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -211,12 +211,12 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     borderRadius: 20,
   },
   head: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: 14,
+    paddingTop: 11,
   },
   kicker: {
     color: colors.accent,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 2,
     textTransform: 'uppercase',
@@ -225,26 +225,26 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
-    marginTop: 8,
+    marginTop: 6,
   },
   distance: {
     color: colors.text,
-    fontSize: 30,
+    fontSize: 27,
     fontWeight: '800',
     letterSpacing: 0,
   },
   distanceUnit: {
     color: colors.text2,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     marginBottom: 6,
   },
   mapWrap: {
-    height: 168,
+    height: 140,
     position: 'relative',
   },
   mapWrapCompact: {
-    height: 120,
+    height: 112,
   },
   emptyMap: {
     position: 'absolute',
@@ -274,7 +274,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontSize: 19,
   },
   footer: {
-    minHeight: 58,
+    minHeight: 52,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     flexDirection: 'row',
@@ -292,7 +292,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   fvalue: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
   },
   flabel: {

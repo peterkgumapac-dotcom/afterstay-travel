@@ -60,7 +60,7 @@ export default function ProfileCoverHeader({
   const tags = buildTags(stats, homeBase);
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
   const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
-  const coverHeight = hasCoverVisual ? Math.min(284, Math.max(256, width * 0.64)) : 232;
+  const coverHeight = hasCoverVisual ? Math.min(258, Math.max(228, width * 0.58)) : 214;
 
   return (
     <View style={s.container}>
@@ -93,12 +93,6 @@ export default function ProfileCoverHeader({
             </View>
           </LinearGradient>
         )}
-        {hasCoverVisual ? (
-          <LinearGradient
-            colors={['rgba(0,0,0,0.02)', 'rgba(0,0,0,0.26)']}
-            style={StyleSheet.absoluteFill}
-          />
-        ) : null}
         <View style={s.levelBadge}>
           <Sparkles size={14} color="#fff" />
           <Text style={s.levelText}>Level {level}</Text>
@@ -229,11 +223,11 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   levelBadge: {
     position: 'absolute',
     right: 18,
-    bottom: 28,
+    bottom: 22,
     zIndex: 4,
-    minHeight: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(42,29,13,0.72)',
+    minHeight: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(42,29,13,0.62)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
@@ -247,11 +241,11 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   coverEditPill: {
     position: 'absolute',
     right: 18,
-    top: 76,
+    top: 72,
     zIndex: 4,
-    minHeight: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(42,29,13,0.66)',
+    minHeight: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(42,29,13,0.58)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
@@ -263,21 +257,21 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontWeight: '800',
   },
   sheet: {
-    marginTop: -30,
+    marginTop: -22,
     paddingHorizontal: 18,
-    paddingTop: 66,
-    paddingBottom: 10,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
+    paddingTop: 54,
+    paddingBottom: 8,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     backgroundColor: colors.canvas,
   },
   avatarWrap: {
     position: 'absolute',
-    top: -64,
+    top: -54,
     left: 18,
-    width: 94,
-    height: 94,
-    borderRadius: 47,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     borderWidth: 4,
     borderColor: colors.canvas,
     backgroundColor: colors.canvas,
@@ -285,7 +279,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   avatar: {
     width: '100%',
     height: '100%',
-    borderRadius: 47,
+    borderRadius: 42,
     borderWidth: 3,
     borderColor: colors.accent,
   },
@@ -307,7 +301,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   name: {
     flexShrink: 1,
     color: colors.text,
-    fontSize: 26,
+    fontSize: 25,
     fontWeight: '800',
     letterSpacing: 0,
   },
@@ -326,10 +320,10 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     marginTop: 4,
   },
   aboutInline: {
-    marginTop: 9,
-    gap: 2,
+    marginTop: 7,
   },
   aboutLabel: {
+    display: 'none',
     color: colors.text3,
     fontSize: 9,
     fontWeight: '800',
@@ -338,22 +332,22 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   bio: {
     color: colors.text2,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 13.5,
+    lineHeight: 18,
   },
   tags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 7,
-    marginTop: 10,
+    gap: 6,
+    marginTop: 9,
   },
   tag: {
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   tagText: {
     color: colors.text2,
@@ -364,12 +358,12 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 12,
+    marginTop: 11,
   },
   primaryBtn: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 15,
+    minHeight: 39,
+    borderRadius: 14,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
@@ -378,13 +372,13 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   primaryText: {
     color: colors.canvas,
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '800',
   },
   secondaryBtn: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 15,
+    minHeight: 39,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -395,13 +389,13 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   secondaryText: {
     color: colors.accent,
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '800',
   },
   iconBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
+    width: 39,
+    height: 39,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,

@@ -32,7 +32,10 @@ export default function TravelProgressCard({ items, stats }: TravelProgressCardP
       <View style={s.topRow}>
         <View>
           <Text style={s.kicker}>Travel progress</Text>
-          <Text style={s.title}>{stats.totalCountries} visited {stats.totalCountries === 1 ? 'country' : 'countries'}</Text>
+          <Text style={s.title}>
+            {stats.totalTrips} {stats.totalTrips === 1 ? 'travel stop' : 'travel stops'}
+            {stats.totalCountries > 0 ? ` · ${stats.totalCountries} ${stats.totalCountries === 1 ? 'country' : 'countries'}` : ''}
+          </Text>
         </View>
         <View style={s.metricPill}>
           <MapPinned size={14} color={colors.accent} strokeWidth={1.8} />
@@ -88,7 +91,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    padding: 16,
+    padding: 14,
   },
   topRow: {
     flexDirection: 'row',
@@ -105,7 +108,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   title: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     marginTop: 4,
     letterSpacing: 0,
@@ -127,9 +130,9 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontWeight: '800',
   },
   trail: {
-    height: 58,
+    height: 50,
     marginHorizontal: 14,
-    marginTop: 20,
+    marginTop: 16,
     justifyContent: 'center',
   },
   track: {
@@ -174,8 +177,8 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontWeight: '700',
   },
   statsRow: {
-    marginTop: 16,
-    paddingTop: 14,
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     flexDirection: 'row',

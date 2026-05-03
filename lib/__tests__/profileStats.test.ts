@@ -4,11 +4,13 @@ import {
   buildCountriesVisited,
   buildProfileCoverPhotoUrl,
   buildTravelProgressItems,
+  buildTravelProgressItemsFromTrips,
   buildProfileMapData,
   buildProfileStatsFromTrips,
   buildTopTrip,
   extractAirportCode,
   haversineKm,
+  normalizeStatsCountries,
 } from '../profileStats';
 
 const baseTrip: Trip = {
@@ -81,6 +83,25 @@ describe('profileStats', () => {
     expect(stats.totalTrips).toBe(3);
     expect(stats.totalCountries).toBe(1);
     expect(stats.countriesList).toEqual(['Philippines']);
+  });
+
+  it('normalizes place-like lifetime country lists before display', () => {
+    const normalized = normalizeStatsCountries({
+      totalTrips: 3,
+      totalCountries: 3,
+      totalNights: 21,
+      totalMiles: 378,
+      totalSpent: 0,
+      homeCurrency: 'PHP',
+      totalMoments: 102,
+      countriesList: ['Boracay', 'Boracay, Philippines', 'Cebu'],
+    });
+
+    expect(normalized.totalCountries).toBe(1);
+    expect(normalized.countriesList).toEqual(['Philippines']);
+    expect(buildCountriesVisited(normalized)).toEqual([
+      { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
+    ]);
   });
 
   it('prefers lifetime stats when available and derives display helpers', () => {
@@ -185,5 +206,16 @@ describe('profileStats', () => {
     expect(progress.map((item) => item.label)).toEqual(['Philippines', 'Thailand', 'Vietnam', 'Indonesia']);
     expect(progress[0].flag).toBe('🇵🇭');
     expect(progress[3].progress).toBe(1);
+  });
+
+  it('builds travel progress stops separately from country count', () => {
+    const progress = buildTravelProgressItemsFromTrips([
+      { ...baseTrip, id: 'boracay', destination: 'Boracay, Philippines', country: undefined, countryCode: undefined },
+      { ...baseTrip, id: 'cebu', destination: 'Cebu', country: undefined, countryCode: undefined },
+      { ...baseTrip, id: 'caticlan', destination: 'Caticlan', country: undefined, countryCode: undefined },
+    ]);
+
+    expect(progress.map((item) => item.label)).toEqual(['Boracay', 'Cebu', 'Caticlan']);
+    expect(progress.every((item) => item.flag === '🇵🇭')).toBe(true);
   });
 });
