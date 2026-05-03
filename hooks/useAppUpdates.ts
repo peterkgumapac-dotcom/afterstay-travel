@@ -5,10 +5,11 @@ import * as Updates from 'expo-updates';
 const FOREGROUND_CHECK_COOLDOWN_MS = 10 * 60 * 1000;
 
 /**
- * Checks for EAS Updates on app launch and foreground,
+ * Checks for EAS Updates when returning to the foreground,
  * downloads if available, and reloads with a branded splash screen.
  *
- * Skipped in development / Expo Go.
+ * Expo's native ON_LOAD check already handles startup. Keeping this hook to
+ * foreground checks avoids double network checks during cold launch.
  */
 export function useAppUpdates() {
   const appStateRef = useRef(AppState.currentState);
@@ -19,10 +20,10 @@ export function useAppUpdates() {
     // Skip in dev / Expo Go
     if (__DEV__ || !Updates.isEnabled) return;
 
-    async function checkAndReload(reason: 'launch' | 'foreground') {
+    async function checkAndReload() {
       const now = Date.now();
       if (inFlightRef.current) return;
-      if (reason === 'foreground' && now - lastCheckAtRef.current < FOREGROUND_CHECK_COOLDOWN_MS) {
+      if (now - lastCheckAtRef.current < FOREGROUND_CHECK_COOLDOWN_MS) {
         return;
       }
 
@@ -58,14 +59,11 @@ export function useAppUpdates() {
       }
     }
 
-    // Check on mount
-    checkAndReload('launch');
-
     // Check when app comes to foreground
     const sub = AppState.addEventListener('change', (nextState) => {
       const wasBackgrounded = appStateRef.current === 'inactive' || appStateRef.current === 'background';
       appStateRef.current = nextState;
-      if (wasBackgrounded && nextState === 'active') checkAndReload('foreground');
+      if (wasBackgrounded && nextState === 'active') checkAndReload();
     });
 
     return () => sub.remove();
