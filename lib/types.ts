@@ -519,6 +519,7 @@ export interface CompanionProfile {
   id: string;
   fullName: string;
   avatarUrl?: string;
+  coverPhotoUrl?: string;
   handle?: string;
   bio?: string;
   homeBase?: string;

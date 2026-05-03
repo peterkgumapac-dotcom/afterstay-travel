@@ -4,6 +4,7 @@ import { Check, ChevronDown, MessageCircle, Pencil, Plus, Send, Sparkles } from 
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
+import { CachedImage } from '@/components/CachedImage';
 import { TripCollage } from '@/components/trip/TripCollage';
 import { useTheme } from '@/constants/ThemeContext';
 import type { CompanionStatus, LifetimeStats, Trip } from '@/lib/types';
@@ -12,6 +13,7 @@ interface ProfileCoverHeaderProps {
   fullName: string;
   handle?: string;
   avatarUrl?: string;
+  coverPhotoUrl?: string;
   bio?: string;
   homeBase?: string;
   companionStatus: CompanionStatus;
@@ -36,6 +38,7 @@ export default function ProfileCoverHeader({
   fullName,
   handle,
   avatarUrl,
+  coverPhotoUrl,
   bio,
   homeBase,
   companionStatus,
@@ -57,7 +60,9 @@ export default function ProfileCoverHeader({
   return (
     <View style={s.container}>
       <View style={s.cover}>
-        {topTrip?.id ? (
+        {coverPhotoUrl ? (
+          <CachedImage remoteUrl={coverPhotoUrl} style={StyleSheet.absoluteFill} />
+        ) : topTrip?.id ? (
           <TripCollage tripId={topTrip.id} width={width} height={235} animated={false} />
         ) : (
           <LinearGradient
@@ -139,7 +144,7 @@ export default function ProfileCoverHeader({
           ) : (
             <TouchableOpacity style={s.secondaryBtn} onPress={onCustomize} activeOpacity={0.75}>
               <MessageCircle size={16} color={colors.accent} />
-              <Text style={s.secondaryText}>View Profile</Text>
+              <Text style={s.secondaryText}>Edit details</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={s.iconBtn} activeOpacity={0.75}>

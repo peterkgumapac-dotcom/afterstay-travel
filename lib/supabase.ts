@@ -3450,6 +3450,7 @@ export interface Profile {
   id: string;
   fullName: string;
   avatarUrl?: string;
+  coverPhotoUrl?: string;
   phone?: string;
   handle?: string;
   bio?: string;
@@ -3478,6 +3479,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
     id: data.id,
     fullName: data.full_name ?? '',
     avatarUrl: data.avatar_url ?? undefined,
+    coverPhotoUrl: data.cover_photo_url ?? undefined,
     phone: data.phone ?? undefined,
     handle: data.handle ?? undefined,
     bio: data.bio ?? undefined,
@@ -3504,6 +3506,7 @@ export async function updateProfile(
   // Always include fields that are passed — even empty strings — so they persist
   if (updates.fullName !== undefined) row.full_name = updates.fullName
   if (updates.avatarUrl !== undefined) row.avatar_url = updates.avatarUrl || null
+  if (updates.coverPhotoUrl !== undefined) row.cover_photo_url = updates.coverPhotoUrl || null
   if (updates.phone !== undefined) row.phone = updates.phone || null
   if (updates.handle !== undefined) row.handle = updates.handle || null
   if (updates.bio !== undefined) row.bio = updates.bio || null
@@ -3519,7 +3522,7 @@ export async function updateProfile(
   const { data: authData } = await supabase.auth.getUser()
   const isOwnProfile = authData?.user?.id === userId
 
-  const rpcSupportedKeys = new Set(['full_name', 'handle', 'avatar_url', 'phone', 'socials'])
+  const rpcSupportedKeys = new Set(['full_name', 'handle', 'avatar_url', 'cover_photo_url', 'phone', 'socials'])
   const canUseProfileRpc = Object.keys(row).every((key) => rpcSupportedKeys.has(key))
 
   if (isOwnProfile && canUseProfileRpc) {
@@ -3529,6 +3532,7 @@ export async function updateProfile(
       p_avatar_url: updates.avatarUrl ?? null,
       p_phone: updates.phone ?? null,
       p_socials: updates.socials ?? null,
+      p_cover_photo_url: updates.coverPhotoUrl ?? null,
     })
     if (!rpcError) return
     const canFallbackFromRpc =
@@ -3708,14 +3712,15 @@ export async function getPublicProfilePosts(
   }))
 }
 
-export async function uploadProfilePhoto(userId: string, localUri: string): Promise<string> {
-  const compressed = await compressImage(localUri, 400, 0.5)
+async function uploadProfileImage(userId: string, localUri: string, kind: 'avatar' | 'cover'): Promise<string> {
+  const compressed = await compressImage(localUri, kind === 'cover' ? 1600 : 500, kind === 'cover' ? 0.72 : 0.58)
   const timestamp = Date.now()
-  const filename = localUri.split('/').pop() ?? 'avatar.jpg'
-  const storagePath = `profiles/${userId}-${timestamp}-${filename}`
+  const filename = localUri.split('/').pop() ?? `${kind}.jpg`
+  const storagePath = `profiles/${userId}/${kind}-${timestamp}-${filename}`
 
   const bytes = await readFileAsBytes(compressed)
   const contentType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg'
+  const column = kind === 'cover' ? 'cover_photo_url' : 'avatar_url'
 
   const buckets = ['avatars', 'moments'] as const
   for (const bucket of buckets) {
@@ -3726,14 +3731,23 @@ export async function uploadProfilePhoto(userId: string, localUri: string): Prom
     if (!uploadError) {
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(storagePath)
       const publicUrl = urlData.publicUrl
-      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', userId)
+      const { error: updateError } = await supabase.from('profiles').update({ [column]: publicUrl }).eq('id', userId)
+      if (updateError) throw new Error(`uploadProfileImage: ${updateError.message}`)
       return publicUrl
     }
     if (bucket === buckets[buckets.length - 1]) {
-      throw new Error(`uploadProfilePhoto: ${uploadError.message}`)
+      throw new Error(`uploadProfileImage: ${uploadError.message}`)
     }
   }
-  throw new Error('uploadProfilePhoto: no bucket available')
+  throw new Error('uploadProfileImage: no bucket available')
+}
+
+export async function uploadProfilePhoto(userId: string, localUri: string): Promise<string> {
+  return uploadProfileImage(userId, localUri, 'avatar')
+}
+
+export async function uploadProfileCoverPhoto(userId: string, localUri: string): Promise<string> {
+  return uploadProfileImage(userId, localUri, 'cover')
 }
 
 export async function ensureProfile(userId: string, name: string): Promise<void> {
@@ -4720,6 +4734,7 @@ type PublicProfileRpcRow = {
   fullName?: string;
   handle?: string | null;
   avatarUrl?: string | null;
+  coverPhotoUrl?: string | null;
   bio?: string | null;
   homeBase?: string | null;
   profileVisibility?: CompanionProfile['profileVisibility'];
@@ -4736,6 +4751,7 @@ function mapPublicProfileRpcToProfileRow(row: PublicProfileRpcRow): Record<strin
     full_name: row.fullName,
     handle: row.handle,
     avatar_url: row.avatarUrl,
+    cover_photo_url: row.coverPhotoUrl,
     bio: row.bio,
     home_base: row.homeBase,
     profile_visibility: row.profileVisibility,
@@ -4806,7 +4822,7 @@ export async function getCompanionProfile(targetUserId: string): Promise<Compani
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, full_name, avatar_url, handle, bio, home_base, profile_visibility, public_stats_enabled, profile_badges, phone, socials, companion_privacy')
+    .select('id, full_name, avatar_url, cover_photo_url, handle, bio, home_base, profile_visibility, public_stats_enabled, profile_badges, phone, socials, companion_privacy')
     .eq('id', targetUserId)
     .maybeSingle()
 
@@ -4884,6 +4900,7 @@ export async function getCompanionProfile(targetUserId: string): Promise<Compani
     id: resolvedProfile.id as string,
     fullName: (resolvedProfile.full_name as string) ?? 'Traveler',
     avatarUrl: (resolvedProfile.avatar_url as string) ?? undefined,
+    coverPhotoUrl: (resolvedProfile.cover_photo_url as string) ?? undefined,
     handle: (resolvedProfile.handle as string) ?? undefined,
     bio: (resolvedProfile.bio as string) ?? undefined,
     homeBase: (resolvedProfile.home_base as string) ?? undefined,

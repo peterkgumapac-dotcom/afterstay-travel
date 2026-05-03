@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, X } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -16,7 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
-import { updateProfile, uploadProfilePhoto, type Profile } from '@/lib/supabase';
+import { updateProfile, uploadProfileCoverPhoto, uploadProfilePhoto, type Profile } from '@/lib/supabase';
 
 interface ProfileCustomizeSheetProps {
   visible: boolean;
@@ -37,6 +38,7 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
   const [tiktok, setTiktok] = useState('');
   const [publicStatsEnabled, setPublicStatsEnabled] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
+  const [coverUrl, setCoverUrl] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -49,6 +51,7 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
     setTiktok(profile.socials?.tiktok ?? '');
     setPublicStatsEnabled(!!profile.publicStatsEnabled);
     setAvatarUrl(profile.avatarUrl);
+    setCoverUrl(profile.coverPhotoUrl);
   }, [profile, visible]);
 
   const pickAvatar = async () => {
@@ -65,6 +68,35 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
       const url = await uploadProfilePhoto(profile.id, result.assets[0].uri);
       setAvatarUrl(url);
       onSaved();
+    } catch (error) {
+      Alert.alert(
+        'Photo update failed',
+        error instanceof Error ? error.message : 'Could not upload your profile photo. Please try again.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const pickCover = async () => {
+    if (!profile || saving) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.82,
+      allowsEditing: true,
+      aspect: [16, 9],
+    });
+    if (result.canceled || !result.assets[0]) return;
+    setSaving(true);
+    try {
+      const url = await uploadProfileCoverPhoto(profile.id, result.assets[0].uri);
+      setCoverUrl(url);
+      onSaved();
+    } catch (error) {
+      Alert.alert(
+        'Cover update failed',
+        error instanceof Error ? error.message : 'Could not upload your cover photo. Please try again.',
+      );
     } finally {
       setSaving(false);
     }
@@ -87,6 +119,11 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
       });
       onSaved();
       onClose();
+    } catch (error) {
+      Alert.alert(
+        'Profile update failed',
+        error instanceof Error ? error.message : 'Could not save your profile. Please try again.',
+      );
     } finally {
       setSaving(false);
     }
@@ -103,18 +140,43 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
         </View>
 
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-          <TouchableOpacity style={s.avatarWrap} onPress={pickAvatar} activeOpacity={0.8}>
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={s.avatar} contentFit="cover" />
-            ) : (
-              <View style={[s.avatar, s.avatarFallback]}>
-                <Text style={s.avatarInitial}>{(fullName || 'A').charAt(0).toUpperCase()}</Text>
+          <View style={s.photoEditor}>
+            <TouchableOpacity style={s.coverWrap} onPress={pickCover} activeOpacity={0.82} disabled={saving}>
+              {coverUrl ? (
+                <Image source={{ uri: coverUrl }} style={s.coverImage} contentFit="cover" />
+              ) : (
+                <View style={s.coverFallback}>
+                  <ImageIcon size={26} color={colors.accent} strokeWidth={1.7} />
+                  <Text style={s.coverFallbackText}>Choose a cover photo</Text>
+                </View>
+              )}
+              <View style={s.coverBadge}>
+                <Camera size={15} color={colors.canvas} />
               </View>
-            )}
-            <View style={s.cameraBadge}>
-              <Camera size={16} color={colors.canvas} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={s.avatarWrap} onPress={pickAvatar} activeOpacity={0.8} disabled={saving}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={s.avatar} contentFit="cover" />
+              ) : (
+                <View style={[s.avatar, s.avatarFallback]}>
+                  <Text style={s.avatarInitial}>{(fullName || 'A').charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={s.cameraBadge}>
+                <Camera size={16} color={colors.canvas} />
+              </View>
+            </TouchableOpacity>
+
+            <View style={s.photoActions}>
+              <TouchableOpacity style={s.photoAction} onPress={pickCover} activeOpacity={0.75} disabled={saving}>
+                <Text style={s.photoActionText}>Change cover</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.photoAction} onPress={pickAvatar} activeOpacity={0.75} disabled={saving}>
+                <Text style={s.photoActionText}>Change profile photo</Text>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+          </View>
 
           <Field label="Name" value={fullName} onChangeText={setFullName} colors={colors} />
           <Field label="Handle" value={handle} onChangeText={setHandle} colors={colors} autoCapitalize="none" prefix="@" />
@@ -206,9 +268,50 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     paddingHorizontal: 20,
     paddingBottom: 24,
   },
+  photoEditor: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  coverWrap: {
+    height: 168,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  coverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  coverFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.card,
+  },
+  coverFallbackText: {
+    color: colors.text3,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  coverBadge: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.canvas,
+  },
   avatarWrap: {
     alignSelf: 'center',
-    marginVertical: 14,
+    marginTop: -48,
   },
   avatar: {
     width: 104,
@@ -239,6 +342,27 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: colors.canvas,
+  },
+  photoActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  photoAction: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  photoActionText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
   },
   field: {
     marginTop: 14,

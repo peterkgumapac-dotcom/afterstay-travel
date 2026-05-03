@@ -2,27 +2,39 @@ import { Camera, Moon } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
+import { CachedImage } from '@/components/CachedImage';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatProfileCurrency } from '@/lib/profileStats';
 import type { Trip } from '@/lib/types';
 import { formatDatePHT } from '@/lib/utils';
-import { TripCollage } from '@/components/trip/TripCollage';
 
 interface TopTripCardProps {
   trip: Trip;
   photoCount: number;
+  photoUrls?: string[];
   onPress: () => void;
 }
 
-export default function TopTripCard({ trip, photoCount, onPress }: TopTripCardProps) {
+export default function TopTripCard({ trip, photoCount, photoUrls = [], onPress }: TopTripCardProps) {
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const s = getStyles(colors);
   const cardWidth = Math.max(0, width - 32);
+  const photos = photoUrls.filter(Boolean).slice(0, 3);
 
   return (
     <TouchableOpacity style={s.card} onPress={onPress} activeOpacity={0.82}>
-      <TripCollage tripId={trip.id} width={cardWidth} height={220} animated={false} />
+      {photos.length > 0 ? (
+        <View style={[s.mosaic, { width: cardWidth }]}>
+          <CachedImage remoteUrl={photos[0]} style={s.heroImage} />
+          <View style={s.sideRail}>
+            <CachedImage remoteUrl={photos[1] ?? photos[0]} style={s.sideImage} />
+            <CachedImage remoteUrl={photos[2] ?? photos[0]} style={s.sideImage} />
+          </View>
+        </View>
+      ) : (
+        <View style={s.fallback} />
+      )}
       <View style={s.overlay} />
       <View style={s.content}>
         <Text style={s.destination} numberOfLines={1}>{trip.destination || trip.name}</Text>
@@ -42,9 +54,31 @@ export default function TopTripCard({ trip, photoCount, onPress }: TopTripCardPr
 const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    height: 220,
+    height: 236,
     borderRadius: 18,
     overflow: 'hidden',
+    backgroundColor: '#241b12',
+  },
+  mosaic: {
+    height: 236,
+    flexDirection: 'row',
+    gap: 3,
+  },
+  heroImage: {
+    flex: 1,
+    height: '100%',
+  },
+  sideRail: {
+    width: 104,
+    gap: 3,
+  },
+  sideImage: {
+    flex: 1,
+    width: '100%',
+  },
+  fallback: {
+    width: '100%',
+    height: '100%',
     backgroundColor: '#241b12',
   },
   overlay: {

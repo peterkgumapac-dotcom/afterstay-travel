@@ -2,6 +2,7 @@ import type { Flight, LifetimeStats, Moment, Trip } from '../types';
 import {
   buildAchievementBadges,
   buildCountriesVisited,
+  buildProfileCoverPhotoUrl,
   buildProfileMapData,
   buildProfileStatsFromTrips,
   buildTopTrip,
@@ -132,5 +133,24 @@ describe('profileStats', () => {
 
   it('calculates route distances with haversine', () => {
     expect(Math.round(haversineKm({ lat: 14.5086, lng: 121.0195 }, { lat: 11.9245, lng: 121.9540 }))).toBeGreaterThan(280);
+  });
+
+  it('chooses an explicit profile cover before travel photos', () => {
+    expect(buildProfileCoverPhotoUrl({
+      explicitCoverUrl: 'https://example.com/cover.jpg',
+      moments,
+      fallbackUrl: 'https://example.com/fallback.jpg',
+    })).toBe('https://example.com/cover.jpg');
+  });
+
+  it('falls back to the first moment photo for profile cover', () => {
+    expect(buildProfileCoverPhotoUrl({
+      moments,
+      fallbackUrl: 'https://example.com/fallback.jpg',
+    })).toBe('https://example.com/1.jpg');
+  });
+
+  it('returns undefined when no profile cover source exists', () => {
+    expect(buildProfileCoverPhotoUrl({ moments: [] })).toBeUndefined();
   });
 });

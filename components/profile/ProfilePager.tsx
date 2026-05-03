@@ -25,8 +25,8 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const scrollRef = useRef<ScrollView>(null);
   const x = useRef(new Animated.Value(0)).current;
   const [active, setActive] = useState(0);
-  const segmentInnerWidth = Math.max(0, width - 40);
-  const thumbWidth = segmentInnerWidth / 2;
+  const segmentWidth = Math.max(0, width - 32);
+  const thumbWidth = (segmentWidth - 8) / 2;
 
   const indicator = x.interpolate({
     inputRange: [0, width],
@@ -99,9 +99,12 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     flex: 1,
   },
   segment: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 14,
+    zIndex: 20,
     height: 44,
-    marginHorizontal: 16,
-    marginBottom: 10,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Image,
   Linking,
   ScrollView,
   StyleSheet,
@@ -34,13 +33,12 @@ import {
   getMoments,
   getMutualTrips,
   getProfile,
-  getPublicProfilePosts,
   getSharedMomentsWith,
   toggleFollow,
 } from '@/lib/supabase';
 import type { Profile } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
-import type { CompanionProfile as CompanionProfileType, FeedPost, Flight, Moment, Trip } from '@/lib/types';
+import type { CompanionProfile as CompanionProfileType, Flight, Moment, Trip } from '@/lib/types';
 import { GroupHeader } from '@/components/trip/GroupHeader';
 import { TripCollage } from '@/components/trip/TripCollage';
 import TopTripCard from '@/components/profile/TopTripCard';
@@ -53,6 +51,7 @@ import ProfileFlightMapCard from '@/components/profile/ProfileFlightMapCard';
 import ProfileStatsStrip from '@/components/profile/ProfileStatsStrip';
 import {
   buildCountriesVisited,
+  buildProfileCoverPhotoUrl,
   buildProfileMapData,
   buildProfileStatsFromTrips,
   buildTopTrip,
@@ -78,7 +77,6 @@ export default function CompanionProfileScreen() {
   const [sharedMoments, setSharedMoments] = useState<Moment[]>([]);
   const [loading, setLoading] = useState(true);
   const [tripFilter, setTripFilter] = useState<TripFilter>('all');
-  const [myPosts, setMyPosts] = useState<FeedPost[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [customizeVisible, setCustomizeVisible] = useState(false);
@@ -91,15 +89,13 @@ export default function CompanionProfileScreen() {
     try {
       const profileResult = await getCompanionProfile(userId);
       const viewingSelf = user?.id === userId;
-      const [tripsResult, postsResult, followResult, ownProfileResult, lifetimeResult] = await Promise.allSettled([
+      const [tripsResult, followResult, ownProfileResult, lifetimeResult] = await Promise.allSettled([
         viewingSelf ? getAllUserTrips(userId) : getMutualTrips(userId),
-        getPublicProfilePosts(userId, 20, 0),
         getFollowState(userId),
         viewingSelf ? getProfile(userId) : Promise.resolve(null),
         getLifetimeStats(userId),
       ]);
       const trips = tripsResult.status === 'fulfilled' ? tripsResult.value : [];
-      const posts = postsResult.status === 'fulfilled' ? postsResult.value : [];
       const follow = followResult.status === 'fulfilled' ? followResult.value : { isFollowing: false };
       const resolvedOwnProfile = ownProfileResult.status === 'fulfilled' ? ownProfileResult.value : null;
       const lifetimeStats = lifetimeResult.status === 'fulfilled' ? lifetimeResult.value : null;
@@ -119,7 +115,6 @@ export default function CompanionProfileScreen() {
       setMutualTrips(trips);
       setProfileFlights(flights);
       setSharedMoments(moments);
-      setMyPosts(posts);
       setIsFollowing(follow.isFollowing);
     } catch (err) {
       if (__DEV__) console.warn('[Profile] load error:', err);
@@ -195,6 +190,11 @@ export default function CompanionProfileScreen() {
   const topTrip = buildTopTrip(mutualTrips);
   const mapData = buildProfileMapData({ trips: mutualTrips, flights: profileFlights, homeBase: profile.homeBase });
   const canSeeStats = isSelf || isCompanion || !!profile.publicStatsEnabled;
+  const memoryPhotoUrls = sharedMoments.map((moment) => moment.photo).filter((url): url is string => !!url);
+  const coverPhotoUrl = buildProfileCoverPhotoUrl({
+    explicitCoverUrl: profile.coverPhotoUrl,
+    moments: sharedMoments,
+  });
 
   return (
     <SafeAreaView style={s.screen} edges={['top']}>
@@ -215,6 +215,7 @@ export default function CompanionProfileScreen() {
               fullName={profile.fullName}
               handle={profile.handle}
               avatarUrl={profile.avatarUrl}
+              coverPhotoUrl={coverPhotoUrl}
               bio={profile.bio}
               homeBase={profile.homeBase}
               companionStatus={profile.companionStatus}
@@ -259,6 +260,7 @@ export default function CompanionProfileScreen() {
                 <TopTripCard
                   trip={topTrip}
                   photoCount={sharedMoments.length}
+                  photoUrls={memoryPhotoUrls}
                   onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: topTrip.id } } as never)}
                 />
               </>
@@ -306,26 +308,36 @@ export default function CompanionProfileScreen() {
                   </View>
                 )}
 
-                <View style={s.albumGrid}>
-                  {filteredTrips.length === 0 ? (
-                    <View style={s.emptyCardDashed}>
-                      <Text style={s.emptyCardText}>
-                        {mutualTrips.length === 0
-                          ? `No shared trips with ${firstName} yet.`
-                          : 'No trips match this filter.'}
-                      </Text>
-                    </View>
-                  ) : (
-                    filteredTrips.map(trip => (
-                      <AlbumTripCard
-                        key={trip.id}
-                        trip={trip}
-                        colors={colors}
-                        onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never)}
-                      />
-                    ))
-                  )}
-                </View>
+                {filteredTrips.length === 0 ? (
+                  <View style={s.emptyCardDashed}>
+                    <Text style={s.emptyCardText}>
+                      {mutualTrips.length === 0
+                        ? `No shared trips with ${firstName} yet.`
+                        : 'No trips match this filter.'}
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <TopTripCard
+                      trip={filteredTrips[0]}
+                      photoCount={sharedMoments.length}
+                      photoUrls={memoryPhotoUrls}
+                      onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: filteredTrips[0].id } } as never)}
+                    />
+                    {filteredTrips.length > 1 ? (
+                      <View style={s.albumGrid}>
+                        {filteredTrips.slice(1).map(trip => (
+                          <AlbumTripCard
+                            key={trip.id}
+                            trip={trip}
+                            colors={colors}
+                            onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never)}
+                          />
+                        ))}
+                      </View>
+                    ) : null}
+                  </>
+                )}
               </>
             )}
 
@@ -338,28 +350,6 @@ export default function CompanionProfileScreen() {
                   </Text>
                 </View>
               </View>
-            )}
-
-            {myPosts.length > 0 && (
-              <>
-                <GroupHeader
-                  kicker={`${myPosts.length} posts`}
-                  title={isSelf ? 'My Posts' : `${firstName}'s Posts`}
-                  colors={colors as any}
-                />
-                <View style={{ paddingBottom: 8 }}>
-                  {myPosts.map((post) => (
-                    <PublicPostCard
-                      key={post.id}
-                      post={post}
-                      colors={colors}
-                      onPress={() => {
-                        if (post.tripId) router.push({ pathname: '/trip-recap', params: { tripId: post.tripId } } as never);
-                      }}
-                    />
-                  ))}
-                </View>
-              </>
             )}
 
             {(isCompanion || isSelf) && (
@@ -520,29 +510,6 @@ function AlbumTripCard({ trip, colors, onPress }: { trip: Trip; colors: any; onP
   );
 }
 
-function PublicPostCard({ post, colors, onPress }: { post: FeedPost; colors: any; onPress: () => void }) {
-  const s = getStyles(colors);
-  const imageUrl = post.media?.find((media) => !!media.mediaUrl)?.mediaUrl || post.photoUrl;
-
-  return (
-    <TouchableOpacity style={s.postCard} onPress={onPress} activeOpacity={0.82} disabled={!post.tripId}>
-      {imageUrl ? <Image source={{ uri: imageUrl }} style={s.postImage} /> : null}
-      <View style={s.postBody}>
-        {post.locationName ? (
-          <View style={s.postLocationRow}>
-            <MapPin size={13} color={colors.accent} />
-            <Text style={s.postLocation} numberOfLines={1}>{post.locationName}</Text>
-          </View>
-        ) : null}
-        {post.caption ? <Text style={s.postCaption} numberOfLines={3}>{post.caption}</Text> : null}
-        <Text style={s.postMeta}>
-          {post.likesCount} likes · {post.commentsCount} comments
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
 function SocialRow({ icon, handle, platform, colors, onPress }: {
   icon: React.ReactNode; handle: string; platform: string; colors: any; onPress: () => void;
 }) {
@@ -568,6 +535,11 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       backgroundColor: colors.canvas,
     },
     topbar: {
+      position: 'absolute',
+      top: 8,
+      left: 0,
+      right: 0,
+      zIndex: 10,
       flexDirection: 'row',
       justifyContent: 'space-between',
       paddingHorizontal: 16,
@@ -584,7 +556,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       borderColor: colors.border,
     },
     scroll: {
-      paddingBottom: 24,
+      paddingBottom: 96,
     },
     section: {
       paddingHorizontal: 16,
