@@ -2584,7 +2584,7 @@ export async function getMoments(tripId?: string): Promise<Moment[]> {
   const uid = authUser?.id;
   const filtered = (data ?? []).filter((row) => {
     const vis = (row.visibility as string) ?? 'shared';
-    if (vis === 'shared') return true;
+    if (vis === 'shared' || vis === 'public' || row.is_public === true) return true;
     // Private/album moments: only visible to the uploader
     if (uid && row.user_id === uid) return true;
     return false;
@@ -2937,10 +2937,21 @@ export async function toggleMomentVisibility(momentId: string): Promise<'shared'
     throw new Error('toggleMomentVisibility: can only toggle own moments');
   }
 
-  const newVisibility = (moment.visibility as string) === 'shared' ? 'private' : 'shared';
-  const { error } = await supabase.from(T.moments).update({ visibility: newVisibility }).eq('id', momentId);
+  const newVisibility = (moment.visibility as string) === 'private' ? 'shared' : 'private';
+  const { error } = await supabase
+    .from(T.moments)
+    .update({ visibility: newVisibility, is_public: false })
+    .eq('id', momentId);
 
   if (error) throw new Error(`toggleMomentVisibility: ${error.message}`);
+
+  const { error: feedError } = await supabase
+    .from('feed_posts')
+    .delete()
+    .eq('moment_id', momentId)
+    .eq('user_id', user.id);
+
+  if (feedError) throw new Error(`toggleMomentVisibility: ${feedError.message}`);
   return newVisibility as 'shared' | 'private';
 }
 
@@ -5524,20 +5535,138 @@ export async function getFriendsFeed(offset = 0, limit = FEED_PAGE_SIZE): Promis
   };
 }
 
-/** Set a moment's public visibility. Only the moment owner can do this. */
-export async function setMomentPublic(momentId: string, isPublic: boolean): Promise<void> {
+/** Publish an existing trip moment into Explore. */
+export async function publishMomentToExplore(momentId: string): Promise<void> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error('setMomentPublic: not authenticated');
+  if (!user) throw new Error('publishMomentToExplore: not authenticated');
 
-  const { error } = await supabase
+  const { data: moment, error: momentError } = await supabase
     .from(T.moments)
-    .update({ is_public: isPublic })
+    .select('id,user_id,trip_id,caption,public_url,storage_path,location,latitude,longitude,taken_at')
+    .eq('id', momentId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (momentError) throw new Error(`publishMomentToExplore: ${momentError.message}`);
+  if (!moment) throw new Error('publishMomentToExplore: moment not found');
+
+  const photoUrl = momentPhotoUrl(moment);
+  if (!photoUrl) throw new Error('publishMomentToExplore: photo URL is missing');
+
+  const storagePath = (moment.storage_path as string | undefined) || photoUrl;
+  const caption = (moment.caption as string | undefined) || null;
+  const tripId = (moment.trip_id as string | undefined) || null;
+  const location = (moment.location as string | undefined) || null;
+  const latitude = num(moment.latitude);
+  const longitude = num(moment.longitude);
+
+  const { data: existingPost, error: existingError } = await supabase
+    .from('feed_posts')
+    .select('id')
+    .eq('moment_id', momentId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (existingError) throw new Error(`publishMomentToExplore: ${existingError.message}`);
+
+  let postId = existingPost?.id as string | undefined;
+  if (postId) {
+    const { error: updateError } = await supabase
+      .from('feed_posts')
+      .update({
+        type: 'photo',
+        caption,
+        trip_id: tripId,
+        photo_url: photoUrl,
+        location_name: location,
+        latitude,
+        longitude,
+        layout_type: 'single',
+        metadata: { source: 'moment', momentId },
+        is_public: true,
+      })
+      .eq('id', postId)
+      .eq('user_id', user.id);
+
+    if (updateError) throw new Error(`publishMomentToExplore: ${updateError.message}`);
+  } else {
+    const { data: insertedPost, error: insertError } = await supabase
+      .from('feed_posts')
+      .insert({
+        user_id: user.id,
+        type: 'photo',
+        caption,
+        moment_id: momentId,
+        trip_id: tripId,
+        photo_url: photoUrl,
+        location_name: location,
+        latitude,
+        longitude,
+        layout_type: 'single',
+        metadata: { source: 'moment', momentId },
+        is_public: true,
+      })
+      .select('id')
+      .single();
+
+    if (insertError || !insertedPost) {
+      throw new Error(`publishMomentToExplore: ${insertError?.message ?? 'feed post insert failed'}`);
+    }
+    postId = insertedPost.id as string;
+  }
+
+  const { data: existingMedia, error: mediaLookupError } = await supabase
+    .from('post_media')
+    .select('id')
+    .eq('post_id', postId)
+    .limit(1);
+
+  if (mediaLookupError) throw new Error(`publishMomentToExplore: ${mediaLookupError.message}`);
+  if (!existingMedia || existingMedia.length === 0) {
+    const { error: mediaError } = await supabase.from('post_media').insert({
+      post_id: postId,
+      media_url: photoUrl,
+      storage_path: storagePath,
+      media_type: 'image',
+      order_index: 0,
+    });
+
+    if (mediaError) throw new Error(`publishMomentToExplore: ${mediaError.message}`);
+  }
+
+  const { error: momentUpdateError } = await supabase
+    .from(T.moments)
+    .update({ is_public: true, visibility: 'public' })
     .eq('id', momentId)
     .eq('user_id', user.id);
 
-  if (error) throw new Error(`setMomentPublic: ${error.message}`);
+  if (momentUpdateError) throw new Error(`publishMomentToExplore: ${momentUpdateError.message}`);
+}
+
+/** Remove an existing trip moment from Explore without deleting the trip photo. */
+export async function unpublishMomentFromExplore(momentId: string): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error('unpublishMomentFromExplore: not authenticated');
+
+  const { error: momentError } = await supabase
+    .from(T.moments)
+    .update({ is_public: false })
+    .eq('id', momentId)
+    .eq('user_id', user.id);
+
+  if (momentError) throw new Error(`unpublishMomentFromExplore: ${momentError.message}`);
+
+  const { error: feedError } = await supabase
+    .from('feed_posts')
+    .delete()
+    .eq('moment_id', momentId)
+    .eq('user_id', user.id);
+
+  if (feedError) throw new Error(`unpublishMomentFromExplore: ${feedError.message}`);
 }
 
 // ── Feed Posts ───────────────────────────────────────────────────

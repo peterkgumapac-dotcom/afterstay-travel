@@ -105,14 +105,14 @@ lib/inviteLinks.ts: buildInviteAppLink
 lib/mockData.ts: getMockDataForSegment
 lib/moments/exploreMomentsService.ts: getUserStories, removeTag, getPostTags, getUserPosts
 lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, getCategoryForType, notificationPrefsStorageKey
-lib/pendingInvite.ts: consumePendingInviteCode
 lib/profileStats.ts: normalizeCountryName
 lib/quickTrips.ts: getQuickTripExpenseSummary
+lib/supabase.ts: getAllUserExpenses, updateTripBudgetMode, addGeneratedPaymentQr, unsettleExpenseSplit, notifyMemberJoined, notifyBudgetThreshold, batchFavorite, getGroupHighlights, notifyMomentsAdded, addMomentsToAlbum, promoteMomentsToGroup, getActiveTrips, getDraftTrips, getArchivedTrips, getAllTripMemories, getPersonalPhotos, updateDailyExpense, deleteSavingsGoal, getSavingsEntries, markMilestoneCelebrated, getCompanionStatus, addCompanion, acceptCompanion, removeCompanion, updateCompanionPrivacy, getCompanionPrivacySettings, getPublicFeed, getTrendingFeed, getNearbyFeed, getFriendsFeed
 lib/tabDataCache.ts: setCachedData, hasCachedData, useCachedPromise, useCachedData
 lib/tripState.ts: getTripRuntimeState, isReturnFlightDirection, isOutboundFlightDirection, isValidDateTime, getTripDataHealth
 lib/userStatus.ts: refreshUserStatus
 widgets/refresh.ts: ALL_WIDGETS
-Unused exported types (21)
+Unused exported types (22)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
@@ -127,6 +127,7 @@ lib/multi-category-search.ts: MultiCategoryResult
 lib/onboardingProgress.ts: OnboardingPath, OnboardingStage, OnboardingProgress
 lib/profileStats.ts: AchievementBadge
 lib/pushRegistration.ts: PushRegistrationResult
+lib/supabase.ts: PublicProfileRow
 lib/tabDataCache.ts: CacheOptions
 lib/tripMemoryBuilder.ts: TripMemoryData
 lib/tripState.ts: TripRuntimeState, TripDayMetrics, TripDataHealth, FlightIssue

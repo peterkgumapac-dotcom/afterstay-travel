@@ -19,7 +19,7 @@ import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
-import { getMoments, getGroupMembers, getMomentFavorites, getCommentCounts, toggleFavorite, toggleMomentVisibility as toggleVisibility, setMomentVisibility, batchSetMomentVisibility, batchDeleteMoments, getDismissedMomentIds, dismissMoment, undismissMoment, batchDismissMoments, saveGroupPhotoToPrivate } from '@/lib/supabase';
+import { getMoments, getGroupMembers, getMomentFavorites, getCommentCounts, toggleFavorite, toggleMomentVisibility as toggleVisibility, setMomentVisibility, batchSetMomentVisibility, batchDeleteMoments, getDismissedMomentIds, dismissMoment, undismissMoment, batchDismissMoments, saveGroupPhotoToPrivate, publishMomentToExplore, unpublishMomentFromExplore } from '@/lib/supabase';
 import CommentSheet from './CommentSheet';
 import {
   getMomentsPromise,
@@ -232,18 +232,33 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     try {
       const newVis = await toggleVisibility(momentId);
       setRawMoments((prev) =>
-        prev.map((m) => m.id === momentId ? { ...m, visibility: newVis } : m),
+        prev.map((m) => m.id === momentId ? { ...m, visibility: newVis, isPublic: false } : m),
       );
     } catch (err) { if (__DEV__) console.warn('[Moments] visibility toggle failed:', err); }
   }, []);
 
   const handleSetVisibility = useCallback(async (momentId: string, vis: 'shared' | 'private' | 'album') => {
     try {
+      await unpublishMomentFromExplore(momentId);
       await setMomentVisibility(momentId, vis);
       setRawMoments((prev) =>
-        prev.map((m) => m.id === momentId ? { ...m, visibility: vis } : m),
+        prev.map((m) => m.id === momentId ? { ...m, visibility: vis, isPublic: false } : m),
       );
     } catch (err) { if (__DEV__) console.warn('[Moments] set visibility failed:', err); }
+  }, []);
+
+  const handlePublishMoment = useCallback(async (momentId: string) => {
+    try {
+      await publishMomentToExplore(momentId);
+      setRawMoments((prev) =>
+        prev.map((m) => m.id === momentId ? { ...m, visibility: 'public', isPublic: true } : m),
+      );
+      Alert.alert('Shared to Explore', 'This photo is now visible in Explore Moments.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Please try again.';
+      Alert.alert('Could not share photo', message);
+      if (__DEV__) console.warn('[Moments] publish failed:', err);
+    }
   }, []);
 
   const handlePhotoAction = useCallback((action: PhotoAction, moment: MomentDisplay) => {
@@ -284,10 +299,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     } else if (action === 'set-shared') {
       handleSetVisibility(moment.id, 'shared');
     } else if (action === 'set-public') {
-      handleSetVisibility(moment.id, 'shared');
-      import('@/lib/supabase').then(({ setMomentPublic }) => {
-        setMomentPublic(moment.id, true).catch(() => {});
-      });
+      handlePublishMoment(moment.id);
     } else if (action === 'edit') {
       setEditMomentId(moment.id);
     } else if (action === 'delete') {
@@ -314,7 +326,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         .then(() => { loadRef.current?.(true); })
         .catch((err) => { if (__DEV__) console.warn('[Moments] save-to-mine failed:', err); });
     }
-  }, [handleToggleVisibility, handleSetVisibility]);
+  }, [handleToggleVisibility, handleSetVisibility, handlePublishMoment]);
 
   const handleBatchAction = useCallback((action: BatchAction) => {
     const ids = Array.from(selectedIds);
