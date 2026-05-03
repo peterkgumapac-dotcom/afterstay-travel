@@ -25,9 +25,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms);
     promise
-      .then(resolve)
-      .catch(reject)
-      .finally(() => clearTimeout(timer));
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      }, (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
   });
 }
 

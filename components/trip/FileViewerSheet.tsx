@@ -14,7 +14,6 @@ import {
 import { Download, ExternalLink, Share2, X } from 'lucide-react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '@/constants/ThemeContext';
 import { getTripFilePreviewUrl } from '@/lib/supabase';
 import type { TripFile } from '@/lib/types';
@@ -28,11 +27,32 @@ interface FileViewerSheetProps {
 }
 
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif'];
+const CONTENT_TYPE_EXTENSIONS: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'text/plain': 'txt',
+};
 
-function getExtension(url: string): string {
-  const cleaned = url.split('?')[0] ?? url;
+function getExtension(value: string): string {
+  const cleaned = value.split('?')[0] ?? value;
   const dot = cleaned.lastIndexOf('.');
   return dot >= 0 ? cleaned.slice(dot + 1).toLowerCase() : '';
+}
+
+function getFileExtension(file: TripFile | null, url: string): string {
+  const fromName = file?.fileName ? getExtension(file.fileName) : '';
+  if (fromName) return fromName;
+  if (file?.contentType && CONTENT_TYPE_EXTENSIONS[file.contentType]) return CONTENT_TYPE_EXTENSIONS[file.contentType];
+  return getExtension(url) || 'pdf';
+}
+
+function getSafeFileName(file: TripFile | null, url: string): string {
+  const ext = getFileExtension(file, url);
+  const rawName = file?.fileName?.trim() || `afterstay-document.${ext}`;
+  const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return safeName.toLowerCase().endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`;
 }
 
 function isImage(url: string, contentType?: string): boolean {
@@ -82,9 +102,7 @@ export default function FileViewerSheet({ visible, file, onClose }: FileViewerSh
     if (!fileUrl) return;
     setDownloading(true);
     try {
-      const ext = getExtension(fileUrl) || 'pdf';
-      const safeName = (file?.fileName ?? 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
-      const outputName = safeName.toLowerCase().endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`;
+      const outputName = getSafeFileName(file, fileUrl);
       const localUri = `${FileSystem.documentDirectory}${outputName}`;
 
       const { uri } = await FileSystem.downloadAsync(fileUrl, localUri);
@@ -100,28 +118,50 @@ export default function FileViewerSheet({ visible, file, onClose }: FileViewerSh
     } finally {
       setDownloading(false);
     }
-  }, [fileUrl, file?.fileName]);
+  }, [file, fileUrl]);
+
+  const downloadToCache = useCallback(async () => {
+    if (!fileUrl) return;
+    const outputName = getSafeFileName(file, fileUrl);
+    const localUri = `${FileSystem.cacheDirectory}${Date.now()}-${outputName}`;
+    const { uri } = await FileSystem.downloadAsync(fileUrl, localUri);
+    return uri;
+  }, [file, fileUrl]);
 
   const handleShare = useCallback(async () => {
     if (!fileUrl) return;
     try {
-      // Download first, then share
-      const ext = getExtension(fileUrl) || 'pdf';
-      const safeName = (file?.fileName ?? 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
-      const outputName = safeName.toLowerCase().endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`;
-      const localUri = `${FileSystem.cacheDirectory}${outputName}`;
-
-      await FileSystem.downloadAsync(fileUrl, localUri);
+      const localUri = await downloadToCache();
+      if (!localUri) return;
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert('Sharing unavailable', 'This device does not have an app available to open this file.');
+        return;
+      }
       await Sharing.shareAsync(localUri);
     } catch {
-      // Fallback: open in browser
-      WebBrowser.openBrowserAsync(fileUrl).catch(() => {});
+      Alert.alert('Share failed', 'Could not prepare this file. Please try again.');
     }
-  }, [fileUrl, file?.fileName]);
+  }, [downloadToCache, fileUrl]);
 
-  const handleOpenExternal = useCallback(() => {
-    if (fileUrl) WebBrowser.openBrowserAsync(fileUrl).catch(() => {});
-  }, [fileUrl]);
+  const handleOpenExternal = useCallback(async () => {
+    if (!fileUrl) return;
+    setDownloading(true);
+    try {
+      const localUri = await downloadToCache();
+      if (!localUri) return;
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert('No viewer available', 'This device does not have an app available to open this file.');
+        return;
+      }
+      await Sharing.shareAsync(localUri);
+    } catch {
+      Alert.alert('Open failed', 'Could not open this file. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloadToCache, fileUrl]);
 
   if (!file) return null;
 

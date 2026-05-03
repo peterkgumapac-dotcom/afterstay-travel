@@ -98,11 +98,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         applyAccountScope(s);
         await ensureSessionProfile(s);
         setSession(s);
-      })
-      .catch(() => {
+        clearTimeout(timeout);
+        setLoading(false);
+      }, () => {
         // Ignore — stay on login screen
-      })
-      .finally(() => {
         clearTimeout(timeout);
         setLoading(false);
       });

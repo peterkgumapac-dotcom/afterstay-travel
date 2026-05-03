@@ -1021,14 +1021,13 @@ function CompanionsSection({ colors }: { colors: Record<string, string> }) {
     Promise.race([getCompanions(), timeout])
       .then((items) => {
         if (!cancelled) setCompanions(items);
-      })
-      .catch(() => {
+        clearTimeout(timer);
+        if (!cancelled) setLoading(false);
+      }, () => {
         if (!cancelled) {
           setLoadError(true);
           setCompanions([]);
         }
-      })
-      .finally(() => {
         clearTimeout(timer);
         if (!cancelled) setLoading(false);
       });
