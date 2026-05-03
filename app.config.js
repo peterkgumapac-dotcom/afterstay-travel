@@ -58,12 +58,39 @@ export default ({ config }) => ({
   ],
   ios: {
     ...config.ios,
+    associatedDomains: [
+      ...new Set([
+        ...(config.ios?.associatedDomains || []),
+        'applinks:afterstay.travel',
+        'applinks:www.afterstay.travel',
+      ]),
+    ],
     config: {
       googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? '',
     },
   },
   android: {
     ...config.android,
+    intentFilters: [
+      ...(config.android?.intentFilters || []),
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        data: [
+          {
+            scheme: 'https',
+            host: 'afterstay.travel',
+            pathPrefix: '/join',
+          },
+          {
+            scheme: 'https',
+            host: 'www.afterstay.travel',
+            pathPrefix: '/join',
+          },
+        ],
+        category: ['BROWSABLE', 'DEFAULT'],
+      },
+    ],
     config: {
       ...config.android?.config,
       googleMaps: {
