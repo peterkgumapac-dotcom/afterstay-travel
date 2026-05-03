@@ -44,6 +44,9 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 const { width: SCREEN_W } = Dimensions.get('window');
 const ALBUM_W = SCREEN_W - 56;
 const ALBUM_H = Math.round(ALBUM_W * 0.65);
+const HOME_TRIP_ALBUM_LIMIT = 3;
+const HOME_QUICK_TRIP_ALBUM_LIMIT = 2;
+const HOME_COLLAGE_PHOTO_LIMIT = 6;
 
 const COUNTRY_FLAGS: Record<string, string> = {
   JP: '\u{1F1EF}\u{1F1F5}', VN: '\u{1F1FB}\u{1F1F3}', PH: '\u{1F1F5}\u{1F1ED}',
@@ -275,7 +278,7 @@ export default function ReturningUserHome({
               </TouchableOpacity>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.albumScroll} contentContainerStyle={s.albumScrollContent}>
-              {allRecentTrips.slice(0, 6).map((t) => {
+              {allRecentTrips.slice(0, HOME_TRIP_ALBUM_LIMIT).map((t) => {
                 const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
                 return (
                   <AnimatedPressable
@@ -305,7 +308,13 @@ export default function ReturningUserHome({
                       );
                     }}
                   >
-                    <TripCollage tripId={t.id} width={ALBUM_W} height={ALBUM_H} />
+                    <TripCollage
+                      tripId={t.id}
+                      width={ALBUM_W}
+                      height={ALBUM_H}
+                      animated={false}
+                      maxPhotos={HOME_COLLAGE_PHOTO_LIMIT}
+                    />
                     <View style={s.albumOverlay} />
                     {t.status === 'Active' && <View style={[s.albumDot, { backgroundColor: colors.success }]} />}
                     {t.isDraft && <View style={s.albumBadge}><Text style={s.albumBadgeText}>Draft</Text></View>}
@@ -325,7 +334,7 @@ export default function ReturningUserHome({
                 );
               })}
               {/* Quick trips inline with a badge */}
-              {quickTrips.slice(0, 4).map((qt) => (
+              {quickTrips.slice(0, HOME_QUICK_TRIP_ALBUM_LIMIT).map((qt) => (
                 <AnimatedPressable
                   key={`qt-${qt.id}`}
                   style={s.albumCard}
@@ -345,7 +354,13 @@ export default function ReturningUserHome({
                     );
                   }}
                 >
-                  <TripCollage quickTripId={qt.id} width={ALBUM_W} height={ALBUM_H} />
+                  <TripCollage
+                    quickTripId={qt.id}
+                    width={ALBUM_W}
+                    height={ALBUM_H}
+                    animated={false}
+                    maxPhotos={HOME_COLLAGE_PHOTO_LIMIT}
+                  />
                   <View style={s.albumOverlay} />
                   <View style={s.albumBadge}><Text style={s.albumBadgeText}>Quick Trip</Text></View>
                   <View style={s.albumInfo}>

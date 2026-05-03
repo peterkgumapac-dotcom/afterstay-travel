@@ -18,6 +18,7 @@ interface TripCollageProps {
   width: number;
   height: number;
   animated?: boolean;
+  maxPhotos?: number;
   /** If provided, skip the fetch and use these URLs directly */
   photoUrls?: string[];
 }
@@ -33,12 +34,12 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /** Fetch random moment photos for a trip. */
-async function fetchTripPhotos(tripId: string): Promise<string[]> {
+async function fetchTripPhotos(tripId: string, maxPhotos: number): Promise<string[]> {
   const { data } = await supabase
     .from('moments')
     .select('public_url, storage_path')
     .eq('trip_id', tripId)
-    .limit(30);
+    .limit(maxPhotos);
 
   if (!data || data.length === 0) return [];
 
@@ -58,12 +59,12 @@ async function fetchTripPhotos(tripId: string): Promise<string[]> {
 }
 
 /** Fetch photos for a quick trip. */
-async function fetchQuickTripPhotos(quickTripId: string): Promise<string[]> {
+async function fetchQuickTripPhotos(quickTripId: string, maxPhotos: number): Promise<string[]> {
   const { data } = await supabase
     .from('quick_trip_photos')
     .select('photo_url')
     .eq('quick_trip_id', quickTripId)
-    .limit(30);
+    .limit(maxPhotos);
 
   if (!data || data.length === 0) return [];
 
@@ -151,22 +152,32 @@ const FlipCell = memo(function FlipCell({ photos, cellW, cellH, flipInterval, fl
 });
 
 // ── Main collage ──
-function TripCollageInner({ tripId, quickTripId, width, height, animated = true, photoUrls }: TripCollageProps) {
-  const [photos, setPhotos] = useState<string[]>(photoUrls ?? []);
+function TripCollageInner({ tripId, quickTripId, width, height, animated = true, maxPhotos = 12, photoUrls }: TripCollageProps) {
+  const fetchLimit = Math.max(1, Math.min(maxPhotos, 12));
+  const [photos, setPhotos] = useState<string[]>(() => (photoUrls ?? []).slice(0, fetchLimit));
   const [loaded, setLoaded] = useState(!!photoUrls);
 
   useEffect(() => {
-    if (photoUrls) return;
+    let cancelled = false;
+    if (photoUrls) {
+      setPhotos(photoUrls.slice(0, fetchLimit));
+      setLoaded(true);
+      return () => { cancelled = true; };
+    }
     const fetchFn = quickTripId
-      ? fetchQuickTripPhotos(quickTripId)
+      ? fetchQuickTripPhotos(quickTripId, fetchLimit)
       : tripId
-        ? fetchTripPhotos(tripId)
+        ? fetchTripPhotos(tripId, fetchLimit)
         : Promise.resolve([]);
     fetchFn.then((urls) => {
-      setPhotos(urls);
+      if (cancelled) return;
+      setPhotos(urls.slice(0, fetchLimit));
       setLoaded(true);
-    }).catch(() => setLoaded(true));
-  }, [tripId, quickTripId, photoUrls]);
+    }).catch(() => {
+      if (!cancelled) setLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, [tripId, quickTripId, photoUrls, fetchLimit]);
 
   if (!loaded || photos.length === 0) {
     return <View style={{ width, height, backgroundColor: '#1a1a1a' }} />;
