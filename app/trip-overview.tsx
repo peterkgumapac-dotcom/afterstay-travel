@@ -1,6 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  ArrowLeft,
   Bed,
   CheckSquare,
   ChevronDown,
@@ -51,7 +50,6 @@ import type {
   GroupMember,
   PackingItem,
   Place,
-  PlaceCategory,
   Trip,
 } from '@/lib/types';
 import { safeParse, MS_PER_DAY } from '@/lib/utils';

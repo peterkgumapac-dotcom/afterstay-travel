@@ -6,10 +6,9 @@ import {
   StyleSheet,
   Text,
   View,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Share2, Heart, MapPin, Calendar } from 'lucide-react-native';
+import { X, Share2, MapPin, Calendar } from 'lucide-react-native';
 import { Image } from 'expo-image';
 
 import { useTheme } from '@/constants/ThemeContext';

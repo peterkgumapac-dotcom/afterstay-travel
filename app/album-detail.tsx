@@ -1,9 +1,7 @@
-import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,10 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, MoreHorizontal, Plus } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
-import { radius, spacing } from '@/constants/theme';
 import { getAlbumMoments, getAlbumMembers, getPendingMoments, markMomentsViewed } from '@/lib/supabase';
 import type { Moment, AlbumMember } from '@/lib/types';
-import { formatDatePHT } from '@/lib/utils';
 import { CachedImage } from '@/components/CachedImage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

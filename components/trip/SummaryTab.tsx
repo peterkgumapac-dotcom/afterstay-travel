@@ -12,13 +12,12 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { ChevronRight, CircleDot, Clock, Coffee, Dumbbell, Heart, MapPin, Moon, MoreHorizontal, Plus, Sparkles, User, Users, UtensilsCrossed, Wallet, Zap } from 'lucide-react-native';
+import { Coffee, Dumbbell, Heart, MapPin, Moon, MoreHorizontal, Plus, Sparkles, User, Users, UtensilsCrossed, Wallet, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
 import PastTripRow from '@/components/summary/PastTripRow';
-import QuickTripRow from '@/components/quick-trips/QuickTripRow';
 import SwipeableTripCard from '@/components/SwipeableTripCard';
 import EmptyState from '@/components/shared/EmptyState';
 import { TripCollage } from './TripCollage';
