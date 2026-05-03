@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
+import { base64ToBytes } from '@/lib/base64';
 import { compressImage } from '@/lib/compressImage';
 import { getPublicProfiles, searchProfiles as searchPublicProfiles, supabase } from '@/lib/supabase';
 import type { FeedPost, PostMedia, PostTag, Story } from '@/lib/types';
@@ -60,6 +61,25 @@ function encodeStoragePath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/');
 }
 
+async function readFileAsBytes(uri: string): Promise<Uint8Array> {
+  if (uri.startsWith('file://') || uri.startsWith('/')) {
+    const fetchUri = uri.startsWith('/') ? `file://${uri}` : uri;
+    try {
+      const response = await fetch(fetchUri);
+      if (typeof response.arrayBuffer === 'function') {
+        const buffer = await response.arrayBuffer();
+        return new Uint8Array(buffer);
+      }
+    } catch {
+      // Fall through to FileSystem for Android file/content URI edge cases.
+    }
+  }
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return base64ToBytes(base64);
+}
+
 async function uploadLocalFileToStorage(input: {
   bucket: string;
   path: string;
@@ -68,36 +88,61 @@ async function uploadLocalFileToStorage(input: {
   upsert?: boolean;
   timeoutMs?: number;
 }): Promise<void> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token || SUPABASE_KEY;
   const fileUri = input.fileUri.startsWith('/') ? `file://${input.fileUri}` : input.fileUri;
-  const url = `${SUPABASE_URL}/storage/v1/object/${input.bucket}/${encodeStoragePath(input.path)}`;
-  const result = await withUploadTimeout(
-    FileSystem.uploadAsync(url, fileUri, {
-      httpMethod: 'POST',
-      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${token}`,
-        'Content-Type': input.contentType,
-        'x-upsert': input.upsert ? 'true' : 'false',
-      },
+  const uploadAsync = (FileSystem as typeof FileSystem & {
+    uploadAsync?: typeof FileSystem.uploadAsync;
+  }).uploadAsync;
+  const binaryUploadType = (FileSystem as typeof FileSystem & {
+    FileSystemUploadType?: { BINARY_CONTENT?: FileSystem.FileSystemUploadType };
+  }).FileSystemUploadType?.BINARY_CONTENT;
+
+  if (typeof uploadAsync === 'function' && binaryUploadType) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token || SUPABASE_KEY;
+    const url = `${SUPABASE_URL}/storage/v1/object/${input.bucket}/${encodeStoragePath(input.path)}`;
+    const result = await withUploadTimeout(
+      uploadAsync(url, fileUri, {
+        httpMethod: 'POST',
+        uploadType: binaryUploadType,
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': input.contentType,
+          'x-upsert': input.upsert ? 'true' : 'false',
+        },
+      }),
+      'Photo upload timed out. Please check your connection and try again.',
+      input.timeoutMs ?? 150_000,
+    );
+    if (result.status < 200 || result.status >= 300) {
+      let message = result.body || `HTTP ${result.status}`;
+      try {
+        const parsed = JSON.parse(result.body) as { message?: string; error?: string };
+        message = parsed.message || parsed.error || message;
+      } catch {
+        // Storage may return plain text.
+      }
+      throw new Error(message);
+    }
+    return;
+  }
+
+  const bytes = await withUploadTimeout(
+    readFileAsBytes(fileUri),
+    'Photo upload timed out. Please check your connection and try again.',
+    input.timeoutMs ?? 150_000,
+  );
+  const { error } = await withUploadTimeout(
+    supabase.storage.from(input.bucket).upload(input.path, bytes, {
+      contentType: input.contentType,
+      upsert: input.upsert ?? false,
     }),
     'Photo upload timed out. Please check your connection and try again.',
     input.timeoutMs ?? 150_000,
   );
-  if (result.status < 200 || result.status >= 300) {
-    let message = result.body || `HTTP ${result.status}`;
-    try {
-      const parsed = JSON.parse(result.body) as { message?: string; error?: string };
-      message = parsed.message || parsed.error || message;
-    } catch {
-      // Storage may return plain text.
-    }
-    throw new Error(message);
-  }
+  if (error) throw new Error(error.message);
 }
 
 export async function getExploreFeed(params: ExploreFeedParams = {}): Promise<FeedPost[]> {

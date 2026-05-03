@@ -25,6 +25,7 @@ import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { beginGoogleSignIn } from '@/lib/googleAuth';
 import { supabase } from '@/lib/supabase';
+import { peekPendingInviteCode } from '@/lib/pendingInvite';
 import { spacing, radius } from '@/constants/theme';
 import ConstellationHero from '@/components/auth/ConstellationHero';
 
@@ -450,8 +451,17 @@ export default function LoginScreen() {
   // _layout.tsx auth gate handles the actual stack swap; this just resets to index
   useEffect(() => {
     if (session) {
-      router.replace('/');
+      let cancelled = false;
+      (async () => {
+        const pendingInviteCode = await peekPendingInviteCode().catch(() => null);
+        if (cancelled || pendingInviteCode) return;
+        router.replace('/');
+      })();
+      return () => {
+        cancelled = true;
+      };
     }
+    return undefined;
   }, [session, router]);
 
   useEffect(() => {
@@ -481,7 +491,8 @@ export default function LoginScreen() {
         if (err) {
           setError(err.message);
         } else if (data.session) {
-          router.replace('/');
+          const pendingInviteCode = await peekPendingInviteCode().catch(() => null);
+          if (!pendingInviteCode) router.replace('/');
         } else {
           Alert.alert('Verify your email', 'We sent a confirmation link to your email. Please check it to complete registration.');
         }

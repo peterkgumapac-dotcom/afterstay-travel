@@ -288,12 +288,16 @@ export const AnticipationHero: React.FC<Props> = ({
   return (
     <View style={styles.outerWrap}>
       <View style={styles.container}>
+        {renderDesignedHero()}
+
         {/* Current photo with Ken Burns */}
         <Animated.View style={[StyleSheet.absoluteFill, kenBurnsStyle]}>
           <Image
             source={{ uri: heroPhotos[currentIndex] }}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={220}
             onError={() => handleImageError(heroPhotos[currentIndex])}
           />
         </Animated.View>
@@ -306,6 +310,8 @@ export const AnticipationHero: React.FC<Props> = ({
                 source={{ uri: heroPhotos[nextIndex] }}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={220}
                 onError={() => handleImageError(heroPhotos[nextIndex])}
               />
             </Animated.View>

@@ -364,9 +364,78 @@ export function useHomeScreen() {
   }, []);
 
   const refresh = useCallback(() => {
+    if (testModeRef.current) {
+      setRefreshing(false);
+      return;
+    }
     setRefreshing(true);
-    load({ force: true, silent: true });
-  }, [load]);
+    const currentTrip = _rawTrip;
+    if (!currentTrip?.id) {
+      load({ force: true, silent: true });
+      return;
+    }
+
+    (async () => {
+      try {
+        const freshTrip = await withTimeout(getHomeActiveTripPromise(true), currentTrip);
+        const activeTrip = freshTrip ?? currentTrip;
+        setTrip(activeTrip);
+        if (activeTrip.hotelLat && activeTrip.hotelLng) setHotelCoords(activeTrip.hotelLat, activeTrip.hotelLng);
+
+        const [fs, ms, mems, places, allExp] = await Promise.all([
+          withTimeout(getHomeFlightsPromise(activeTrip.id, true), [] as Flight[]),
+          withTimeout(getHomeMomentsPromise(activeTrip.id, true), [] as Moment[]),
+          withTimeout(getHomeMembersPromise(activeTrip.id, true), [] as GroupMember[]),
+          withTimeout(getHomePlacesPromise(activeTrip.id, true), [] as Place[]),
+          withTimeout(getHomeExpensesPromise(activeTrip.id, true), []),
+        ]);
+        setFlights(fs);
+        setMoments(ms);
+        setMembers(mems);
+        setSavedPlaces(places);
+        await cacheSet(`flights:${activeTrip.id}`, fs);
+
+        const primary = mems.find(m => m.role === 'Primary');
+        if (primary) {
+          setUserName(primary.name);
+          if (primary.profilePhoto) setUserAvatar(primary.profilePhoto);
+        }
+
+        const manualPhase = await cacheGet<TripPhase | null>('trip:phase:override', 0);
+        setHasPhaseOverride(!!manualPhase);
+        setPhaseRaw(computeTripPhase({
+          trip: activeTrip,
+          flights: fs,
+          members: mems,
+          userId: user?.id,
+          manualPhase,
+        }));
+
+        setTotalSpent(allExp.reduce((s, e) => s + e.amount, 0));
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const todayExpenses = allExp.filter(e => e.date === todayIso);
+        setTodaySpent(todayExpenses.reduce((s, e) => s + e.amount, 0));
+        setTodayCount(todayExpenses.length);
+
+        const trackerOn = await withTimeout(getDailyTrackerEnabled(), dailyTrackerOn);
+        setDailyTrackerOn(trackerOn);
+        if (trackerOn) {
+          const ds = await withTimeout(getDailyExpenseSummary(todayIso), null);
+          if (ds) {
+            setDailyTrackerTotal(ds.total);
+            setDailyTrackerCount(ds.count);
+            setDailyTrackerByCat(ds.byCategory);
+          }
+        }
+
+        writeWidgetSnapshots().then(() => refreshAllWidgets()).catch(() => {});
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Unable to refresh trip');
+      } finally {
+        setRefreshing(false);
+      }
+    })();
+  }, [_rawTrip, dailyTrackerOn, load, user?.id]);
 
   // Override flights/moments/members/savedPlaces in test mode too
   const effectiveFlights = isTestMode ? (mockData?.flights ?? []) as Flight[] : flights;

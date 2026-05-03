@@ -22,6 +22,7 @@ interface OverviewTabProps {
   onAddMember: () => void;
   onCalendarInvite: () => void;
   isPrimary?: boolean;
+  currentUserId?: string;
   onLoad: () => void;
 }
 
@@ -37,7 +38,8 @@ export function OverviewTab({
   onInvite,
   onAddMember,
   onCalendarInvite,
-  isPrimary = true,
+  isPrimary = false,
+  currentUserId,
 }: OverviewTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
@@ -69,9 +71,15 @@ export function OverviewTab({
             key={m.id}
             style={styles.memberRow}
             activeOpacity={0.7}
-            onPress={() => onMemberEdit(m)}
+            onPress={() => {
+              if (m.userId && m.userId !== currentUserId && !isPrimary) {
+                onMemberProfile(m);
+                return;
+              }
+              onMemberEdit(m);
+            }}
             accessibilityRole="button"
-            accessibilityLabel={`Edit ${m.name} contact details`}
+            accessibilityLabel={isPrimary || m.userId === currentUserId ? `Edit ${m.name} contact details` : `View ${m.name} profile`}
           >
             <TouchableOpacity
               activeOpacity={0.7}
@@ -98,9 +106,11 @@ export function OverviewTab({
             <View style={styles.memberInfo}>
               <Text style={styles.memberName}>
                 {m.name}
-                {m.role === 'Primary' && (
+                {m.userId === currentUserId ? (
                   <Text style={styles.youBadge}> YOU</Text>
-                )}
+                ) : m.role === 'Primary' ? (
+                  <Text style={styles.youBadge}> ORGANIZER</Text>
+                ) : null}
               </Text>
               <Text style={styles.memberRole}>
                 {m.role === 'Primary' ? 'Organizer' : 'Member'} · {

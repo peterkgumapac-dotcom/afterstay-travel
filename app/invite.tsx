@@ -20,26 +20,42 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
+import { useAuth } from '@/lib/auth';
 import { buildInviteWebLink, buildTripInviteMessage } from '@/lib/inviteLinks';
-import { createInviteCode, getActiveTrip, getInvites, getOrCreateInviteCode, type TripInvite } from '@/lib/supabase';
+import { createInviteCode, getActiveTrip, getGroupMembers, getInvites, getOrCreateInviteCode, type TripInvite } from '@/lib/supabase';
+import { canManageTripMembers } from '@/lib/tripPermissions';
 
 export default function InviteScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { user } = useAuth();
 
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tripName, setTripName] = useState('');
   const [history, setHistory] = useState<TripInvite[]>([]);
   const [emailRecipient, setEmailRecipient] = useState('');
+  const [accessState, setAccessState] = useState<'checking' | 'ready' | 'no-trip' | 'blocked'>('checking');
 
   const generateCode = useCallback(async (forceNew = false) => {
     setLoading(true);
     try {
       const trip = await getActiveTrip();
-      if (!trip) { Alert.alert('No active trip'); setLoading(false); return; }
+      if (!trip) {
+        setCode(null);
+        setAccessState('no-trip');
+        return;
+      }
       setTripName(trip.destination || trip.name);
+      const members = await getGroupMembers(trip.id);
+      if (!canManageTripMembers(trip, members, user?.id)) {
+        setCode(null);
+        setHistory([]);
+        setAccessState('blocked');
+        return;
+      }
+      setAccessState('ready');
       const newCode = forceNew ? await createInviteCode(trip.id) : await getOrCreateInviteCode(trip.id);
       setCode(newCode);
       // Refresh history after generating
@@ -51,12 +67,12 @@ export default function InviteScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   // Auto-generate code on mount
   useEffect(() => { generateCode(); }, [generateCode]);
 
-  const inviteLink = code ? buildInviteWebLink(code) : '';
+  const qrLink = code ? buildInviteWebLink(code) : '';
   const shareMessage = code
     ? buildTripInviteMessage({ code, tripName, senderPrefix: 'my' })
     : '';
@@ -81,13 +97,7 @@ export default function InviteScreen() {
     }
 
     const subject = encodeURIComponent(`Join my trip to ${tripName} on AfterStay`);
-    const body = encodeURIComponent(
-      `Hey!\n\nI'd love for you to join my trip to ${tripName} on AfterStay.\n\n` +
-      `Tap to join or download the app: ${inviteLink}\n\n` +
-      `Invite code: ${code}\n\n` +
-      `If the link does not open the app, install AfterStay and enter the invite code above.\n\n` +
-      `See you there!`
-    );
+    const body = encodeURIComponent(`Hey!\n\n${shareMessage}\n\nSee you there!`);
     const mailUrl = `mailto:${recipient ? encodeURIComponent(recipient) : ''}?subject=${subject}&body=${body}`;
     try {
       const canOpen = await Linking.canOpenURL(mailUrl);
@@ -121,7 +131,19 @@ export default function InviteScreen() {
           </Text>
         </View>
 
-        {!code ? (
+        {accessState === 'no-trip' ? (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>No active trip yet</Text>
+            <Text style={styles.noticeText}>Create or select a trip before inviting travel companions.</Text>
+          </View>
+        ) : accessState === 'blocked' ? (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>Organizer access needed</Text>
+            <Text style={styles.noticeText}>
+              Only the trip organizer can generate invite codes and add new companions.
+            </Text>
+          </View>
+        ) : !code ? (
           <Pressable
             style={({ pressed }) => [styles.generateBtn, pressed && { opacity: 0.8 }]}
             onPress={() => generateCode()}
@@ -145,13 +167,13 @@ export default function InviteScreen() {
             {/* QR code */}
             <View style={styles.qrWrap}>
               <QRCode
-                value={inviteLink}
+                value={qrLink}
                 size={160}
                 backgroundColor="transparent"
                 color={colors.text}
               />
               <Text style={styles.qrHint}>Scan to open the invite</Text>
-              <Text style={styles.qrLink} numberOfLines={1}>{inviteLink}</Text>
+              <Text style={styles.qrLink} numberOfLines={1}>{qrLink}</Text>
             </View>
 
             <View style={styles.emailCard}>
@@ -268,6 +290,26 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       alignItems: 'center',
     },
     generateText: { fontSize: 15, fontWeight: '700', color: colors.ink },
+    noticeCard: {
+      padding: spacing.xl,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      gap: spacing.sm,
+    },
+    noticeTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    noticeText: {
+      fontSize: 13,
+      color: colors.text3,
+      textAlign: 'center',
+      lineHeight: 19,
+    },
 
     // Code display
     codeCard: {

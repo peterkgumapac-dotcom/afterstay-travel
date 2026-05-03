@@ -8,6 +8,7 @@ import { clearTripLocalData, setCacheUserId } from './cache';
 import { clearGoogleSession } from './googleAuth';
 import { supabase, clearTripCache } from './supabase';
 import { clearTabDataCache, setTabDataCacheUserId } from './tabDataCache';
+import { consumePendingInviteCode, storePendingInviteCode } from './pendingInvite';
 import type { Session, User } from '@supabase/supabase-js';
 import * as Crypto from 'expo-crypto';
 
@@ -116,6 +117,15 @@ async function clearAccountState(): Promise<void> {
   setTabDataCacheUserId(undefined);
 }
 
+async function resumePendingInvite(s: Session | null): Promise<void> {
+  if (!s?.user?.id) return;
+  const code = await consumePendingInviteCode().catch(() => null);
+  if (!code) return;
+  setTimeout(() => {
+    expoRouter.replace({ pathname: '/join-trip', params: { code } });
+  }, 0);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         applyAccountScope(s);
         await ensureSessionProfile(s);
         setSession(s);
+        await resumePendingInvite(s);
         clearTimeout(timeout);
         setLoading(false);
       }, () => {
@@ -148,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         applyAccountScope(s);
         await ensureSessionProfile(s);
         setSession(s);
+        await resumePendingInvite(s);
       },
     );
 
@@ -229,14 +241,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Invite deep link: afterstay://join-trip?code=X
       const joinParamMatch = url.match(/[?&]code=([^&#]+)/);
       if (url.includes('join-trip') && joinParamMatch) {
-        expoRouter.push({ pathname: '/join-trip', params: { code: joinParamMatch[1] } });
+        const code = decodeURIComponent(joinParamMatch[1]);
+        const {
+          data: { session: currentSession },
+        } = await withAuthTimeout(supabase.auth.getSession(), 'Session restore timed out.').catch(() => ({
+          data: { session: null },
+        }));
+        if (currentSession?.user?.id) {
+          expoRouter.push({ pathname: '/join-trip', params: { code } });
+        } else {
+          await storePendingInviteCode(code);
+          expoRouter.push('/auth/login');
+        }
         return;
       }
 
       // Universal link: https://afterstay.travel/join/CODE
       const joinPathMatch = url.match(/\/join\/([A-Za-z0-9]+)/);
       if (joinPathMatch) {
-        expoRouter.push({ pathname: '/join-trip', params: { code: joinPathMatch[1] } });
+        const code = decodeURIComponent(joinPathMatch[1]);
+        const {
+          data: { session: currentSession },
+        } = await withAuthTimeout(supabase.auth.getSession(), 'Session restore timed out.').catch(() => ({
+          data: { session: null },
+        }));
+        if (currentSession?.user?.id) {
+          expoRouter.push({ pathname: '/join-trip', params: { code } });
+        } else {
+          await storePendingInviteCode(code);
+          expoRouter.push('/auth/login');
+        }
         return;
       }
     };
@@ -262,6 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       applyAccountScope(data.session);
       await ensureSessionProfile(data.session);
       setSession(data.session);
+      await resumePendingInvite(data.session);
       return { error: null };
     } catch (err) {
       return { error: authErrorMessage(err) };

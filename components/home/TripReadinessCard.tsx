@@ -111,6 +111,7 @@ export function TripReadinessCard({ trip, flights, members, savedPlaces, onActio
   const defaultExpanded = !hasAccommodation || !hasFlights || doneCount < 5;
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [hidden, setHidden] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const hiddenKey = `trip:readiness:hidden:${trip.id}`;
   const collapsedKey = `trip:readiness:collapsed:${trip.id}`;
   const sortedItems = useMemo(
@@ -120,8 +121,7 @@ export function TripReadinessCard({ trip, flights, members, savedPlaces, onActio
 
   useEffect(() => {
     let cancelled = false;
-    setExpanded(defaultExpanded);
-    setHidden(false);
+    setPrefsLoaded(false);
 
     Promise.all([
       cacheGet<boolean>(hiddenKey, 0),
@@ -130,6 +130,7 @@ export function TripReadinessCard({ trip, flights, members, savedPlaces, onActio
       if (cancelled) return;
       setHidden(storedHidden === true);
       setExpanded(typeof storedCollapsed === 'boolean' ? !storedCollapsed : defaultExpanded);
+      setPrefsLoaded(true);
     });
 
     return () => {
@@ -154,6 +155,14 @@ export function TripReadinessCard({ trip, flights, members, savedPlaces, onActio
     setHidden(false);
     cacheSet(hiddenKey, false).catch(() => {});
   }, [hiddenKey]);
+
+  if (!prefsLoaded) {
+    return (
+      <View style={s.hiddenCard}>
+        <Text style={s.hiddenText}>Checking trip checklist...</Text>
+      </View>
+    );
+  }
 
   if (hidden) {
     return (

@@ -142,6 +142,15 @@ function withOperationTimeout<T>(promise: PromiseLike<T>, message: string, ms = 
   ]);
 }
 
+async function compressImageBestEffort(uri: string, maxSize: number, quality: number): Promise<string> {
+  try {
+    return await compressImage(uri, maxSize, quality);
+  } catch (err) {
+    if (__DEV__) console.warn('[media] compression failed, uploading original:', err);
+    return uri;
+  }
+}
+
 function encodeStoragePath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/');
 }
@@ -162,33 +171,58 @@ async function uploadLocalFileToStorage(input: {
   timeoutMs?: number;
   timeoutMessage?: string;
 }): Promise<void> {
-  const token = await getStorageAuthToken();
   const fileUri = input.fileUri.startsWith('/') ? `file://${input.fileUri}` : input.fileUri;
-  const url = `${SUPABASE_URL}/storage/v1/object/${input.bucket}/${encodeStoragePath(input.path)}`;
-  const result = await withOperationTimeout(
-    FileSystem.uploadAsync(url, fileUri, {
-      httpMethod: 'POST',
-      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${token}`,
-        'Content-Type': input.contentType,
-        'x-upsert': input.upsert ? 'true' : 'false',
-      },
+  const uploadAsync = (FileSystem as typeof FileSystem & {
+    uploadAsync?: typeof FileSystem.uploadAsync;
+  }).uploadAsync;
+  const binaryUploadType = (FileSystem as typeof FileSystem & {
+    FileSystemUploadType?: { BINARY_CONTENT?: FileSystem.FileSystemUploadType };
+  }).FileSystemUploadType?.BINARY_CONTENT;
+
+  if (typeof uploadAsync === 'function' && binaryUploadType) {
+    const token = await getStorageAuthToken();
+    const url = `${SUPABASE_URL}/storage/v1/object/${input.bucket}/${encodeStoragePath(input.path)}`;
+    const result = await withOperationTimeout(
+      uploadAsync(url, fileUri, {
+        httpMethod: 'POST',
+        uploadType: binaryUploadType,
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': input.contentType,
+          'x-upsert': input.upsert ? 'true' : 'false',
+        },
+      }),
+      input.timeoutMessage ?? 'Upload timed out. Please check your connection and try again.',
+      input.timeoutMs ?? 90_000,
+    );
+    if (result.status < 200 || result.status >= 300) {
+      let message = result.body || `HTTP ${result.status}`;
+      try {
+        const parsed = JSON.parse(result.body) as { message?: string; error?: string };
+        message = parsed.message || parsed.error || message;
+      } catch {
+        // Use the raw body when storage returns plain text.
+      }
+      throw new Error(message);
+    }
+    return;
+  }
+
+  const bytes = await withOperationTimeout(
+    readFileAsBytes(fileUri),
+    input.timeoutMessage ?? 'Upload timed out. Please check your connection and try again.',
+    input.timeoutMs ?? 90_000,
+  );
+  const { error } = await withOperationTimeout(
+    supabase.storage.from(input.bucket).upload(input.path, bytes, {
+      contentType: input.contentType,
+      upsert: input.upsert ?? false,
     }),
     input.timeoutMessage ?? 'Upload timed out. Please check your connection and try again.',
     input.timeoutMs ?? 90_000,
   );
-  if (result.status < 200 || result.status >= 300) {
-    let message = result.body || `HTTP ${result.status}`;
-    try {
-      const parsed = JSON.parse(result.body) as { message?: string; error?: string };
-      message = parsed.message || parsed.error || message;
-    } catch {
-      // Use the raw body when storage returns plain text.
-    }
-    throw new Error(message);
-  }
+  if (error) throw new Error(error.message);
 }
 
 function isLocalAssetUri(uri?: string): boolean {
@@ -949,11 +983,41 @@ export async function getOrCreateInviteCode(tripId?: string, forceNew = false): 
 }
 
 export async function joinTripByCode(code: string, userName: string): Promise<{ tripId: string; trip: Trip }> {
+  const normalizedCode = code.trim().toUpperCase();
+  const cleanedName = userName.trim();
+
+  const { data: rpcAuth } = await supabase.auth.getUser();
+  const rpcUserId = rpcAuth?.user?.id;
+  if (rpcUserId) {
+    const { data: rpcTrip, error: rpcError } = await supabase.rpc('join_trip_by_invite_code', {
+      p_code: normalizedCode,
+      p_name: cleanedName,
+    });
+    const isMissingRpc =
+      rpcError?.code === 'PGRST202' ||
+      /join_trip_by_invite_code|could not find function|schema cache/i.test(rpcError?.message ?? '');
+
+    if (!rpcError && rpcTrip) {
+      const trip = mapTrip(rpcTrip as Record<string, unknown>);
+      notifyMemberJoined(trip.id, cleanedName, rpcUserId).catch(() => {});
+      cachedTripId = trip.id;
+      cachedTrip = undefined;
+      cachedTripUserId = rpcUserId;
+      invalidateTripCache(trip.id);
+      await clearTripLocalData();
+      return { tripId: trip.id, trip };
+    }
+
+    if (rpcError && !isMissingRpc) {
+      throw new Error(rpcError.message || 'Could not join trip');
+    }
+  }
+
   // Look up the invite
   const { data: invite, error: lookupError } = await supabase
     .from('trip_invites')
     .select('trip_id, expires_at, used')
-    .eq('code', code.toUpperCase())
+    .eq('code', normalizedCode)
     .single();
 
   if (lookupError || !invite) throw new Error('Invalid invite code');
@@ -980,7 +1044,7 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
     if (existingMember?.id) {
       await supabase
         .from(T.groupMembers)
-        .update({ name: userName })
+        .update({ name: cleanedName })
         .eq('id', existingMember.id)
         .then(() => {});
     } else {
@@ -995,13 +1059,13 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
           .maybeSingle();
         placeholderMember = data as { id: string } | null;
       }
-      if (!placeholderMember && userName.trim()) {
+      if (!placeholderMember && cleanedName) {
         const { data } = await supabase
           .from(T.groupMembers)
           .select('id')
           .eq('trip_id', tripId)
           .is('user_id', null)
-          .ilike('name', userName.trim())
+          .ilike('name', cleanedName)
           .maybeSingle();
         placeholderMember = data as { id: string } | null;
       }
@@ -1009,7 +1073,7 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
       if (placeholderMember?.id) {
         const { error: linkError } = await supabase
           .from(T.groupMembers)
-          .update({ name: userName, user_id: userId })
+          .update({ name: cleanedName, user_id: userId })
           .eq('id', placeholderMember.id);
         if (linkError) {
           // Some deployed RLS policies do not allow invited users to claim an
@@ -1017,7 +1081,7 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
           // Fall back to inserting a real linked member so the invite still works.
           const { error: memberError } = await supabase.from(T.groupMembers).insert({
             trip_id: tripId,
-            name: userName,
+            name: cleanedName,
             role: 'Member',
             user_id: userId,
             ...(userEmail ? { email: userEmail } : {}),
@@ -1027,7 +1091,7 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
       } else {
         const { error: memberError } = await supabase.from(T.groupMembers).insert({
           trip_id: tripId,
-          name: userName,
+          name: cleanedName,
           role: 'Member',
           user_id: userId,
           ...(userEmail ? { email: userEmail } : {}),
@@ -1038,7 +1102,7 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
   } else {
     const { error: memberError } = await supabase.from(T.groupMembers).insert({
       trip_id: tripId,
-      name: userName,
+      name: cleanedName,
       role: 'Member',
     });
     if (memberError) throw new Error(`joinTrip: ${memberError.message}`);
@@ -1046,11 +1110,11 @@ export async function joinTripByCode(code: string, userName: string): Promise<{ 
 
   // Mark as used for organizer history only. Codes remain reusable until expiry
   // so one group invite can be shared with multiple travelers.
-  await supabase.from('trip_invites').update({ used: true }).eq('code', code.toUpperCase());
+  await supabase.from('trip_invites').update({ used: true }).eq('code', normalizedCode);
 
   // Notify existing members (best-effort, non-blocking)
   if (userId) {
-    notifyMemberJoined(tripId, userName, userId).catch(() => {});
+    notifyMemberJoined(tripId, cleanedName, userId).catch(() => {});
   }
 
   cachedTripId = tripId;
@@ -2660,7 +2724,12 @@ function buildMomentFilename(
 }
 
 export async function addMoment(
-  input: Omit<Moment, 'id'> & { tripId?: string; localUri?: string; isPublic?: boolean },
+  input: Omit<Moment, 'id'> & {
+    tripId?: string;
+    localUri?: string;
+    isPublic?: boolean;
+    mediaType?: 'image' | 'video';
+  },
 ): Promise<string> {
   const tripId = await resolveTripId(input.tripId);
   const tags = Array.isArray(input.tags) ? input.tags.filter(Boolean) : [];
@@ -2673,9 +2742,10 @@ export async function addMoment(
 
   // If a local file URI is provided, compress and upload to Supabase Storage.
   if (input.localUri) {
-    const rawExt = (input.localUri.split('.').pop() ?? 'jpg').toLowerCase();
-    const isVideo = ['mp4', 'mov', 'avi', 'webm', 'm4v'].includes(rawExt);
-    const ext = isVideo ? rawExt : 'jpeg';
+    const rawExt = (input.localUri.split(/[?#]/)[0].split('.').pop() ?? '').toLowerCase();
+    const safeExt = /^[a-z0-9]{2,5}$/.test(rawExt) ? rawExt : '';
+    const isVideo = input.mediaType === 'video' || ['mp4', 'mov', 'avi', 'webm', 'm4v'].includes(safeExt);
+    const ext = isVideo ? (safeExt || 'mp4') : 'jpeg';
     const friendlyName = buildMomentFilename(input, ext);
     const contentType = guessMimeType(friendlyName);
 
@@ -2698,7 +2768,7 @@ export async function addMoment(
     const standardFile = isVideo
       ? input.localUri
       : await withOperationTimeout(
-          compressImage(input.localUri, 1000, 0.68),
+          compressImageBestEffort(input.localUri, 1000, 0.68),
           'Preparing photo timed out. Please try a smaller photo.',
           60_000,
         );
@@ -2717,7 +2787,7 @@ export async function addMoment(
         void (async () => {
           try {
             const hdFile = await withOperationTimeout(
-              compressImage(input.localUri!, 1600, 0.78),
+              compressImageBestEffort(input.localUri!, 1600, 0.78),
               'Preparing HD photo timed out.',
               45_000,
             );
@@ -4247,7 +4317,7 @@ export async function addPersonalPhoto(input: {
   if (!localUri) throw new Error('addPersonalPhoto: localUri is required');
 
   const compressed = await withOperationTimeout(
-    compressImage(localUri, 1000, 0.68),
+    compressImageBestEffort(localUri, 1000, 0.68),
     'Preparing photo timed out. Please try a smaller photo.',
     60_000,
   );

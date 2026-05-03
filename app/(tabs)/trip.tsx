@@ -85,6 +85,7 @@ import {
 } from '@/hooks/useTabTrips';
 import { buildTripCalendarUrl } from '@/lib/calendarInvite';
 import { buildTripInviteMessage } from '@/lib/inviteLinks';
+import { canManageTripMembers } from '@/lib/tripPermissions';
 import { getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
@@ -689,15 +690,14 @@ function TripScreen() {
 
   const [membersData, setMembersData] = useState<GroupMember[]>([]);
   const isPrimary = useMemo(() => {
-    if (!user?.id || membersData.length === 0) return true; // default to primary for safety
-    const me = membersData.find((m) => m.userId === user.id);
-    return me?.role === 'Primary';
-  }, [user?.id, membersData]);
+    return canManageTripMembers(trip, membersData, user?.id);
+  }, [trip, user?.id, membersData]);
   const [flightsData, setFlightsData] = useState<Flight[]>([]);
   const [packingItems, setPackingItems] = useState<PackingItem[]>([]);
   const [editingPackingId, setEditingPackingId] = useState<string | null>(null);
   const [editingPackingText, setEditingPackingText] = useState('');
   const [filesData, setFilesData] = useState<TripFile[]>([]);
+  const [filesError, setFilesError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<TripFile | null>(null);
   const [activeTripSpent, setActiveTripSpent] = useState(0);
   const [pastTripsData, setPastTripsData] = useState<Trip[]>([]);
@@ -721,6 +721,7 @@ function TripScreen() {
     setFlightsData(mockData.flights as Flight[]);
     setPackingItems(mockData.packing as PackingItem[]);
     setFilesData([]);
+    setFilesError(null);
     setPastTripsData(mockData.pastTrips as Trip[]);
     setDraftTripsData(mockData.draftTrips as Trip[]);
     setQuickTripsData([]);
@@ -752,16 +753,23 @@ function TripScreen() {
       const t = await getActiveTripPromise(force);
       setTrip(t);
       if (t) {
-        const [ms, fs, pk, tf] = await Promise.all([
+        const [ms, fs, pk, tfResult] = await Promise.all([
           getGroupMembers(t.id).catch(() => [] as GroupMember[]),
           getFlights(t.id).catch(() => [] as Flight[]),
           getPackingList(t.id).catch(() => [] as PackingItem[]),
-          getTripFiles(t.id).catch(() => [] as TripFile[]),
+          getTripFiles(t.id).then(
+            (files) => ({ files, error: null as string | null }),
+            (error) => ({
+              files: [] as TripFile[],
+              error: error instanceof Error ? error.message : 'Check your connection and try again.',
+            }),
+          ),
         ]);
         setMembersData(ms);
         setFlightsData(fs);
         setPackingItems(pk);
-        setFilesData(tf);
+        setFilesData(tfResult.files);
+        setFilesError(tfResult.error);
       }
       // Load lifetime data + expense summary for active trip
       const [stats, highlights, allTrips, expSummary, qTrips] = await Promise.all([
@@ -806,12 +814,19 @@ function TripScreen() {
   }, []);
 
   const refreshEssentialsData = useCallback(async (tripId: string) => {
-    const [pk, tf] = await Promise.all([
+    const [pk, tfResult] = await Promise.all([
       getPackingList(tripId).catch(() => [] as PackingItem[]),
-      getTripFiles(tripId).catch(() => [] as TripFile[]),
+      getTripFiles(tripId).then(
+        (files) => ({ files, error: null as string | null }),
+        (error) => ({
+          files: [] as TripFile[],
+          error: error instanceof Error ? error.message : 'Check your connection and try again.',
+        }),
+      ),
     ]);
     setPackingItems(pk);
-    setFilesData(tf);
+    setFilesData(tfResult.files);
+    setFilesError(tfResult.error);
   }, []);
 
   const refreshOverviewData = useCallback(async () => {
@@ -1289,6 +1304,10 @@ function TripScreen() {
     } else if (action === 'invite') {
       setEditMember(null);
       if (!trip) return;
+      if (!isPrimary) {
+        Alert.alert('Organizer access needed', 'Only the trip organizer can send invite links.');
+        return;
+      }
       try {
         const inviteCode = await getOrCreateInviteCode(trip.id);
         const msg = buildTripInviteMessage({
@@ -1334,6 +1353,10 @@ function TripScreen() {
       );
     } else if (action === 'photo') {
       setEditMember(null);
+      if (!isPrimary && member.userId !== user?.id) {
+        Alert.alert('Organizer access needed', 'You can only edit your own member details.');
+        return;
+      }
       if (Platform.OS === 'ios') {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -1355,9 +1378,17 @@ function TripScreen() {
         load();
       }
     } else if (action === 'email') {
+      if (!isPrimary && member.userId !== user?.id) {
+        Alert.alert('Organizer access needed', 'You can only edit your own member details.');
+        return;
+      }
       setEditField('email');
       setEditValue(member.email ?? '');
     } else if (action === 'phone') {
+      if (!isPrimary && member.userId !== user?.id) {
+        Alert.alert('Organizer access needed', 'You can only edit your own member details.');
+        return;
+      }
       setEditField('phone');
       setEditValue(member.phone ?? '');
     } else if (action === 'save') {
@@ -1583,6 +1614,7 @@ function TripScreen() {
             onAddMember={() => router.push('/add-member')}
             onCalendarInvite={handleCalendarInviteAll}
             isPrimary={isPrimary}
+            currentUserId={user?.id}
             onLoad={load}
           />
         ) : (
@@ -1636,6 +1668,7 @@ function TripScreen() {
             packingState={packingState}
             packingStats={packingStats}
             files={filesData}
+            filesError={filesError}
             colors={colors}
             addingItem={addingItem}
             newItemText={newItemText}
@@ -1653,6 +1686,9 @@ function TripScreen() {
             onUpload={handleUpload}
             onDownload={handleDownload}
             onFilePress={setSelectedFile}
+            onRetryFiles={() => {
+              if (trip?.id) refreshEssentialsData(trip.id).catch(() => {});
+            }}
           />
         ) : (
           <EmptyState
@@ -1700,7 +1736,7 @@ function TripScreen() {
                       <Text style={styles.sheetBtnAccent}>Message in Trip Chat</Text>
                     </Pressable>
                   )}
-                  {!editMember.userId && (
+                  {isPrimary && !editMember.userId && (
                     <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('invite')}>
                       <Text style={styles.sheetBtnAccent}>Send Invite Link</Text>
                     </Pressable>
@@ -1709,17 +1745,21 @@ function TripScreen() {
                     <Text style={styles.sheetBtnAccent}>Send Calendar Invite</Text>
                     {editMember.email && <Text style={styles.sheetBtnMeta}>{editMember.email}</Text>}
                   </Pressable>
-                  <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('photo')}>
-                    <Text style={styles.sheetBtnText}>Change Photo</Text>
-                  </Pressable>
-                  <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('email')}>
-                    <Text style={styles.sheetBtnText}>Edit Email</Text>
-                    {editMember.email && <Text style={styles.sheetBtnMeta}>{editMember.email}</Text>}
-                  </Pressable>
-                  <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('phone')}>
-                    <Text style={styles.sheetBtnText}>Edit Phone</Text>
-                    {editMember.phone && <Text style={styles.sheetBtnMeta}>{editMember.phone}</Text>}
-                  </Pressable>
+                  {(isPrimary || editMember.userId === user?.id) && (
+                    <>
+                      <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('photo')}>
+                        <Text style={styles.sheetBtnText}>Change Photo</Text>
+                      </Pressable>
+                      <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('email')}>
+                        <Text style={styles.sheetBtnText}>Edit Email</Text>
+                        {editMember.email && <Text style={styles.sheetBtnMeta}>{editMember.email}</Text>}
+                      </Pressable>
+                      <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('phone')}>
+                        <Text style={styles.sheetBtnText}>Edit Phone</Text>
+                        {editMember.phone && <Text style={styles.sheetBtnMeta}>{editMember.phone}</Text>}
+                      </Pressable>
+                    </>
+                  )}
                   {isPrimary && editMember.role !== 'Primary' && (
                     <Pressable style={styles.sheetBtn} onPress={() => handleMemberAction('remove')}>
                       <Text style={[styles.sheetBtnText, { color: colors.danger }]}>Remove from Trip</Text>

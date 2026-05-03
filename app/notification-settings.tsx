@@ -28,6 +28,7 @@ import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { clearPrefsCache, getLocalNotificationPrefs, saveLocalNotificationPrefs } from '@/lib/notificationPrefs';
+import { registerPushNotificationsForUser } from '@/lib/pushRegistration';
 
 // ---------- TYPES ----------
 
@@ -70,6 +71,7 @@ export default function NotificationSettingsScreen() {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<NotificationPrefsState>(DEFAULTS);
   const [pushStatus, setPushStatus] = useState<'loading' | 'enabled' | 'disabled'>('loading');
+  const [registeringPush, setRegisteringPush] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
 
   useEffect(() => {
@@ -125,6 +127,29 @@ export default function NotificationSettingsScreen() {
     });
   }, [prefs, save]);
 
+  const enablePush = useCallback(async () => {
+    if (!user?.id || registeringPush) return;
+    setRegisteringPush(true);
+    try {
+      const result = await registerPushNotificationsForUser(user.id);
+      if (result.status !== 'registered') {
+        setPushStatus('disabled');
+        throw new Error(result.message);
+      }
+      setPushStatus('enabled');
+      Alert.alert(
+        'Notifications enabled',
+        result.provider === 'firebase'
+          ? 'This device is registered for Firebase push notifications.'
+          : 'This device is registered with Expo push fallback.',
+      );
+    } catch (err) {
+      Alert.alert('Enable failed', err instanceof Error ? err.message : 'Unable to register this device.');
+    } finally {
+      setRegisteringPush(false);
+    }
+  }, [registeringPush, user?.id]);
+
   const sendTestPush = useCallback(async () => {
     if (!user?.id || sendingTest) return;
     setSendingTest(true);
@@ -150,7 +175,7 @@ export default function NotificationSettingsScreen() {
       if (pushError) throw new Error(`Push function failed: ${pushError.message}`);
       if (typeof pushResult === 'string' && /no token|quiet hours|missing/i.test(pushResult)) {
         throw new Error(pushResult === 'No token'
-          ? 'No push token is saved for this device yet. Close and reopen the app, then try again.'
+          ? 'No push token is saved for this device yet. Tap Enable / retry push, then try again.'
           : pushResult);
       }
       if (
@@ -200,15 +225,27 @@ export default function NotificationSettingsScreen() {
         )}
 
         {user?.id && (
-          <TouchableOpacity
-            style={[s.testPushBtn, sendingTest && { opacity: 0.55 }]}
-            onPress={sendTestPush}
-            disabled={sendingTest}
-            activeOpacity={0.75}
-          >
-            <Bell size={15} color={colors.bg} strokeWidth={2} />
-            <Text style={s.testPushText}>{sendingTest ? 'Sending test...' : 'Send test push'}</Text>
-          </TouchableOpacity>
+          <View style={s.pushActions}>
+            <TouchableOpacity
+              style={[s.testPushBtn, registeringPush && { opacity: 0.55 }]}
+              onPress={enablePush}
+              disabled={registeringPush}
+              activeOpacity={0.75}
+            >
+              <Bell size={15} color={colors.bg} strokeWidth={2} />
+              <Text style={s.testPushText}>{registeringPush ? 'Registering...' : 'Enable / retry push'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.secondaryPushBtn, sendingTest && { opacity: 0.55 }]}
+              onPress={sendTestPush}
+              disabled={sendingTest}
+              activeOpacity={0.75}
+            >
+              <Bell size={15} color={colors.accent} strokeWidth={2} />
+              <Text style={s.secondaryPushText}>{sendingTest ? 'Sending test...' : 'Send test push'}</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* ── TRIP PHASES ── */}
@@ -420,8 +457,11 @@ const getStyles = (colors: ThemeColors) =>
     pushBannerText: {
       fontSize: 12, fontWeight: '600',
     },
-    testPushBtn: {
+    pushActions: {
+      gap: 10,
       marginTop: 10,
+    },
+    testPushBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -433,6 +473,23 @@ const getStyles = (colors: ThemeColors) =>
     },
     testPushText: {
       color: colors.bg,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    secondaryPushBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: colors.card,
+      borderColor: colors.accentBorder,
+      borderRadius: 14,
+      borderWidth: 1,
+      paddingVertical: 11,
+      paddingHorizontal: 14,
+    },
+    secondaryPushText: {
+      color: colors.accent,
       fontSize: 13,
       fontWeight: '700',
     },

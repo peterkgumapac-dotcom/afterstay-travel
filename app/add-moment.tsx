@@ -184,12 +184,14 @@ export default function AddMomentScreen() {
   };
 
   useEffect(() => {
+    if (destination?.type === 'personal') {
+      setScope('private');
+      setIsPublic(false);
+      return;
+    }
     if (scopeTouchedRef.current) return;
     if (destination?.type === 'trip' || paramTripId) {
       setScope('shared');
-      setIsPublic(false);
-    } else if (destination?.type === 'personal') {
-      setScope('private');
       setIsPublic(false);
     }
   }, [destination?.type, paramTripId]);
@@ -234,7 +236,7 @@ export default function AddMomentScreen() {
     let lastErrors: string[] = [];
     const BATCH_SIZE = 1;
     const tripId = destination?.type === 'trip' ? destination.tripId : paramTripId;
-    const shouldCreateExploreOnly = isPublic && !tripId;
+    const shouldCreateExploreOnly = isPublic && destination?.type !== 'personal' && !tripId;
 
     try {
       if (shouldCreateExploreOnly) {
@@ -298,6 +300,7 @@ export default function AddMomentScreen() {
                 addMoment({
                   caption: caption || '',
                   localUri: photo.uri,
+                  mediaType: photo.mediaType,
                   location: location || undefined,
                   takenBy: takenBy || undefined,
                   date,
@@ -336,7 +339,7 @@ export default function AddMomentScreen() {
       }
 
       if (successCount === photos.length) {
-        if (isPublic && tripId) {
+        if (isPublic && destination?.type !== 'personal' && tripId) {
           if (pending.some(isVideoPhoto)) {
             lastErrors = ['Saved to the trip album. Videos are not shared to Explore yet.'];
           } else {
@@ -438,10 +441,14 @@ export default function AddMomentScreen() {
 
   const doneCount = photos.filter((p) => p.status === 'done').length;
   const errorCount = photos.filter((p) => p.status === 'error').length;
+  const isPersonalDestination = destination?.type === 'personal';
+  const isTripDestination = destination?.type === 'trip' || !!paramTripId;
   const uploadTargetLabel = isPublic
-    ? destination?.type === 'trip' || paramTripId
-      ? 'the group + Explore'
+    ? isTripDestination
+      ? 'Trip Album + Explore'
       : 'Explore'
+    : isPersonalDestination
+      ? 'Personal Album'
     : scope === 'private'
       ? 'private'
       : scope === 'album'
@@ -603,39 +610,46 @@ export default function AddMomentScreen() {
                     </View>
                   </Pressable>
 
-                  {/* Public — visible to everyone */}
-                  <Pressable
-                    onPress={() => {
-                      scopeTouchedRef.current = true;
-                      setScope('shared');
-                      setIsPublic(true);
-                    }}
-                    style={[
-                      styles.scopeRow,
-                      {
-                        borderColor: isPublic ? colors.accent : colors.border,
-                        backgroundColor: isPublic ? colors.accentBg : colors.card,
-                      },
-                    ]}
-                  >
-                    <View style={[styles.scopeIcon, { backgroundColor: isPublic ? colors.success : colors.card2 }]}>
-                      <Globe size={16} color={isPublic ? colors.onBlack : colors.text3} strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.scopeTitle, { color: colors.text }]}>Public</Text>
-                      <Text style={[styles.scopeSub, { color: colors.text3 }]}>Anyone on Afterstay can see it.</Text>
-                    </View>
-                    <View
+                  {!isPersonalDestination && (
+                    <Pressable
+                      onPress={() => {
+                        scopeTouchedRef.current = true;
+                        setScope('shared');
+                        setIsPublic(true);
+                      }}
                       style={[
-                        styles.scopeCheck,
-                        isPublic
-                          ? { backgroundColor: colors.accent, borderColor: colors.accent }
-                          : { borderColor: colors.border2 },
+                        styles.scopeRow,
+                        {
+                          borderColor: isPublic ? colors.accent : colors.border,
+                          backgroundColor: isPublic ? colors.accentBg : colors.card,
+                        },
                       ]}
                     >
-                      {isPublic && <Check size={11} color={colors.onBlack} strokeWidth={3} />}
-                    </View>
-                  </Pressable>
+                      <View style={[styles.scopeIcon, { backgroundColor: isPublic ? colors.success : colors.card2 }]}>
+                        <Globe size={16} color={isPublic ? colors.onBlack : colors.text3} strokeWidth={2} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.scopeTitle, { color: colors.text }]}>
+                          {isTripDestination ? 'Trip album + Explore' : 'Post to Explore'}
+                        </Text>
+                        <Text style={[styles.scopeSub, { color: colors.text3 }]}>
+                          {isTripDestination
+                            ? 'Saved to the trip and shared publicly.'
+                            : 'Anyone on AfterStay can see it.'}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.scopeCheck,
+                          isPublic
+                            ? { backgroundColor: colors.accent, borderColor: colors.accent }
+                            : { borderColor: colors.border2 },
+                        ]}
+                      >
+                        {isPublic && <Check size={11} color={colors.onBlack} strokeWidth={3} />}
+                      </View>
+                    </Pressable>
+                  )}
 
                   {/* Custom album — routes to album creator */}
                   <Pressable

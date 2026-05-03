@@ -9,7 +9,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
-const APP_MARK = require('../assets/icon/afterstay-monochrome.png');
+const APP_ICON = require('@/assets/icon/afterstay-icon.png');
 
 type AfterStayLoaderProps = {
   message?: string;
@@ -33,9 +33,11 @@ export default function AfterStayLoader({ message, detail, progress, steps = [] 
   const currentDetail = detail ?? steps[stepIndex];
   const progressLabel = useMemo(() => {
     if (typeof safeProgress !== 'number') return null;
-    if (typeof progress !== 'number') return 'Working...';
+    if (typeof progress !== 'number') {
+      return steps.length > 0 ? `Step ${Math.min(stepIndex + 1, steps.length)} of ${steps.length}` : 'Working...';
+    }
     return `${Math.round(safeProgress * 100)}%`;
-  }, [progress, safeProgress]);
+  }, [progress, safeProgress, stepIndex, steps.length]);
 
   useEffect(() => {
     scale.value = withRepeat(
@@ -82,7 +84,7 @@ export default function AfterStayLoader({ message, detail, progress, steps = [] 
   return (
     <View style={styles.container}>
       <Animated.View style={animStyle}>
-        <Image source={APP_MARK} style={styles.icon} resizeMode="contain" />
+        <Image source={APP_ICON} style={styles.icon} />
       </Animated.View>
       <Text style={styles.message}>{message ?? 'Loading AfterStay...'}</Text>
       {currentDetail ? <Text style={styles.detail}>{currentDetail}</Text> : null}
@@ -108,8 +110,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   icon: {
-    width: 104,
-    height: 104,
+    width: 96,
+    height: 96,
+    borderRadius: 24,
   },
   message: {
     color: '#f7efe3',

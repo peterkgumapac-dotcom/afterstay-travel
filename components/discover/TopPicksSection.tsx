@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
 import { getCuratedList, type CuratedItem } from '@/lib/supabase';
 import { searchPlace } from '@/lib/google-places';
+import { cacheGet, cacheSet } from '@/lib/cache';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
@@ -28,7 +29,7 @@ interface EnrichedItem extends CuratedItem {
   mapsUrl?: string;
 }
 
-const HIDE_KEY = 'top_picks_hidden';
+const HIDE_KEY_PREFIX = 'top_picks_hidden';
 const POOL_KEY_PREFIX = 'top_picks_pool';
 const TWELVE_HOURS = 12 * 60 * 60 * 1000;
 const POOL_SIZE = 20;
@@ -87,6 +88,10 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
   const { colors } = useTheme();
   const s = useMemo(() => getStyles(colors), [colors]);
   const placeQuery = useMemo(() => destination.trim().replace(/\s+/g, ' '), [destination]);
+  const hideKey = useMemo(
+    () => `${HIDE_KEY_PREFIX}:${placeQuery.toLowerCase()}:${(hotelName ?? '').trim().toLowerCase()}`,
+    [hotelName, placeQuery],
+  );
   const [visible, setVisible] = useState<EnrichedItem[]>([]);
   const [loading, setLoading] = useState(!!placeQuery);
   const [error, setError] = useState<string>();
@@ -103,8 +108,15 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
   }, []);
 
   useEffect(() => {
-    AsyncStorage.getItem(HIDE_KEY).then((v) => { if (v === 'true') setHidden(true); });
-  }, []);
+    let cancelled = false;
+    setHidden(false);
+    cacheGet<boolean>(hideKey, 0).then((v) => {
+      if (!cancelled && v === true) setHidden(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hideKey]);
 
   // Pick next 5 from pool
   const showNext5 = useCallback(() => {
@@ -211,12 +223,12 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
 
   const handleHide = () => {
     setHidden(true);
-    AsyncStorage.setItem(HIDE_KEY, 'true').catch(() => {});
+    cacheSet(hideKey, true).catch(() => {});
   };
 
   const handleShow = () => {
     setHidden(false);
-    AsyncStorage.removeItem(HIDE_KEY).catch(() => {});
+    cacheSet(hideKey, false).catch(() => {});
     loadPool();
   };
 

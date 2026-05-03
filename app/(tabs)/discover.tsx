@@ -876,6 +876,7 @@ function DiscoverScreenInner() {
 
   // Restore cached anchor/travel mode (after switchToMyLocation is defined)
   useEffect(() => {
+    if (discoverMode !== 'plan') return;
     cacheGet<'hotel' | 'me'>('discover:anchor').then((v) => {
       if (v === 'me') {
         switchToMyLocation();
@@ -884,7 +885,7 @@ function DiscoverScreenInner() {
       }
     });
     cacheGet<'walk' | 'car'>('discover:travelMode').then((v) => { if (v) setTravelMode(v); });
-  }, [switchToMyLocation]);
+  }, [discoverMode, switchToMyLocation]);
 
   // Dev test mode: apply mock trip data
   useEffect(() => {
@@ -926,7 +927,7 @@ function DiscoverScreenInner() {
   // Load trip ID on mount
   useEffect(() => {
     let cancelled = false;
-    if (testModeRef.current) return;
+    if (testModeRef.current || discoverMode !== 'plan') return;
     const load = async () => {
       try {
         const trip = await getActiveTrip();
@@ -977,7 +978,7 @@ function DiscoverScreenInner() {
     placesCache.current = {};
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [discoverMode]);
 
   // Load saved places when Saved tab is selected or tripId changes
   const loadWishlist = useCallback(async () => {
@@ -1007,18 +1008,20 @@ function DiscoverScreenInner() {
   }, [tripId]);
 
   useEffect(() => {
+    if (discoverMode !== 'plan') return;
     if (tripId) loadSavedPlaces();
     else loadWishlist();
-  }, [tripId, loadSavedPlaces, loadWishlist]);
+  }, [discoverMode, tripId, loadSavedPlaces, loadWishlist]);
 
   useEffect(() => {
+    if (discoverMode !== 'plan') return;
     if (tab === 'saved' && tripId) {
       loadSavedPlaces();
     }
     if (tab === 'saved' && !tripId) {
       loadWishlist();
     }
-  }, [tab, tripId, loadSavedPlaces, loadWishlist]);
+  }, [discoverMode, tab, tripId, loadSavedPlaces, loadWishlist]);
 
   // Search places via Google Places API
   const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false, radius?: number) => {
@@ -1101,6 +1104,7 @@ function DiscoverScreenInner() {
 
   // Load places when category chip changes
   useEffect(() => {
+    if (discoverMode !== 'plan') return;
     if (tab !== 'places') return;
     if (!effectiveCoords) {
       setPlaces([]);
@@ -1116,10 +1120,11 @@ function DiscoverScreenInner() {
       const categoryRadius = CATEGORY_RADIUS_MAP[chipKey] ?? DEFAULT_SEARCH_RADIUS;
       searchPlaces(searchConfig?.keyword ?? chipKey, searchConfig?.type, false, categoryRadius);
     }
-  }, [placeCategoryChip, tab, searchPlaces, loadAllView, effectiveCoords]);
+  }, [discoverMode, placeCategoryChip, tab, searchPlaces, loadAllView, effectiveCoords]);
 
   // Debounced search input
   useEffect(() => {
+    if (discoverMode !== 'plan') return;
     if (tab !== 'places') return;
     if (!q.trim()) {
       // Reset to category-based search when query is cleared
@@ -1140,7 +1145,7 @@ function DiscoverScreenInner() {
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [q, tab, placeCategoryChip, searchPlaces, effectiveCoords, loadAllView]);
+  }, [discoverMode, q, tab, placeCategoryChip, searchPlaces, effectiveCoords, loadAllView]);
 
   const savePlaceToWishlist = useCallback(async (placeData: DiscoverPlace) => {
     const { addToWishlist, getWishlist } = await import('@/lib/supabase');

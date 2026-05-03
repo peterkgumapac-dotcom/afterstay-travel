@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,27 +12,54 @@ import {
   Share,
   StyleSheet,
   Text,
+  View,
 } from 'react-native';
 
 import FormField from '@/components/FormField';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
+import { useAuth } from '@/lib/auth';
 import { buildTripInviteMessage } from '@/lib/inviteLinks';
-import { addGroupMember, getActiveTrip, getOrCreateInviteCode } from '@/lib/supabase';
+import { addGroupMember, getActiveTrip, getGroupMembers, getOrCreateInviteCode } from '@/lib/supabase';
+import { canManageTripMembers } from '@/lib/tripPermissions';
 
 export default function AddMemberScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const { user } = useAuth();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [accessState, setAccessState] = useState<'checking' | 'ready' | 'no-trip' | 'blocked'>('checking');
+
+  const loadAccess = useCallback(async () => {
+    try {
+      const trip = await getActiveTrip();
+      if (!trip) {
+        setAccessState('no-trip');
+        return;
+      }
+      const members = await getGroupMembers(trip.id);
+      setAccessState(canManageTripMembers(trip, members, user?.id) ? 'ready' : 'blocked');
+    } catch {
+      setAccessState('blocked');
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadAccess();
+  }, [loadAccess]);
 
   const sendInvite = async (targetEmail?: string, targetPhone?: string) => {
     const trip = await getActiveTrip();
     if (!trip) return Alert.alert('No active trip', 'Create or select a trip before inviting members.');
+    const members = await getGroupMembers(trip.id);
+    if (!canManageTripMembers(trip, members, user?.id)) {
+      return Alert.alert('Organizer access needed', 'Only the trip organizer can invite members.');
+    }
     const inviteCode = await getOrCreateInviteCode(trip.id);
     const message = buildTripInviteMessage({
       code: inviteCode,
@@ -56,6 +83,13 @@ export default function AddMemberScreen() {
   };
 
   const save = async () => {
+    if (accessState === 'checking') return;
+    if (accessState === 'no-trip') {
+      return Alert.alert('No active trip', 'Create or select a trip before adding members.');
+    }
+    if (accessState === 'blocked') {
+      return Alert.alert('Organizer access needed', 'Only the trip organizer can add or invite members.');
+    }
     if (!name.trim()) return Alert.alert('Name is required');
     const trimmedEmail = email.trim();
     const trimmedPhone = phone.trim();
@@ -105,12 +139,27 @@ export default function AddMemberScreen() {
         <Text style={styles.title}>Add or invite member</Text>
         <Text style={styles.subtitle}>Add someone to the trip, then send them a code to join with their own account.</Text>
 
+        {accessState === 'no-trip' && (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>No active trip yet</Text>
+            <Text style={styles.noticeText}>Create or select a trip before adding companions.</Text>
+          </View>
+        )}
+
+        {accessState === 'blocked' && (
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>Organizer access needed</Text>
+            <Text style={styles.noticeText}>Ask the trip organizer to add companions or send an invite code.</Text>
+          </View>
+        )}
+
         <FormField
           label="Name"
           placeholder="e.g. Jane Doe"
           value={name}
           onChangeText={setName}
           autoFocus
+          editable={accessState === 'ready'}
         />
         <FormField
           label="Email (optional)"
@@ -118,6 +167,7 @@ export default function AddMemberScreen() {
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
+          editable={accessState === 'ready'}
         />
         <FormField
           label="Phone (optional)"
@@ -125,14 +175,15 @@ export default function AddMemberScreen() {
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
+          editable={accessState === 'ready'}
         />
 
         <Pressable
           style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.8 }]}
           onPress={save}
-          disabled={submitting}
+          disabled={submitting || accessState !== 'ready'}
         >
-          {submitting ? (
+          {submitting || accessState === 'checking' ? (
             <ActivityIndicator color={colors.ink} />
           ) : (
             <Text style={styles.saveText}>Add member</Text>
@@ -153,6 +204,16 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
     title: { fontSize: 22, fontWeight: '700', color: colors.text, letterSpacing: -0.3 },
     subtitle: { fontSize: 13, color: colors.text3, marginTop: -spacing.sm },
+    noticeCard: {
+      padding: spacing.lg,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      gap: spacing.xs,
+    },
+    noticeTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+    noticeText: { fontSize: 13, lineHeight: 18, color: colors.text3 },
     saveBtn: {
       backgroundColor: colors.accent,
       paddingVertical: 14,

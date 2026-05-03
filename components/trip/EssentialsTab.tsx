@@ -17,6 +17,7 @@ interface EssentialsTabProps {
   packingState: PackingGroupState;
   packingStats: { total: number; done: number };
   files: TripFile[];
+  filesError?: string | null;
   colors: ThemeColors;
   addingItem: boolean;
   newItemText: string;
@@ -34,12 +35,14 @@ interface EssentialsTabProps {
   onUpload: () => void;
   onDownload: (url: string) => void;
   onFilePress?: (file: TripFile) => void;
+  onRetryFiles?: () => void;
 }
 
 export function EssentialsTab({
   packingState,
   packingStats,
   files,
+  filesError,
   colors,
   addingItem,
   newItemText,
@@ -57,6 +60,7 @@ export function EssentialsTab({
   onUpload,
   onDownload,
   onFilePress,
+  onRetryFiles,
 }: EssentialsTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
 
@@ -197,6 +201,17 @@ export function EssentialsTab({
       </View>
 
       <View style={styles.filesList}>
+        {filesError ? (
+          <View style={styles.filesErrorCard}>
+            <Text style={styles.filesErrorTitle}>Files could not load</Text>
+            <Text style={styles.filesErrorBody}>{filesError}</Text>
+            {onRetryFiles ? (
+              <TouchableOpacity style={styles.filesRetryBtn} onPress={onRetryFiles} activeOpacity={0.75}>
+                <Text style={styles.filesRetryText}>Retry</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
         {files.map((f, idx) => {
           const iconColor = FILE_COLORS[idx % FILE_COLORS.length];
           return (
@@ -241,6 +256,12 @@ export function EssentialsTab({
             </TouchableOpacity>
           );
         })}
+        {!filesError && files.length === 0 ? (
+          <View style={styles.filesEmptyCard}>
+            <Text style={styles.filesEmptyTitle}>No documents yet</Text>
+            <Text style={styles.filesEmptyBody}>Upload booking confirmations, IDs, passes, or other trip essentials.</Text>
+          </View>
+        ) : null}
       </View>
     </>
   );
@@ -409,6 +430,57 @@ const getStyles = (colors: ThemeColors) =>
     filesList: {
       paddingHorizontal: 16,
       gap: 8,
+    },
+    filesErrorCard: {
+      padding: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.danger + '55',
+      backgroundColor: colors.card,
+      gap: 6,
+    },
+    filesErrorTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.danger,
+    },
+    filesErrorBody: {
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.text3,
+    },
+    filesRetryBtn: {
+      alignSelf: 'flex-start',
+      marginTop: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+    },
+    filesRetryText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.accent,
+    },
+    filesEmptyCard: {
+      padding: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    filesEmptyTitle: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    filesEmptyBody: {
+      marginTop: 4,
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.text3,
     },
     fileRow: {
       flexDirection: 'row',
