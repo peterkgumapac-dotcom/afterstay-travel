@@ -24,6 +24,9 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.zip
+bugreport-*
+screenshots/audit_*.png
 
 # Native builds
 ios/

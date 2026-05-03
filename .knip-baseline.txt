@@ -1,8 +1,4 @@
-Unused files (65)
-.agents/skills/expo-cicd-workflows/scripts/fetch.js: .agents/skills/expo-cicd-workflows/scripts/fetch.js
-.agents/skills/expo-cicd-workflows/scripts/validate.js: .agents/skills/expo-cicd-workflows/scripts/validate.js
-.claude/skills/expo-cicd-workflows/scripts/fetch.js: .claude/skills/expo-cicd-workflows/scripts/fetch.js
-.claude/skills/expo-cicd-workflows/scripts/validate.js: .claude/skills/expo-cicd-workflows/scripts/validate.js
+Unused files (78)
 components/AIRecommendationCard.tsx: components/AIRecommendationCard.tsx
 components/Pill.tsx: components/Pill.tsx
 components/ShimmerFallback.tsx: components/ShimmerFallback.tsx
@@ -13,9 +9,15 @@ components/budget/QRScannerModal.tsx: components/budget/QRScannerModal.tsx
 components/budget/SpinWheel.tsx: components/budget/SpinWheel.tsx
 components/discover/DiscoverSkeleton.tsx: components/discover/DiscoverSkeleton.tsx
 components/fate/shared/SecondaryButton.tsx: components/fate/shared/SecondaryButton.tsx
+components/feed/ContactSheet.tsx: components/feed/ContactSheet.tsx
+components/feed/DaySection.tsx: components/feed/DaySection.tsx
+components/feed/FeaturedPhoto.tsx: components/feed/FeaturedPhoto.tsx
+components/feed/FeedHeader.tsx: components/feed/FeedHeader.tsx
+components/feed/PaperBackground.tsx: components/feed/PaperBackground.tsx
+components/feed/SepiaPhoto.tsx: components/feed/SepiaPhoto.tsx
+components/feed/TripInfo.tsx: components/feed/TripInfo.tsx
 components/home/HomeSkeleton.tsx: components/home/HomeSkeleton.tsx
 components/home/MomentsShowcase.tsx: components/home/MomentsShowcase.tsx
-components/home/QuickAccessGrid.tsx: components/home/QuickAccessGrid.tsx
 components/home/SmartNudges.tsx: components/home/SmartNudges.tsx
 components/moments/Avatar.tsx: components/moments/Avatar.tsx
 components/moments/DayChips.tsx: components/moments/DayChips.tsx
@@ -37,10 +39,17 @@ components/moments/recaps/MinimalTemplate.tsx: components/moments/recaps/Minimal
 components/moments/recaps/PolaroidTemplate.tsx: components/moments/recaps/PolaroidTemplate.tsx
 components/moments/recaps/RecapsLayout.tsx: components/moments/recaps/RecapsLayout.tsx
 components/moments/recaps/generateRecap.ts: components/moments/recaps/generateRecap.ts
+components/profile/AchievementBadges.tsx: components/profile/AchievementBadges.tsx
+components/profile/CompanionButton.tsx: components/profile/CompanionButton.tsx
+components/profile/GatedSection.tsx: components/profile/GatedSection.tsx
+components/profile/ProfileHeader.tsx: components/profile/ProfileHeader.tsx
+components/profile/ProfileHero.tsx: components/profile/ProfileHero.tsx
+components/profile/TravelMapCard.tsx: components/profile/TravelMapCard.tsx
+components/profile/TravelStatsCard.tsx: components/profile/TravelStatsCard.tsx
+components/profile/TravelStatsGrid.tsx: components/profile/TravelStatsGrid.tsx
 components/shared/PremiumGate.tsx: components/shared/PremiumGate.tsx
 components/shared/Skeleton.tsx: components/shared/Skeleton.tsx
 components/shared/TripFloatingActionButton.tsx: components/shared/TripFloatingActionButton.tsx
-components/trip/FileViewerSheet.tsx: components/trip/FileViewerSheet.tsx
 design-reference/components/icons.jsx: design-reference/components/icons.jsx
 design-reference/components/shell.jsx: design-reference/components/shell.jsx
 design-reference/screens/budget.jsx: design-reference/screens/budget.jsx
@@ -51,9 +60,11 @@ design-reference/screens/loader.jsx: design-reference/screens/loader.jsx
 design-reference/screens/login.jsx: design-reference/screens/login.jsx
 design-reference/screens/moments.jsx: design-reference/screens/moments.jsx
 design-reference/screens/trip.jsx: design-reference/screens/trip.jsx
+hooks/useFeed.ts: hooks/useFeed.ts
 hooks/useHomeData.ts: hooks/useHomeData.ts
 hooks/useMoments.ts: hooks/useMoments.ts
 hooks/usePhotoGestures.ts: hooks/usePhotoGestures.ts
+hooks/useUserStatus.ts: hooks/useUserStatus.ts
 lib/cache/storage.ts: lib/cache/storage.ts
 lib/imageUrl.ts: lib/imageUrl.ts
 lib/qrph.ts: lib/qrph.ts
@@ -61,53 +72,67 @@ plugins/withPackagingFix.js: plugins/withPackagingFix.js
 scripts/debug-user-trips.ts: scripts/debug-user-trips.ts
 supabase/functions/ai-proxy/index.ts: supabase/functions/ai-proxy/index.ts
 supabase/functions/ai-recommend/index.ts: supabase/functions/ai-recommend/index.ts
+supabase/functions/places-proxy/index.ts: supabase/functions/places-proxy/index.ts
 supabase/functions/send-push-notification/index.ts: supabase/functions/send-push-notification/index.ts
+supabase/functions/share-travel-stats/index.ts: supabase/functions/share-travel-stats/index.ts
 supabase/functions/trip-lifecycle-notifications/index.ts: supabase/functions/trip-lifecycle-notifications/index.ts
 utils/fate/randomWinner.ts: utils/fate/randomWinner.ts
 Unused dependencies (1)
-package.json: base64-arraybuffer, buffer, exifr, expo-auth-session, expo-background-fetch, expo-blur, expo-build-properties, expo-calendar, expo-camera, expo-crypto, expo-device, expo-mcp, expo-symbols, react-native-maps
+package.json: base64-arraybuffer, buffer, exifr, expo-auth-session, expo-background-fetch, expo-blur, expo-calendar, expo-camera, expo-device, expo-mcp, expo-symbols, react-native-maps
 Unused devDependencies (1)
 package.json: @expo/ngrok, react-test-renderer, ts-prune
-Unused exports (25)
+Unused exports (29)
+components/budget/SavingsMilestoneModal.tsx: default
 components/discover/CategoryGrid.tsx: CategoryGrid
-components/discover/ExploreMap.tsx: MAP_AVAILABLE
-components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet
 components/discover/TrendingCard.tsx: TrendingCard
 components/discover/shared.tsx: resolveTypeLabel, formatReviewCount
-components/trip/tripConstants.ts: mapFlightToDisplay
-constants/ThemeContext.tsx: lightColors
+components/feed/PostFeedList.tsx: PostFeedList
+components/feed/feedTheme.ts: SERIF_REGULAR, SERIF_SEMI, SERIF_SEMI_ITALIC, SERIF_BOLD_ITALIC
 constants/animations.ts: colors, durations, stagger
 constants/fateTheme.ts: personColors, fateTiming
 hooks/useFilmFilters.ts: getFilter
-hooks/useTabHomeData.ts: preloadHomeData, invalidateHomeCache
+hooks/usePhotoAdjustments.ts: multiplyColorMatrices, brightnessMatrix, contrastMatrix, saturationMatrix, warmthMatrix, fadeMatrix
+hooks/useTabHomeData.ts: preloadHomeData
 hooks/useTabMoments.ts: getSavedPlacesPromise, getSavedPlacesCached, loadTripMomentsData, getTripMomentsDataCached, useInvalidateMoments
 hooks/useTabTrips.ts: getPastTripsPromise, getPastTripsCached, getExpenseSummaryCached, useInvalidateTrips
 hooks/useTrips.ts: getActiveTripPromise, getActiveTripCached, getPastTripsPromise, getPastTripsCached, getQuickTripsPromise, getQuickTripsCached, getLifetimeStatsPromise, getLifetimeStatsCached, getExpenseSummaryPromise, getExpenseSummaryCached, useInvalidateTrips
-lib/anthropic.ts: generateRecommendations
+lib/anthropic.ts: generateRecommendations, generateItinerary
+lib/auth.ts: generateOAuthState
 lib/backgroundTasks.ts: unregisterBackgroundTasks
 lib/cache/mediaCache.ts: migrateMediaCache, evictCachedImage
 lib/cache/sqliteCache.ts: getCachedPhotoById, clearPhotoCache, setOfflineFavorite, getOfflineFavorites, getCacheStats
 lib/distance.ts: haversine
-lib/google-places.ts: findPlacePhoto, enrichRecommendations
+lib/inviteLinks.ts: buildInviteAppLink
 lib/mockData.ts: getMockDataForSegment
-lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, getCategoryForType
+lib/moments/exploreMomentsService.ts: getUserStories, removeTag, getPostTags, getUserPosts
+lib/notificationPrefs.ts: DEFAULT_CATEGORY_PREFS, DEFAULT_PHASE_PREFS, DEFAULT_QUIET_HOURS, DEFAULT_PREFS, getCategoryForType, notificationPrefsStorageKey
 lib/quickTrips.ts: getQuickTripExpenseSummary
 lib/tabDataCache.ts: setCachedData, hasCachedData, useCachedPromise, useCachedData
-lib/utils.ts: tripStatusLabel
-Unused exported types (14)
+lib/tripState.ts: getTripRuntimeState, isReturnFlightDirection, isOutboundFlightDirection, isValidDateTime, getTripDataHealth
+lib/userStatus.ts: refreshUserStatus
+widgets/refresh.ts: ALL_WIDGETS
+Unused exported types (21)
 components/fate/wheel/useWheelSpin.ts: UseWheelSpinReturn
 constants/ThemeContext.tsx: ThemeMode
 hooks/fate/useFateHistory.ts: UseFateHistoryReturn
 hooks/useCurationGesture.ts: CurationAction
 hooks/useHomeScreen.ts: TripPhase
+hooks/usePolaroidLayout.ts: PolaroidPlacement, PolaroidLayoutResult
 hooks/useTabMoments.ts: TripMomentsData
 lib/anthropic.ts: ItineraryDayLegacy, GeneratedMemoryContent
 lib/cache/sqliteCache.ts: CachedPhotoMeta
-lib/google-places.ts: PlaceSearchResult, AutocompleteResult
-lib/quickTripTypes.ts: QuickTripExpenseSplit
+lib/discoverPlaceFilters.ts: FilterOriginKind, FilterContext, FilterContextInput, PlaceFilterMetadata
+lib/google-places.ts: PlaceSearchResult, NearbySearchResult
+lib/multi-category-search.ts: MultiCategoryResult
+lib/onboardingProgress.ts: OnboardingPath, OnboardingStage, OnboardingProgress
+lib/profileStats.ts: AchievementBadge
 lib/tabDataCache.ts: CacheOptions
 lib/tripMemoryBuilder.ts: TripMemoryData
-lib/types.ts: WeatherDay, PersonalPhoto, ConciergeWho
+lib/tripState.ts: TripRuntimeState, TripDayMetrics, TripDataHealth, FlightIssue
+lib/types.ts: WeatherDay, StoryView, PersonalPhoto, ConciergeWho
+lib/userStatus.ts: StatusResult
+lib/wishlist.ts: WishlistRow
 utils/fate/generateSpinPlan.ts: SpinStep, SpinPlan
-Duplicate exports (1)
+Duplicate exports (2)
+components/budget/SavingsMilestoneModal.tsx: SavingsMilestoneModal, default
 components/discover/PlaceDetailSheet.tsx: PlaceDetailSheet, default
