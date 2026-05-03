@@ -1,4 +1,4 @@
-import { Moon, Plane, WalletCards } from 'lucide-react-native';
+import { Globe2, Moon, Plane, WalletCards } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -150,7 +150,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
           <Text style={s.flabel}>Trips</Text>
         </View>
         <View style={s.fcell}>
-          <Text style={s.ficon}>◎</Text>
+          <Globe2 size={16} color={colors.accent} strokeWidth={1.8} />
           <Text style={s.fvalue}>{stats.totalCountries}</Text>
           <Text style={s.flabel}>Countries</Text>
         </View>
@@ -251,11 +251,6 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   lastCell: {
     borderRightWidth: 0,
-  },
-  ficon: {
-    color: colors.accent,
-    fontSize: 17,
-    fontWeight: '800',
   },
   fvalue: {
     color: colors.text,

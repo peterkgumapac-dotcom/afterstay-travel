@@ -25,6 +25,8 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const scrollRef = useRef<ScrollView>(null);
   const x = useRef(new Animated.Value(0)).current;
   const [active, setActive] = useState(0);
+  const segmentInnerWidth = Math.max(0, width - 40);
+  const thumbWidth = segmentInnerWidth / 2;
 
   const indicator = x.interpolate({
     inputRange: [0, width],
@@ -33,7 +35,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   });
 
   const onMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setActive(Math.round(event.nativeEvent.contentOffset.x / width));
+    setActive(Math.max(0, Math.min(1, Math.round(event.nativeEvent.contentOffset.x / width))));
   };
 
   const jumpTo = (index: number) => {
@@ -48,11 +50,11 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
           style={[
             s.thumb,
             {
-              width: '50%',
+              width: thumbWidth,
               transform: [{
                 translateX: indicator.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, (width - 32) / 2],
+                  outputRange: [0, thumbWidth],
                 }),
               }],
             },
