@@ -9,19 +9,6 @@ import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
-
-// Initialize Sentry — DSN from EAS environment variable
-const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
-if (SENTRY_DSN) {
-  Sentry.init({
-    dsn: SENTRY_DSN,
-    debug: __DEV__,
-    enabled: !__DEV__,
-    tracesSampleRate: 0.2,
-    enableAutoSessionTracking: true,
-  });
-}
-
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { ThemeProvider, useTheme } from '@/constants/ThemeContext';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -34,6 +21,18 @@ import { queryClient } from '@/lib/queryClient';
 import { refreshAllWidgets } from '@/widgets/refresh';
 
 export { ErrorBoundary } from 'expo-router';
+
+// Initialize Sentry — DSN from EAS environment variable
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    debug: __DEV__,
+    enabled: !__DEV__,
+    tracesSampleRate: 0.2,
+    enableAutoSessionTracking: true,
+  });
+}
 
 export const unstable_settings = {
   initialRouteName: 'index',

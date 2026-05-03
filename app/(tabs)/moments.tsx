@@ -49,7 +49,7 @@ function MomentsScreen() {
   const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
-  const { activeTrip: segActiveTrip, pastTrips: segPastTrips, segment, isTestMode } = useUserSegment();
+  const { activeTrip: segActiveTrip, pastTrips: segPastTrips, isTestMode } = useUserSegment();
   const [extraActiveTrip, setExtraActiveTrip] = useState<Trip | null>(null);
   const [extraPastTrips, setExtraPastTrips] = useState<Trip[]>([]);
   const [loadingTrips, setLoadingTrips] = useState(!isTestMode);

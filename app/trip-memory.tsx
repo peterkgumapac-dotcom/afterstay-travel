@@ -93,7 +93,7 @@ export default function TripMemoryScreen() {
       });
 
       // Save as draft
-      const memoryId = await saveTripMemoryDraft({
+      await saveTripMemoryDraft({
         tripId: data.tripId,
         userId: user.id,
         narrative: ai.narrative,

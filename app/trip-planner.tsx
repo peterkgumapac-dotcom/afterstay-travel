@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,

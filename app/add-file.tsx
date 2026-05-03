@@ -64,7 +64,7 @@ export default function AddFileScreen() {
         setContentType(asset.mimeType);
         setFileUrl(name);
       }
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'Could not pick file. Try again.');
     }
   };
@@ -95,7 +95,7 @@ export default function AddFileScreen() {
         setContentType('image/jpeg');
         setFileUrl('Photo');
       }
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'Could not take photo. Try again.');
     }
   };

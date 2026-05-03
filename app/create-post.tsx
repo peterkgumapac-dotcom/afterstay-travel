@@ -42,7 +42,7 @@ export default function CreatePostScreen() {
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
-    } catch (err) {
+    } catch {
       Alert.alert('Error', 'Failed to post. Try again.');
     } finally {
       setPosting(false);

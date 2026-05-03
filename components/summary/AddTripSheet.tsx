@@ -105,7 +105,7 @@ export default function AddTripSheet({ open, onClose }: AddTripSheetProps) {
       });
       setSaved(true);
       setTimeout(() => onClose(), 900);
-    } catch (e: any) {
+    } catch {
       // Show error inline — don't block
       setSaved(false);
     }

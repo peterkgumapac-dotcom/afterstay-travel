@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -22,7 +21,6 @@ import {
   Heart,
   MapPin,
   Plus,
-  Receipt,
   Sparkles,
   Trash2,
   User,
@@ -46,11 +44,11 @@ import {
   deleteQuickTrip,
 } from '@/lib/quickTrips';
 import { CATEGORY_ICON, type QuickTrip, type QuickTripPhoto, type QuickTripCompanion, type QuickTripExpense } from '@/lib/quickTripTypes';
+import { formatCurrency, formatDatePHT } from '@/lib/utils';
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Users, Heart, Coffee, User, UtensilsCrossed, Dumbbell, Sparkles,
 };
-import { formatCurrency, formatDatePHT } from '@/lib/utils';
 
 export default function QuickTripDetailScreen() {
   const { colors } = useTheme();
@@ -141,7 +139,11 @@ export default function QuickTripDetailScreen() {
         onPress: async () => {
           if (!quickTripId) return;
           await deleteQuickTrip(quickTripId);
-          router.canGoBack() ? router.back() : router.replace('/(tabs)/trip' as never);
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace('/(tabs)/trip' as never);
+          }
         },
       },
     ]);
