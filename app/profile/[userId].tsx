@@ -203,11 +203,19 @@ export default function CompanionProfileScreen() {
   return (
     <SafeAreaView style={s.screen} edges={['top']}>
       {/* Top bar */}
-      <View style={s.topbar}>
+      <View style={s.topbar} pointerEvents="box-none">
         <TouchableOpacity style={s.iconBtn} onPress={() => router.back()} activeOpacity={0.7}>
           <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
-        <TouchableOpacity style={s.iconBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={s.iconBtn}
+          activeOpacity={0.7}
+          onPress={() => {
+            if (isSelf) {
+              router.push('/settings');
+            }
+          }}
+        >
           <MoreHorizontal size={22} color={colors.text} />
         </TouchableOpacity>
       </View>
@@ -550,7 +558,8 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       top: 8,
       left: 0,
       right: 0,
-      zIndex: 10,
+      zIndex: 100,
+      elevation: 20,
       flexDirection: 'row',
       justifyContent: 'space-between',
       paddingHorizontal: 16,

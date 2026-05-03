@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useRouter } from 'expo-router';
+import { Settings } from 'lucide-react-native';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
@@ -34,6 +35,10 @@ export default function ProfileRow({
       router.push({ pathname: '/profile/[userId]', params: { userId } } as never);
       return;
     }
+    router.push('/settings');
+  };
+
+  const goToSettings = () => {
     router.push('/settings');
   };
 
@@ -81,7 +86,7 @@ export default function ProfileRow({
         </View>
       </View>
 
-      {/* Right: bell + avatar (opens settings) */}
+      {/* Right: bell + settings + avatar */}
       <View style={styles.rightSide}>
         {/* Notifications bell */}
         <AnimatedPressable
@@ -111,6 +116,15 @@ export default function ProfileRow({
               <Text style={styles.badgeText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
             </View>
           )}
+        </AnimatedPressable>
+
+        <AnimatedPressable
+          onPress={goToSettings}
+          style={styles.iconButton}
+          accessibilityLabel="Settings"
+          accessibilityRole="button"
+        >
+          <Settings size={18} color={colors.text2} strokeWidth={1.8} />
         </AnimatedPressable>
 
         {/* Avatar — opens profile */}
