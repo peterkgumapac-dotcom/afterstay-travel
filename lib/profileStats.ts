@@ -13,6 +13,13 @@ export interface AchievementBadge {
   icon: string;
 }
 
+export interface TravelProgressItem {
+  code: string;
+  label: string;
+  flag: string;
+  progress: number;
+}
+
 type ProfileFlightInput = Flight & { tripId?: string };
 
 interface ProfileStatsInput {
@@ -271,6 +278,21 @@ export function buildCountriesVisited(stats: LifetimeStats): CountryVisited[] {
       code,
       name,
       flag: COUNTRY_FLAGS[code] ?? '🌍',
+    };
+  });
+}
+
+export function buildTravelProgressItems(stats: LifetimeStats, maxItems = 4): TravelProgressItem[] {
+  const countries = stats.countriesList.slice(0, maxItems);
+  const denominator = Math.max(1, countries.length - 1);
+
+  return countries.map((name, index) => {
+    const code = countryCode(name);
+    return {
+      code,
+      label: name,
+      flag: COUNTRY_FLAGS[code] ?? '🌍',
+      progress: countries.length <= 1 ? 1 : index / denominator,
     };
   });
 }

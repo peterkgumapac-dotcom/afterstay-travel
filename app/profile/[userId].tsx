@@ -49,11 +49,13 @@ import ProfilePager from '@/components/profile/ProfilePager';
 import ProfileCoverHeader from '@/components/profile/ProfileCoverHeader';
 import ProfileFlightMapCard from '@/components/profile/ProfileFlightMapCard';
 import ProfileStatsStrip from '@/components/profile/ProfileStatsStrip';
+import TravelProgressCard from '@/components/profile/TravelProgressCard';
 import {
   buildCountriesVisited,
   buildProfileCoverPhotoUrl,
   buildProfileMapData,
   buildProfileStatsFromTrips,
+  buildTravelProgressItems,
   buildTopTrip,
 } from '@/lib/profileStats';
 
@@ -187,6 +189,7 @@ export default function CompanionProfileScreen() {
     }
     : computedStats;
   const countries = buildCountriesVisited(stats);
+  const travelProgress = buildTravelProgressItems(stats);
   const topTrip = buildTopTrip(mutualTrips);
   const mapData = buildProfileMapData({ trips: mutualTrips, flights: profileFlights, homeBase: profile.homeBase });
   const canSeeStats = isSelf || isCompanion || !!profile.publicStatsEnabled;
@@ -263,6 +266,13 @@ export default function CompanionProfileScreen() {
                   photoUrls={memoryPhotoUrls}
                   onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: topTrip.id } } as never)}
                 />
+              </>
+            )}
+
+            {canSeeStats && (
+              <>
+                <GroupHeader kicker="TRAVEL PROGRESS" title="Where you've been" colors={colors as any} />
+                <TravelProgressCard items={travelProgress} stats={stats} />
               </>
             )}
 

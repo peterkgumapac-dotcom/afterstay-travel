@@ -1,4 +1,5 @@
-import { Camera, Moon } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Camera, Heart, MessageCircle, Moon } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
@@ -35,16 +36,29 @@ export default function TopTripCard({ trip, photoCount, photoUrls = [], onPress 
       ) : (
         <View style={s.fallback} />
       )}
-      <View style={s.overlay} />
+      <LinearGradient
+        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.42)']}
+        style={s.imageShade}
+      />
       <View style={s.content}>
         <Text style={s.destination} numberOfLines={1}>{trip.destination || trip.name}</Text>
         <Text style={s.dates}>{formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}</Text>
         <View style={s.metaRow}>
-          <Moon size={13} color="#fff" />
+          <Moon size={13} color={colors.accent} />
           <Text style={s.meta}>{trip.nights} nights</Text>
-          <Camera size={13} color="#fff" />
+          <Camera size={13} color={colors.accent} />
           <Text style={s.meta}>{photoCount} photos</Text>
           {trip.totalSpent ? <Text style={s.meta}>{formatProfileCurrency(trip.totalSpent)} spent</Text> : null}
+        </View>
+        <View style={s.actionRow}>
+          <View style={s.actionItem}>
+            <Heart size={15} color={colors.text3} strokeWidth={1.8} />
+            <Text style={s.actionText}>Trip</Text>
+          </View>
+          <View style={s.actionItem}>
+            <MessageCircle size={15} color={colors.text3} strokeWidth={1.8} />
+            <Text style={s.actionText}>Memory</Text>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -54,13 +68,15 @@ export default function TopTripCard({ trip, photoCount, photoUrls = [], onPress 
 const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    height: 236,
+    minHeight: 302,
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#241b12',
+    backgroundColor: _colors.card,
+    borderWidth: 1,
+    borderColor: _colors.border,
   },
   mosaic: {
-    height: 236,
+    height: 178,
     flexDirection: 'row',
     gap: 3,
   },
@@ -78,27 +94,29 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
   },
   fallback: {
     width: '100%',
-    height: '100%',
-    backgroundColor: '#241b12',
+    height: 178,
+    backgroundColor: _colors.accentBg,
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.28)',
+  imageShade: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    right: 0,
+    height: 98,
   },
   content: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 14,
   },
   destination: {
-    color: '#fff',
-    fontSize: 22,
+    color: _colors.text,
+    fontSize: 20,
     fontWeight: '800',
-    letterSpacing: -0.4,
+    letterSpacing: 0,
   },
   dates: {
-    color: 'rgba(255,255,255,0.82)',
+    color: _colors.text2,
     fontSize: 13,
     fontWeight: '600',
     marginTop: 4,
@@ -108,10 +126,26 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: 10,
+    marginTop: 8,
   },
   meta: {
-    color: '#fff',
+    color: _colors.text2,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    marginTop: 14,
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  actionText: {
+    color: _colors.text3,
     fontSize: 12,
     fontWeight: '700',
   },

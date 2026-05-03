@@ -25,7 +25,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const scrollRef = useRef<ScrollView>(null);
   const x = useRef(new Animated.Value(0)).current;
   const [active, setActive] = useState(0);
-  const segmentWidth = Math.max(0, width - 32);
+  const segmentWidth = Math.min(226, Math.max(176, width - 138));
   const thumbWidth = (segmentWidth - 8) / 2;
 
   const indicator = x.interpolate({
@@ -45,7 +45,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
 
   return (
     <View style={s.root}>
-      <View style={s.segment}>
+      <View style={[s.segment, { left: (width - segmentWidth) / 2, width: segmentWidth }]}>
         <Animated.View
           style={[
             s.thumb,
@@ -100,12 +100,10 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   segment: {
     position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 14,
+    top: 12,
     zIndex: 20,
-    height: 44,
-    borderRadius: 22,
+    height: 38,
+    borderRadius: 19,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
@@ -117,7 +115,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     top: 4,
     bottom: 4,
     left: 4,
-    borderRadius: 18,
+    borderRadius: 15,
     backgroundColor: colors.canvas,
     borderWidth: 1,
     borderColor: colors.border,
@@ -129,7 +127,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   tabText: {
     color: colors.text3,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   tabTextActive: {

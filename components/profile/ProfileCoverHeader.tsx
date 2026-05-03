@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { Check, ChevronDown, MessageCircle, Pencil, Plus, Send, Sparkles } from 'lucide-react-native';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
 import { CachedImage } from '@/components/CachedImage';
 import { TripCollage } from '@/components/trip/TripCollage';
@@ -56,14 +57,15 @@ export default function ProfileCoverHeader({
   const initial = (fullName || 'Traveler').charAt(0).toUpperCase();
   const tags = buildTags(stats, homeBase);
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
+  const coverHeight = Math.min(292, Math.max(252, width * 0.68));
 
   return (
     <View style={s.container}>
-      <View style={s.cover}>
+      <View style={[s.cover, { height: coverHeight }]}>
         {coverPhotoUrl ? (
           <CachedImage remoteUrl={coverPhotoUrl} style={StyleSheet.absoluteFill} />
         ) : topTrip?.id ? (
-          <TripCollage tripId={topTrip.id} width={width} height={235} animated={false} />
+          <TripCollage tripId={topTrip.id} width={width} height={coverHeight} animated={false} />
         ) : (
           <LinearGradient
             colors={[colors.accentDim, colors.card, colors.canvas]}
@@ -78,6 +80,18 @@ export default function ProfileCoverHeader({
           <Sparkles size={14} color="#fff" />
           <Text style={s.levelText}>Level {level}</Text>
         </View>
+        <Svg
+          width={width}
+          height={72}
+          viewBox={`0 0 ${width} 72`}
+          style={s.wave}
+          pointerEvents="none"
+        >
+          <Path
+            d={`M0 46 C ${width * 0.22} 16 ${width * 0.54} 68 ${width} 40 L ${width} 72 L 0 72 Z`}
+            fill={colors.canvas}
+          />
+        </Svg>
       </View>
 
       <View style={s.sheet}>
@@ -161,14 +175,19 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     marginBottom: 16,
   },
   cover: {
-    height: 235,
     overflow: 'hidden',
     backgroundColor: colors.card,
+  },
+  wave: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: -1,
   },
   levelBadge: {
     position: 'absolute',
     right: 18,
-    bottom: 18,
+    bottom: 30,
     minHeight: 34,
     borderRadius: 17,
     backgroundColor: 'rgba(0,0,0,0.56)',
@@ -183,17 +202,17 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontWeight: '800',
   },
   sheet: {
-    marginTop: -28,
+    marginTop: -44,
     paddingHorizontal: 20,
-    paddingTop: 48,
+    paddingTop: 56,
     paddingBottom: 14,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
+    borderTopLeftRadius: 38,
+    borderTopRightRadius: 38,
     backgroundColor: colors.canvas,
   },
   avatarWrap: {
     position: 'absolute',
-    top: -58,
+    top: -64,
     left: 20,
     width: 116,
     height: 116,

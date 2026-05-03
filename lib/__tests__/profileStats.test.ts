@@ -3,6 +3,7 @@ import {
   buildAchievementBadges,
   buildCountriesVisited,
   buildProfileCoverPhotoUrl,
+  buildTravelProgressItems,
   buildProfileMapData,
   buildProfileStatsFromTrips,
   buildTopTrip,
@@ -152,5 +153,22 @@ describe('profileStats', () => {
 
   it('returns undefined when no profile cover source exists', () => {
     expect(buildProfileCoverPhotoUrl({ moments: [] })).toBeUndefined();
+  });
+
+  it('builds compact travel progress items from visited countries', () => {
+    const progress = buildTravelProgressItems({
+      totalTrips: 13,
+      totalCountries: 8,
+      totalNights: 75,
+      totalMiles: 9754,
+      totalSpent: 348000,
+      homeCurrency: 'PHP',
+      totalMoments: 23,
+      countriesList: ['Philippines', 'Thailand', 'Vietnam', 'Indonesia', 'Singapore', 'Japan'],
+    });
+
+    expect(progress.map((item) => item.label)).toEqual(['Philippines', 'Thailand', 'Vietnam', 'Indonesia']);
+    expect(progress[0].flag).toBe('🇵🇭');
+    expect(progress[3].progress).toBe(1);
   });
 });
