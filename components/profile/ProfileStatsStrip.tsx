@@ -2,7 +2,7 @@ import { Globe2, Moon, Plane, WalletCards } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import { formatProfileCurrency } from '@/lib/profileStats';
 import type { LifetimeStats } from '@/lib/types';
 
@@ -11,7 +11,7 @@ interface ProfileStatsStripProps {
 }
 
 export default function ProfileStatsStrip({ stats }: ProfileStatsStripProps) {
-  const { colors } = useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
   const cells = [
     { key: 'trips', icon: Plane, value: stats.totalTrips, label: 'Trips' },

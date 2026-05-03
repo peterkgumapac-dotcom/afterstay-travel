@@ -7,7 +7,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { CachedImage } from '@/components/CachedImage';
 import { TripCollage } from '@/components/trip/TripCollage';
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import type { CompanionStatus, LifetimeStats, Trip } from '@/lib/types';
 
 interface ProfileCoverHeaderProps {
@@ -52,12 +52,13 @@ export default function ProfileCoverHeader({
   onToggleFollow,
 }: ProfileCoverHeaderProps) {
   const { width } = useWindowDimensions();
-  const { colors } = useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
   const initial = (fullName || 'Traveler').charAt(0).toUpperCase();
   const tags = buildTags(stats, homeBase);
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
-  const coverHeight = Math.min(292, Math.max(252, width * 0.68));
+  const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
+  const coverHeight = hasCoverVisual ? Math.min(292, Math.max(252, width * 0.68)) : 212;
 
   return (
     <View style={s.container}>
@@ -72,10 +73,12 @@ export default function ProfileCoverHeader({
             style={StyleSheet.absoluteFill}
           />
         )}
-        <LinearGradient
-          colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.58)']}
-          style={StyleSheet.absoluteFill}
-        />
+        {hasCoverVisual ? (
+          <LinearGradient
+            colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.50)']}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
         <View style={s.levelBadge}>
           <Sparkles size={14} color="#fff" />
           <Text style={s.levelText}>Level {level}</Text>
@@ -189,11 +192,11 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   levelBadge: {
     position: 'absolute',
     right: 18,
-    bottom: 72,
+    bottom: 54,
     zIndex: 4,
     minHeight: 34,
     borderRadius: 17,
-    backgroundColor: 'rgba(0,0,0,0.56)',
+    backgroundColor: 'rgba(42,29,13,0.82)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,

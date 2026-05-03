@@ -22,7 +22,7 @@ import {
   Music2,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import {
   getCompanionProfile,
@@ -69,7 +69,8 @@ export default function CompanionProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const { user } = useAuth();
   const router = useRouter();
-  const { colors } = useTheme();
+  useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
 
   const [profile, setProfile] = useState<CompanionProfileType | null>(null);

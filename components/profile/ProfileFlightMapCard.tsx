@@ -3,7 +3,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import {
   formatProfileCurrency,
   type ProfileMapCoordinate,
@@ -48,7 +48,7 @@ function curvePath(from: { x: number; y: number }, to: { x: number; y: number })
 }
 
 export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMapCardProps) {
-  const { colors } = useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
   const allPoints = [
     mapData.homeCoordinates,

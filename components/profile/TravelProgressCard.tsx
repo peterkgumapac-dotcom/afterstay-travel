@@ -2,7 +2,7 @@ import { MapPinned, Plane } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import { formatProfileCurrency, type TravelProgressItem } from '@/lib/profileStats';
 import type { LifetimeStats } from '@/lib/types';
 
@@ -12,7 +12,7 @@ interface TravelProgressCardProps {
 }
 
 export default function TravelProgressCard({ items, stats }: TravelProgressCardProps) {
-  const { colors } = useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
 
   if (items.length === 0) {

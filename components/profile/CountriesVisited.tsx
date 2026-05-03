@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import type { CountryVisited } from '@/lib/profileStats';
 
 interface CountriesVisitedProps {
@@ -9,7 +9,7 @@ interface CountriesVisitedProps {
 }
 
 export default function CountriesVisited({ countries }: CountriesVisitedProps) {
-  const { colors } = useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
 
   if (countries.length === 0) return null;

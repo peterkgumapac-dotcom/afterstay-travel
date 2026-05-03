@@ -4,7 +4,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
 import { CachedImage } from '@/components/CachedImage';
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import { formatProfileCurrency } from '@/lib/profileStats';
 import type { Trip } from '@/lib/types';
 import { formatDatePHT } from '@/lib/utils';
@@ -18,7 +18,7 @@ interface TopTripCardProps {
 
 export default function TopTripCard({ trip, photoCount, photoUrls = [], onPress }: TopTripCardProps) {
   const { width } = useWindowDimensions();
-  const { colors } = useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
   const cardWidth = Math.max(0, width - 32);
   const photos = photoUrls.filter(Boolean).slice(0, 3);

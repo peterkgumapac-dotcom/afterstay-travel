@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 
 interface ProfilePagerProps {
   profilePage: React.ReactNode;
@@ -20,7 +20,7 @@ interface ProfilePagerProps {
 
 export default function ProfilePager({ profilePage, memoriesPage }: ProfilePagerProps) {
   const { width } = useWindowDimensions();
-  const { colors } = useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
   const scrollRef = useRef<ScrollView>(null);
   const x = useRef(new Animated.Value(0)).current;

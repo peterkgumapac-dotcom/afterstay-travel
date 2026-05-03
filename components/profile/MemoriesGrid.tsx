@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
 import { CachedImage } from '@/components/CachedImage';
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import type { Moment } from '@/lib/types';
 
 interface MemoriesGridProps {
@@ -12,7 +12,7 @@ interface MemoriesGridProps {
 
 export default function MemoriesGrid({ moments, onMomentPress }: MemoriesGridProps) {
   const { width } = useWindowDimensions();
-  const { colors } = useTheme();
+  const colors = lightColors;
   const s = getStyles(colors);
   const gap = 10;
   const cellSize = (width - 32 - gap * 2) / 3;

@@ -56,7 +56,6 @@ export function usePushNotifications() {
           await Notifs.setNotificationChannelAsync('afterstay', {
             name: 'AfterStay',
             importance: 4,
-            sound: 'default',
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#D4A574',
             enableVibrate: true,
