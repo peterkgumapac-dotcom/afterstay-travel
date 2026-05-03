@@ -349,7 +349,7 @@ function PlanFlow({ onBack, onDone, colors }: { onBack: () => void; onDone: (dat
           travelers,
         });
         await cacheSet('draft:trip_id', draftId);
-        await cacheSet('onboarding_complete', true);
+        await cacheSet(user?.id ? `onboarding_complete:${user.id}` : 'onboarding_complete', true);
         await setOnboardingProgress({
           stage: 'planning_draft',
           path: 'plan',

@@ -1635,6 +1635,7 @@ type ThemeColorsLocal = ReturnType<typeof useTheme>['colors'];
 
 function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
   const { segment, isTestMode, refresh } = useUserSegment();
+  const { user } = useAuth();
   const [override, setOverride] = useState<MockKey | null>(null);
   const [enabled, setEnabled] = useState(false);
 
@@ -1671,7 +1672,10 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
 
   const handleResetOnboarding = async () => {
     const { cacheSet: cs } = await import('@/lib/cache');
-    await cs('onboarding_complete', false);
+    await Promise.all([
+      cs(user?.id ? `onboarding_complete:${user.id}` : 'onboarding_complete', false),
+      cs('onboarding_complete', false),
+    ]);
     Alert.alert('Onboarding Reset', 'Next cold start will show the welcome flow.');
   };
 

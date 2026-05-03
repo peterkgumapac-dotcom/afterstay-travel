@@ -21,8 +21,8 @@ import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { joinTripByCode, addFlight, getFlights, updateMyTripMemberPreferences } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
-import { cacheSet } from '@/lib/cache';
 import { getPrimaryBookerFlights } from '@/lib/flightSharing';
+import { completeOnboarding } from '@/lib/onboardingProgress';
 import { formatDatePHT } from '@/lib/utils';
 import type { Flight, Trip } from '@/lib/types';
 
@@ -99,7 +99,7 @@ export default function JoinTripScreen() {
         passenger: name,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await cacheSet('onboarding_complete', true);
+      await completeOnboarding(user?.id);
       router.replace('/(tabs)/home' as never);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to save flight');
@@ -110,7 +110,7 @@ export default function JoinTripScreen() {
 
   const handleSkipFlight = async () => {
     if (tripInfo) await saveSharingPreference();
-    await cacheSet('onboarding_complete', true);
+    await completeOnboarding(user?.id);
     router.replace('/(tabs)/home' as never);
   };
 
@@ -136,7 +136,7 @@ export default function JoinTripScreen() {
       const failed = results.filter((result) => result.status === 'rejected');
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await cacheSet('onboarding_complete', true);
+      await completeOnboarding(user?.id);
       if (failed.length > 0) {
         Alert.alert(
           'Trip joined',

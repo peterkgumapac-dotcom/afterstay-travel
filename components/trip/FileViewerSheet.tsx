@@ -255,7 +255,7 @@ export default function FileViewerSheet({ visible, file, onClose }: FileViewerSh
               disabled={!fileUrl || resolvingUrl}
             >
               <ExternalLink size={18} color={colors.accent} />
-              <Text style={styles.actionText}>Open</Text>
+              <Text style={styles.actionText}>Open with...</Text>
             </TouchableOpacity>
           </View>
         </View>
