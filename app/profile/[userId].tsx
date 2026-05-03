@@ -86,6 +86,20 @@ export default function CompanionProfileScreen() {
 
   const isSelf = user?.id === userId;
 
+  const handleBackPress = useCallback(() => {
+    if (isSelf) {
+      router.push('/settings' as never);
+      return;
+    }
+
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/(tabs)/home' as never);
+  }, [isSelf, router]);
+
   const load = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
@@ -148,6 +162,15 @@ export default function CompanionProfileScreen() {
     }
   };
 
+  const handleMessagePress = () => {
+    const sharedTrip = mutualTrips[0];
+    if (!sharedTrip?.id) {
+      Alert.alert('No shared trip yet', 'Message opens after you share a trip together.');
+      return;
+    }
+    router.push({ pathname: '/group-chat', params: { tripId: sharedTrip.id } } as never);
+  };
+
   // Filtered trips
   const filteredTrips = (() => {
     if (tripFilter === 'completed') return mutualTrips.filter(t => t.status === 'Completed');
@@ -167,7 +190,7 @@ export default function CompanionProfileScreen() {
     return (
       <SafeAreaView style={[s.screen, { flex: 1 }]}>
         <View style={s.topbar}>
-          <TouchableOpacity style={s.iconBtn} onPress={() => router.back()} activeOpacity={0.7}>
+          <TouchableOpacity style={s.iconBtn} onPress={handleBackPress} activeOpacity={0.7} hitSlop={12}>
             <ArrowLeft size={22} color={colors.text} />
           </TouchableOpacity>
         </View>
@@ -204,7 +227,7 @@ export default function CompanionProfileScreen() {
     <SafeAreaView style={s.screen} edges={['top']}>
       {/* Top bar */}
       <View style={s.topbar} pointerEvents="box-none">
-        <TouchableOpacity style={s.iconBtn} onPress={() => router.back()} activeOpacity={0.7}>
+        <TouchableOpacity style={s.iconBtn} onPress={handleBackPress} activeOpacity={0.7} hitSlop={12}>
           <ArrowLeft size={22} color={colors.text} />
         </TouchableOpacity>
         <TouchableOpacity
@@ -238,6 +261,7 @@ export default function CompanionProfileScreen() {
               onCustomize={() => setCustomizeVisible(true)}
               onToggleFollow={handleFollowPress}
               followBusy={followBusy}
+              onMessage={handleMessagePress}
             />
 
             {!isCompanion && !isSelf && profile.mutualTripCount > 0 && (
@@ -558,17 +582,17 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       top: 8,
       left: 0,
       right: 0,
-      zIndex: 100,
-      elevation: 20,
+      zIndex: 1000,
+      elevation: 40,
       flexDirection: 'row',
       justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 8,
+      paddingHorizontal: 18,
+      paddingVertical: 4,
     },
     iconBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: 'rgba(31,27,23,0.7)',

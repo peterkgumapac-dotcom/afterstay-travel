@@ -25,6 +25,7 @@ interface ProfileCoverHeaderProps {
   topTrip?: Trip | null;
   onCustomize: () => void;
   onToggleFollow: () => void;
+  onMessage?: () => void;
 }
 
 function buildTags(stats: LifetimeStats, homeBase?: string): string[] {
@@ -50,6 +51,7 @@ export default function ProfileCoverHeader({
   topTrip,
   onCustomize,
   onToggleFollow,
+  onMessage,
 }: ProfileCoverHeaderProps) {
   const { width } = useWindowDimensions();
   const colors = lightColors;
@@ -180,7 +182,7 @@ export default function ProfileCoverHeader({
             </TouchableOpacity>
           )}
           {!isSelf ? (
-            <TouchableOpacity style={s.secondaryBtn} activeOpacity={0.75}>
+            <TouchableOpacity style={s.secondaryBtn} onPress={onMessage} activeOpacity={0.75}>
               <Send size={16} color={colors.accent} />
               <Text style={s.secondaryText}>Message</Text>
             </TouchableOpacity>
