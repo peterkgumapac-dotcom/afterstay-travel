@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Heart, MessageCircle, Moon } from 'lucide-react-native';
+import { Camera, Crown, Heart, MessageCircle, Moon } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
@@ -36,10 +36,11 @@ export default function TopTripCard({ trip, photoCount, photoUrls = [], onPress 
       ) : (
         <View style={s.fallback} />
       )}
-      <LinearGradient
-        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.42)']}
-        style={s.imageShade}
-      />
+      <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.48)']} style={s.imageShade} />
+      <View style={s.badge}>
+        <Crown size={12} color="#fff" />
+        <Text style={s.badgeText}>Top trip</Text>
+      </View>
       <View style={s.content}>
         <Text style={s.destination} numberOfLines={1}>{trip.destination || trip.name}</Text>
         <Text style={s.dates}>{formatDatePHT(trip.startDate)} – {formatDatePHT(trip.endDate)}</Text>
@@ -108,6 +109,23 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 14,
+  },
+  badge: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    minHeight: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(42,29,13,0.72)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
   },
   destination: {
     color: _colors.text,

@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTheme } from '@/constants/ThemeContext';
+import { lightColors, useTheme } from '@/constants/ThemeContext';
 import { updateProfile, uploadProfileCoverPhoto, uploadProfilePhoto, type Profile } from '@/lib/supabase';
 
 interface ProfileCustomizeSheetProps {
@@ -27,7 +27,8 @@ interface ProfileCustomizeSheetProps {
 }
 
 export default function ProfileCustomizeSheet({ visible, profile, onClose, onSaved }: ProfileCustomizeSheetProps) {
-  const { colors } = useTheme();
+  useTheme();
+  const colors = lightColors;
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const [fullName, setFullName] = useState('');

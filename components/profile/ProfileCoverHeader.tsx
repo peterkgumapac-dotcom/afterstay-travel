@@ -1,9 +1,9 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import { Check, ChevronDown, MessageCircle, Pencil, Plus, Send, Sparkles } from 'lucide-react-native';
+import { Check, ChevronDown, Image as ImageIcon, MessageCircle, Pencil, Plus, Send, Sparkles } from 'lucide-react-native';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import { CachedImage } from '@/components/CachedImage';
 import { TripCollage } from '@/components/trip/TripCollage';
@@ -58,7 +58,7 @@ export default function ProfileCoverHeader({
   const tags = buildTags(stats, homeBase);
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
   const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
-  const coverHeight = hasCoverVisual ? Math.min(292, Math.max(252, width * 0.68)) : 212;
+  const coverHeight = hasCoverVisual ? Math.min(308, Math.max(264, width * 0.7)) : 236;
 
   return (
     <View style={s.container}>
@@ -69,9 +69,27 @@ export default function ProfileCoverHeader({
           <TripCollage tripId={topTrip.id} width={width} height={coverHeight} animated={false} />
         ) : (
           <LinearGradient
-            colors={[colors.accentDim, colors.card, colors.canvas]}
+            colors={['#365f75', '#d7a86c', colors.canvas]}
             style={StyleSheet.absoluteFill}
-          />
+          >
+            <View style={s.coverPattern}>
+              <Svg width="100%" height="100%" viewBox="0 0 390 236">
+                <Path
+                  d="M-30 168 C42 112 88 142 142 106 C202 66 252 104 310 66 C352 38 408 56 430 30 L430 236 L-30 236 Z"
+                  fill="rgba(255,255,255,0.18)"
+                />
+                <Path
+                  d="M18 150 C86 116 150 158 214 120 C268 88 330 114 390 78"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.38)"
+                  strokeWidth={1.2}
+                  strokeDasharray="6 8"
+                />
+                <Circle cx={92} cy={130} r={4} fill="rgba(255,255,255,0.8)" />
+                <Circle cx={286} cy={96} r={4} fill="rgba(255,255,255,0.8)" />
+              </Svg>
+            </View>
+          </LinearGradient>
         )}
         {hasCoverVisual ? (
           <LinearGradient
@@ -83,6 +101,12 @@ export default function ProfileCoverHeader({
           <Sparkles size={14} color="#fff" />
           <Text style={s.levelText}>Level {level}</Text>
         </View>
+        {isSelf ? (
+          <TouchableOpacity style={s.coverEditPill} onPress={onCustomize} activeOpacity={0.78}>
+            <ImageIcon size={14} color="#fff" />
+            <Text style={s.coverEditText}>Cover</Text>
+          </TouchableOpacity>
+        ) : null}
         <Svg
           width={width}
           height={72}
@@ -183,6 +207,10 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     overflow: 'hidden',
     backgroundColor: colors.card,
   },
+  coverPattern: {
+    flex: 1,
+    opacity: 0.95,
+  },
   wave: {
     position: 'absolute',
     left: 0,
@@ -205,6 +233,24 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   levelText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '800',
+  },
+  coverEditPill: {
+    position: 'absolute',
+    right: 18,
+    top: 96,
+    zIndex: 4,
+    minHeight: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(42,29,13,0.72)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 11,
+  },
+  coverEditText: {
+    color: '#fff',
+    fontSize: 11,
     fontWeight: '800',
   },
   sheet: {

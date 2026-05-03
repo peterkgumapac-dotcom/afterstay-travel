@@ -1,7 +1,7 @@
 import { Globe2, Moon, Plane, WalletCards } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Ellipse, Path, Text as SvgText } from 'react-native-svg';
 
 import { lightColors, useTheme } from '@/constants/ThemeContext';
 import {
@@ -76,6 +76,9 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
 
       <View style={[s.mapWrap, isEmptyProfile && s.mapWrapCompact]}>
         <Svg width="100%" height={isEmptyProfile ? 136 : 210} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
+          <Ellipse cx={104} cy={92} rx={70} ry={34} fill={colors.accentBg} opacity={0.45} />
+          <Ellipse cx={238} cy={86} rx={92} ry={38} fill={colors.accentBg} opacity={0.36} />
+          <Ellipse cx={210} cy={144} rx={48} ry={24} fill={colors.accentBg} opacity={0.32} />
           <Path
             d="M22 68 C82 28 128 48 168 78 C214 110 258 52 338 84 M38 148 C98 112 150 143 196 128 C242 114 282 150 334 124"
             fill="none"
@@ -140,7 +143,7 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
           <View style={[s.emptyMap, isEmptyProfile && s.emptyMapCompact]}>
             <Plane size={16} color={colors.accent} strokeWidth={1.8} />
             <Text style={s.emptyMapText}>
-              {isEmptyProfile ? 'Trips and flights will light up this map.' : 'Add flights to light up this map.'}
+              {isEmptyProfile ? 'Add completed trips or flights to light up this map.' : 'Add flights to light up this map.'}
             </Text>
           </View>
         ) : null}
