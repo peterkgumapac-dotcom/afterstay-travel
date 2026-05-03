@@ -56,6 +56,7 @@ const COUNTRY_FLAGS: Record<string, string> = {
 
 interface ReturningUserHomeProps {
   userName: string;
+  userId?: string;
   userHandle?: string;
   avatarUrl?: string;
   notificationCount: number;
@@ -88,6 +89,7 @@ interface ReturningUserHomeProps {
 
 export default function ReturningUserHome({
   userName,
+  userId,
   avatarUrl,
   notificationCount,
   pastTrips,
@@ -142,6 +144,7 @@ export default function ReturningUserHome({
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <ProfileRow
         userName={userName}
+        userId={userId}
         avatarUrl={avatarUrl}
         notificationCount={notificationCount}
         onBellPress={onBellPress}

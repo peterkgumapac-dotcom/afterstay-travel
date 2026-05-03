@@ -8,6 +8,7 @@ import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
 
 interface Props {
   userName: string;
+  userId?: string;
   avatarUrl?: string;
   tripLabel?: string;
   notificationCount?: number;
@@ -16,6 +17,7 @@ interface Props {
 
 export default function ProfileRow({
   userName,
+  userId,
   avatarUrl,
   tripLabel = 'My trip',
   notificationCount = 0,
@@ -27,7 +29,11 @@ export default function ProfileRow({
   const firstName = userName.split(' ')[0];
   const initial = firstName.charAt(0).toUpperCase();
 
-  const goToSettings = () => {
+  const goToProfile = () => {
+    if (userId) {
+      router.push({ pathname: '/profile/[userId]', params: { userId } } as never);
+      return;
+    }
     router.push('/settings');
   };
 
@@ -107,11 +113,11 @@ export default function ProfileRow({
           )}
         </AnimatedPressable>
 
-        {/* Avatar — opens settings */}
+        {/* Avatar — opens profile */}
         <AnimatedPressable
-          onPress={goToSettings}
+          onPress={goToProfile}
           style={styles.avatarButton}
-          accessibilityLabel="Profile"
+          accessibilityLabel="View profile"
           accessibilityRole="button"
         >
           {avatarUrl ? (

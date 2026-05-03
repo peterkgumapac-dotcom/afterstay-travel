@@ -26,7 +26,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const x = useRef(new Animated.Value(0)).current;
   const [active, setActive] = useState(0);
   const segmentWidth = Math.min(238, Math.max(184, width - 140));
-  const thumbWidth = segmentWidth / 2;
+  const thumbWidth = (segmentWidth - 6) / 2;
 
   const indicator = x.interpolate({
     inputRange: [0, width],
@@ -47,11 +47,6 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
     <View style={s.root}>
       <View style={s.segmentRow}>
         <View style={[s.segment, { width: segmentWidth }]}>
-          {(['Profile', 'Memories'] as const).map((label, index) => (
-            <Pressable key={label} style={s.tab} onPress={() => jumpTo(index)}>
-              <Text style={[s.tabText, active === index && s.tabTextActive]}>{label}</Text>
-            </Pressable>
-          ))}
           <Animated.View
             style={[
               s.thumb,
@@ -66,6 +61,11 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
               },
             ]}
           />
+          {(['Profile', 'Memories'] as const).map((label, index) => (
+            <Pressable key={label} style={s.tab} onPress={() => jumpTo(index)}>
+              <Text style={[s.tabText, active === index && s.tabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
         </View>
       </View>
 
@@ -102,38 +102,49 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     flex: 1,
   },
   segmentRow: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 8,
-    paddingBottom: 6,
-    backgroundColor: colors.canvas,
     zIndex: 20,
   },
   segment: {
-    height: 32,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: 'rgba(253,248,235,0.92)',
     flexDirection: 'row',
+    padding: 3,
+    shadowColor: '#2a1d0d',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   thumb: {
     position: 'absolute',
-    left: 0,
-    bottom: -1,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: colors.accent,
+    left: 3,
+    top: 3,
+    bottom: 3,
+    borderRadius: 18,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   tabText: {
-    color: colors.text3,
-    fontSize: 11,
+    color: colors.text2,
+    fontSize: 13,
     fontWeight: '800',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   tabTextActive: {
     color: colors.text,

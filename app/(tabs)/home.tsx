@@ -424,6 +424,7 @@ function HomeScreen() {
         <View style={{ flex: 1 }}>
           <ReturningUserHome
             userName={displayName}
+            userId={user?.id}
             userHandle={handle}
             avatarUrl={userAvatar}
             notificationCount={notifCount}
@@ -503,6 +504,7 @@ function HomeScreen() {
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <ProfileRow
           userName={userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || ''}
+          userId={user?.id}
           avatarUrl={userAvatar}
           notificationCount={notifCount}
           onBellPress={() => setShowNotifications(true)}
@@ -571,6 +573,7 @@ function HomeScreen() {
         {/* 1. Top bar */}
         <ProfileRow
           userName={userName}
+          userId={user?.id}
           avatarUrl={userAvatar}
           tripLabel={trip.destination ? `${trip.destination} trip` : undefined}
           notificationCount={notifCount}

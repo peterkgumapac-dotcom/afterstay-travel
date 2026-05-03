@@ -78,6 +78,17 @@ type FilterState = {
   maxPrice: number;
 };
 
+function destinationToLabel(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object') return '';
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.label === 'string') return record.label;
+  if (typeof record.name === 'string') return record.name;
+  if (typeof record.destination === 'string') return record.destination;
+  return '';
+}
+
 // CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS imported from @/lib/category-config
 
 // Map Google Places types to display labels
@@ -716,7 +727,7 @@ function DiscoverScreenInner() {
     if (!isTestMode || !mockData) return;
     if (mockData.trip) {
       setTripId(mockData.trip.id);
-      setTripDest(mockData.trip.destination ?? '');
+      setTripDest(destinationToLabel(mockData.trip.destination));
       setTripStartDate(mockData.trip.startDate);
       setTripEndDate(mockData.trip.endDate);
       setTripHotel(mockData.trip.accommodation ?? '');
@@ -757,7 +768,7 @@ function DiscoverScreenInner() {
         const trip = await getActiveTrip();
         if (!cancelled && trip) {
           setTripId(trip.id);
-          setTripDest(trip.destination ?? '');
+          setTripDest(destinationToLabel(trip.destination));
           setTripStartDate(trip.startDate);
           setTripEndDate(trip.endDate);
           setTripHotel(trip.accommodation ?? '');
