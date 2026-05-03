@@ -75,6 +75,80 @@ function stringifyData(data: Record<string, unknown> = {}): Record<string, strin
   );
 }
 
+type NotificationRecord = {
+  id: string;
+  user_id: string;
+  trip_id?: string | null;
+  type?: string;
+  title: string;
+  body?: string;
+  data?: Record<string, unknown>;
+};
+
+function bearerToken(req: Request): string | null {
+  const header = req.headers.get('Authorization') ?? '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] ?? null;
+}
+
+function hasInternalAccess(req: Request, token: string | null): boolean {
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (token && serviceRoleKey && token === serviceRoleKey) return true;
+
+  const internalSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET');
+  if (!internalSecret) return false;
+  const provided =
+    req.headers.get('x-internal-function-secret') ??
+    req.headers.get('x-cron-secret') ??
+    '';
+  return provided === internalSecret;
+}
+
+async function getCallerUserId(req: Request, token: string | null): Promise<string | null> {
+  if (!token) return null;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !anonKey) return null;
+
+  const authClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+  });
+  const { data, error } = await authClient.auth.getUser(token);
+  if (error) return null;
+  return data.user?.id ?? null;
+}
+
+async function canDispatchNotification(
+  req: Request,
+  supabase: ReturnType<typeof createClient>,
+  record: NotificationRecord,
+): Promise<boolean> {
+  const token = bearerToken(req);
+  if (hasInternalAccess(req, token)) return true;
+
+  const callerUserId = await getCallerUserId(req, token);
+  if (!callerUserId) return false;
+  if (callerUserId === record.user_id) return true;
+  if (!record.trip_id) return false;
+
+  const [actorResult, targetResult] = await Promise.all([
+    supabase
+      .from('group_members')
+      .select('id')
+      .eq('trip_id', record.trip_id)
+      .eq('user_id', callerUserId)
+      .limit(1),
+    supabase
+      .from('group_members')
+      .select('id')
+      .eq('trip_id', record.trip_id)
+      .eq('user_id', record.user_id)
+      .limit(1),
+  ]);
+
+  return (actorResult.data?.length ?? 0) > 0 && (targetResult.data?.length ?? 0) > 0;
+}
+
 serve(async (req) => {
   try {
     const { type, record } = await req.json();
@@ -87,6 +161,11 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    const authorized = await canDispatchNotification(req, supabase, record as NotificationRecord);
+    if (!authorized) {
+      return new Response('Unauthorized', { status: 403 });
+    }
 
     const { data: profile } = await supabase
       .from('profiles')

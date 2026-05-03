@@ -23,6 +23,27 @@ function hashQuery(dest: string, category: string, area?: string): string {
   return Math.abs(h).toString(36);
 }
 
+function bearerToken(req: Request): string | null {
+  const header = req.headers.get('Authorization') ?? '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] ?? null;
+}
+
+async function requireAuthenticatedUser(req: Request): Promise<string | null> {
+  const token = bearerToken(req);
+  if (!token) return null;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !anonKey) return null;
+
+  const authClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+  });
+  const { data, error } = await authClient.auth.getUser(token);
+  if (error) return null;
+  return data.user?.id ?? null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -35,6 +56,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (!(await requireAuthenticatedUser(req))) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+
     const { destination, category, area, hotelName, count } = await req.json() as {
       destination: string;
       category: string;

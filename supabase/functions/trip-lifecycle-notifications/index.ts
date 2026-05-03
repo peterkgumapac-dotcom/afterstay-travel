@@ -15,7 +15,34 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
  * Dedup: skips if a notification of the same type+trip was already sent today.
  */
 
-serve(async (_req) => {
+function bearerToken(req: Request): string | null {
+  const header = req.headers.get('Authorization') ?? ''
+  const match = header.match(/^Bearer\s+(.+)$/i)
+  return match?.[1] ?? null
+}
+
+function isAuthorizedScheduler(req: Request): boolean {
+  const token = bearerToken(req)
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (token && serviceRoleKey && token === serviceRoleKey) return true
+
+  const internalSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET')
+  if (!internalSecret) return false
+  const provided =
+    req.headers.get('x-internal-function-secret') ??
+    req.headers.get('x-cron-secret') ??
+    ''
+  return provided === internalSecret
+}
+
+serve(async (req) => {
+  if (!isAuthorizedScheduler(req)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
