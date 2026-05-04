@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -114,8 +114,21 @@ export default function CompanionProfileScreen() {
   const [followBusy, setFollowBusy] = useState(false);
   const [customizeVisible, setCustomizeVisible] = useState(false);
   const [selectedMomentIndex, setSelectedMomentIndex] = useState<number | null>(null);
+  const loadSeqRef = useRef(0);
 
-  const isSelf = user?.id === userId;
+  const targetUserId = Array.isArray(userId) ? userId[0] : userId;
+  const isSelf = user?.id === targetUserId;
+
+  const resetProfileState = useCallback(() => {
+    setProfile(null);
+    setOwnProfile(null);
+    setMutualTrips([]);
+    setProfileFlights([]);
+    setSharedMoments([]);
+    setPublicMoments([]);
+    setIsFollowing(false);
+    setSelectedMomentIndex(null);
+  }, []);
 
   const handleBackPress = useCallback(() => {
     if (router.canGoBack()) {
@@ -127,17 +140,22 @@ export default function CompanionProfileScreen() {
   }, [router]);
 
   const load = useCallback(async () => {
-    if (!userId) return;
+    if (!targetUserId) return;
+    const seq = ++loadSeqRef.current;
+    const shouldApply = () => seq === loadSeqRef.current;
+    resetProfileState();
     setLoading(true);
     try {
-      const profileResult = await getCompanionProfile(userId);
-      const viewingSelf = user?.id === userId;
+      const profileResult = await getCompanionProfile(targetUserId);
+      if (!shouldApply()) return;
+      const viewingSelf = user?.id === targetUserId;
       const [tripsResult, followResult, ownProfileResult, lifetimeResult] = await Promise.allSettled([
-        viewingSelf ? getAllUserTrips(userId) : getMutualTrips(userId),
-        getFollowState(userId),
-        viewingSelf ? getProfile(userId) : Promise.resolve(null),
-        getLifetimeStats(userId),
+        viewingSelf ? getAllUserTrips(targetUserId) : getMutualTrips(targetUserId),
+        getFollowState(targetUserId),
+        viewingSelf ? getProfile(targetUserId) : Promise.resolve(null),
+        getLifetimeStats(targetUserId),
       ]);
+      if (!shouldApply()) return;
       const trips = tripsResult.status === 'fulfilled' ? tripsResult.value : [];
       const follow = followResult.status === 'fulfilled' ? followResult.value : { isFollowing: false };
       const resolvedOwnProfile = ownProfileResult.status === 'fulfilled' ? ownProfileResult.value : null;
@@ -145,19 +163,21 @@ export default function CompanionProfileScreen() {
       const sharedMomentsPromise = viewingSelf
         ? Promise.allSettled(trips.slice(0, 12).map((trip) => getMoments(trip.id)))
           .then((results) => results.flatMap((result) => result.status === 'fulfilled' ? result.value : []))
-        : getSharedMomentsWith(userId).catch(() => []);
+        : getSharedMomentsWith(targetUserId).catch(() => []);
       const publicMomentsPromise = viewingSelf
         ? Promise.resolve([])
-        : getPublicProfilePosts(userId, 24)
+        : getPublicProfilePosts(targetUserId, 24)
           .then((posts) => posts.map(publicPostToMoment).filter((moment): moment is Moment => !!moment))
           .catch(() => []);
       const [moments, publicProfileMoments] = await Promise.all([sharedMomentsPromise, publicMomentsPromise]);
+      if (!shouldApply()) return;
       const flights = (await Promise.allSettled(
         trips.map(async (trip) => {
           const tripFlights = await getFlights(trip.id);
           return tripFlights.map((flight) => ({ ...flight, tripId: trip.id }));
         }),
       )).flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+      if (!shouldApply()) return;
 
       setProfile(lifetimeStats ? { ...profileResult, lifetimeStats } : profileResult);
       setOwnProfile(resolvedOwnProfile);
@@ -168,18 +188,19 @@ export default function CompanionProfileScreen() {
       setIsFollowing(follow.isFollowing);
     } catch (err) {
       if (__DEV__) console.warn('[Profile] load error:', err);
+      if (shouldApply()) resetProfileState();
     } finally {
-      setLoading(false);
+      if (shouldApply()) setLoading(false);
     }
-  }, [user?.id, userId]);
+  }, [resetProfileState, targetUserId, user?.id]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleFollowPress = async () => {
-    if (!userId || followBusy) return;
+    if (!targetUserId || followBusy) return;
     setFollowBusy(true);
     try {
-      const next = await toggleFollow(userId);
+      const next = await toggleFollow(targetUserId);
       setIsFollowing(next);
       Haptics.selectionAsync();
     } catch (error) {
