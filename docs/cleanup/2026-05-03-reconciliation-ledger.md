@@ -441,6 +441,28 @@ Verification:
   - Result: exit 0.
 - `npx supabase functions list --project-ref mzslhacnrwwmwgozpknm`
   - Result: send-push-notification v10, ai-recommend v12, trip-lifecycle-notifications v7, places-proxy v6 are active.
+- `npx expo export --platform android --output-dir /tmp/afterstay-invite-stabilization-android`
+  - Result: exported Android JS bundle successfully.
+- `npx expo export --platform ios --output-dir /tmp/afterstay-invite-stabilization-ios`
+  - Result: exported iOS JS bundle successfully.
+
+OTA:
+
+- Commit shipped: `ca223cd50806d3960726bf1179dd41d5df0ce7e9`
+- Preview runtime `1.3.0`, Android + iOS:
+  - Message: `Stabilize invite resume flow`
+  - Group ID: `533e13eb-2c25-4d3b-9ec1-3d489ce6e31d`
+- Production runtime `1.3.0`, Android + iOS:
+  - Message: `Stabilize invite resume flow`
+  - Group ID: `6a8739d7-9366-4443-89a5-668873ccb66a`
+
+ADB smoke:
+
+- Device: `emulator-5554`, package `com.afterstay.travel`.
+- Force-stop + launch completed with process alive.
+- Startup initially showed the loader, then resolved to Home.
+- UI tree contained Home/Discover and did not contain Login, Sign In, Join a trip, or Update failed.
+- Log grep found `Running "main"` and no fatal `ReactNativeJS`, `AndroidRuntime`, `TypeError`, `ReferenceError`, or update-failed crash.
 
 Remaining invite QA:
 
