@@ -56,7 +56,7 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   });
   const pulseOpacity = pulse.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: [0.22, 0.42, 0.22],
+    outputRange: [0.7, 1, 0.7],
   });
 
   useEffect(() => {
@@ -153,28 +153,33 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   edgeRail: {
     position: 'absolute',
-    top: 302,
+    top: 330,
     zIndex: 14,
     elevation: 8,
   },
   edgeRailRight: {
-    right: -7,
+    right: 8,
   },
   edgeRailLeft: {
-    left: -7,
+    left: 8,
   },
   edgePulse: {
-    borderRadius: 18,
+    borderRadius: 22,
   },
   edgeButton: {
-    width: 24,
-    height: 34,
-    borderRadius: 12,
+    width: 42,
+    height: 54,
+    borderRadius: 21,
     borderWidth: 1,
-    borderColor: 'rgba(217,202,171,0.62)',
-    backgroundColor: 'rgba(253,248,235,0.5)',
+    borderColor: 'rgba(217,202,171,0.94)',
+    backgroundColor: 'rgba(253,248,235,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#4b2d13',
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   edgeRailHidden: {
     opacity: 0,

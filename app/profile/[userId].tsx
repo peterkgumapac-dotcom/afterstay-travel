@@ -249,7 +249,15 @@ export default function CompanionProfileScreen() {
 
   const handleMorePress = () => {
     if (isSelf) {
-      router.push('/settings');
+      Alert.alert(
+        'Profile options',
+        'Choose what you want to do next.',
+        [
+          { text: 'Customize profile', onPress: () => setCustomizeVisible(true) },
+          { text: 'Settings', onPress: () => router.push('/settings') },
+          { text: 'Close', style: 'cancel' },
+        ],
+      );
       return;
     }
     Alert.alert(
@@ -357,6 +365,8 @@ export default function CompanionProfileScreen() {
           style={s.iconBtn}
           onPress={handleBackPress}
           hitSlop={{ top: 26, bottom: 26, left: 26, right: 26 }}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <ArrowLeft size={22} color={colors.text} />
         </Pressable>
@@ -364,6 +374,8 @@ export default function CompanionProfileScreen() {
           style={s.iconBtn}
           onPress={handleMorePress}
           hitSlop={{ top: 24, bottom: 24, left: 24, right: 24 }}
+          accessibilityRole="button"
+          accessibilityLabel="Profile options"
         >
           <MoreHorizontal size={22} color={colors.text} />
         </Pressable>
@@ -736,14 +748,18 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       paddingVertical: 6,
     },
     iconBtn: {
-      width: 50,
-      height: 50,
-      borderRadius: 25,
+      width: 54,
+      height: 54,
+      borderRadius: 27,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(31,27,23,0.68)',
+      backgroundColor: 'rgba(31,27,23,0.78)',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.34)',
+      borderColor: 'rgba(255,255,255,0.46)',
+      shadowColor: '#1f1b17',
+      shadowOpacity: 0.22,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
     },
     scroll: {
       paddingBottom: 96,
