@@ -44,6 +44,10 @@ export function OverviewTab({
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const hasAccom = !!(trip?.accommodation || trip?.address);
+  const currentMember = members.find((member) => member.userId === currentUserId);
+  const primaryMember = members.find((member) => member.role === 'Primary');
+  const isSharingOrganizerStay = currentMember?.sharesAccommodation === true;
+  const showSharedStayPending = !hasAccom && !isPrimary && isSharingOrganizerStay;
   const hasMemberSetup = (member: GroupMember) => member.sharesAccommodation !== undefined || !!member.travelNotes?.trim();
 
   return (
@@ -234,6 +238,31 @@ export function OverviewTab({
             </View>
           </View>
         </>
+      ) : showSharedStayPending ? (
+        <>
+          <GroupHeader kicker="Accommodation" title="Shared stay pending" colors={colors} />
+          <View style={styles.sectionPadding}>
+            <View style={[styles.accomCard, styles.emptySharedCard]}>
+              <Hotel size={28} color={colors.accent} strokeWidth={1.5} />
+              <Text style={styles.emptySharedTitle}>Same stay selected</Text>
+              <Text style={styles.emptySharedBody}>
+                The organizer has not added the hotel yet. Once they upload or enter the booking, it will appear here for you too.
+              </Text>
+              {primaryMember ? (
+                <TouchableOpacity
+                  style={styles.secondaryAction}
+                  onPress={() => onMemberChat(primaryMember)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Message ${primaryMember.name}`}
+                >
+                  <MessageCircle size={14} color={colors.text} />
+                  <Text style={styles.secondaryActionText}>Message organizer</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        </>
       ) : (
         <>
           <GroupHeader kicker="Accommodation" title="Add your hotel" colors={colors} />
@@ -417,6 +446,40 @@ const getStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       borderRadius: 22,
       padding: 18,
+    },
+    emptySharedCard: {
+      alignItems: 'center',
+      paddingVertical: 24,
+    },
+    emptySharedTitle: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '700',
+      marginTop: 10,
+    },
+    emptySharedBody: {
+      color: colors.text3,
+      fontSize: 12,
+      textAlign: 'center',
+      marginTop: 6,
+      lineHeight: 18,
+    },
+    secondaryAction: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      backgroundColor: colors.card2,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginTop: 16,
+    },
+    secondaryActionText: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '600',
     },
     accomHeader: {
       flexDirection: 'row',
