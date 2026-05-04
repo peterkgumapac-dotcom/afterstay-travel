@@ -54,8 +54,10 @@ export function useFeedPosts(mode: FeedMode = 'recent'): UseFeedPostsResult {
   const [error, setError] = useState<string | null>(null);
   const offsetRef = useRef(0);
   const loadingRef = useRef(false);
+  const refreshingRef = useRef(false);
   const loadedOnceRef = useRef(false);
   const mountedRef = useRef(true);
+  const requestSeqRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -80,8 +82,10 @@ export function useFeedPosts(mode: FeedMode = 'recent'): UseFeedPostsResult {
   );
 
   const refresh = useCallback(async () => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    const requestSeq = requestSeqRef.current + 1;
+    requestSeqRef.current = requestSeq;
     const firstLoad = !loadedOnceRef.current;
     if (firstLoad) {
       setIsLoading(true);
@@ -91,7 +95,7 @@ export function useFeedPosts(mode: FeedMode = 'recent'): UseFeedPostsResult {
     setError(null);
     try {
       const page = await fetchPage(0);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
       setPosts(page.posts);
       offsetRef.current = page.nextOffset ?? 0;
       setHasMore(page.nextOffset !== null);
@@ -105,18 +109,19 @@ export function useFeedPosts(mode: FeedMode = 'recent'): UseFeedPostsResult {
         setIsLoading(false);
         setIsRefreshing(false);
       }
-      loadingRef.current = false;
+      refreshingRef.current = false;
     }
   }, [fetchPage]);
 
   const loadMore = useCallback(async () => {
-    if (loadingRef.current || !hasMore) return;
+    if (loadingRef.current || refreshingRef.current || !hasMore) return;
     loadingRef.current = true;
+    const requestSeq = requestSeqRef.current;
     setIsLoading(true);
     setError(null);
     try {
       const page = await fetchPage(offsetRef.current);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
       setPosts((prev) => mergePosts(prev, page.posts));
       offsetRef.current = page.nextOffset ?? 0;
       setHasMore(page.nextOffset !== null);

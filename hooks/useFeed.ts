@@ -26,6 +26,8 @@ interface UseFeedResult {
 
 export function useFeed(options: UseFeedOptions = {}): UseFeedResult {
   const { filter = 'recent', location, radiusKm = 50, hoursBack = 24 } = options;
+  const latitude = location?.lat;
+  const longitude = location?.lng;
 
   const [moments, setMoments] = useState<Moment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,6 +36,8 @@ export function useFeed(options: UseFeedOptions = {}): UseFeedResult {
   const [error, setError] = useState<string | null>(null);
   const offsetRef = useRef(0);
   const loadingRef = useRef(false);
+  const refreshingRef = useRef(false);
+  const requestSeqRef = useRef(0);
 
   const fetchPage = useCallback(
     async (offset: number): Promise<FeedPage> => {
@@ -41,8 +45,8 @@ export function useFeed(options: UseFeedOptions = {}): UseFeedResult {
         case 'trending':
           return getTrendingFeed(offset, 20, hoursBack);
         case 'nearby':
-          if (!location) return { moments: [], nextOffset: null };
-          return getNearbyFeed(location.lat, location.lng, radiusKm, offset);
+          if (latitude == null || longitude == null) return { moments: [], nextOffset: null };
+          return getNearbyFeed(latitude, longitude, radiusKm, offset);
         case 'friends':
           return getFriendsFeed(offset);
         case 'recent':
@@ -50,17 +54,20 @@ export function useFeed(options: UseFeedOptions = {}): UseFeedResult {
           return getPublicFeed(offset);
       }
     },
-    [filter, location?.lat, location?.lng, radiusKm, hoursBack],
+    [filter, latitude, longitude, radiusKm, hoursBack],
   );
 
   const refresh = useCallback(async () => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    const requestSeq = requestSeqRef.current + 1;
+    requestSeqRef.current = requestSeq;
     setIsRefreshing(true);
     setError(null);
 
     try {
       const page = await fetchPage(0);
+      if (requestSeq !== requestSeqRef.current) return;
       setMoments(page.moments);
       offsetRef.current = page.nextOffset ?? 0;
       setHasMore(page.nextOffset !== null);
@@ -68,17 +75,19 @@ export function useFeed(options: UseFeedOptions = {}): UseFeedResult {
       setError(e instanceof Error ? e.message : 'Failed to load feed');
     } finally {
       setIsRefreshing(false);
-      loadingRef.current = false;
+      refreshingRef.current = false;
     }
   }, [fetchPage]);
 
   const loadMore = useCallback(async () => {
-    if (loadingRef.current || !hasMore) return;
+    if (loadingRef.current || refreshingRef.current || !hasMore) return;
     loadingRef.current = true;
+    const requestSeq = requestSeqRef.current;
     setIsLoading(true);
 
     try {
       const page = await fetchPage(offsetRef.current);
+      if (requestSeq !== requestSeqRef.current) return;
       setMoments(prev => [...prev, ...page.moments]);
       offsetRef.current = page.nextOffset ?? 0;
       setHasMore(page.nextOffset !== null);

@@ -5,6 +5,14 @@ import AfterStayLoader from '@/components/AfterStayLoader';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { getOnboardingProgress, isOnboardingIncomplete } from '@/lib/onboardingProgress';
 import { deriveUserStatus } from '@/lib/userStatus';
+import { preloadHomeData } from '@/hooks/useTabHomeData';
+
+type IndexTarget = 'welcome' | 'onboarding' | 'home' | null;
+
+function routeHome(setTarget: (target: IndexTarget) => void) {
+  preloadHomeData().catch(() => {});
+  setTarget('home');
+}
 
 export default function Index() {
   const { session, loading } = useAuth();
@@ -21,19 +29,20 @@ export default function Index() {
         const progress = await getOnboardingProgress(session.user.id);
         if (progress && isOnboardingIncomplete(progress)) {
           if (__DEV__) console.log('[Index] resuming onboarding:', progress.stage);
-          setTarget(progress.stage === 'planning_draft' ? 'home' : 'onboarding');
+          if (progress.stage === 'planning_draft') routeHome(setTarget);
+          else setTarget('onboarding');
           return;
         }
         if (progress?.status === 'complete' || progress?.status === 'skipped') {
           await cacheSet(`onboarding_complete:${session.user.id}`, true);
-          setTarget('home');
+          routeHome(setTarget);
           return;
         }
 
         const flag = await cacheGet<boolean>(`onboarding_complete:${session.user.id}`);
         if (flag) {
           if (__DEV__) console.log('[Index] onboarding flag cached — skipping check');
-          setTarget('home');
+          routeHome(setTarget);
           return;
         }
 
@@ -53,9 +62,11 @@ export default function Index() {
           const cachedFlag = await cacheGet<boolean>(`onboarding_complete:${session.user.id}`);
           const cachedProgress = await getOnboardingProgress(session.user.id);
           if (cachedProgress && isOnboardingIncomplete(cachedProgress)) {
-            setTarget(cachedProgress.stage === 'planning_draft' ? 'home' : 'onboarding');
+            if (cachedProgress.stage === 'planning_draft') routeHome(setTarget);
+            else setTarget('onboarding');
           } else {
-            setTarget(cachedFlag === false ? 'welcome' : 'home');
+            if (cachedFlag === false) setTarget('welcome');
+            else routeHome(setTarget);
           }
           return;
         }
@@ -63,7 +74,7 @@ export default function Index() {
         if (result.status !== 'new') {
           // User has trips — restore the flag and skip onboarding
           await cacheSet(`onboarding_complete:${session.user.id}`, true);
-          setTarget('home');
+          routeHome(setTarget);
         } else {
           setTarget('welcome');
         }
@@ -71,9 +82,11 @@ export default function Index() {
         if (__DEV__) console.error('[Index] error deriving status:', err);
         const cachedFlag = await cacheGet<boolean>(`onboarding_complete:${session.user.id}`);
         const cachedProgress = await getOnboardingProgress(session.user.id);
-        if (cachedProgress && isOnboardingIncomplete(cachedProgress))
-          setTarget(cachedProgress.stage === 'planning_draft' ? 'home' : 'onboarding');
-        else setTarget(cachedFlag ? 'home' : 'welcome');
+        if (cachedProgress && isOnboardingIncomplete(cachedProgress)) {
+          if (cachedProgress.stage === 'planning_draft') routeHome(setTarget);
+          else setTarget('onboarding');
+        } else if (cachedFlag) routeHome(setTarget);
+        else setTarget('welcome');
       }
     })();
   }, [session, loading]);

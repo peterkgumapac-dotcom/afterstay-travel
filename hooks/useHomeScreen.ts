@@ -12,7 +12,6 @@ import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { writeWidgetSnapshots, refreshAllWidgets } from '@/widgets/refresh';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import {
-  getActiveTrip,
   getDailyTrackerEnabled,
   getDailyExpenseSummary,
 } from '@/lib/supabase';
@@ -266,11 +265,7 @@ export function useHomeScreen() {
       const quickTripsPromise = withTimeout(getHomeQuickTripsPromise(force), [] as QuickTrip[]);
       const lifetimeStatsPromise = withTimeout(getHomeLifetimeStatsPromise(force), null);
 
-      let t = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
-      if (!t && !force) {
-        await new Promise(r => setTimeout(r, 800));
-        t = await withTimeout(getActiveTrip(true), null as Trip | null);
-      }
+      const t = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
       if (t) {
         setTrip(t);
         await cacheSet('trip:active', t);
@@ -525,17 +520,13 @@ export function useHomeScreen() {
         setTrip(activeTrip);
         if (activeTrip.hotelLat && activeTrip.hotelLng) setHotelCoords(activeTrip.hotelLat, activeTrip.hotelLng);
 
-        const [fs, ms, mems, places, allExp] = await Promise.all([
+        const [fs, mems, allExp] = await Promise.all([
           withTimeout(getHomeFlightsPromise(activeTrip.id, true), [] as Flight[]),
-          withTimeout(getHomeMomentsPromise(activeTrip.id, true), [] as Moment[]),
           withTimeout(getHomeMembersPromise(activeTrip.id, true), [] as GroupMember[]),
-          withTimeout(getHomePlacesPromise(activeTrip.id, true), [] as Place[]),
           withTimeout(getHomeExpensesPromise(activeTrip.id, true), []),
         ]);
         setFlights(fs);
-        setMoments(ms);
         setMembers(mems);
-        setSavedPlaces(places);
         await cacheSet(`flights:${activeTrip.id}`, fs);
 
         const primary = mems.find(m => m.role === 'Primary');
@@ -559,17 +550,27 @@ export function useHomeScreen() {
         const todayExpenses = allExp.filter(e => e.date === todayIso);
         setTodaySpent(todayExpenses.reduce((s, e) => s + e.amount, 0));
         setTodayCount(todayExpenses.length);
+        setRefreshing(false);
 
-        const trackerOn = await withTimeout(getDailyTrackerEnabled(), dailyTrackerOn);
-        setDailyTrackerOn(trackerOn);
-        if (trackerOn) {
-          const ds = await withTimeout(getDailyExpenseSummary(todayIso), null);
-          if (ds) {
-            setDailyTrackerTotal(ds.total);
-            setDailyTrackerCount(ds.count);
-            setDailyTrackerByCat(ds.byCategory);
+        Promise.all([
+          withTimeout(getHomeMomentsPromise(activeTrip.id, true), [] as Moment[]),
+          withTimeout(getHomePlacesPromise(activeTrip.id, true), [] as Place[]),
+          withTimeout(getDailyTrackerEnabled(), dailyTrackerOn),
+        ]).then(async ([ms, places, trackerOn]) => {
+          setMoments(ms);
+          setSavedPlaces(places);
+          setDailyTrackerOn(trackerOn);
+          if (trackerOn) {
+            const ds = await withTimeout(getDailyExpenseSummary(todayIso), null);
+            if (ds) {
+              setDailyTrackerTotal(ds.total);
+              setDailyTrackerCount(ds.count);
+              setDailyTrackerByCat(ds.byCategory);
+            }
           }
-        }
+        }).catch((err) => {
+          if (__DEV__) console.warn('[Home] background refresh failed:', err);
+        });
 
         writeWidgetSnapshots().then(() => refreshAllWidgets()).catch(() => {});
       } catch (e: unknown) {
