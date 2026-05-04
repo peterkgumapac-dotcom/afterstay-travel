@@ -38,6 +38,8 @@ const AuthContext = createContext<AuthContextType>({
 const SUPABASE_SESSION_KEY = 'sb-' + (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').replace(/https?:\/\//, '').split('.')[0] + '-auth-token';
 const AUTH_TIMEOUT_MS = 12_000;
 const PROFILE_TIMEOUT_MS = 8_000;
+const AUTH_BOOT_TIMEOUT_MS = 15_000;
+const SESSION_MIGRATION_TIMEOUT_MS = 4_000;
 
 function withAuthTimeout<T>(promise: PromiseLike<T>, message: string, ms = AUTH_TIMEOUT_MS): Promise<T> {
   const wrapped = Promise.resolve(promise);
@@ -138,17 +140,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    migrateSessionToSecureStore().then(() => withAuthTimeout(supabase.auth.getSession(), 'Session restore timed out.'))
-      .then(async ({ data: { session: s } }) => {
+    let cancelled = false;
+    const finishLoading = () => {
+      if (!cancelled) setLoading(false);
+    };
+
+    const watchdog = setTimeout(() => {
+      if (__DEV__) console.warn('[auth] boot watchdog released loading state');
+      finishLoading();
+    }, AUTH_BOOT_TIMEOUT_MS);
+
+    (async () => {
+      try {
+        await withAuthTimeout(
+          migrateSessionToSecureStore(),
+          'Session migration timed out.',
+          SESSION_MIGRATION_TIMEOUT_MS,
+        ).catch((err) => {
+          if (__DEV__) console.warn('[auth] session migration skipped:', err);
+        });
+
+        const { data: { session: s } } = await withAuthTimeout(
+          supabase.auth.getSession(),
+          'Session restore timed out.',
+        );
+        if (cancelled) return;
+
         applyAccountScope(s);
         await ensureSessionProfile(s);
+        if (cancelled) return;
+
         setSession(s);
         await resumePendingInvite(s);
-        setLoading(false);
-      }, () => {
-        // Ignore — stay on login screen
-        setLoading(false);
-      });
+      } catch (err) {
+        if (__DEV__) console.warn('[auth] initial session restore failed:', err);
+        if (!cancelled) setSession(null);
+      } finally {
+        clearTimeout(watchdog);
+        finishLoading();
+      }
+    })();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -166,7 +197,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      clearTimeout(watchdog);
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
