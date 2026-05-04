@@ -90,6 +90,7 @@ export function mapNearbyToDiscoverPlace(
     price: place.price_level ?? 0,
     openNow: place.open_now ?? false,
     img: place.photo_url ?? FALLBACK_IMG,
+    imgCandidates: place.photo_urls,
     placeId: place.place_id,
     address: place.address,
     mapsUrl: place.place_id

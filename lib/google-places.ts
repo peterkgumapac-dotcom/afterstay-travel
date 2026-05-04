@@ -71,6 +71,16 @@ async function resolvePhotoUrl(photoRef: string, maxWidth = 800): Promise<string
   return null;
 }
 
+function googlePhotoApiUrl(photoRef: string, maxWidth = 800): string | null {
+  if (!PUBLIC_PLACES_KEY) return null;
+  const params = new URLSearchParams({
+    maxwidth: String(maxWidth),
+    photo_reference: photoRef,
+    key: PUBLIC_PLACES_KEY,
+  });
+  return `${PLACES_BASE}/photo?${params.toString()}`;
+}
+
 function isGooglePhotoApiUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -257,6 +267,8 @@ export interface NearbyPlace {
   lng: number;
   open_now?: boolean;
   photo_url: string | null;
+  photo_reference?: string;
+  photo_urls?: string[];
   types: string[];
   editorial_summary?: string;
 }
@@ -301,23 +313,31 @@ export async function searchNearby(
     : await directNearby(payload) ?? proxyData;
   if (!data?.results) return { places: [] };
 
-  const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => ({
-    place_id: place.place_id,
-    name: place.name,
-    rating: place.rating ?? 0,
-    total_ratings: place.user_ratings_total ?? 0,
-    price_level: place.price_level,
-    business_status: place.business_status,
-    address: place.vicinity ?? '',
-    lat: place.geometry?.location?.lat ?? 0,
-    lng: place.geometry?.location?.lng ?? 0,
-    open_now: place.opening_hours?.open_now,
-    photo_url: isResolvedGooglePhotoUrl(place.resolved_photo_url)
+  const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => {
+    const photoRef = pickBestPhotoRef(place.photos) ?? undefined;
+    const resolvedPhoto = isResolvedGooglePhotoUrl(place.resolved_photo_url)
       ? place.resolved_photo_url
-      : (pickBestPhotoRef(place.photos) ? await resolvePhotoUrl(pickBestPhotoRef(place.photos)!, 800) : null),
-    types: place.types ?? [],
-    editorial_summary: place.editorial_summary ?? undefined,
-  })));
+      : (photoRef ? await resolvePhotoUrl(photoRef, 800) : null);
+    const directPhoto = photoRef ? googlePhotoApiUrl(photoRef, 800) : null;
+    const photoUrls = [resolvedPhoto, directPhoto].filter(Boolean) as string[];
+    return {
+      place_id: place.place_id,
+      name: place.name,
+      rating: place.rating ?? 0,
+      total_ratings: place.user_ratings_total ?? 0,
+      price_level: place.price_level,
+      business_status: place.business_status,
+      address: place.vicinity ?? '',
+      lat: place.geometry?.location?.lat ?? 0,
+      lng: place.geometry?.location?.lng ?? 0,
+      open_now: place.opening_hours?.open_now,
+      photo_url: photoUrls[0] ?? null,
+      photo_reference: photoRef,
+      photo_urls: photoUrls,
+      types: place.types ?? [],
+      editorial_summary: place.editorial_summary ?? undefined,
+    };
+  }));
 
   return { places, nextPageToken: data.next_page_token ?? undefined };
 }
@@ -333,23 +353,31 @@ export async function searchNearbyPage(
     : await directNearby(payload) ?? proxyData;
   if (!data?.results) return { places: [] };
 
-  const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => ({
-    place_id: place.place_id,
-    name: place.name,
-    rating: place.rating ?? 0,
-    total_ratings: place.user_ratings_total ?? 0,
-    price_level: place.price_level,
-    business_status: place.business_status,
-    address: place.vicinity ?? '',
-    lat: place.geometry?.location?.lat ?? 0,
-    lng: place.geometry?.location?.lng ?? 0,
-    open_now: place.opening_hours?.open_now,
-    photo_url: isResolvedGooglePhotoUrl(place.resolved_photo_url)
+  const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => {
+    const photoRef = pickBestPhotoRef(place.photos) ?? undefined;
+    const resolvedPhoto = isResolvedGooglePhotoUrl(place.resolved_photo_url)
       ? place.resolved_photo_url
-      : (pickBestPhotoRef(place.photos) ? await resolvePhotoUrl(pickBestPhotoRef(place.photos)!, 800) : null),
-    types: place.types ?? [],
-    editorial_summary: place.editorial_summary ?? undefined,
-  })));
+      : (photoRef ? await resolvePhotoUrl(photoRef, 800) : null);
+    const directPhoto = photoRef ? googlePhotoApiUrl(photoRef, 800) : null;
+    const photoUrls = [resolvedPhoto, directPhoto].filter(Boolean) as string[];
+    return {
+      place_id: place.place_id,
+      name: place.name,
+      rating: place.rating ?? 0,
+      total_ratings: place.user_ratings_total ?? 0,
+      price_level: place.price_level,
+      business_status: place.business_status,
+      address: place.vicinity ?? '',
+      lat: place.geometry?.location?.lat ?? 0,
+      lng: place.geometry?.location?.lng ?? 0,
+      open_now: place.opening_hours?.open_now,
+      photo_url: photoUrls[0] ?? null,
+      photo_reference: photoRef,
+      photo_urls: photoUrls,
+      types: place.types ?? [],
+      editorial_summary: place.editorial_summary ?? undefined,
+    };
+  }));
 
   return { places, nextPageToken: data.next_page_token ?? undefined };
 }

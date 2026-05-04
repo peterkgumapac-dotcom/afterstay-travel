@@ -39,6 +39,7 @@ export interface DiscoverPlace {
   price: number;
   openNow: boolean;
   img: string;
+  imgCandidates?: string[];
   placeId?: string;
   address?: string;
   mapsUrl?: string;
@@ -95,11 +96,20 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
 }: DiscoverPlaceCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
-  const [imageUri, setImageUri] = useState(place.img || THUMB_FALLBACK);
+  const imageCandidates = useMemo(() => {
+    const seen = new Set<string>();
+    return [...(place.imgCandidates ?? []), place.img, THUMB_FALLBACK].filter((url): url is string => {
+      if (!url || seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    });
+  }, [place.img, place.imgCandidates]);
+  const [imageIndex, setImageIndex] = useState(0);
+  const imageUri = imageCandidates[imageIndex] ?? THUMB_FALLBACK;
 
   useEffect(() => {
-    setImageUri(place.img || THUMB_FALLBACK);
-  }, [place.img]);
+    setImageIndex(0);
+  }, [imageCandidates]);
 
   // Cap absurd distances (emulator GPS in wrong location)
   const validDistance = distanceKm > 0 && distanceKm < 50;
@@ -152,7 +162,7 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
         cachePolicy="disk"
         transition={160}
         onError={() => {
-          if (imageUri !== THUMB_FALLBACK) setImageUri(THUMB_FALLBACK);
+          setImageIndex((idx) => Math.min(idx + 1, imageCandidates.length - 1));
         }}
       />
 
