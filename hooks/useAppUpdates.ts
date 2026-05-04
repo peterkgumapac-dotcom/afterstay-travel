@@ -5,8 +5,9 @@ import * as Updates from 'expo-updates';
 const FOREGROUND_CHECK_COOLDOWN_MS = 10 * 60 * 1000;
 
 /**
- * Checks for EAS Updates when returning to the foreground,
- * downloads if available, and reloads with a branded splash screen.
+ * Checks for EAS Updates when returning to the foreground and downloads if
+ * available. The update is applied on the next real app restart so returning
+ * from the app switcher does not unexpectedly reset navigation or in-memory UI.
  *
  * Expo's native ON_LOAD check already handles startup. Keeping this hook to
  * foreground checks avoids double network checks during cold launch.
@@ -38,20 +39,7 @@ export function useAppUpdates() {
         const fetch = await Updates.fetchUpdateAsync();
         if (!fetch.isNew) return;
 
-        // Reload with branded transition
-        await Updates.reloadAsync({
-          reloadScreenOptions: {
-            backgroundColor: '#0A0A0A',
-            image: require('@/assets/images/splash-icon.png'),
-            imageResizeMode: 'contain',
-            fade: true,
-            spinner: {
-              enabled: true,
-              color: '#d8ab7a',
-              size: 'small',
-            },
-          },
-        });
+        if (__DEV__) console.log('[Updates] update downloaded; will apply on next restart');
       } catch (err) {
         if (__DEV__) console.warn('[Updates] check/reload failed:', err);
       } finally {
