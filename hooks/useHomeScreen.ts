@@ -36,6 +36,7 @@ import {
   getHomeExpensesPromise,
 } from '@/hooks/useTabHomeData';
 import { fetchDestinationPhotos } from '@/lib/google-places';
+import { pickHomeLoadedTrip, pickHomeSeedTrip } from '@/lib/homeStartup';
 import { resolveTripMediaLocation } from '@/lib/tripMedia';
 import { filterRenderableImageUrls } from '@/lib/imageUrl';
 import { setHotelCoords } from '@/lib/config';
@@ -265,7 +266,8 @@ export function useHomeScreen() {
       const quickTripsPromise = withTimeout(getHomeQuickTripsPromise(force), [] as QuickTrip[]);
       const lifetimeStatsPromise = withTimeout(getHomeLifetimeStatsPromise(force), null);
 
-      const t = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
+      const fetchedTrip = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
+      const t = pickHomeLoadedTrip(fetchedTrip, segmentActiveTrip ?? null, force);
       if (t) {
         setTrip(t);
         await cacheSet('trip:active', t);
@@ -378,7 +380,7 @@ export function useHomeScreen() {
       if (!silent) setLoading(false);
       setRefreshing(false);
     }
-  }, [clearActiveTripSurface, user]);
+  }, [clearActiveTripSurface, segmentActiveTrip, user]);
 
   // ── Toggle-off recovery ──
   const prevTestMode = useRef(isTestMode);
@@ -397,7 +399,7 @@ export function useHomeScreen() {
         ? await cacheGet<Trip | null>('trip:active', HOME_PERSISTED_SEED_TTL_MS)
         : undefined;
       const contextTrip = segmentActiveTrip ?? null;
-      const ct = memoryTrip !== undefined ? memoryTrip : (persistedTrip !== undefined ? persistedTrip : contextTrip);
+      const ct = pickHomeSeedTrip(memoryTrip, persistedTrip, contextTrip);
       const hasTripSeed = ct !== undefined && ct !== null;
       const ca = getHomeAllTripsCached();
       const contextTrips = [
