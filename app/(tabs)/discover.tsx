@@ -40,7 +40,7 @@ import { MS_PER_DAY } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
 const ExploreMap = React.lazy(() => import('@/components/discover/ExploreMap'));
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { searchNearby, searchNearbyPage, placeAutocomplete, getPlaceLocation, type NearbyPlace } from '@/lib/google-places';
+import { searchNearby, searchNearbyPage, placeAutocomplete, getPlaceLocation, searchPlace, type NearbyPlace } from '@/lib/google-places';
 import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS } from '@/lib/category-config';
 import { searchMultiCategory } from '@/lib/multi-category-search';
 import {
@@ -678,7 +678,13 @@ function DiscoverScreenInner() {
       const best = placeId
         ? { placeId, description: cleaned }
         : (await placeAutocomplete(cleaned))[0];
-      const loc = best ? await getPlaceLocation(best.placeId) : null;
+      let loc = best ? await getPlaceLocation(best.placeId) : null;
+      if (!loc) {
+        const fallback = await searchPlace(best?.description ?? cleaned);
+        if (fallback && fallback.lat != null && fallback.lng != null) {
+          loc = { name: fallback.name, lat: fallback.lat, lng: fallback.lng };
+        }
+      }
       if (!loc) {
         setExploreCoords(null);
         setExploreDest('');
