@@ -1524,14 +1524,21 @@ function DiscoverScreenInner() {
               })}
               <TouchableOpacity
                 onPress={toggleShowFilters}
-                style={[styles.moreFiltersBtn, activeFilterCount > 0 && { borderColor: colors.accent }]}
+                style={[
+                  styles.moreFiltersBtn,
+                  activeFilterCount > 0 && { borderColor: colors.accent, backgroundColor: colors.accentBg },
+                ]}
                 activeOpacity={0.72}
-                hitSlop={8}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={activeFilterCount > 0 ? `More filters, ${activeFilterCount} active` : 'More filters'}
               >
-                <Filter size={13} color={activeFilterCount > 0 ? colors.accent : colors.text2} strokeWidth={2} />
-                <Text style={[styles.moreFiltersText, activeFilterCount > 0 && { color: colors.accent }]}>
-                  More filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
-                </Text>
+                <Filter size={17} color={activeFilterCount > 0 ? colors.accent : colors.text2} strokeWidth={2.2} />
+                {activeFilterCount > 0 ? (
+                  <View style={styles.filterCountBadge}>
+                    <Text style={styles.filterCountText}>{activeFilterCount}</Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
             </View>
             {showFilters ? (
@@ -2535,10 +2542,11 @@ const getStyles = (colors: ThemeColors) =>
     precisionInputBox: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 9,
-      paddingVertical: 11,
-      paddingHorizontal: 13,
-      borderRadius: 14,
+      gap: 8,
+      minHeight: 44,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 13,
       backgroundColor: colors.card,
       borderWidth: 1,
       borderColor: colors.border,
@@ -2578,12 +2586,11 @@ const getStyles = (colors: ThemeColors) =>
     primaryFilterRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 8,
+      gap: 7,
     },
     primaryFilterChip: {
-      minHeight: 38,
-      paddingHorizontal: 13,
+      minHeight: 34,
+      paddingHorizontal: 12,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
@@ -2596,7 +2603,7 @@ const getStyles = (colors: ThemeColors) =>
       borderColor: colors.black,
     },
     primaryFilterText: {
-      fontSize: 12.5,
+      fontSize: 12,
       fontWeight: '800',
       color: colors.text2,
     },
@@ -2604,20 +2611,33 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.onBlack,
     },
     moreFiltersBtn: {
-      minHeight: 44,
-      paddingHorizontal: 14,
+      width: 38,
+      height: 38,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.card,
-      flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      justifyContent: 'center',
     },
-    moreFiltersText: {
-      fontSize: 12.5,
+    filterCountBadge: {
+      position: 'absolute',
+      top: -3,
+      right: -3,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      paddingHorizontal: 3,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
+      borderWidth: 1,
+      borderColor: colors.card,
+    },
+    filterCountText: {
+      fontSize: 9,
       fontWeight: '800',
-      color: colors.text2,
+      color: colors.white,
     },
     primaryPlaceSearchWrap: {
       marginHorizontal: 16,
