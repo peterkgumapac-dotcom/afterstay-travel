@@ -698,6 +698,30 @@ function DiscoverScreenInner() {
         }
       }
       if (!loc) {
+        const params = new URLSearchParams({
+          format: 'json',
+          limit: '1',
+          q: best?.description ?? cleaned,
+        });
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'AfterStay/1.3.0',
+          },
+        }).catch(() => null);
+        const data = res?.ok ? await res.json().catch(() => []) : [];
+        const first = Array.isArray(data) ? data[0] : null;
+        const lat = Number(first?.lat);
+        const lng = Number(first?.lon);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          loc = {
+            name: best?.description.split(',')[0] ?? cleaned,
+            lat,
+            lng,
+          };
+        }
+      }
+      if (!loc) {
         setExploreCoords(null);
         setExploreDest('');
         setManualOriginKind('none');
