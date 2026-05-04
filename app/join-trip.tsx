@@ -19,13 +19,21 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import FormField from '@/components/FormField';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { joinTripByCode, addFlight, getFlights, getGroupMembers, updateMyTripMemberPreferences } from '@/lib/supabase';
+import { clearTripCache, joinTripByCode, addFlight, getFlights, getGroupMembers, updateMyTripMemberPreferences } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { getPrimaryBookerFlights } from '@/lib/flightSharing';
 import { completeOnboarding } from '@/lib/onboardingProgress';
 import { formatDatePHT } from '@/lib/utils';
 import type { Flight, Trip } from '@/lib/types';
 import { clearPendingInviteCode, storePendingInviteCode } from '@/lib/pendingInvite';
+import { clearTripLocalData } from '@/lib/cache';
+import { invalidateTripCache } from '@/lib/tabDataCache';
+import {
+  getHomeActiveTripPromise,
+  getHomeAllTripsPromise,
+  getHomeFlightsPromise,
+  invalidateHomeCache,
+} from '@/hooks/useTabHomeData';
 
 type Phase = 'code' | 'welcome' | 'flight';
 
@@ -77,6 +85,20 @@ export default function JoinTripScreen() {
       sharesAccommodation: sharesStay,
       travelNotes: buildTravelNotes(flightNote),
     }).catch(() => {});
+  };
+
+  const finishJoinSetup = async (tripId: string) => {
+    clearTripCache();
+    invalidateTripCache(tripId);
+    invalidateHomeCache();
+    await clearTripLocalData();
+    await Promise.allSettled([
+      getHomeActiveTripPromise(true),
+      getHomeAllTripsPromise(true),
+      getHomeFlightsPromise(tripId, true),
+    ]);
+    await completeOnboarding(user?.id);
+    router.replace('/(tabs)/home' as never);
   };
 
   const handleJoin = async () => {
@@ -142,8 +164,7 @@ export default function JoinTripScreen() {
         passenger: name,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await completeOnboarding(user?.id);
-      router.replace('/(tabs)/home' as never);
+      await finishJoinSetup(tripInfo.id);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to save flight');
     } finally {
@@ -152,9 +173,9 @@ export default function JoinTripScreen() {
   };
 
   const handleSkipFlight = async () => {
-    if (tripInfo) await saveSharingPreference('Flight later');
-    await completeOnboarding(user?.id);
-    router.replace('/(tabs)/home' as never);
+    if (!tripInfo) return router.replace('/(tabs)/home' as never);
+    await saveSharingPreference('Flight later');
+    await finishJoinSetup(tripInfo.id);
   };
 
   const handleUseSharedDetails = async () => {
@@ -189,11 +210,11 @@ export default function JoinTripScreen() {
         Alert.alert(
           'Trip joined',
           'Your shared stay choice was saved, but some copied flight details need a retry from the trip screen.',
-          [{ text: 'OK', onPress: () => router.replace('/(tabs)/home' as never) }],
+          [{ text: 'OK', onPress: () => { finishJoinSetup(tripInfo.id).catch(() => router.replace('/(tabs)/home' as never)); } }],
         );
         return;
       }
-      router.replace('/(tabs)/home' as never);
+      await finishJoinSetup(tripInfo.id);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to save trip details');
     } finally {
