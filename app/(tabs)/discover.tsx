@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -19,18 +18,16 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, CalendarDays, ChevronDown, ChevronRight, Filter, Map, MapPin, Search, SlidersHorizontal, Sparkles, ThumbsUp, Users, Vote } from 'lucide-react-native';
+import { Bookmark, CalendarDays, ChevronDown, ChevronRight, Filter, Map, MapPin, Navigation, Search, Sparkles, ThumbsUp, Users, Vote } from 'lucide-react-native';
 
 import EmptyState from '@/components/shared/EmptyState';
 import { SwipeToDelete } from '@/components/shared/SwipeToDelete';
 
-import { type CategoryItem } from '@/components/discover/CategoryGrid';
 import {
   DiscoverPlaceCard,
   friendlyCategory,
   type DiscoverPlace,
 } from '@/components/discover/DiscoverPlaceCard';
-import { type TrendingItem } from '@/components/discover/TrendingCard';
 import MiniLoader from '@/components/loader/MiniLoader';
 const PlaceDetailSheet = React.lazy(() => import('@/components/discover/PlaceDetailSheet'));
 const AIConcierge = React.lazy(() => import('@/components/discover/AIConcierge'));
@@ -48,18 +45,10 @@ import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS } from 
 import { searchMultiCategory } from '@/lib/multi-category-search';
 import {
   DEFAULT_PLACE_FILTERS,
-  applyQuickFilter,
   applyPlaceFilters,
   countActivePlaceFilters,
-  getFilterContext,
-  getQuickFiltersForContext,
-  matchesDestinationScope,
-  type DestinationScope,
   type PlaceFilterState,
-  type QuickFilter,
-  type QuickFilterId,
 } from '@/lib/discoverPlaceFilters';
-import DestinationCard from '@/components/discover/DestinationCard';
 import {
   addPlace,
   getActiveTrip,
@@ -86,20 +75,7 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type TabId = 'places' | 'stays' | 'concierge' | 'saved';
 type TravelMode = 'walk' | 'car';
 type DistanceOrigin = 'hotel' | 'me';
-type DiscoverOriginKind = 'trip' | 'searched_destination' | 'current_location' | 'none';
-type StarterDestination = {
-  label: string;
-  eyebrow: string;
-  body: string;
-  countryCode: string;
-  coords: { lat: number; lng: number };
-};
-type DestinationAreaPreset = {
-  label: string;
-  eyebrow: string;
-  body: string;
-  coords: { lat: number; lng: number };
-};
+type DiscoverOriginKind = 'trip' | 'selected_place' | 'current_location' | 'none';
 type FilterState = PlaceFilterState;
 
 function destinationToLabel(value: unknown): string {
@@ -167,36 +143,6 @@ function formatReviewCount(count: number): string {
   return `${count} reviews`;
 }
 
-// ── Data ────────────────────────────────────────────────────────────────
-
-const CATEGORIES: readonly CategoryItem[] = [
-  { id: 'beach', label: 'Beaches', emoji: '\uD83C\uDFDD\uFE0F', color: '#7ac4d6' },
-  { id: 'food', label: 'Food', emoji: '\uD83C\uDF5C', color: '#e8a860' },
-  { id: 'activity', label: 'Activities', emoji: '\uD83C\uDF0A', color: '#5a8fb5' },
-  { id: 'nightlife', label: 'Nightlife', emoji: '\uD83C\uDF79', color: '#b66a8a' },
-  { id: 'photo', label: 'Photo spots', emoji: '\uD83D\uDCF8', color: '#8b6f5a' },
-  { id: 'wellness', label: 'Wellness', emoji: '\uD83E\uDDD8', color: '#7ba88a' },
-  { id: 'coffee', label: 'Coffee', emoji: '\u2615', color: '#a0845c' },
-] as const;
-
-// Category suggestion labels — generic, works for any destination
-const CATEGORY_SUGGESTIONS: Record<string, readonly string[]> = {
-  beach: ['Top beaches', 'Hidden coves', 'Snorkeling spots', 'Sunset views', 'Tidal pools'],
-  food: ['Best local eats', 'Seafood restaurants', 'Street food', 'Coffee & brunch', 'Fine dining'],
-  activity: ['Water sports', 'Hiking trails', 'Tours', 'Day trips', 'Cultural experiences'],
-  nightlife: ['Rooftop bars', 'Live music', 'Cocktail lounges', 'Night markets', 'Late-night spots'],
-  photo: ['Scenic viewpoints', 'Golden hour spots', 'Iconic landmarks', 'Hidden gems', 'Architecture'],
-  wellness: ['Spa & massage', 'Yoga studios', 'Wellness retreats', 'Hot springs', 'Juice bars'],
-  coffee: ['Best espresso', 'Specialty coffee', 'Cafés with views', 'Pour-over spots', 'Brunch & coffee'],
-};
-
-
-const ACTIVITY_CATEGORY_EMOJI: Record<string, string> = {
-  Food: '🍽', Beach: '🏖', Activity: '🌊', Culture: '🏛',
-  Nightlife: '🌙', Wellness: '🧘', Shopping: '🛍', Transport: '🚗',
-};
-
-
 const PLACE_CATEGORY_CHIPS = [
   'All',
   'Beach',
@@ -214,101 +160,39 @@ const PLACE_CATEGORY_CHIPS = [
   'Landmark',
 ] as const;
 
+const PRIMARY_PLACE_CATEGORY_CHIPS = ['Food', 'Coffee', 'Activity'] as const satisfies readonly typeof PLACE_CATEGORY_CHIPS[number][];
+
 const DEFAULT_FILTERS = DEFAULT_PLACE_FILTERS;
 
-const DESTINATION_SCOPE_OPTIONS: readonly { id: DestinationScope; label: string; body: string }[] = [
-  { id: 'all', label: 'All', body: 'Everywhere' },
-  { id: 'local', label: 'Local', body: 'Philippines' },
-  { id: 'abroad', label: 'Abroad', body: 'International' },
-] as const;
+const BROAD_ORIGIN_TERMS = new Set([
+  'japan',
+  'philippines',
+  'indonesia',
+  'thailand',
+  'korea',
+  'south korea',
+  'bali',
+  'tokyo',
+  'osaka',
+  'kyoto',
+  'manila',
+  'cebu',
+  'boracay',
+  'siargao',
+  'siargao island',
+  'caticlan',
+]);
 
-const QUICK_FILTER_CATEGORY_MAP: Partial<Record<QuickFilterId, typeof PLACE_CATEGORY_CHIPS[number]>> = {
-  food: 'Food',
-  coffee: 'Coffee',
-  beach: 'Beach',
-  activities: 'Activity',
-  worth_the_drive: 'Worth the Drive',
-};
-
-const STARTER_DESTINATIONS: readonly StarterDestination[] = [
-  {
-    label: 'Boracay',
-    eyebrow: 'Beach food',
-    body: 'White Beach cafes, sunset spots, and easy island saves.',
-    countryCode: 'PH',
-    coords: { lat: 11.9674, lng: 121.9248 },
-  },
-  {
-    label: 'Cebu',
-    eyebrow: 'City + coast',
-    body: 'Food halls, heritage stops, beaches, and weekend escapes.',
-    countryCode: 'PH',
-    coords: { lat: 10.3157, lng: 123.8854 },
-  },
-  {
-    label: 'Bali',
-    eyebrow: 'Wellness',
-    body: 'Cafes, beach clubs, temples, villas, and slow mornings.',
-    countryCode: 'ID',
-    coords: { lat: -8.3405, lng: 115.0920 },
-  },
-  {
-    label: 'Siargao',
-    eyebrow: 'Surf + cafes',
-    body: 'General Luna, Cloud 9, beach days, coffee, and island food.',
-    countryCode: 'PH',
-    coords: { lat: 9.7856, lng: 126.1611 },
-  },
-  {
-    label: 'Tokyo',
-    eyebrow: 'City discovery',
-    body: 'Food alleys, coffee, shopping, nightlife, and hidden stops.',
-    countryCode: 'JP',
-    coords: { lat: 35.6762, lng: 139.6503 },
-  },
-  {
-    label: 'Caticlan',
-    eyebrow: 'Gateway',
-    body: 'Airport-adjacent food, transfers, stays, and Boracay staging.',
-    countryCode: 'PH',
-    coords: { lat: 11.9336, lng: 121.9599 },
-  },
-] as const;
-
-const DESTINATION_AREA_PRESETS: Record<string, readonly DestinationAreaPreset[]> = {
-  japan: [
-    { label: 'Tokyo', eyebrow: 'Best first stop', body: 'Food, coffee, nightlife, shopping, and easy transit.', coords: { lat: 35.6762, lng: 139.6503 } },
-    { label: 'Kyoto', eyebrow: 'Culture', body: 'Temples, tea, old streets, gardens, and day walks.', coords: { lat: 35.0116, lng: 135.7681 } },
-    { label: 'Osaka', eyebrow: 'Food city', body: 'Street food, bars, shopping, and quick Kyoto/Nara access.', coords: { lat: 34.6937, lng: 135.5023 } },
-    { label: 'Okinawa', eyebrow: 'Island', body: 'Beaches, resorts, diving, cafes, and coastal drives.', coords: { lat: 26.2124, lng: 127.6809 } },
-  ],
-  siargao: [
-    { label: 'General Luna, Siargao', eyebrow: 'Best first stop', body: 'Food, coffee, stays, surf shops, and nightlife density.', coords: { lat: 9.7856, lng: 126.1611 } },
-    { label: 'Cloud 9, Siargao', eyebrow: 'Surf', body: 'Surf breaks, lessons, cafes, rentals, and sunset crowds.', coords: { lat: 9.8115, lng: 126.1630 } },
-    { label: 'Dapa, Siargao', eyebrow: 'Gateway', body: 'Ferry access, local eats, supplies, and island transfers.', coords: { lat: 9.7594, lng: 126.0531 } },
-    { label: 'Del Carmen, Siargao', eyebrow: 'Nature', body: 'Mangroves, airport access, lagoons, and quieter stays.', coords: { lat: 9.8697, lng: 125.9706 } },
-  ],
-};
-
-// ── Helpers ─────────────────────────────────────────────────────────────
-
-function getStarterDestinationFallback(input: string): StarterDestination | undefined {
-  const normalized = input.trim().toLowerCase();
-  if (!normalized) return undefined;
-  return STARTER_DESTINATIONS.find((destination) =>
-    normalized.includes(destination.label.toLowerCase()) ||
-    destination.label.toLowerCase().includes(normalized),
-  );
+function isBroadOriginQuery(input: string): boolean {
+  const normalized = input.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!normalized) return false;
+  const firstSegment = normalized.split(',')[0]?.trim() ?? normalized;
+  return BROAD_ORIGIN_TERMS.has(normalized) || BROAD_ORIGIN_TERMS.has(firstSegment);
 }
 
-function getDestinationAreaPreset(input: string): readonly DestinationAreaPreset[] {
-  const normalized = input.trim().toLowerCase().replace(/\s+/g, ' ').replace(/,\s*/g, ', ');
-  const firstSegment = normalized.split(',')[0]?.trim() ?? normalized;
-  if (firstSegment === 'japan') return DESTINATION_AREA_PRESETS.japan;
-  if (firstSegment === 'siargao' || firstSegment === 'siargao island' || normalized === 'siargao island, philippines') {
-    return DESTINATION_AREA_PRESETS.siargao;
-  }
-  return [];
+function originRefinementCopy(input: string): string {
+  const trimmed = input.trim();
+  return `${trimmed || 'That place'} is too broad. Search a hotel, address, station, landmark, neighborhood, or exact pin.`;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────
@@ -542,7 +426,6 @@ export default function DiscoverScreenWrapper() {
 
 function DiscoverScreenInner() {
   const { colors } = useTheme();
-  const router = useRouter();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const { segment, isTestMode, mockData } = useUserSegment();
   const testModeRef = useRef(isTestMode);
@@ -587,7 +470,6 @@ function DiscoverScreenInner() {
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<FilterState>({ ...DEFAULT_FILTERS });
   const [q, setQ] = useState('');
-  const [cat, setCat] = useState<string | null>(null);
 
   // Destination explorer (no-trip mode)
   const [exploreCoords, setExploreCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -595,7 +477,9 @@ function DiscoverScreenInner() {
   const [exploreQuery, setExploreQuery] = useState('');
   const [exploreResults, setExploreResults] = useState<{ placeId: string; description: string }[]>([]);
   const [exploreFocused, setExploreFocused] = useState(false);
-  const [destinationAreaOptions, setDestinationAreaOptions] = useState<readonly DestinationAreaPreset[]>([]);
+  const [originEditorOpen, setOriginEditorOpen] = useState(true);
+  const [originRefinementText, setOriginRefinementText] = useState('');
+  const [manualOriginKind, setManualOriginKind] = useState<DiscoverOriginKind>('none');
   const exploreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exploreInputRef = useRef<TextInput>(null);
 
@@ -612,7 +496,7 @@ function DiscoverScreenInner() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [savedLoading, setSavedLoading] = useState(false);
-  const [placeCategoryChip, setPlaceCategoryChip] = useState('All');
+  const [placeCategoryChip, setPlaceCategoryChip] = useState<typeof PLACE_CATEGORY_CHIPS[number]>('Food');
   const [visibleCount, setVisibleCount] = useState(20);
   const [showMapModal, setShowMapModal] = useState(false);
 
@@ -685,30 +569,22 @@ function DiscoverScreenInner() {
   const [tripBudgetCurrency, setTripBudgetCurrency] = useState('PHP');
 
 
-  // Effective coords: active trip → searched destination/current location → null
-  const effectiveCoords = tripCoords ?? exploreCoords;
-  const effectiveDest = tripDest || exploreDest;
-  const effectiveOriginKind: DiscoverOriginKind = tripCoords
+  // Effective coords: active trip unless the user explicitly chooses GPS/exact place.
+  const hasManualOrigin = manualOriginKind !== 'none' && !!exploreCoords;
+  const effectiveCoords = hasManualOrigin ? exploreCoords : tripCoords ?? exploreCoords;
+  const effectiveDest = hasManualOrigin ? exploreDest : tripDest || exploreDest;
+  const effectiveOriginLabel = hasManualOrigin
+    ? exploreDest
+    : tripCoords
+      ? (tripHotel || tripDest || 'Trip location')
+      : exploreDest;
+  const effectiveOriginKind: DiscoverOriginKind = hasManualOrigin
+    ? manualOriginKind
+    : tripCoords
     ? 'trip'
-    : exploreCoords && exploreDest === 'Near me'
-      ? 'current_location'
-      : exploreCoords
-        ? 'searched_destination'
-        : 'none';
+    : 'none';
   const hasUsableOrigin = !!effectiveCoords;
-  const filterContext = useMemo(() => getFilterContext({
-    hasTrip: !!tripId,
-    hasOrigin: hasUsableOrigin,
-    originKind: effectiveOriginKind,
-    memberCount: votableMemberCount,
-  }), [tripId, hasUsableOrigin, effectiveOriginKind, votableMemberCount]);
-  const quickFilters = useMemo(() => getQuickFiltersForContext(filterContext), [filterContext]);
-  const starterDestinations = useMemo(
-    () => STARTER_DESTINATIONS.filter((destination) =>
-      matchesDestinationScope(destination, filters.destinationScope),
-    ),
-    [filters.destinationScope],
-  );
+  const canShowPlaceResults = hasUsableOrigin && !originEditorOpen;
 
   // Compute distance from the selected origin (hotel or current location)
   const getDistanceKm = useCallback((placeLat?: number, placeLng?: number): number => {
@@ -761,21 +637,24 @@ function DiscoverScreenInner() {
   const applyExploreOrigin = useCallback((
     label: string,
     coords: { lat: number; lng: number },
-    areas: readonly DestinationAreaPreset[] = [],
+    kind: DiscoverOriginKind = 'selected_place',
   ) => {
     setExploreCoords(coords);
     setExploreDest(label);
     setExploreQuery(label);
-    setDestinationAreaOptions(areas);
+    setManualOriginKind(kind);
+    setOriginEditorOpen(false);
+    setOriginRefinementText('');
     setQ('');
+    setPlaceCategoryChip('Food');
     setVisibleCount(20);
+    setShowFilters(false);
     placesCache.current = {};
   }, []);
 
   const chooseExploreDestination = useCallback(async (
     label: string,
     placeId?: string,
-    fallbackCoords?: { lat: number; lng: number },
   ) => {
     const cleaned = label.trim();
     if (!cleaned) return;
@@ -784,50 +663,40 @@ function DiscoverScreenInner() {
     setExploreFocused(false);
     setExploreQuery(cleaned);
     setExploreResults([]);
+    setOriginRefinementText('');
     setPlacesError(null);
     setPlacesLoading(true);
     try {
-      const areaPreset = getDestinationAreaPreset(cleaned);
-      const primaryArea = areaPreset[0];
-      if (primaryArea) {
-        applyExploreOrigin(primaryArea.label, primaryArea.coords, areaPreset);
+      if (isBroadOriginQuery(cleaned)) {
+        setExploreCoords(null);
+        setExploreDest('');
+        setManualOriginKind('none');
+        setPlaces([]);
+        setOriginRefinementText(originRefinementCopy(cleaned));
         return;
       }
       const best = placeId
         ? { placeId, description: cleaned }
         : (await placeAutocomplete(cleaned))[0];
       const loc = best ? await getPlaceLocation(best.placeId) : null;
-      const resolvedPreset = getDestinationAreaPreset(best?.description ?? cleaned);
-      const resolvedPrimaryArea = resolvedPreset[0];
-      if (resolvedPrimaryArea) {
-        applyExploreOrigin(resolvedPrimaryArea.label, resolvedPrimaryArea.coords, resolvedPreset);
-        return;
-      }
       if (!loc) {
-        if (!fallbackCoords) {
-          setExploreCoords(null);
-          setExploreDest('');
-          setDestinationAreaOptions([]);
-          setPlaces([]);
-          setPlacesError('Could not find that destination. Try another search.');
-          return;
-        }
-        applyExploreOrigin(cleaned, fallbackCoords);
+        setExploreCoords(null);
+        setExploreDest('');
+        setManualOriginKind('none');
+        setPlaces([]);
+        setOriginRefinementText('Could not find that exact place. Search a hotel, address, station, landmark, neighborhood, or exact pin.');
+        return;
       } else {
         const shortLabel = best?.description.split(',')[0] ?? cleaned;
-        applyExploreOrigin(shortLabel, { lat: loc.lat, lng: loc.lng });
+        applyExploreOrigin(shortLabel, { lat: loc.lat, lng: loc.lng }, 'selected_place');
       }
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] choose destination failed:', err);
-      if (fallbackCoords) {
-        applyExploreOrigin(cleaned, fallbackCoords);
-      } else {
-        setExploreCoords(null);
-        setExploreDest('');
-        setDestinationAreaOptions([]);
-        setPlaces([]);
-        setPlacesError('Could not find that destination. Try another search.');
-      }
+      setExploreCoords(null);
+      setExploreDest('');
+      setManualOriginKind('none');
+      setPlaces([]);
+      setOriginRefinementText('Could not find that exact place. Search a hotel, address, station, landmark, neighborhood, or exact pin.');
     } finally {
       setPlacesLoading(false);
     }
@@ -841,7 +710,8 @@ function DiscoverScreenInner() {
       const Location = require('expo-location') as typeof import('expo-location');
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setPlacesError('Enable location permission or search a destination to find places.');
+        setOriginEditorOpen(true);
+        setOriginRefinementText('Enable location permission or search an exact place to find recommendations.');
         return;
       }
       const loc = await Promise.race([
@@ -852,27 +722,22 @@ function DiscoverScreenInner() {
         requiredAccuracy: 5000,
       });
       if (!loc) {
-        setPlacesError('Current location is unavailable. Search a destination instead.');
+        setOriginEditorOpen(true);
+        setOriginRefinementText('Current location is unavailable. Search an exact place instead.');
         return;
       }
       const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
       setUserLocation(coords);
-      setExploreCoords(coords);
-      setExploreDest('Near me');
-      setExploreQuery('Near me');
-      setDestinationAreaOptions([]);
+      applyExploreOrigin('Current location', coords, 'current_location');
       setDistanceOrigin('me');
-      setPlaceCategoryChip('All');
-      setQ('');
-      setVisibleCount(20);
-      placesCache.current = {};
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] current location failed:', err);
-      setPlacesError('Could not get your location. Search a destination instead.');
+      setOriginEditorOpen(true);
+      setOriginRefinementText('Could not get your location. Search an exact place instead.');
     } finally {
       setPlacesLoading(false);
     }
-  }, []);
+  }, [applyExploreOrigin]);
 
   // Restore cached anchor/travel mode (after switchToMyLocation is defined)
   useEffect(() => {
@@ -898,7 +763,10 @@ function DiscoverScreenInner() {
       setTripHotel(mockData.trip.accommodation ?? '');
       const lat = mockData.trip.hotelLat ?? mockData.trip.latitude;
       const lng = mockData.trip.hotelLng ?? mockData.trip.longitude;
-      if (lat != null && lng != null) setTripCoords({ lat, lng });
+      if (lat != null && lng != null) {
+        setTripCoords({ lat, lng });
+        setOriginEditorOpen(false);
+      }
       setTripMembers(mockData.members);
       setTripGroupSize(Math.max(1, mockData.members.length));
     } else {
@@ -906,6 +774,7 @@ function DiscoverScreenInner() {
       setTripCoords(null);
       setTripDest('');
       setTripMembers([]);
+      setOriginEditorOpen(true);
     }
     setSavedPlaces(mockData.places as Place[]);
     setSaved(new Set(mockData.places.filter(p => p.saved !== false).map(p => p.name)));
@@ -942,19 +811,10 @@ function DiscoverScreenInner() {
           const lng = trip.hotelLng ?? trip.longitude;
           if (lat != null && lng != null) {
             setTripCoords({ lat, lng });
-          } else if (trip.destination) {
-            // No coords on trip — geocode the destination name
-            try {
-              const autoResults = await placeAutocomplete(trip.destination);
-              if (autoResults.length > 0) {
-                const loc = await getPlaceLocation(autoResults[0].placeId);
-                if (loc && !cancelled) {
-                  setTripCoords({ lat: loc.lat, lng: loc.lng });
-                }
-              }
-            } catch {
-              if (__DEV__) console.warn('[DiscoverScreen] geocode destination failed');
-            }
+            setOriginEditorOpen(false);
+          } else {
+            setTripCoords(null);
+            setOriginEditorOpen(true);
           }
           setTripBudget(trip.budgetLimit ?? 0);
           setTripBudgetCurrency(trip.costCurrency ?? 'PHP');
@@ -1025,13 +885,13 @@ function DiscoverScreenInner() {
 
   // Search places via Google Places API
   const searchPlaces = useCallback(async (keyword?: string, type?: string, skipCache = false, radius?: number) => {
-    if (!effectiveCoords && keyword?.trim()) {
+    if (!canShowPlaceResults && keyword?.trim()) {
       setPlaces([]);
       setPlacesLoading(false);
-      setPlacesError('Choose a destination or use your location before searching places.');
+      setPlacesError('Set a precise location or use current location before searching places.');
       return;
     }
-    if (!effectiveCoords) {
+    if (!canShowPlaceResults || !effectiveCoords) {
       setPlaces([]);
       setPlacesLoading(false);
       setPlacesError(null);
@@ -1067,11 +927,11 @@ function DiscoverScreenInner() {
       setPlacesLoading(false);
       setRefreshing(false);
     }
-  }, [effectiveCoords]);
+  }, [canShowPlaceResults, effectiveCoords]);
 
   // Load curated multi-category mix for the "All" chip
   const loadAllView = useCallback(async (skipCache = false) => {
-    if (!effectiveCoords) { setPlaces([]); return; }
+    if (!canShowPlaceResults || !effectiveCoords) { setPlaces([]); return; }
 
     const cacheKey = `all_multi_${effectiveCoords.lat}_${effectiveCoords.lng}`;
     if (!skipCache && placesCache.current[cacheKey]) {
@@ -1100,13 +960,13 @@ function DiscoverScreenInner() {
       setPlacesLoading(false);
       setRefreshing(false);
     }
-  }, [effectiveCoords]);
+  }, [canShowPlaceResults, effectiveCoords]);
 
   // Load places when category chip changes
   useEffect(() => {
     if (discoverMode !== 'plan') return;
     if (tab !== 'places') return;
-    if (!effectiveCoords) {
+    if (!canShowPlaceResults) {
       setPlaces([]);
       setPlacesError(null);
       setPlacesLoading(false);
@@ -1120,7 +980,7 @@ function DiscoverScreenInner() {
       const categoryRadius = CATEGORY_RADIUS_MAP[chipKey] ?? DEFAULT_SEARCH_RADIUS;
       searchPlaces(searchConfig?.keyword ?? chipKey, searchConfig?.type, false, categoryRadius);
     }
-  }, [discoverMode, placeCategoryChip, tab, searchPlaces, loadAllView, effectiveCoords]);
+  }, [discoverMode, placeCategoryChip, tab, searchPlaces, loadAllView, canShowPlaceResults]);
 
   // Debounced search input
   useEffect(() => {
@@ -1128,14 +988,14 @@ function DiscoverScreenInner() {
     if (tab !== 'places') return;
     if (!q.trim()) {
       // Reset to category-based search when query is cleared
-      if (effectiveCoords && placeCategoryChip === 'All') {
+      if (canShowPlaceResults && placeCategoryChip === 'All') {
         loadAllView();
       }
       return;
     }
-    if (!effectiveCoords) {
+    if (!canShowPlaceResults) {
       setPlaces([]);
-      setPlacesError('Choose a destination or use your location before searching places.');
+      setPlacesError('Set a precise location or use current location before searching places.');
       return;
     }
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -1145,7 +1005,7 @@ function DiscoverScreenInner() {
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [discoverMode, q, tab, placeCategoryChip, searchPlaces, effectiveCoords, loadAllView]);
+  }, [discoverMode, q, tab, placeCategoryChip, searchPlaces, canShowPlaceResults, loadAllView]);
 
   const savePlaceToWishlist = useCallback(async (placeData: DiscoverPlace) => {
     const { addToWishlist, getWishlist } = await import('@/lib/supabase');
@@ -1415,95 +1275,14 @@ function DiscoverScreenInner() {
       return b.blendedScore - a.blendedScore;
     });
   }, [filteredPlaces, getDistanceKm, filters.nearby, filters.sortMode, hasUsableOrigin, travelMode]);
+  const visiblePlacesWithDistance = canShowPlaceResults ? placesWithDistance : [];
   const displayPlaces = useMemo(() => placesWithDistance.map(({ place }) => place), [placesWithDistance]);
-  const hasLoadedPlaceResults = !placesLoading && !placesError && placesWithDistance.length > 0;
+  const hasLoadedPlaceResults = canShowPlaceResults && !placesLoading && !placesError && visiblePlacesWithDistance.length > 0;
 
-  // Stable filter callbacks — prevent FilterChip re-renders
-  const toggleOpenNow = useCallback(() => setFilters((f) => ({ ...f, openNow: !f.openNow })), []);
-  const toggleNearby = useCallback(() => setFilters((f) => ({ ...f, nearby: !f.nearby })), []);
-  const toggleRating = useCallback(() => setFilters((f) => {
-    const next = f.minRating === 0 ? 4.0 : f.minRating === 4.0 ? 4.5 : 0;
-    return { ...f, minRating: next };
-  }), []);
   const toggleShowFilters = useCallback(() => setShowFilters((s) => !s), []);
 
-  const isQuickFilterActive = useCallback((id: QuickFilterId): boolean => {
-    const category = QUICK_FILTER_CATEGORY_MAP[id];
-    if (category) return placeCategoryChip === category;
-    switch (id) {
-      case 'saved_ideas':
-        return tab === 'saved' || !!filters.savedOnly;
-      case 'saved':
-        return !!filters.savedOnly;
-      case 'popular':
-        return filters.sortMode === 'popular';
-      case 'top_rated':
-        return filters.minRating >= 4.5 || filters.sortMode === 'rating';
-      case 'budget':
-        return filters.maxPrice <= 2;
-      case 'open_now':
-        return filters.openNow;
-      case 'walkable':
-      case 'near_hotel':
-        return filters.nearby && filters.sortMode === 'distance';
-      case 'recommended':
-        return !!filters.recommendedOnly;
-      case 'needs_votes':
-        return !!filters.needsVotesOnly;
-      default:
-        return false;
-    }
-  }, [filters, placeCategoryChip, tab]);
-
-  const handleQuickFilterPress = useCallback((quickFilter: QuickFilter) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const category = QUICK_FILTER_CATEGORY_MAP[quickFilter.id];
-    if (category) {
-      setTab('places');
-      setPlaceCategoryChip((current) => (current === category ? 'All' : category));
-      setQ('');
-      setVisibleCount(20);
-      return;
-    }
-
-    if (quickFilter.id === 'saved_ideas' && filterContext === 'no_origin') {
-      setTab('saved');
-      return;
-    }
-
-    setTab('places');
-    setVisibleCount(20);
-    setFilters((current) => {
-      if (isQuickFilterActive(quickFilter.id)) {
-        switch (quickFilter.id) {
-          case 'saved_ideas':
-          case 'saved':
-            return { ...current, savedOnly: false };
-          case 'popular':
-            return { ...current, sortMode: 'best' };
-          case 'top_rated':
-            return { ...current, minRating: 0, sortMode: current.sortMode === 'rating' ? 'best' : current.sortMode };
-          case 'budget':
-            return { ...current, maxPrice: DEFAULT_FILTERS.maxPrice };
-          case 'open_now':
-            return { ...current, openNow: false };
-          case 'walkable':
-          case 'near_hotel':
-            return { ...current, nearby: false, sortMode: current.sortMode === 'distance' ? 'best' : current.sortMode };
-          case 'recommended':
-            return { ...current, recommendedOnly: false };
-          case 'needs_votes':
-            return { ...current, needsVotesOnly: false };
-          default:
-            return current;
-        }
-      }
-      return applyQuickFilter(current, quickFilter.id);
-    });
-  }, [filterContext, isQuickFilterActive]);
-
   const placesEmptyText = useMemo(() => {
-    if (!hasUsableOrigin) return 'Choose a destination, use current location, or browse popular starting points.';
+    if (!hasUsableOrigin) return 'Set a precise location or use current location before searching.';
     if (filters.nearby) return 'No walkable places found. Try Any distance.';
     if (filters.openNow) return 'No open places found. Try All availability.';
     if (filters.savedOnly) return 'No saved ideas match this view yet.';
@@ -1542,17 +1321,13 @@ function DiscoverScreenInner() {
     );
   }, [travelMode, saved, recommended, handleSaveToggle, handleRecommendToggle, handleExplore, canGroupVote, voteByMemberMap, memberNames, votableMemberCount, handleVoteTap, tripId]);
 
-  const CARD_HEIGHT = 128;
+  const CARD_HEIGHT = canGroupVote ? 154 : 128;
 
   const getPlaceLayout = useCallback((_: any, index: number) => ({
     length: CARD_HEIGHT,
     offset: CARD_HEIGHT * index,
     index,
-  }), []);
-
-  const selectedCategory = cat
-    ? CATEGORIES.find((c) => c.id === cat)
-    : undefined;
+  }), [CARD_HEIGHT]);
 
   return (
     <SafeAreaView style={[styles.safe, discoverMode === 'explore_moments' && { backgroundColor: PAPER.ivory }]} edges={['top']}>
@@ -1560,23 +1335,8 @@ function DiscoverScreenInner() {
       <View style={styles.topBar}>
         <View>
           <Text style={[styles.title, discoverMode === 'explore_moments' && { color: PAPER.inkDark }]}>Discover</Text>
-          {effectiveDest && discoverMode !== 'explore_moments' ? <Text style={styles.subtitle}>{effectiveDest}</Text> : null}
+          {canShowPlaceResults && effectiveOriginLabel && discoverMode !== 'explore_moments' ? <Text style={styles.subtitle}>{effectiveOriginLabel}</Text> : null}
         </View>
-        {discoverMode !== 'explore_moments' && (
-          <TouchableOpacity
-            style={styles.iconBtn}
-            accessibilityLabel="Filters"
-            accessibilityRole="button"
-            activeOpacity={0.7}
-            onPress={() => {
-              setTab('places');
-              setShowFilters((s) => !s);
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-          >
-            <SlidersHorizontal size={16} color={colors.text} strokeWidth={1.8} />
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Mode switch: Explore Moments / Find Places & Food */}
@@ -1592,137 +1352,148 @@ function DiscoverScreenInner() {
       {/* ═══════ PLAN MODE (existing Discover) ═══════ */}
       {discoverMode === 'plan' && <>
 
-      {/* Destination search — shown when no active trip */}
-      {!tripId && (
-        <View style={styles.destSearchWrap}>
-          <View style={styles.destSearchHeader}>
-            <Text style={styles.destSearchLabel}>Destination</Text>
-            {effectiveOriginKind !== 'none' && (
-              <Text style={styles.destOriginText}>
-                {effectiveOriginKind === 'current_location' ? 'Using current location' : `Exploring ${effectiveDest}`}
-              </Text>
-            )}
-          </View>
-          <TextInput
-            ref={exploreInputRef}
-            style={styles.destSearchInput}
-            placeholder="Search a city, island, or neighborhood"
-            placeholderTextColor={colors.text3}
-            returnKeyType="search"
-            value={exploreQuery}
-            onFocus={() => setExploreFocused(true)}
-            onBlur={() => setTimeout(() => setExploreFocused(false), 120)}
-            onChangeText={(text) => {
-              setExploreQuery(text);
-              if (exploreTimer.current) clearTimeout(exploreTimer.current);
-              if (text.trim().length < 2) { setExploreResults([]); return; }
-              exploreTimer.current = setTimeout(async () => {
-                const results = await placeAutocomplete(text);
-                setExploreResults(results);
-              }, 300);
-            }}
-            onSubmitEditing={() => {
-              const fallback = getStarterDestinationFallback(exploreQuery);
-              chooseExploreDestination(exploreQuery, undefined, fallback?.coords);
-            }}
-          />
-          {exploreFocused && exploreQuery.trim().length >= 2 && (
-            <View style={styles.destDropdown}>
+      <View style={styles.precisionOriginWrap}>
+        <Text style={styles.precisionTitle}>Find Places & Food</Text>
+        {!canShowPlaceResults ? (
+          <View style={styles.precisionPanel}>
+            <View style={styles.originChoiceRow}>
+              <View style={[styles.originChoiceBtn, styles.originChoiceBtnActive]}>
+                <MapPin size={16} color={colors.black} strokeWidth={2.2} />
+                <Text style={[styles.originChoiceText, styles.originChoiceTextActive]}>Set precise location</Text>
+              </View>
               <TouchableOpacity
-                style={styles.destRow}
-                onPressIn={() => {
-                  const fallback = getStarterDestinationFallback(exploreQuery);
-                  chooseExploreDestination(exploreQuery, undefined, fallback?.coords);
-                }}
-                activeOpacity={0.7}
+                style={styles.originChoiceBtn}
+                activeOpacity={0.75}
+                onPress={useCurrentLocationForExplore}
               >
-                <Search size={14} color={colors.accent} strokeWidth={2} />
-                <Text style={[styles.destRowText, { color: colors.text }]} numberOfLines={1}>
-                  Search "{exploreQuery.trim()}"
-                </Text>
-              </TouchableOpacity>
-              {exploreResults.slice(0, 5).map((r) => (
-                <TouchableOpacity
-                  key={r.placeId}
-                  style={styles.destRow}
-                  onPressIn={() => chooseExploreDestination(r.description, r.placeId)}
-                  activeOpacity={0.7}
-                >
-                  <MapPin size={14} color={colors.text3} />
-                  <Text style={styles.destRowText} numberOfLines={1}>{r.description}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Search-first destination controls */}
-      {!tripId && exploreDest && exploreCoords ? (
-        <>
-          <View style={styles.primaryPlaceSearchWrap}>
-            <View style={styles.primaryPlaceSearchHeader}>
-              <Text style={styles.primaryPlaceSearchTitle}>What are you looking for?</Text>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => router.push({ pathname: '/onboarding', params: { destination: exploreDest } } as never)}
-              >
-                <Text style={styles.primaryPlaceSearchAction}>Plan trip</Text>
+                <Navigation size={15} color={colors.accent} strokeWidth={2} />
+                <Text style={styles.originChoiceText}>Current location</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.primaryPlaceSearchBox}>
-              <Search size={16} color={colors.text3} strokeWidth={1.8} />
+            <View style={styles.precisionInputBox}>
+              <Search size={17} color={colors.text3} strokeWidth={1.8} />
               <TextInput
-                value={q}
-                onChangeText={setQ}
-                placeholder={`Search ${exploreDest}`}
+                ref={exploreInputRef}
+                value={exploreQuery}
+                onFocus={() => setExploreFocused(true)}
+                onBlur={() => setTimeout(() => setExploreFocused(false), 120)}
+                onChangeText={(text) => {
+                  setExploreQuery(text);
+                  setOriginRefinementText('');
+                  if (exploreTimer.current) clearTimeout(exploreTimer.current);
+                  if (text.trim().length < 2) { setExploreResults([]); return; }
+                  exploreTimer.current = setTimeout(async () => {
+                    const results = await placeAutocomplete(text);
+                    setExploreResults(results);
+                  }, 300);
+                }}
+                onSubmitEditing={() => chooseExploreDestination(exploreQuery)}
+                placeholder="Accommodation, address, landmark, Airbnb, or exact pin"
                 placeholderTextColor={colors.text3}
                 style={styles.searchInput}
                 returnKeyType="search"
               />
             </View>
-          </View>
-          {destinationAreaOptions.length > 1 && (
-            <View style={styles.areaSwitchSection}>
-              <View style={styles.areaSwitchHeader}>
-                <Text style={styles.areaSwitchTitle}>Explore by area</Text>
-                <Text style={styles.areaSwitchHint}>Better local results</Text>
+            {exploreFocused && exploreQuery.trim().length >= 2 && (
+              <View style={styles.destDropdown}>
+                <TouchableOpacity
+                  style={styles.destRow}
+                  onPressIn={() => chooseExploreDestination(exploreQuery)}
+                  activeOpacity={0.7}
+                >
+                  <Search size={14} color={colors.accent} strokeWidth={2} />
+                  <Text style={[styles.destRowText, { color: colors.text }]} numberOfLines={1}>
+                    Use "{exploreQuery.trim()}" as search origin
+                  </Text>
+                </TouchableOpacity>
+                {exploreResults.slice(0, 5).map((r) => (
+                  <TouchableOpacity
+                    key={r.placeId}
+                    style={styles.destRow}
+                    onPressIn={() => chooseExploreDestination(r.description, r.placeId)}
+                    activeOpacity={0.7}
+                  >
+                    <MapPin size={14} color={colors.text3} />
+                    <Text style={styles.destRowText} numberOfLines={1}>{r.description}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.areaChipRow}
+            )}
+            <Text style={[styles.precisionHint, originRefinementText && { color: colors.danger }]}>
+              {originRefinementText || 'For accurate recommendations, choose an exact place or use current GPS.'}
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.originStatusStrip}>
+              <MapPin size={16} color={colors.accent} strokeWidth={2} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.originStatusLabel}>Searching near</Text>
+                <Text style={styles.originStatusValue} numberOfLines={1}>{effectiveOriginLabel}</Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setOriginEditorOpen(true);
+                  setExploreCoords(null);
+                  setExploreDest('');
+                  setExploreQuery('');
+                  setExploreResults([]);
+                  setManualOriginKind('none');
+                  setPlaces([]);
+                  setPlacesError(null);
+                  setShowFilters(false);
+                }}
               >
-                {destinationAreaOptions.map((area) => {
-                  const active = exploreDest === area.label;
-                  return (
-                    <TouchableOpacity
-                      key={area.label}
-                      style={[styles.areaChip, active && styles.areaChipActive]}
-                      activeOpacity={0.75}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        applyExploreOrigin(area.label, area.coords, destinationAreaOptions);
-                        setPlaceCategoryChip('All');
-                      }}
-                    >
-                      <Text style={[styles.areaChipEyebrow, active && styles.areaChipTextActive]}>
-                        {area.eyebrow}
-                      </Text>
-                      <Text style={[styles.areaChipTitle, active && styles.areaChipTextActive]} numberOfLines={1}>
-                        {area.label}
-                      </Text>
-                      <Text style={[styles.areaChipBody, active && styles.areaChipBodyActive]} numberOfLines={2}>
-                        {area.body}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+                <Text style={styles.originChangeText}>Change</Text>
+              </TouchableOpacity>
             </View>
-          )}
-        </>
-      ) : null}
+            <View style={styles.precisionInputBox}>
+              <Search size={17} color={colors.text3} strokeWidth={1.8} />
+              <TextInput
+                value={q}
+                onChangeText={setQ}
+                placeholder="Search food, coffee, things to do..."
+                placeholderTextColor={colors.text3}
+                style={styles.searchInput}
+                returnKeyType="search"
+              />
+            </View>
+            <View style={styles.primaryFilterRow}>
+              {PRIMARY_PLACE_CATEGORY_CHIPS.map((chip) => {
+                const active = placeCategoryChip === chip;
+                const label = chip === 'Activity' ? 'Things to do' : chip;
+                return (
+                  <TouchableOpacity
+                    key={chip}
+                    style={[styles.primaryFilterChip, active && styles.primaryFilterChipActive]}
+                    activeOpacity={0.72}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setPlaceCategoryChip(chip);
+                      setQ('');
+                      setVisibleCount(20);
+                    }}
+                  >
+                    <Text style={[styles.primaryFilterText, active && styles.primaryFilterTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                onPress={toggleShowFilters}
+                style={[styles.moreFiltersBtn, activeFilterCount > 0 && { borderColor: colors.accent }]}
+                activeOpacity={0.72}
+              >
+                <Filter size={13} color={activeFilterCount > 0 ? colors.accent : colors.text2} strokeWidth={2} />
+                <Text style={[styles.moreFiltersText, activeFilterCount > 0 && { color: colors.accent }]}>
+                  More{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
 
       {/* Segmented control */}
       <View style={styles.segWrapper}>
@@ -1752,7 +1523,7 @@ function DiscoverScreenInner() {
       {/* ═══════ PLACES TAB (FlatList for virtualization) ═══════ */}
       {tab === 'places' && (
         <FlatList
-          data={placesWithDistance.slice(0, visibleCount)}
+          data={visiblePlacesWithDistance.slice(0, visibleCount)}
           keyExtractor={(item) => item.place.placeId ?? item.place.n}
           renderItem={renderPlaceItem}
           getItemLayout={getPlaceLayout}
@@ -1781,203 +1552,12 @@ function DiscoverScreenInner() {
           }
           ListHeaderComponent={
             <>
-              {!tripId && !effectiveCoords && (
-                <View style={styles.noTripPrompt}>
-                  <View style={styles.noTripPromptIcon}>
-                    <MapPin size={16} color={colors.accent} strokeWidth={2} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.noTripPromptTitle}>Explore without a trip</Text>
-                    <Text style={styles.noTripPromptBody}>
-                      Search a destination or use your location to find food, coffee, beaches, and places worth saving.
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.nearMeBtn}
-                    activeOpacity={0.7}
-                    onPress={useCurrentLocationForExplore}
-                  >
-                    <Text style={styles.nearMeText}>Near me</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {!effectiveCoords && (
-                <TouchableOpacity
-                  style={styles.searchBox}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    setPlacesError('Choose a destination above, use Near me, or pick a popular starting point first.');
-                    exploreInputRef.current?.focus();
-                  }}
-                >
-                  <Search size={16} color={colors.text3} strokeWidth={1.8} />
-                  <TextInput
-                    value={q}
-                    onChangeText={setQ}
-                    placeholder="Pick a destination, then search places"
-                    placeholderTextColor={colors.text3}
-                    style={styles.searchInput}
-                    editable={false}
-                  />
-                </TouchableOpacity>
-              )}
-
-              {!tripId && !effectiveCoords && (
-                <View style={styles.starterSection}>
-                  <View style={styles.starterHeaderRow}>
-                    <View>
-                      <Text style={styles.starterHeader}>Popular starting points</Text>
-                      <Text style={styles.starterSubhead}>Filter ideas by local or abroad</Text>
-                    </View>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => setTab('saved')}
-                    >
-                      <Text style={styles.starterHeaderAction}>Saved Ideas</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.destinationScopeRow}>
-                    {DESTINATION_SCOPE_OPTIONS.map((option) => {
-                      const active = filters.destinationScope === option.id;
-                      return (
-                        <TouchableOpacity
-                          key={option.id}
-                          style={[styles.destinationScopeChip, active && styles.destinationScopeChipActive]}
-                          activeOpacity={0.72}
-                          onPress={() => {
-                            Haptics.selectionAsync();
-                            setFilters((current) => ({ ...current, destinationScope: option.id }));
-                          }}
-                        >
-                          <Text style={[styles.destinationScopeText, active && styles.destinationScopeTextActive]}>
-                            {option.label}
-                          </Text>
-                          <Text style={[styles.destinationScopeSubtext, active && styles.destinationScopeSubtextActive]}>
-                            {option.body}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.starterDestRow}
-                  >
-                    {starterDestinations.map((destination) => (
-                      <TouchableOpacity
-                        key={destination.label}
-                        style={styles.starterDestCard}
-                        activeOpacity={0.75}
-                        onPress={() => chooseExploreDestination(destination.label, undefined, destination.coords)}
-                      >
-                        <View style={styles.starterDestTopRow}>
-                          <Text style={styles.starterDestEyebrow}>{destination.eyebrow}</Text>
-                          <Text style={styles.starterDestScope}>
-                            {destination.countryCode === 'PH' ? 'Local' : 'Abroad'}
-                          </Text>
-                        </View>
-                        <Text style={styles.starterDestTitle}>{destination.label}</Text>
-                        <Text style={styles.starterDestBody} numberOfLines={2}>{destination.body}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-
-              {hasLoadedPlaceResults && (
-                <>
-                  {/* Category chips */}
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.chipRow}
-                  >
-                    {PLACE_CATEGORY_CHIPS.map((c) => {
-                      const isActive = placeCategoryChip === c;
-                      return (
-                        <TouchableOpacity
-                          key={c}
-                          style={[styles.chip, isActive && styles.chipActive]}
-                          activeOpacity={0.7}
-                          onPress={() => {
-                            setPlaceCategoryChip(c);
-                            setQ('');
-                            setVisibleCount(20);
-                          }}
-                        >
-                          <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                            {c}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-
-                  {/* Adaptive quick filters */}
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.quickFilterRow}
-                  >
-                    {quickFilters.map((quickFilter) => {
-                      const active = isQuickFilterActive(quickFilter.id);
-                      return (
-                        <TouchableOpacity
-                          key={quickFilter.id}
-                          style={[styles.quickFilterChip, active && styles.quickFilterChipActive]}
-                          activeOpacity={0.72}
-                          onPress={() => handleQuickFilterPress(quickFilter)}
-                        >
-                          <Text style={[styles.quickFilterText, active && styles.quickFilterTextActive]}>
-                            {quickFilter.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-
-                  {/* More filters toggle */}
-                  <TouchableOpacity
-                    onPress={toggleShowFilters}
-                    style={[
-                      styles.filterBarInline,
-                      activeFilterCount > 0 && { borderColor: colors.accent },
-                    ]}
-                    activeOpacity={0.7}
-                  >
-                    <Filter size={14} color={activeFilterCount > 0 ? colors.accent : colors.text3} strokeWidth={2} />
-                    <Text style={{ fontSize: 13, fontWeight: '500', color: activeFilterCount > 0 ? colors.accent : colors.text2 }}>
-                      More filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
-                    </Text>
-                    <ChevronDown size={14} color={colors.text3} strokeWidth={2} style={{ transform: [{ rotate: showFilters ? '180deg' : '0deg' }] }} />
-                  </TouchableOpacity>
-                </>
-              )}
-
               {/* Expanded filters panel */}
-              {hasLoadedPlaceResults && showFilters && (
+              {canShowPlaceResults && showFilters && (
                 <Animated.View
                   entering={FadeInDown.duration(200)}
                   style={styles.filterPanel}
                 >
-                  {!tripId && (
-                    <FilterRow label="Destination scope" colors={colors}>
-                      {DESTINATION_SCOPE_OPTIONS.map((option) => (
-                        <SegBtn
-                          key={option.id}
-                          active={filters.destinationScope === option.id}
-                          onPress={() =>
-                            setFilters((f) => ({ ...f, destinationScope: option.id }))
-                          }
-                          colors={colors}
-                        >
-                          {option.label}
-                        </SegBtn>
-                      ))}
-                    </FilterRow>
-                  )}
                   <FilterRow label="Minimum rating" colors={colors}>
                     {[0, 4.0, 4.5].map((v) => (
                       <SegBtn
@@ -2010,7 +1590,7 @@ function DiscoverScreenInner() {
                       );
                     })}
                   </FilterRow>
-                  {hasUsableOrigin && (
+                  {canShowPlaceResults && (
                     <FilterRow label="Distance" colors={colors}>
                       <SegBtn
                         active={!filters.nearby}
@@ -2053,7 +1633,7 @@ function DiscoverScreenInner() {
                     </SegBtn>
                   </FilterRow>
 
-                  {hasUsableOrigin && (
+                  {canShowPlaceResults && (
                     <View style={{ marginTop: 8 }}>
                       <DistanceToggle
                         anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
@@ -2084,9 +1664,11 @@ function DiscoverScreenInner() {
               )}
 
               {/* Results count */}
-              <Text style={styles.resultsCount}>
-                {placesWithDistance.length} {placesWithDistance.length === 1 ? 'place' : 'places'}
-              </Text>
+              {canShowPlaceResults ? (
+                <Text style={styles.resultsCount}>
+                  Recommended nearby · {visiblePlacesWithDistance.length} {visiblePlacesWithDistance.length === 1 ? 'place' : 'places'}
+                </Text>
+              ) : null}
 
               {placesError && (
                 <View style={styles.emptyPlaces}>
@@ -2098,7 +1680,7 @@ function DiscoverScreenInner() {
                   <MiniLoader message="Finding places..." />
                 </View>
               )}
-              {!placesLoading && !placesError && placesWithDistance.length === 0 && (
+              {canShowPlaceResults && !placesLoading && !placesError && visiblePlacesWithDistance.length === 0 && (
                 <View style={styles.emptyPlaces}>
                   <Text style={styles.emptyText}>
                     {placesEmptyText}
@@ -2109,7 +1691,7 @@ function DiscoverScreenInner() {
           }
           ListFooterComponent={
             <>
-              {placesWithDistance.length > visibleCount ? (
+              {visiblePlacesWithDistance.length > visibleCount ? (
                 <TouchableOpacity
                   style={styles.showMoreBtn}
                   onPress={() => setVisibleCount((c) => c + 20)}
@@ -2117,7 +1699,7 @@ function DiscoverScreenInner() {
                 >
                   <ChevronDown size={16} color={colors.accent} strokeWidth={2} />
                   <Text style={styles.showMoreText}>
-                    Show more ({placesWithDistance.length - visibleCount} remaining)
+                    Show more ({visiblePlacesWithDistance.length - visibleCount} remaining)
                   </Text>
                 </TouchableOpacity>
               ) : nextPageToken ? (
@@ -2181,7 +1763,7 @@ function DiscoverScreenInner() {
               tripDest={tripDest}
               tripCoords={tripCoords}
               originCoords={effectiveCoords}
-              originLabel={effectiveDest}
+              originLabel={effectiveOriginLabel}
               tripHotel={tripHotel}
               tripGroupSize={tripGroupSize}
               tripMembers={votableTripMembers}
@@ -2205,7 +1787,7 @@ function DiscoverScreenInner() {
                   <Bookmark size={28} color={colors.text3} strokeWidth={1.6} opacity={0.6} />
                   <Text style={styles.emptyCardTitle}>No saved ideas yet</Text>
                   <Text style={styles.emptyCardBody}>
-                    Search a destination or use your location, then bookmark places to save them for later.
+                    Set a precise location or use current location, then bookmark places to save them for later.
                   </Text>
                 </View>
               ) : (
@@ -2438,21 +2020,27 @@ function DiscoverScreenInner() {
       {/* ═══════ STAYS TAB (own ScrollView — outside parent) ═══════ */}
       {tab === 'stays' && (
         <Suspense fallback={<MiniLoader />}>
-        <StaysTab
-          tripCoords={tripCoords}
-          originCoords={effectiveCoords}
-          originLabel={effectiveDest}
-          originKind={effectiveOriginKind}
-          tripId={tripId}
-          tripDest={tripDest}
-          travelMode={travelMode}
-          tripMembers={votableTripMembers}
-          memberNames={memberNames}
-          savedPlaces={savedPlaces}
-          savedNames={saved}
-          onSavePlace={handleSavePlaceCard}
-          onExplore={handleExplore}
-        />
+        {canShowPlaceResults ? (
+          <StaysTab
+            tripCoords={tripCoords}
+            originCoords={effectiveCoords}
+            originLabel={effectiveOriginLabel}
+            originKind={effectiveOriginKind}
+            tripId={tripId}
+            tripDest={tripDest}
+            travelMode={travelMode}
+            tripMembers={votableTripMembers}
+            memberNames={memberNames}
+            savedPlaces={savedPlaces}
+            savedNames={saved}
+            onSavePlace={handleSavePlaceCard}
+            onExplore={handleExplore}
+          />
+        ) : (
+          <View style={styles.emptyPlaces}>
+            <Text style={styles.emptyText}>Set a precise location or use current location before searching stays.</Text>
+          </View>
+        )}
         </Suspense>
       )}
 
@@ -2851,6 +2439,146 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
       color: colors.text,
       fontSize: 13,
+    },
+    precisionOriginWrap: {
+      marginHorizontal: 16,
+      marginBottom: 12,
+      gap: 10,
+      zIndex: 30,
+    },
+    precisionTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: colors.text,
+    },
+    precisionPanel: {
+      padding: 14,
+      borderRadius: 16,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 10,
+      shadowColor: '#000',
+      shadowOpacity: 0.05,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 2,
+    },
+    originChoiceRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    originChoiceBtn: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 13,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.canvas,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 7,
+      paddingHorizontal: 10,
+    },
+    originChoiceBtnActive: {
+      backgroundColor: colors.accentBg,
+      borderColor: colors.accentBg,
+    },
+    originChoiceText: {
+      fontSize: 12.5,
+      fontWeight: '800',
+      color: colors.accent,
+    },
+    originChoiceTextActive: {
+      color: colors.text,
+    },
+    precisionInputBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 9,
+      paddingVertical: 11,
+      paddingHorizontal: 13,
+      borderRadius: 14,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    precisionHint: {
+      fontSize: 11.5,
+      lineHeight: 16,
+      color: colors.text3,
+    },
+    originStatusStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 11,
+      paddingHorizontal: 13,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    originStatusLabel: {
+      fontSize: 10.5,
+      color: colors.text3,
+      fontWeight: '700',
+    },
+    originStatusValue: {
+      fontSize: 13.5,
+      color: colors.text,
+      fontWeight: '800',
+      marginTop: 1,
+    },
+    originChangeText: {
+      fontSize: 12,
+      color: colors.accent,
+      fontWeight: '800',
+    },
+    primaryFilterRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    primaryFilterChip: {
+      minHeight: 38,
+      paddingHorizontal: 13,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    primaryFilterChipActive: {
+      backgroundColor: colors.black,
+      borderColor: colors.black,
+    },
+    primaryFilterText: {
+      fontSize: 12.5,
+      fontWeight: '800',
+      color: colors.text2,
+    },
+    primaryFilterTextActive: {
+      color: colors.onBlack,
+    },
+    moreFiltersBtn: {
+      minHeight: 38,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    moreFiltersText: {
+      fontSize: 12.5,
+      fontWeight: '800',
+      color: colors.text2,
     },
     primaryPlaceSearchWrap: {
       marginHorizontal: 16,

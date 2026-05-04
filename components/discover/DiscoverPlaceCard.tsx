@@ -108,6 +108,12 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
     () => validDistance ? fmtKm(distanceKm) : null,
     [validDistance, distanceKm],
   );
+  const groupVoteSummary = useMemo(() => {
+    if (!showRecommend || !totalMembers || totalMembers < 2) return null;
+    const voted = Object.keys(voteByMember ?? {}).length;
+    const pending = Math.max(totalMembers - voted, 0);
+    return `${voted}/${totalMembers} voted${pending > 0 ? ` · ${pending} pending` : ''}`;
+  }, [showRecommend, totalMembers, voteByMember]);
 
   return (
     <TouchableOpacity
@@ -223,6 +229,31 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
             })()}
           </Pressable>
         )}
+
+        {showRecommend && (
+          <View style={styles.groupActionRow}>
+            <Pressable
+              style={[styles.recommendPill, isRecommended && styles.recommendPillActive]}
+              onPress={(e) => { e.stopPropagation?.(); onRecommend(place.n); }}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel={isRecommended ? 'Recommended' : 'Recommend to group'}
+            >
+              <Users size={12} color={isRecommended ? colors.onBlack : colors.accent} strokeWidth={2} />
+              <Text style={[styles.recommendPillText, isRecommended && styles.recommendPillTextActive]}>
+                {isRecommended ? 'Recommended' : 'Recommend'}
+              </Text>
+            </Pressable>
+            {groupVoteSummary ? (
+              <Pressable
+                onPress={(e) => { e.stopPropagation?.(); onVoteTap?.(place.n); }}
+                hitSlop={4}
+              >
+                <Text style={styles.groupVoteText}>{groupVoteSummary}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        )}
       </View>
 
       {/* Add to planner */}
@@ -236,20 +267,6 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
           hitSlop={8}
         >
           <Plus size={16} color={colors.text3} strokeWidth={2} />
-        </TouchableOpacity>
-      )}
-
-      {/* Recommend to group */}
-      {showRecommend && (
-        <TouchableOpacity
-          onPress={(e) => { e.stopPropagation?.(); onRecommend(place.n); }}
-          style={styles.recommendBtn}
-          activeOpacity={0.6}
-          accessibilityRole="button"
-          accessibilityLabel={isRecommended ? 'Recommended' : 'Recommend to group'}
-          hitSlop={8}
-        >
-          <Users size={14} color={isRecommended ? colors.accent : colors.text3} strokeWidth={2} />
         </TouchableOpacity>
       )}
 
@@ -371,13 +388,6 @@ const getStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
       minHeight: 44,
     },
-    recommendBtn: {
-      width: 32,
-      height: 32,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      minHeight: 44,
-    },
     bookmarkBtn: {
       width: 36,
       height: 36,
@@ -420,5 +430,39 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: '500' as const,
       color: colors.text2,
       flexShrink: 1,
+    },
+    groupActionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 7,
+    },
+    recommendPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingVertical: 5,
+      paddingHorizontal: 9,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    recommendPillActive: {
+      backgroundColor: colors.black,
+      borderColor: colors.black,
+    },
+    recommendPillText: {
+      fontSize: 10.5,
+      fontWeight: '700',
+      color: colors.accent,
+    },
+    recommendPillTextActive: {
+      color: colors.onBlack,
+    },
+    groupVoteText: {
+      fontSize: 10.5,
+      fontWeight: '600',
+      color: colors.text3,
     },
   });

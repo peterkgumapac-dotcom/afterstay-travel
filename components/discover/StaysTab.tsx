@@ -48,7 +48,7 @@ interface StaysTabProps {
   tripCoords: { lat: number; lng: number } | null;
   originCoords?: { lat: number; lng: number } | null;
   originLabel?: string;
-  originKind?: 'trip' | 'searched_destination' | 'current_location' | 'none';
+  originKind?: 'trip' | 'selected_place' | 'searched_destination' | 'current_location' | 'none';
   tripId: string | null;
   tripDest: string;
   travelMode: 'walk' | 'car';

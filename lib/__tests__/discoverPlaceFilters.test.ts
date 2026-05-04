@@ -95,6 +95,17 @@ describe('discover place filters', () => {
     );
   });
 
+  it('treats selected exact places as destination context', () => {
+    const context = getFilterContext({
+      hasTrip: false,
+      hasOrigin: true,
+      originKind: 'selected_place',
+      memberCount: 0,
+    });
+
+    expect(context).toBe('destination');
+  });
+
   it('shows group planning quick filters for active group trips', () => {
     const context = getFilterContext({
       hasTrip: true,

@@ -2,15 +2,15 @@ import type { DiscoverPlace } from '@/components/discover/DiscoverPlaceCard';
 
 export type DestinationScope = 'all' | 'local' | 'abroad';
 export type PlaceSortMode = 'best' | 'distance' | 'rating' | 'popular';
-export type FilterOriginKind = 'trip' | 'searched_destination' | 'current_location' | 'none';
-export type FilterContext =
+type FilterOriginKind = 'trip' | 'selected_place' | 'searched_destination' | 'current_location' | 'none';
+type FilterContext =
   | 'no_origin'
   | 'destination'
   | 'near_me'
   | 'active_trip_solo'
   | 'active_trip_group';
 
-export type QuickFilterId =
+type QuickFilterId =
   | 'saved_ideas'
   | 'popular'
   | 'food'
@@ -27,7 +27,7 @@ export type QuickFilterId =
   | 'recommended'
   | 'needs_votes';
 
-export type QuickFilter = {
+type QuickFilter = {
   id: QuickFilterId;
   label: string;
 };
@@ -61,14 +61,14 @@ type DestinationLike = {
   scope?: DestinationScope;
 };
 
-export type FilterContextInput = {
+type FilterContextInput = {
   hasTrip: boolean;
   hasOrigin: boolean;
   originKind: FilterOriginKind;
   memberCount: number;
 };
 
-export type PlaceFilterMetadata = {
+type PlaceFilterMetadata = {
   savedNames?: ReadonlySet<string>;
   recommendedNames?: ReadonlySet<string>;
   voteCountsByName?: ReadonlyMap<string, number>;
@@ -119,7 +119,7 @@ export function getFilterContext(input: FilterContextInput): FilterContext {
     return input.memberCount >= 2 ? 'active_trip_group' : 'active_trip_solo';
   }
   if (input.originKind === 'current_location') return 'near_me';
-  if (input.hasOrigin || input.originKind === 'searched_destination') return 'destination';
+  if (input.hasOrigin || input.originKind === 'selected_place' || input.originKind === 'searched_destination') return 'destination';
   return 'no_origin';
 }
 
@@ -152,37 +152,6 @@ export function countActivePlaceFilters(f: PlaceFilterState): number {
     (f.needsVotesOnly ? 1 : 0) +
     (f.sortMode && f.sortMode !== DEFAULT_PLACE_FILTERS.sortMode ? 1 : 0)
   );
-}
-
-export function applyQuickFilter(f: PlaceFilterState, id: QuickFilterId): PlaceFilterState {
-  switch (id) {
-    case 'saved_ideas':
-    case 'saved':
-      return { ...f, savedOnly: true };
-    case 'popular':
-      return { ...f, sortMode: 'popular' };
-    case 'top_rated':
-      return { ...f, minRating: 4.5, sortMode: 'rating' };
-    case 'budget':
-      return { ...f, maxPrice: 2 };
-    case 'open_now':
-      return { ...f, openNow: true };
-    case 'walkable':
-    case 'near_hotel':
-      return { ...f, nearby: true, sortMode: 'distance' };
-    case 'recommended':
-      return { ...f, recommendedOnly: true };
-    case 'needs_votes':
-      return { ...f, needsVotesOnly: true };
-    case 'food':
-    case 'coffee':
-    case 'beach':
-    case 'activities':
-    case 'worth_the_drive':
-      return f;
-    default:
-      return f;
-  }
 }
 
 export function applyPlaceFilters(
