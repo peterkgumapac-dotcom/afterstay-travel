@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import AfterStayLoader from '@/components/AfterStayLoader';
-import { useAuth } from '@/lib/auth';
+import { isResumingPendingInvite, useAuth } from '@/lib/auth';
+import { peekPendingInviteCode } from '@/lib/pendingInvite';
 
 export default function AuthCallback() {
   const router = useRouter();
@@ -19,9 +20,20 @@ export default function AuthCallback() {
 
   // Redirect once session is available
   useEffect(() => {
-    if (session) {
+    if (!session) return undefined;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      if (cancelled || isResumingPendingInvite()) return;
+      const pendingInviteCode = await peekPendingInviteCode().catch(() => null);
+      if (cancelled || pendingInviteCode || isResumingPendingInvite()) return;
       router.replace('/');
-    }
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [session, router]);
 
   return <AfterStayLoader />;

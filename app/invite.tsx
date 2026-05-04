@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -120,7 +122,8 @@ export default function InviteScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <View style={[styles.iconCircle, { backgroundColor: colors.accentBg }]}>
             <Users size={28} color={colors.accent} strokeWidth={1.8} />
@@ -245,7 +248,8 @@ export default function InviteScreen() {
         <Pressable onPress={() => router.back()} style={styles.closeBtn}>
           <Text style={styles.closeText}>Close</Text>
         </Pressable>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -253,6 +257,7 @@ export default function InviteScreen() {
 const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').useTheme>['colors']) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.bg },
+    flex: { flex: 1 },
     content: {
       padding: spacing.xl,
       paddingTop: 40,

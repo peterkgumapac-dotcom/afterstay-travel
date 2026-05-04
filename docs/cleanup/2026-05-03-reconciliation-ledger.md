@@ -417,3 +417,34 @@ QA:
 - Invite link/code joins the correct trip and shows shared trip context.
 - Profile search and public profile moments open correctly.
 - Home, Discover, Moments, Budget, and My Trips switch without full-app reload behavior.
+
+## Invite Stabilization Batch
+
+Code changes:
+
+- `lib/auth.ts`
+  - Added a short-lived pending-invite resume guard while auth hands off to `/join-trip`.
+- `app/auth/callback.tsx`
+  - Delays the default Home redirect when a pending invite is being resumed, preventing invite deep links from bouncing users away from the join screen after login.
+- `app/invite.tsx`
+  - Wrapped the invite screen in `KeyboardAvoidingView` and enabled handled taps so email entry is usable on small screens.
+- `app/(tabs)/trip.tsx`
+  - Member email/phone edits now surface Supabase/RLS errors instead of silently closing as if saved.
+
+Verification:
+
+- `npx eslint app/auth/callback.tsx lib/auth.ts app/invite.tsx 'app/(tabs)/trip.tsx'`
+  - Result: exit 0.
+- `npx tsc --noEmit --pretty false`
+  - Result: exit 0.
+- `git diff --check`
+  - Result: exit 0.
+- `npx supabase functions list --project-ref mzslhacnrwwmwgozpknm`
+  - Result: send-push-notification v10, ai-recommend v12, trip-lifecycle-notifications v7, places-proxy v6 are active.
+
+Remaining invite QA:
+
+- Open invite link/code while signed out, sign in, and confirm the app lands on `/join-trip`.
+- Join with an email that matches a placeholder member and verify the placeholder is linked.
+- Join with a different email/name and verify a new member is created without claiming another placeholder.
+- Confirm same-stay and organizer-flight copy save companion preferences and passenger-specific flight rows.

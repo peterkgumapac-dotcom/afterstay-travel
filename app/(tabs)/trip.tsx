@@ -926,14 +926,19 @@ function TripScreen() {
       setEditField('phone');
       setEditValue(member.phone ?? '');
     } else if (action === 'save') {
-      if (editField === 'email' && editValue.trim()) {
-        await updateMemberEmail(member.id, editValue.trim()).catch(() => {});
-      } else if (editField === 'phone' && editValue.trim()) {
-        await updateMemberPhone(member.id, editValue.trim()).catch(() => {});
+      try {
+        if (editField === 'email' && editValue.trim()) {
+          await updateMemberEmail(member.id, editValue.trim());
+        } else if (editField === 'phone' && editValue.trim()) {
+          await updateMemberPhone(member.id, editValue.trim());
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setEditMember(null);
+        setEditField(null);
+        load();
+      } catch (e: any) {
+        Alert.alert('Could not save member details', e?.message ?? 'Please try again.');
       }
-      setEditMember(null);
-      setEditField(null);
-      load();
     }
   };
 

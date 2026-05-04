@@ -117,13 +117,20 @@ async function clearAccountState(): Promise<void> {
   setTabDataCacheUserId(undefined);
 }
 
+let pendingInviteResumeUntil = 0;
+
+export function isResumingPendingInvite(): boolean {
+  return Date.now() < pendingInviteResumeUntil;
+}
+
 async function resumePendingInvite(s: Session | null): Promise<void> {
   if (!s?.user?.id) return;
   const code = await consumePendingInviteCode().catch(() => null);
   if (!code) return;
+  pendingInviteResumeUntil = Date.now() + 8000;
   setTimeout(() => {
     expoRouter.replace({ pathname: '/join-trip', params: { code } });
-  }, 0);
+  }, 100);
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
