@@ -57,6 +57,7 @@ import ProfileStatsStrip from '@/components/profile/ProfileStatsStrip';
 import TravelFlexCard from '@/components/profile/TravelFlexCard';
 import { buildProfileCoverPhotoUrl } from '@/lib/profileStats';
 import {
+  buildProfileDisplayFactsFromVisual,
   buildProfileRelationship,
   buildProfileTravelFacts,
 } from '@/lib/profileIntelligence';
@@ -313,18 +314,14 @@ export default function CompanionProfileScreen() {
     fallbackStats: profile.lifetimeStats,
     isCompanion,
   });
-  const stats = profileFacts.stats;
-  const countries = profileFacts.countries;
   const topTrip = profileFacts.topTrip;
-  const remoteHasTravel = !!remoteTravelVisual && (
-    remoteTravelVisual.counts.trips > 0
-    || remoteTravelVisual.counts.places > 0
-    || remoteTravelVisual.counts.countries > 0
-  );
-  const localHasTravel = profileFacts.travelVisual.counts.trips > 0
-    || profileFacts.travelVisual.counts.places > 0
-    || profileFacts.travelVisual.counts.countries > 0;
-  const travelVisual = remoteHasTravel || !localHasTravel ? remoteTravelVisual ?? profileFacts.travelVisual : profileFacts.travelVisual;
+  const travelVisual = remoteTravelVisual ?? profileFacts.travelVisual;
+  const displayFacts = buildProfileDisplayFactsFromVisual({
+    visual: travelVisual,
+    isCompanion,
+  });
+  const stats = displayFacts.stats;
+  const countries = displayFacts.countries;
   const canSeeStats = relationship.isSelf || isCompanion || !!profile.publicStatsEnabled;
   const memoryPhotoUrls = profileMoments.map((moment) => moment.photo).filter((url): url is string => !!url);
   const coverPhotoUrl = buildProfileCoverPhotoUrl({
@@ -387,7 +384,7 @@ export default function CompanionProfileScreen() {
               isFollowing={isFollowing}
               isCompanion={relationship.isCompanion}
               canMessage={relationship.canMessage}
-              badges={profileFacts.badges}
+              badges={displayFacts.badges}
               stats={stats}
               topTrip={topTrip}
               onCustomize={() => setCustomizeVisible(true)}

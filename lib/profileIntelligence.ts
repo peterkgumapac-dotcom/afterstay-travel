@@ -59,6 +59,12 @@ export interface ProfileTravelFacts {
   stats: LifetimeStats;
 }
 
+export interface ProfileDisplayFacts {
+  stats: LifetimeStats;
+  countries: CountryVisited[];
+  badges: ProfileBadge[];
+}
+
 type ProfileFlightInput = Flight & { tripId?: string };
 
 interface BuildProfileTravelFactsInput {
@@ -163,6 +169,47 @@ function buildFactBadges(input: {
   return badges.slice(0, 3);
 }
 
+export function buildProfileDisplayFactsFromVisual({
+  visual,
+  isCompanion = false,
+}: {
+  visual: TravelFlexVisual;
+  isCompanion?: boolean;
+}): ProfileDisplayFacts {
+  const normalizedStats = normalizeStatsCountries({
+    totalTrips: visual.counts.trips,
+    totalCountries: visual.counts.countries,
+    totalNights: visual.counts.nights,
+    totalMiles: Math.round(visual.counts.km / 1.60934),
+    totalSpent: visual.counts.spent,
+    homeCurrency: 'PHP',
+    totalMoments: visual.counts.photos,
+    countriesList: visual.flags.map((flag) => flag.countryName),
+    earliestTripDate: visual.since && visual.since !== 'now' ? `${visual.since}-01-01` : undefined,
+  });
+  const stats = {
+    ...normalizedStats,
+    totalCountries: visual.counts.countries,
+  };
+  const countries = visual.flags.map((flag, index) => ({
+    code: flag.countryCode,
+    name: flag.countryName,
+    flag: flag.flag,
+    progress: visual.flags.length <= 1 ? 0.5 : index / (visual.flags.length - 1),
+  }));
+
+  return {
+    stats,
+    countries,
+    badges: buildFactBadges({
+      stats,
+      placeCount: visual.counts.places,
+      isCompanion,
+      hasInternationalRoute: visual.counts.countries > 1,
+    }),
+  };
+}
+
 export function buildProfileRelationship({
   viewerId,
   profileUserId,
@@ -194,20 +241,14 @@ export function buildProfileTravelFacts({
   isCompanion = false,
 }: BuildProfileTravelFactsInput): ProfileTravelFacts {
   const computedStats = buildProfileStatsFromTrips({ trips, moments, flights });
-  const hasComputedCountries = computedStats.countriesList.length > 0;
-  const mergedStats = normalizeStatsCountries(fallbackStats
-    ? {
-      ...fallbackStats,
-      totalTrips: Math.max(fallbackStats.totalTrips, computedStats.totalTrips),
-      totalCountries: hasComputedCountries ? computedStats.totalCountries : fallbackStats.totalCountries,
-      countriesList: hasComputedCountries ? computedStats.countriesList : fallbackStats.countriesList,
-      totalNights: Math.max(fallbackStats.totalNights, computedStats.totalNights),
-      totalMiles: computedStats.totalMiles > 0 ? computedStats.totalMiles : fallbackStats.totalMiles,
-      totalSpent: Math.max(fallbackStats.totalSpent, computedStats.totalSpent),
-      totalMoments: Math.max(fallbackStats.totalMoments, computedStats.totalMoments),
-      earliestTripDate: computedStats.earliestTripDate ?? fallbackStats.earliestTripDate,
-    }
-    : computedStats);
+  const hasComputedProfileFacts = computedStats.totalTrips > 0
+    || computedStats.totalCountries > 0
+    || computedStats.totalNights > 0
+    || computedStats.totalMiles > 0
+    || computedStats.totalSpent > 0
+    || computedStats.totalMoments > 0
+    || computedStats.countriesList.length > 0;
+  const mergedStats = normalizeStatsCountries(!hasComputedProfileFacts && fallbackStats ? fallbackStats : computedStats);
   const mapData = buildProfileMapData({ trips, flights, homeBase });
   const countries = buildCountriesVisited(mergedStats);
   const places = visiblePlaces(trips);

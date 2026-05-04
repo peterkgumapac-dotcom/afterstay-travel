@@ -259,20 +259,14 @@ export function buildTravelFlexVisual({
   fallbackStats,
 }: BuildTravelFlexVisualInput): TravelFlexVisual {
   const computedStats = buildProfileStatsFromTrips({ trips, moments, flights });
-  const hasComputedCountries = computedStats.countriesList.length > 0;
-  const stats = normalizeStatsCountries(fallbackStats
-    ? {
-      ...fallbackStats,
-      totalTrips: Math.max(fallbackStats.totalTrips, computedStats.totalTrips),
-      totalCountries: hasComputedCountries ? computedStats.totalCountries : fallbackStats.totalCountries,
-      countriesList: hasComputedCountries ? computedStats.countriesList : fallbackStats.countriesList,
-      totalNights: Math.max(fallbackStats.totalNights, computedStats.totalNights),
-      totalMiles: computedStats.totalMiles > 0 ? computedStats.totalMiles : fallbackStats.totalMiles,
-      totalSpent: Math.max(fallbackStats.totalSpent, computedStats.totalSpent),
-      totalMoments: Math.max(fallbackStats.totalMoments, computedStats.totalMoments),
-      earliestTripDate: computedStats.earliestTripDate ?? fallbackStats.earliestTripDate,
-    }
-    : computedStats);
+  const hasComputedProfileFacts = computedStats.totalTrips > 0
+    || computedStats.totalCountries > 0
+    || computedStats.totalNights > 0
+    || computedStats.totalMiles > 0
+    || computedStats.totalSpent > 0
+    || computedStats.totalMoments > 0
+    || computedStats.countriesList.length > 0;
+  const stats = normalizeStatsCountries(!hasComputedProfileFacts && fallbackStats ? fallbackStats : computedStats);
   const mapData = buildProfileMapData({ trips, flights, homeBase });
   const countries = buildCountriesVisited(stats);
   const places = buildPlaces(trips, countries);

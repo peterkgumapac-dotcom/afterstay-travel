@@ -1,5 +1,6 @@
 import type { Flight, FollowState, Moment, Trip } from '../types';
 import {
+  buildProfileDisplayFactsFromVisual,
   buildProfileRelationship,
   buildProfileTravelFacts,
 } from '../profileIntelligence';
@@ -115,6 +116,65 @@ describe('profileIntelligence', () => {
 
     expect(facts.badges).toHaveLength(3);
     expect(facts.badges.map((badge) => badge.key)).toEqual(['globetrotter', 'memory_maker', 'trip_companion']);
+  });
+
+  it('uses the selected travel visual as the public profile stats source', () => {
+    const facts = buildProfileTravelFacts({
+      trips: [baseTrip],
+      moments,
+      fallbackStats: {
+        totalTrips: 13,
+        totalCountries: 8,
+        totalNights: 75,
+        totalMiles: 9754,
+        totalSpent: 348000,
+        homeCurrency: 'PHP',
+        totalMoments: 23,
+        countriesList: ['Philippines', 'Thailand', 'Vietnam', 'Indonesia', 'Singapore', 'Japan', 'South Korea', 'Hong Kong'],
+      },
+    });
+
+    expect(facts.stats.totalTrips).toBe(1);
+    expect(facts.stats.totalCountries).toBe(1);
+    expect(facts.stats.totalNights).toBe(7);
+    expect(facts.countries.map((country) => country.code)).toEqual(['PH']);
+    expect(facts.travelVisual.counts.trips).toBe(facts.stats.totalTrips);
+    expect(facts.travelVisual.counts.countries).toBe(facts.stats.totalCountries);
+  });
+
+  it('adapts the selected remote travel visual into display stats and countries', () => {
+    const display = buildProfileDisplayFactsFromVisual({
+      visual: {
+        template: 'regional_traveler',
+        animationMode: 'country_hops',
+        counts: {
+          trips: 13,
+          countries: 8,
+          places: 8,
+          nights: 75,
+          photos: 23,
+          spent: 348000,
+          km: 25263,
+        },
+        flags: [
+          { countryCode: 'PH', countryName: 'Philippines', flag: '🇵🇭', visitedPlaces: 1 },
+          { countryCode: 'TH', countryName: 'Thailand', flag: '🇹🇭', visitedPlaces: 1 },
+        ],
+        places: [],
+        routes: [],
+        home: { code: 'MNL', label: 'HOME' },
+        confidence: 'exact_place',
+        since: '2024',
+      },
+      isCompanion: true,
+    });
+
+    expect(display.stats.totalTrips).toBe(13);
+    expect(display.stats.totalCountries).toBe(8);
+    expect(display.stats.totalNights).toBe(75);
+    expect(display.stats.totalSpent).toBe(348000);
+    expect(display.countries.map((country) => country.code)).toEqual(['PH', 'TH']);
+    expect(display.badges.map((badge) => badge.key)).toContain('globetrotter');
   });
 
   it('unlocks messages only for companions or mutual follows', () => {

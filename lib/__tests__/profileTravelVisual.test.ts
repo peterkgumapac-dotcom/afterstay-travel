@@ -147,4 +147,28 @@ describe('profileTravelVisual', () => {
     expect(visual.counts.countries).toBe(3);
     expect(visual.flags.map((flag) => flag.countryCode)).toEqual(['PH', 'TH', 'VN']);
   });
+
+  it('does not let stale fallback totals override visible local profile facts', () => {
+    const fallbackStats: LifetimeStats = {
+      totalTrips: 13,
+      totalCountries: 8,
+      totalNights: 75,
+      totalMiles: 9754,
+      totalSpent: 348000,
+      homeCurrency: 'PHP',
+      totalMoments: 23,
+      countriesList: ['Philippines', 'Thailand', 'Vietnam', 'Indonesia', 'Singapore', 'Japan', 'South Korea', 'Hong Kong'],
+    };
+
+    const visual = buildTravelFlexVisual({
+      trips: [baseTrip],
+      moments,
+      fallbackStats,
+    });
+
+    expect(visual.counts.trips).toBe(1);
+    expect(visual.counts.countries).toBe(1);
+    expect(visual.counts.nights).toBe(7);
+    expect(visual.flags.map((flag) => flag.countryCode)).toEqual(['PH']);
+  });
 });
