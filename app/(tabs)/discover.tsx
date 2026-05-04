@@ -686,6 +686,18 @@ function DiscoverScreenInner() {
         }
       }
       if (!loc) {
+        const Location = require('expo-location') as typeof import('expo-location');
+        const geocoded = await Location.geocodeAsync(best?.description ?? cleaned).catch(() => []);
+        const first = geocoded[0];
+        if (first) {
+          loc = {
+            name: best?.description.split(',')[0] ?? cleaned,
+            lat: first.latitude,
+            lng: first.longitude,
+          };
+        }
+      }
+      if (!loc) {
         setExploreCoords(null);
         setExploreDest('');
         setManualOriginKind('none');
