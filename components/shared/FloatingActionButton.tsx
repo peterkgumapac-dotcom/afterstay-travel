@@ -27,7 +27,6 @@ export const FloatingActionButton: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
   const [transport, setTransport] = useState<string | undefined>();
 
   // Load trip context for conditional actions
@@ -60,19 +59,6 @@ export const FloatingActionButton: React.FC = () => {
   // Position FAB above the tab bar (tab bar height ~56 + extra clearance)
   const fabBottom = bottomOffset + 80;
 
-  // Pulse ring animation
-  useEffect(() => {
-    if (open) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.5, duration: 1400, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 0, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [open]);
-
   useEffect(() => {
     if (open) {
       Animated.timing(rotateAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
@@ -101,8 +87,6 @@ export const FloatingActionButton: React.FC = () => {
   };
 
   const rotation = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '135deg'] });
-  const pulseScale = pulseAnim;
-  const pulseOpacity = pulseAnim.interpolate({ inputRange: [1, 1.5], outputRange: [0.4, 0] });
 
   if (isBudgetRoute) return null;
 
@@ -149,10 +133,6 @@ export const FloatingActionButton: React.FC = () => {
 
       {/* FAB -- idle state */}
       <View style={[s.fabWrap, { bottom: fabBottom }]} pointerEvents="box-none">
-        {/* Pulse ring */}
-        {!open && (
-          <Animated.View style={[s.pulseRing, { transform: [{ scale: pulseScale }], opacity: pulseOpacity }]} />
-        )}
         <TouchableOpacity
           style={s.fab}
           onPress={toggle}
@@ -213,14 +193,6 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
       android: { elevation: 12 },
     }),
     zIndex: 100,
-  },
-  pulseRing: {
-    position: 'absolute',
-    width: FAB_SIZE,
-    height: FAB_SIZE,
-    borderRadius: FAB_SIZE / 2,
-    borderWidth: 1.5,
-    borderColor: c.accent,
   },
   backdrop: {
     flex: 1,
