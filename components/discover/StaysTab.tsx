@@ -12,15 +12,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { Bed, MapPin, Search, X } from 'lucide-react-native';
+import { Bed, MapPin } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
 import { distanceFromPoint } from '@/lib/distance';
-import { searchNearby, placeAutocomplete, getPlaceLocation } from '@/lib/google-places';
+import { searchNearby } from '@/lib/google-places';
 import type { GroupMember, Place } from '@/lib/types';
 import { DiscoverPlaceCard, type DiscoverPlace } from './DiscoverPlaceCard';
 import { mapNearbyToDiscoverPlace } from './shared';
@@ -66,7 +65,6 @@ export default function StaysTab({
   tripCoords,
   originCoords,
   originLabel,
-  originKind = 'none',
   tripId,
   tripDest,
   travelMode,
@@ -87,18 +85,11 @@ export default function StaysTab({
   const [error, setError] = useState<string | null>(null);
   const cache = useRef<Map<string, DiscoverPlace[]>>(new Map());
 
-  // Destination search (when no trip coords)
-  const [destQuery, setDestQuery] = useState('');
-  const [destSuggestions, setDestSuggestions] = useState<{ placeId: string; description: string }[]>([]);
-  const [searchCoords, setSearchCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [searchLabel, setSearchLabel] = useState('');
-  const destTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   // Filter state
   const [minRating, setMinRating] = useState(0);
 
-  const effectiveCoords = tripCoords ?? originCoords ?? searchCoords;
-  const effectiveLabel = tripDest || originLabel || searchLabel;
+  const effectiveCoords = tripCoords ?? originCoords ?? null;
+  const effectiveLabel = tripDest || originLabel || 'selected location';
   const savedSet = useMemo(
     () => savedNames ?? new Set(savedPlaces.map((p) => p.name)),
     [savedNames, savedPlaces],
@@ -147,47 +138,6 @@ export default function StaysTab({
   useEffect(() => {
     searchStays(chip, effectiveCoords);
   }, [chip, effectiveCoords, searchStays]);
-
-  // ── Destination autocomplete ─────────────────────────────────────
-
-  const handleDestInput = useCallback((text: string) => {
-    setDestQuery(text);
-    if (destTimer.current) clearTimeout(destTimer.current);
-    if (!text.trim()) {
-      setDestSuggestions([]);
-      return;
-    }
-    destTimer.current = setTimeout(async () => {
-      try {
-        const results = await placeAutocomplete(text);
-        setDestSuggestions(results.slice(0, 5));
-      } catch {
-        setDestSuggestions([]);
-      }
-    }, 400);
-  }, []);
-
-  const selectDestination = useCallback(async (placeId: string, label: string) => {
-    setDestSuggestions([]);
-    setDestQuery(label.split(',')[0]);
-    setSearchLabel(label.split(',')[0]);
-    try {
-      const loc = await getPlaceLocation(placeId);
-      if (loc) {
-        setSearchCoords({ lat: loc.lat, lng: loc.lng });
-      }
-    } catch {
-      setError('Could not find that destination. Try another search.');
-    }
-  }, []);
-
-  const clearDestination = useCallback(() => {
-    setDestQuery('');
-    setSearchCoords(null);
-    setSearchLabel('');
-    setStays([]);
-    cache.current.clear();
-  }, []);
 
   // ── Filtered results ─────────────────────────────────────────────
 
@@ -239,43 +189,12 @@ export default function StaysTab({
 
   const ListHeader = useMemo(() => (
     <>
-      {/* Destination search — only when no trip coords */}
-      {!tripCoords && (
-        <View style={s.destSection}>
-          <View style={s.destInputRow}>
-            <Search size={16} color={colors.text3} />
-            <TextInput
-              style={s.destInput}
-              value={destQuery}
-              onChangeText={handleDestInput}
-              placeholder="Where do you want to stay?"
-              placeholderTextColor={colors.text3}
-            />
-            {destQuery.length > 0 && (
-              <Pressable onPress={clearDestination} hitSlop={8}>
-                <X size={16} color={colors.text3} />
-              </Pressable>
-            )}
-          </View>
-          {destSuggestions.length > 0 && (
-            <View style={s.suggestions}>
-              {destSuggestions.map((sg) => (
-                <Pressable
-                  key={sg.placeId}
-                  style={s.suggestionItem}
-                  onPress={() => selectDestination(sg.placeId, sg.description)}
-                >
-                  <MapPin size={14} color={colors.accent} />
-                  <Text style={s.suggestionText} numberOfLines={1}>{sg.description}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-          {effectiveLabel && (originKind !== 'none' || searchLabel) ? (
-            <Text style={s.searchingLabel}>Showing stays near {effectiveLabel}</Text>
-          ) : null}
-        </View>
-      )}
+      <View style={s.originSummary}>
+        <MapPin size={15} color={colors.accent} strokeWidth={2} />
+        <Text style={s.originSummaryText} numberOfLines={1}>
+          Accommodations near {effectiveLabel}
+        </Text>
+      </View>
 
       {/* Category chips */}
       <ScrollView
@@ -333,22 +252,20 @@ export default function StaysTab({
         </View>
       )}
     </>
-  ), [tripCoords, s, colors.text3, colors.accent, destQuery, handleDestInput, clearDestination, destSuggestions, effectiveLabel, originKind, searchLabel, selectDestination, chip, minRating, loading, effectiveCoords, filtered.length, error]);
+  ), [s, colors.accent, effectiveLabel, chip, minRating, loading, effectiveCoords, filtered.length, error]);
 
   const ListEmpty = useMemo(() => {
     if (loading || effectiveCoords) return null;
     return (
       <View style={s.emptyState}>
         <Bed size={40} color={colors.text3} strokeWidth={1.2} />
-        <Text style={s.emptyTitle}>Where do you want to stay?</Text>
+        <Text style={s.emptyTitle}>Set a search origin first</Text>
         <Text style={s.emptySub}>
-          {tripCoords
-            ? 'Search for accommodations near your trip.'
-            : 'Search a destination above to discover hotels, resorts, and more.'}
+          Use current location or a precise place in Discover to find accommodations nearby.
         </Text>
       </View>
     );
-  }, [loading, effectiveCoords, s, colors.text3, tripCoords]);
+  }, [loading, effectiveCoords, s, colors.text3]);
 
   return (
     <FlatList
@@ -375,50 +292,13 @@ const getStyles = (colors: ThemeColors) =>
     container: { flex: 1 },
     content: { paddingHorizontal: 16 },
 
-    // Destination search
-    destSection: { marginBottom: 12 },
-    destInputRow: {
+    originSummary: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
-      backgroundColor: colors.card,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      gap: 7,
+      marginBottom: 10,
     },
-    destInput: {
-      flex: 1,
-      fontSize: 14,
-      color: colors.text,
-      padding: 0,
-    },
-    suggestions: {
-      marginTop: 4,
-      backgroundColor: colors.card,
-      borderRadius: radius.sm,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: 'hidden',
-    },
-    suggestionItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
-    },
-    suggestionText: { flex: 1, fontSize: 13, color: colors.text },
-    searchingLabel: {
-      fontSize: 11,
-      color: colors.accent,
-      fontWeight: '600',
-      marginTop: 8,
-      letterSpacing: 0.3,
-    },
+    originSummaryText: { flex: 1, fontSize: 12, fontWeight: '700', color: colors.text2 },
 
     // Chips
     chipScroll: { marginBottom: 10 },

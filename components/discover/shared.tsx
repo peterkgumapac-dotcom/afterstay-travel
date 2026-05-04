@@ -91,6 +91,11 @@ export function mapNearbyToDiscoverPlace(
     openNow: place.open_now ?? false,
     img: place.photo_url ?? FALLBACK_IMG,
     placeId: place.place_id,
+    address: place.address,
+    mapsUrl: place.place_id
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.place_id}`
+      : `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`,
+    businessStatus: place.business_status,
     lat: place.lat,
     lng: place.lng,
     totalRatings: place.total_ratings,
@@ -117,6 +122,12 @@ export function mapSavedToDiscoverPlace(
     openNow: false,
     img: place.photoUrl ?? FALLBACK_IMG,
     placeId: place.googlePlaceId,
+    address: place.address,
+    mapsUrl: place.googleMapsUri ?? (place.googlePlaceId
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.googlePlaceId}`
+      : place.latitude != null && place.longitude != null
+        ? `https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}`
+        : undefined),
     lat: place.latitude,
     lng: place.longitude,
     totalRatings: place.totalRatings ?? 0,

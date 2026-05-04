@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Linking, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import Svg, { Path } from 'react-native-svg';
-import { Footprints, Car, Plus, Users } from 'lucide-react-native';
+import { Footprints, Car, MapPin, Navigation, Plus, Users } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing, radius } from '@/constants/theme';
@@ -40,6 +40,9 @@ export interface DiscoverPlace {
   openNow: boolean;
   img: string;
   placeId?: string;
+  address?: string;
+  mapsUrl?: string;
+  businessStatus?: string;
   lat?: number;
   lng?: number;
   totalRatings?: number;
@@ -114,6 +117,24 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
     const pending = Math.max(totalMembers - voted, 0);
     return `${voted}/${totalMembers} voted${pending > 0 ? ` · ${pending} pending` : ''}`;
   }, [showRecommend, totalMembers, voteByMember]);
+  const mapsUrl = useMemo(() => {
+    if (place.mapsUrl) return place.mapsUrl;
+    if (place.placeId) {
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.n)}&query_place_id=${place.placeId}`;
+    }
+    if (place.lat != null && place.lng != null) {
+      return `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`;
+    }
+    return `https://www.google.com/maps/search/${encodeURIComponent(place.n)}`;
+  }, [place.lat, place.lng, place.mapsUrl, place.n, place.placeId]);
+  const handleOpenMaps = useCallback(async (event?: { stopPropagation?: () => void }) => {
+    event?.stopPropagation?.();
+    try {
+      await Linking.openURL(mapsUrl);
+    } catch {
+      if (__DEV__) console.warn('[DiscoverPlaceCard] Failed to open maps URL:', mapsUrl);
+    }
+  }, [mapsUrl]);
 
   return (
     <TouchableOpacity
@@ -179,6 +200,24 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
             </>
           )}
         </View>
+
+        {place.address ? (
+          <View style={styles.addressRow}>
+            <MapPin size={11} color={colors.text3} strokeWidth={1.8} />
+            <Text style={styles.addressText} numberOfLines={1}>{place.address}</Text>
+          </View>
+        ) : null}
+
+        <Pressable
+          style={styles.mapsPill}
+          onPress={handleOpenMaps}
+          hitSlop={4}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${place.n} in Google Maps`}
+        >
+          <Navigation size={11} color={colors.accent} strokeWidth={2} />
+          <Text style={styles.mapsPillText}>Maps</Text>
+        </Pressable>
 
         {/* Vote consensus row — only when vote data exists */}
         {voteByMember && totalMembers && totalMembers >= 2 && Object.keys(voteByMember).length > 0 && (
@@ -380,6 +419,34 @@ const getStyles = (colors: ThemeColors) =>
     meta: {
       fontSize: 11,
       color: colors.text3,
+    },
+    addressRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: 4,
+      maxWidth: '96%',
+    },
+    addressText: {
+      flex: 1,
+      fontSize: 11,
+      color: colors.text3,
+    },
+    mapsPill: {
+      marginTop: 6,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      alignSelf: 'flex-start',
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+      borderRadius: 999,
+      backgroundColor: colors.accentBg,
+    },
+    mapsPillText: {
+      fontSize: 10.5,
+      fontWeight: '700',
+      color: colors.accent,
     },
     addBtn: {
       width: 32,

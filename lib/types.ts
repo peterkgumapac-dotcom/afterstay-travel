@@ -155,6 +155,7 @@ export interface Place {
   googlePlaceId?: string;
   latitude?: number;
   longitude?: number;
+  address?: string;
   googleMapsUri?: string;
   totalRatings?: number;
   saved?: boolean;

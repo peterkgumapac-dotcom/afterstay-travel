@@ -238,6 +238,7 @@ export interface NearbyPlace {
   rating: number;
   total_ratings: number;
   price_level?: number;
+  business_status?: string;
   address: string;
   lat: number;
   lng: number;
@@ -255,9 +256,10 @@ export interface NearbySearchResult {
 export interface PlaceDetails {
   name: string;
   rating: number;
+  total_ratings?: number;
   formatted_phone_number?: string;
   formatted_address: string;
-  opening_hours?: { weekday_text: string[] };
+  opening_hours?: { weekday_text: string[]; open_now?: boolean };
   reviews?: { author_name: string; rating: number; text: string; relative_time_description: string }[];
   photos: string[];
   website?: string;
@@ -292,6 +294,7 @@ export async function searchNearby(
     rating: place.rating ?? 0,
     total_ratings: place.user_ratings_total ?? 0,
     price_level: place.price_level,
+    business_status: place.business_status,
     address: place.vicinity ?? '',
     lat: place.geometry?.location?.lat ?? 0,
     lng: place.geometry?.location?.lng ?? 0,
@@ -321,6 +324,7 @@ export async function searchNearbyPage(
     rating: place.rating ?? 0,
     total_ratings: place.user_ratings_total ?? 0,
     price_level: place.price_level,
+    business_status: place.business_status,
     address: place.vicinity ?? '',
     lat: place.geometry?.location?.lat ?? 0,
     lng: place.geometry?.location?.lng ?? 0,
@@ -343,9 +347,10 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
   return {
     name: r.name,
     rating: r.rating ?? 0,
+    total_ratings: r.user_ratings_total,
     formatted_phone_number: r.formatted_phone_number,
     formatted_address: r.formatted_address ?? '',
-    opening_hours: r.opening_hours ? { weekday_text: r.opening_hours.weekday_text ?? [] } : undefined,
+    opening_hours: r.opening_hours ? { weekday_text: r.opening_hours.weekday_text ?? [], open_now: r.opening_hours.open_now } : undefined,
     reviews: (r.reviews ?? []).slice(0, 3).map((rv: any) => ({
       author_name: rv.author_name,
       rating: rv.rating,

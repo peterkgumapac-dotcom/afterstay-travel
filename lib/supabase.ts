@@ -454,6 +454,7 @@ function mapPlace(row: Record<string, unknown>): Place {
     vote: ((row.vote as string) || 'Pending') as PlaceVote,
     photoUrl: (row.photo_url as string) ?? undefined,
     googlePlaceId: (row.google_place_id as string) ?? undefined,
+    address: (row.address as string) ?? undefined,
     googleMapsUri: (row.google_maps_uri as string) ?? undefined,
     totalRatings: num(row.total_ratings),
     latitude: num(row.latitude),

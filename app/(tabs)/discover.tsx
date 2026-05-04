@@ -1484,13 +1484,121 @@ function DiscoverScreenInner() {
                 onPress={toggleShowFilters}
                 style={[styles.moreFiltersBtn, activeFilterCount > 0 && { borderColor: colors.accent }]}
                 activeOpacity={0.72}
+                hitSlop={8}
               >
                 <Filter size={13} color={activeFilterCount > 0 ? colors.accent : colors.text2} strokeWidth={2} />
                 <Text style={[styles.moreFiltersText, activeFilterCount > 0 && { color: colors.accent }]}>
-                  More{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+                  More filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
                 </Text>
               </TouchableOpacity>
             </View>
+            {showFilters ? (
+              <Animated.View
+                entering={FadeInDown.duration(160)}
+                style={styles.filterPanel}
+              >
+                <FilterRow label="Rating" colors={colors}>
+                  {[0, 4.0, 4.5].map((v) => (
+                    <SegBtn
+                      key={v}
+                      active={filters.minRating === v}
+                      onPress={() => setFilters((f) => ({ ...f, minRating: v }))}
+                      colors={colors}
+                    >
+                      {v === 0 ? 'Any' : `★ ${v.toFixed(1)}+`}
+                    </SegBtn>
+                  ))}
+                </FilterRow>
+                <FilterRow label="Price" colors={colors}>
+                  {['Any', 'Free', '$', '$$', '$$$', '$$$$'].map((lbl, i) => {
+                    const value = i === 0 ? DEFAULT_FILTERS.maxPrice : i - 1;
+                    return (
+                      <SegBtn
+                        key={lbl}
+                        active={filters.maxPrice === value}
+                        onPress={() => setFilters((f) => ({ ...f, maxPrice: value }))}
+                        colors={colors}
+                      >
+                        {lbl}
+                        {i > 1 && i < 5 ? ' or less' : ''}
+                      </SegBtn>
+                    );
+                  })}
+                </FilterRow>
+                <FilterRow label="Distance" colors={colors}>
+                  <SegBtn
+                    active={!filters.nearby}
+                    onPress={() => setFilters((f) => ({ ...f, nearby: false, sortMode: f.sortMode === 'distance' ? 'best' : f.sortMode }))}
+                    colors={colors}
+                  >
+                    Any
+                  </SegBtn>
+                  <SegBtn
+                    active={filters.nearby}
+                    onPress={() => setFilters((f) => ({ ...f, nearby: true, sortMode: 'distance' }))}
+                    colors={colors}
+                  >
+                    ≤ 2 km
+                  </SegBtn>
+                </FilterRow>
+                <FilterRow label="Open now" colors={colors}>
+                  <SegBtn
+                    active={!filters.openNow}
+                    onPress={() => setFilters((f) => ({ ...f, openNow: false }))}
+                    colors={colors}
+                  >
+                    All
+                  </SegBtn>
+                  <SegBtn
+                    active={filters.openNow}
+                    onPress={() => setFilters((f) => ({ ...f, openNow: true }))}
+                    colors={colors}
+                  >
+                    Open now
+                  </SegBtn>
+                </FilterRow>
+                <FilterRow label="Sort" colors={colors}>
+                  {[
+                    ['best', 'Best'],
+                    ['distance', 'Nearest'],
+                    ['rating', 'Rating'],
+                    ['popular', 'Popular'],
+                  ].map(([value, label]) => (
+                    <SegBtn
+                      key={value}
+                      active={filters.sortMode === value}
+                      onPress={() => setFilters((f) => ({ ...f, sortMode: value as FilterState['sortMode'] }))}
+                      colors={colors}
+                    >
+                      {label}
+                    </SegBtn>
+                  ))}
+                </FilterRow>
+                <View style={{ marginTop: 2 }}>
+                  <DistanceToggle
+                    anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
+                    travelMode={travelMode}
+                    onAnchorChange={handleAnchorChange}
+                    onTravelModeChange={handleTravelModeChange}
+                  />
+                </View>
+                <View style={styles.filterFooter}>
+                  <TouchableOpacity
+                    onPress={() => setFilters({ ...DEFAULT_FILTERS })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.filterResetText}>Reset</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.filterShowBtn}
+                    onPress={() => setShowFilters(false)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.filterShowBtnText}>Show results</Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            ) : null}
           </>
         )}
       </View>
@@ -1552,117 +1660,6 @@ function DiscoverScreenInner() {
           }
           ListHeaderComponent={
             <>
-              {/* Expanded filters panel */}
-              {canShowPlaceResults && showFilters && (
-                <Animated.View
-                  entering={FadeInDown.duration(200)}
-                  style={styles.filterPanel}
-                >
-                  <FilterRow label="Minimum rating" colors={colors}>
-                    {[0, 4.0, 4.5].map((v) => (
-                      <SegBtn
-                        key={v}
-                        active={filters.minRating === v}
-                        onPress={() =>
-                          setFilters((f) => ({ ...f, minRating: v }))
-                        }
-                        colors={colors}
-                      >
-                        {v === 0 ? 'Any' : `\u2605 ${v.toFixed(1)}+`}
-                      </SegBtn>
-                    ))}
-                  </FilterRow>
-                  <FilterRow label="Price" colors={colors}>
-                    {['Any', 'Free', '$', '$$', '$$$', '$$$$'].map((lbl, i) => {
-                      const value = i === 0 ? DEFAULT_FILTERS.maxPrice : i - 1;
-                      return (
-                        <SegBtn
-                          key={lbl}
-                          active={filters.maxPrice === value}
-                          onPress={() =>
-                            setFilters((f) => ({ ...f, maxPrice: value }))
-                          }
-                          colors={colors}
-                        >
-                          {lbl}
-                          {i > 1 && i < 5 ? ' or less' : ''}
-                        </SegBtn>
-                      );
-                    })}
-                  </FilterRow>
-                  {canShowPlaceResults && (
-                    <FilterRow label="Distance" colors={colors}>
-                      <SegBtn
-                        active={!filters.nearby}
-                        onPress={() =>
-                          setFilters((f) => ({ ...f, nearby: false, sortMode: f.sortMode === 'distance' ? 'best' : f.sortMode }))
-                        }
-                        colors={colors}
-                      >
-                        Any
-                      </SegBtn>
-                      <SegBtn
-                        active={filters.nearby}
-                        onPress={() =>
-                          setFilters((f) => ({ ...f, nearby: true, sortMode: 'distance' }))
-                        }
-                        colors={colors}
-                      >
-                        {'\u2264'} 2 km
-                      </SegBtn>
-                    </FilterRow>
-                  )}
-                  <FilterRow label="Availability" colors={colors}>
-                    <SegBtn
-                      active={!filters.openNow}
-                      onPress={() =>
-                        setFilters((f) => ({ ...f, openNow: false }))
-                      }
-                      colors={colors}
-                    >
-                      All
-                    </SegBtn>
-                    <SegBtn
-                      active={filters.openNow}
-                      onPress={() =>
-                        setFilters((f) => ({ ...f, openNow: true }))
-                      }
-                      colors={colors}
-                    >
-                      Open now
-                    </SegBtn>
-                  </FilterRow>
-
-                  {canShowPlaceResults && (
-                    <View style={{ marginTop: 8 }}>
-                      <DistanceToggle
-                        anchor={distanceOrigin === 'me' ? 'me' : 'hotel'}
-                        travelMode={travelMode}
-                        onAnchorChange={handleAnchorChange}
-                        onTravelModeChange={handleTravelModeChange}
-                      />
-                    </View>
-                  )}
-
-                  {/* Footer */}
-                  <View style={styles.filterFooter}>
-                    <TouchableOpacity
-                      onPress={() => setFilters({ ...DEFAULT_FILTERS })}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.filterResetText}>Reset</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.filterShowBtn}
-                      onPress={() => setShowFilters(false)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.filterShowBtnText}>Show results</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Animated.View>
-              )}
-
               {/* Results count */}
               {canShowPlaceResults ? (
                 <Text style={styles.resultsCount}>
@@ -2565,8 +2562,8 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.onBlack,
     },
     moreFiltersBtn: {
-      minHeight: 38,
-      paddingHorizontal: 12,
+      minHeight: 44,
+      paddingHorizontal: 14,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: colors.border,
@@ -2895,8 +2892,7 @@ const getStyles = (colors: ThemeColors) =>
 
     // Filter panel
     filterPanel: {
-      marginHorizontal: 16,
-      marginBottom: 14,
+      marginTop: 2,
       padding: 14,
       backgroundColor: colors.card,
       borderWidth: 1,
