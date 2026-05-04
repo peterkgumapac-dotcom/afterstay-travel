@@ -7,6 +7,7 @@ import { CreateBar, type CreateType } from '@/components/feed/CreateBar';
 import { FeedCard } from '@/components/feed/FeedCard';
 import { FEED } from '@/components/feed/feedTheme';
 import type { useFeedPosts } from '@/hooks/useFeedPosts';
+import { useAuth } from '@/lib/auth';
 import { togglePostLike, getPostComments, addPostComment, getPublicProfiles } from '@/lib/supabase';
 import type { FeedPost, FeedPostComment } from '@/lib/types';
 
@@ -15,10 +16,11 @@ type ProfileMap = Record<string, { name: string; avatar?: string }>;
 
 export function useProfilesForPosts(posts: FeedPost[]): ProfileMap {
   const [profiles, setProfiles] = useState<ProfileMap>({});
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const userIds = [...new Set(posts.map(p => p.userId).filter(Boolean))];
-    const missing = userIds.filter(id => !profiles[id]);
+    const missing = userIds.filter(id => !profiles[id] && !checkedIds.has(id));
     if (missing.length === 0) return;
 
     getPublicProfiles(missing)
@@ -33,9 +35,20 @@ export function useProfilesForPosts(posts: FeedPost[]): ProfileMap {
           }
           return next;
         });
+        setCheckedIds(prev => {
+          const next = new Set(prev);
+          missing.forEach(id => next.add(id));
+          return next;
+        });
       })
-      .catch(() => {});
-  }, [posts, profiles]);
+      .catch(() => {
+        setCheckedIds(prev => {
+          const next = new Set(prev);
+          missing.forEach(id => next.add(id));
+          return next;
+        });
+      });
+  }, [posts, profiles, checkedIds]);
 
   return profiles;
 }
@@ -49,6 +62,7 @@ interface PostFeedListProps {
 
 export function PostFeedList({ feed, profiles, header }: PostFeedListProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const [commentCache, setCommentCache] = useState<Record<string, FeedPostComment[]>>({});
 
   const handleCreate = useCallback((type: CreateType) => {
@@ -72,6 +86,9 @@ export function PostFeedList({ feed, profiles, header }: PostFeedListProps) {
             userName: profiles[item.userId]?.name ?? item.userName,
             userAvatar: profiles[item.userId]?.avatar ?? item.userAvatar,
           };
+          const canOpenProfile = Boolean(
+            item.userId && (item.userId === user?.id || enriched.userName || enriched.userAvatar),
+          );
           return (
             <FeedCard
               post={enriched}
@@ -86,7 +103,7 @@ export function PostFeedList({ feed, profiles, header }: PostFeedListProps) {
                   }));
                 } catch {}
               }}
-              onProfilePress={item.userId ? () => router.push({ pathname: '/profile/[userId]', params: { userId: item.userId } } as never) : undefined}
+              onProfilePress={canOpenProfile ? () => router.push({ pathname: '/profile/[userId]', params: { userId: item.userId } } as never) : undefined}
               onPhotoPress={async () => {
                 if (!commentCache[item.id]) {
                   try {

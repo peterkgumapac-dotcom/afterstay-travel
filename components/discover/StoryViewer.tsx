@@ -58,6 +58,7 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, curren
 
   const story = stories[index];
   const isOwner = !!story && story.userId === currentUserId;
+  const canOpenProfile = !!story && !!onProfilePress && (isOwner || Boolean(story.userName || story.userAvatar));
 
   const startTimer = useCallback((ignorePause = false) => {
     if (!ignorePause && (menuOpen || deleting)) return;
@@ -207,11 +208,12 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, curren
             <TouchableOpacity
               style={styles.userIdentity}
               onPress={() => {
+                if (!canOpenProfile) return;
                 onClose();
                 onProfilePress?.(story.userId);
               }}
-              activeOpacity={onProfilePress ? 0.75 : 1}
-              disabled={!onProfilePress}
+              activeOpacity={canOpenProfile ? 0.75 : 1}
+              disabled={!canOpenProfile}
             >
               {story.userAvatar ? (
                 <Image source={{ uri: story.userAvatar }} style={styles.avatar} contentFit="cover" />

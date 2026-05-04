@@ -29,6 +29,12 @@ const CHIPS: { id: FeedMode; label: string }[] = [
   { id: 'saved', label: 'Saved' },
 ];
 
+function canOpenProfileIdentity(item: Pick<FeedPost, 'userId' | 'userName' | 'userAvatar'>, currentUserId?: string): boolean {
+  if (!item.userId) return false;
+  if (item.userId === currentUserId) return true;
+  return Boolean(item.userName || item.userAvatar);
+}
+
 export default function ExploreMomentsFeed() {
   const router = useRouter();
   const { user } = useAuth();
@@ -158,6 +164,7 @@ export default function ExploreMomentsFeed() {
       userName: profiles[item.userId]?.name ?? item.userName,
       userAvatar: profiles[item.userId]?.avatar ?? item.userAvatar,
     };
+    const canOpenProfile = canOpenProfileIdentity(enriched, user?.id);
     return (
       <ExploreMomentCard
         post={enriched}
@@ -165,7 +172,7 @@ export default function ExploreMomentsFeed() {
         onComment={() => setCommentPostId(item.id)}
         onShare={() => { sharePost(item.id).catch(() => {}); }}
         onSave={async () => { await toggleSave(item.id); }}
-        onProfilePress={item.userId ? () => router.push({ pathname: '/profile/[userId]', params: { userId: item.userId } } as never) : undefined}
+        onProfilePress={canOpenProfile ? () => router.push({ pathname: '/profile/[userId]', params: { userId: item.userId } } as never) : undefined}
         tags={tagsByPost[item.id]}
         isOwner={item.userId === user?.id}
         onDeleted={() => refreshActiveFeed()}
@@ -304,6 +311,8 @@ export default function ExploreMomentsFeed() {
         onClose={() => setStoryViewerVisible(false)}
         onDeleteStory={handleStoryDeleted}
         onProfilePress={(storyUserId) => {
+          const story = activeStories.find((item) => item.userId === storyUserId);
+          if (!story || !canOpenProfileIdentity(story, user?.id)) return;
           router.push({ pathname: '/profile/[userId]', params: { userId: storyUserId } } as never);
         }}
       />
