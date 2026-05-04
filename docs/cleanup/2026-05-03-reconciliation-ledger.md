@@ -10,8 +10,8 @@ Current clean source of truth:
 
 - Main repo: `/Users/peterkarlgumapac/afterstay-travel`
 - Branch: `otas`
-- HEAD / `origin/otas`: `bba1d24 Reduce trip screen idle work`
-- Working tree: clean after the idle-work OTA.
+- Latest app code commit / OTA source: `e028829 Remove idle FAB pulse loop`
+- Working tree: clean after the FAB idle-work OTA.
 - Local Supabase CLI cleanup:
   - Removed the stale ignored `.env` `SUPABASE_ACCESS_TOKEN` entry.
   - The CLI now uses the logged-in session instead of a bad token.
@@ -19,13 +19,13 @@ Current clean source of truth:
 Latest OTA:
 
 - Preview, runtime `1.3.0`, Android + iOS:
-  - Message: `Reduce trip screen idle work`
-  - Group: `529e609f-6908-4ae8-b3bc-7773ce870fb5`
-  - Commit: `bba1d2465e891406817d8b1e6db79ba9a00f3c02`
+  - Message: `Remove idle FAB pulse loop`
+  - Group: `f1a7ba3d-bcf5-4053-96c6-d29ec89151a5`
+  - Commit: `e0288292bbd38af90069e81b6b43aa781296eaf7`
 - Production, runtime `1.3.0`, Android + iOS:
-  - Message: `Reduce trip screen idle work`
-  - Group: `1c42f0b3-563f-4c6c-a561-9c2793a27ce4`
-  - Commit: `bba1d2465e891406817d8b1e6db79ba9a00f3c02`
+  - Message: `Remove idle FAB pulse loop`
+  - Group: `fbb7fb55-d459-4551-876e-8facd9aa942f`
+  - Commit: `e0288292bbd38af90069e81b6b43aa781296eaf7`
 
 Latest backend state checked:
 
@@ -37,26 +37,34 @@ Latest backend state checked:
   - `ai-proxy`, `places-proxy`, and `share-travel-stats` are active
     from earlier deploys.
 
-Latest cleanup shipped in `bba1d24`:
+Latest cleanup shipped in `e028829`:
 
 - Removed always-running decorative animations from:
   - `components/home/DailyTrackerStrip.tsx`
   - `app/(tabs)/trip.tsx`
+  - `components/shared/FloatingActionButton.tsx`
 - Reduced My Trips background expense fan-out:
   - Legacy spent backfill now only considers `Completed` trips.
   - Backfill uses the existing cached expense-summary promise instead of
     direct uncached fetches.
+- Android UIAutomator can dump the hierarchy again after applying the latest
+  preview OTA twice.
+- ADB tab smoke kept the same PID across Moments, Discover, Budget, Trips,
+  and Home with no fatal JS/native errors.
 
 Verification for latest shipped cleanup:
 
 - `npx eslint --quiet components/home/DailyTrackerStrip.tsx`
   - plus `'app/(tabs)/trip.tsx'`
+- `npx eslint --quiet components/shared/FloatingActionButton.tsx`
 - `npx tsc --noEmit --pretty false`
 - `git diff --check`
 - `npx expo export --platform android --output-dir /tmp/afterstay-idle-cleanup-android`
 - `npx expo export --platform ios --output-dir /tmp/afterstay-idle-cleanup-ios`
+- `npx expo export --platform android --output-dir /tmp/afterstay-fab-idle-android`
+- `npx expo export --platform ios --output-dir /tmp/afterstay-fab-idle-ios`
 - EAS preview and production latest listings confirm Android + iOS are both
-  on `Reduce trip screen idle work`.
+  on `Remove idle FAB pulse loop`.
 
 Current coordination note:
 
@@ -67,7 +75,7 @@ Current coordination note:
   - Profile/auth overlap.
   - Receipt/budget experiments.
 - Any next agent should create a named worktree from `origin/otas` at or
-  after `bba1d24`.
+  after `e028829`.
 - Inspect the relevant stash by file list only, then apply changes manually
   or via a reviewed patch.
 
