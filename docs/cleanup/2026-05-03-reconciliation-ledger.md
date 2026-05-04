@@ -2,6 +2,75 @@
 
 Date: 2026-05-03
 
+## Current Status Addendum, 2026-05-03 23:58 UTC
+
+This section supersedes older drift notes below.
+
+Current clean source of truth:
+
+- Main repo: `/Users/peterkarlgumapac/afterstay-travel`
+- Branch: `otas`
+- HEAD / `origin/otas`: `bba1d24 Reduce trip screen idle work`
+- Working tree: clean after the idle-work OTA.
+- Local Supabase CLI cleanup:
+  - Removed the stale ignored `.env` `SUPABASE_ACCESS_TOKEN` entry.
+  - The CLI now uses the logged-in session instead of a bad token.
+
+Latest OTA:
+
+- Preview, runtime `1.3.0`, Android + iOS:
+  - Message: `Reduce trip screen idle work`
+  - Group: `529e609f-6908-4ae8-b3bc-7773ce870fb5`
+  - Commit: `bba1d2465e891406817d8b1e6db79ba9a00f3c02`
+- Production, runtime `1.3.0`, Android + iOS:
+  - Message: `Reduce trip screen idle work`
+  - Group: `1c42f0b3-563f-4c6c-a561-9c2793a27ce4`
+  - Commit: `bba1d2465e891406817d8b1e6db79ba9a00f3c02`
+
+Latest backend state checked:
+
+- Supabase project `mzslhacnrwwmwgozpknm` is active and linked.
+- Edge Functions active:
+  - `send-push-notification` version 10, updated 2026-05-03 23:11 UTC.
+  - `ai-recommend` version 12, updated 2026-05-03 23:11 UTC.
+  - `trip-lifecycle-notifications` version 7, updated 2026-05-03 23:11 UTC.
+  - `ai-proxy`, `places-proxy`, and `share-travel-stats` are active
+    from earlier deploys.
+
+Latest cleanup shipped in `bba1d24`:
+
+- Removed always-running decorative animations from:
+  - `components/home/DailyTrackerStrip.tsx`
+  - `app/(tabs)/trip.tsx`
+- Reduced My Trips background expense fan-out:
+  - Legacy spent backfill now only considers `Completed` trips.
+  - Backfill uses the existing cached expense-summary promise instead of
+    direct uncached fetches.
+
+Verification for latest shipped cleanup:
+
+- `npx eslint --quiet components/home/DailyTrackerStrip.tsx`
+  - plus `'app/(tabs)/trip.tsx'`
+- `npx tsc --noEmit --pretty false`
+- `git diff --check`
+- `npx expo export --platform android --output-dir /tmp/afterstay-idle-cleanup-android`
+- `npx expo export --platform ios --output-dir /tmp/afterstay-idle-cleanup-ios`
+- EAS preview and production latest listings confirm Android + iOS are both
+  on `Reduce trip screen idle work`.
+
+Current coordination note:
+
+- There are many preserved stashes from concurrent agents.
+- Do not drop or pop them from the main worktree.
+- Highest-volume parked work:
+  - Discover redesign/simplification.
+  - Profile/auth overlap.
+  - Receipt/budget experiments.
+- Any next agent should create a named worktree from `origin/otas` at or
+  after `bba1d24`.
+- Inspect the relevant stash by file list only, then apply changes manually
+  or via a reviewed patch.
+
 ## Release Rule
 
 Freeze remains active. No feature work, OTA publish, migration, stash drop, or deploy should happen from the shared `otas` worktree until this reconciliation branch is verified.
