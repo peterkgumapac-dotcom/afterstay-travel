@@ -30,6 +30,7 @@ interface ProfileCoverHeaderProps {
   onCustomize: () => void;
   onToggleFollow: () => void;
   onMessage?: () => void;
+  onMore?: () => void;
 }
 
 function buildTags(stats: LifetimeStats, homeBase?: string, badges?: ProfileBadge[]): string[] {
@@ -62,6 +63,7 @@ export default function ProfileCoverHeader({
   onCustomize,
   onToggleFollow,
   onMessage,
+  onMore,
 }: ProfileCoverHeaderProps) {
   const { width } = useWindowDimensions();
   const colors = lightColors;
@@ -209,7 +211,7 @@ export default function ProfileCoverHeader({
               <Text style={[s.secondaryText, s.secondaryTextDisabled]}>Message</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={s.iconBtn} activeOpacity={0.75}>
+          <TouchableOpacity style={s.iconBtn} onPress={onMore} activeOpacity={0.75}>
             <ChevronDown size={18} color={colors.accent} />
           </TouchableOpacity>
         </View>

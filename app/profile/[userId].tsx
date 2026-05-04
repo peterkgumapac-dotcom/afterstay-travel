@@ -391,6 +391,7 @@ export default function CompanionProfileScreen() {
               onToggleFollow={handleFollowPress}
               followBusy={followBusy}
               onMessage={handleMessagePress}
+              onMore={handleMorePress}
             />
 
             {!isCompanion && !isSelf && profile.mutualTripCount > 0 && (

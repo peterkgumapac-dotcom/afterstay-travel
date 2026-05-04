@@ -96,7 +96,9 @@ function templateTitle(template: TravelFlexTemplate) {
 }
 
 function labelForRoute(route: TravelFlexRoute, index: number) {
-  return route.toCode || route.toLabel || `${index + 1}`;
+  const code = route.toCode?.trim().toUpperCase();
+  if (code && code.length === 3) return code;
+  return route.toLabel || code || `${index + 1}`;
 }
 
 function buildPoints(visual: TravelFlexVisual): Point[] {
