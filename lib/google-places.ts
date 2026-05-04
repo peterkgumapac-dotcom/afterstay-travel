@@ -2,9 +2,9 @@
 // The API key is server-side only; client never sees it.
 
 import { supabase } from './supabase';
+import { filterRenderableImageUrls, isRenderableRemoteImageUrl } from './imageUrl';
 
 const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place';
-const WIKIPEDIA_SUMMARY_BASE = 'https://en.wikipedia.org/api/rest_v1/page/summary';
 const PUBLIC_PLACES_KEY =
   process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ||
   process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY ||
@@ -175,37 +175,6 @@ async function resolvePhotos(photos: any[] | undefined, count = 1, maxWidth = 12
   return urls.filter((u): u is string => u !== null);
 }
 
-function destinationTitles(destination: string): string[] {
-  const clean = destination.trim().replace(/\s+/g, ' ');
-  const withoutCountry = clean.split(',')[0]?.trim() ?? clean;
-  const withoutParen = withoutCountry.replace(/\s*\([^)]*\)\s*/g, '').trim();
-  const titles = [withoutParen, withoutCountry, clean]
-    .filter(Boolean)
-    .map((title) => {
-      if (/boracay|caticlan|godofredo|mph/i.test(title)) return 'Boracay';
-      if (/palawan|coron|usu/i.test(title)) return 'Palawan';
-      return title;
-    });
-  return Array.from(new Set(titles));
-}
-
-async function fetchWikimediaPhoto(destination: string): Promise<string | null> {
-  for (const title of destinationTitles(destination)) {
-    try {
-      const res = await fetch(`${WIKIPEDIA_SUMMARY_BASE}/${encodeURIComponent(title)}`, {
-        headers: { 'User-Agent': 'AfterStayTravel/1.0' },
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      const url = data?.originalimage?.source ?? data?.thumbnail?.source;
-      if (typeof url === 'string' && url.startsWith('https://')) return url;
-    } catch (err) {
-      if (__DEV__) console.warn('[google-places] wikimedia fallback failed:', err);
-    }
-  }
-  return null;
-}
-
 export async function searchPlace(
   query: string,
   location?: string,
@@ -218,6 +187,7 @@ export async function searchPlace(
 
   const bestRef = pickBestPhotoRef(candidate.photos);
   const photo_url = bestRef ? await resolvePhotoUrl(bestRef, 1200) : null;
+  const renderablePhotoUrl = isRenderableRemoteImageUrl(photo_url) ? photo_url : null;
 
   return {
     place_id: candidate.place_id ?? '',
@@ -225,7 +195,7 @@ export async function searchPlace(
     address: candidate.formatted_address ?? '',
     rating: candidate.rating ?? 0,
     total_ratings: candidate.user_ratings_total ?? 0,
-    photo_url,
+    photo_url: renderablePhotoUrl,
     lat: candidate.geometry?.location?.lat ?? 0,
     lng: candidate.geometry?.location?.lng ?? 0,
   };
@@ -254,13 +224,12 @@ export async function fetchDestinationPhotos(
     const photos: any[] = data?.candidates?.[0]?.photos ?? [];
     const urls = await resolvePhotos(photos, count, 1200);
     for (const url of urls) {
+      if (!isRenderableRemoteImageUrl(url)) continue;
       if (!collected.includes(url)) collected.push(url);
       if (collected.length >= count) return collected;
     }
   }
-  const fallback = await fetchWikimediaPhoto(destination);
-  if (fallback && !collected.includes(fallback)) collected.push(fallback);
-  return collected;
+  return filterRenderableImageUrls(collected);
 }
 
 export interface NearbyPlace {

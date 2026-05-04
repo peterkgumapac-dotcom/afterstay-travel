@@ -20,6 +20,7 @@ import Animated, {
 import { useTheme } from '@/constants/ThemeContext';
 import { fetchDestinationPhotos, findPlacePhoto } from '@/lib/google-places';
 import { cacheGet, cacheSet } from '@/lib/cache';
+import { filterRenderableImageUrls, isRenderableRemoteImageUrl } from '@/lib/imageUrl';
 import type { GroupMember } from '@/lib/types';
 
 const HERO_H = 320;
@@ -111,14 +112,14 @@ export const AnticipationHero: React.FC<Props> = ({
   }, [photos, destination]);
 
   const visiblePhotos = useMemo(
-    () => photos.filter((url) => !failedUrls.has(url)),
+    () => filterRenderableImageUrls(photos).filter((url) => !failedUrls.has(url)),
     [photos, failedUrls],
   );
 
   // Fetch destination photos when no hotel photos are available, or when hotel images fail.
   const [destPhotos, setDestPhotos] = useState<string[]>([]);
   const destinationCacheKey = useMemo(
-    () => `dest_photos:v4:${destination.trim().toLowerCase()}`,
+    () => `dest_photos:v5:${destination.trim().toLowerCase()}`,
     [destination],
   );
 
@@ -128,13 +129,13 @@ export const AnticipationHero: React.FC<Props> = ({
     setDestPhotos([]);
     (async () => {
       const cached = await cacheGet<string[] | string>(destinationCacheKey, 6 * 60 * 60 * 1000);
-      const cachedList = Array.isArray(cached) ? cached.filter(Boolean) : cached ? [cached] : [];
+      const cachedList = filterRenderableImageUrls(Array.isArray(cached) ? cached.filter(Boolean) : cached ? [cached] : []);
       if (cachedList.length > 0) {
         if (!cancelled) setDestPhotos(cachedList);
         return;
       }
 
-      const collected = await withTimeout(fetchDestinationPhotos(destination, 5), []);
+      const collected = filterRenderableImageUrls(await withTimeout(fetchDestinationPhotos(destination, 5), []));
       const queries = [
         `${destination} travel destination`,
         `${destination} landmark`,
@@ -144,7 +145,7 @@ export const AnticipationHero: React.FC<Props> = ({
       ];
       for (const query of queries) {
         const url = await withTimeout(findPlacePhoto(query), null);
-        if (url && !collected.includes(url)) collected.push(url);
+        if (isRenderableRemoteImageUrl(url) && !collected.includes(url)) collected.push(url);
         if (collected.length >= 5) break;
       }
 
@@ -157,7 +158,7 @@ export const AnticipationHero: React.FC<Props> = ({
   }, [destination, destinationCacheKey, resolveDestinationFallback, visiblePhotos.length]);
 
   const heroPhotos = useMemo(
-    () => visiblePhotos.length > 0 ? visiblePhotos : destPhotos.filter((url) => !failedUrls.has(url)),
+    () => visiblePhotos.length > 0 ? visiblePhotos : filterRenderableImageUrls(destPhotos).filter((url) => !failedUrls.has(url)),
     [destPhotos, failedUrls, visiblePhotos],
   );
 

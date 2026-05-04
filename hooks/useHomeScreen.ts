@@ -38,6 +38,7 @@ import {
 } from '@/hooks/useTabHomeData';
 import { fetchDestinationPhotos } from '@/lib/google-places';
 import { resolveTripMediaLocation } from '@/lib/tripMedia';
+import { filterRenderableImageUrls } from '@/lib/imageUrl';
 import { setHotelCoords } from '@/lib/config';
 import {
   computeTripPhase,
@@ -55,7 +56,7 @@ function resolveHeroLocation(trip: Trip | null, flights: Flight[]) {
 }
 
 function destinationPhotoCacheKey(destination: string) {
-  return `hero:destination-photos:v3:${destination.trim().toLowerCase()}`;
+  return `hero:destination-photos:v5:${destination.trim().toLowerCase()}`;
 }
 
 const HOME_REQUEST_TIMEOUT_MS = 10000;
@@ -177,12 +178,12 @@ export function useHomeScreen() {
     if (!_rawTrip?.hotelPhotos) return [];
     try {
       const p = JSON.parse(_rawTrip.hotelPhotos);
-      return Array.isArray(p) ? p.filter((u: unknown) => typeof u === 'string' && (u as string).startsWith('http')) : [];
+      return Array.isArray(p) ? filterRenderableImageUrls(p.filter((u: unknown): u is string => typeof u === 'string')) : [];
     } catch { return []; }
   }, [_rawTrip?.hotelPhotos]);
   const coverPhotos = useMemo(() => {
     const url = _rawTrip?.heroImageUrl?.trim();
-    return url?.startsWith('http') ? [url] : [];
+    return url ? filterRenderableImageUrls([url]) : [];
   }, [_rawTrip?.heroImageUrl]);
 
   const [destPhotos, setDestPhotos] = useState<string[]>([]);
@@ -206,16 +207,17 @@ export function useHomeScreen() {
     const cacheKey = destinationPhotoCacheKey(heroLocation);
     (async () => {
       const cached = await cacheGet<string[]>(cacheKey);
-      if (cached?.length && !cancelled) {
+      const cachedPhotos = filterRenderableImageUrls(cached ?? []);
+      if (cachedPhotos.length && !cancelled) {
         destPhotoKeyRef.current = cacheKey;
-        setDestPhotos(cached);
+        setDestPhotos(cachedPhotos);
         return;
       }
-      const photos = await withTimeout(
+      const photos = filterRenderableImageUrls(await withTimeout(
         fetchDestinationPhotos(heroLocation),
         [] as string[],
         HOME_REQUEST_TIMEOUT_MS,
-      );
+      ));
       if (!cancelled && photos.length > 0) {
         destPhotoKeyRef.current = cacheKey;
         setDestPhotos(photos);

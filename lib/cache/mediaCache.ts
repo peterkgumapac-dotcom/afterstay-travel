@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MEDIA_DIR_NAME = 'media-v3'; // v3: magic-byte validation
 const MIN_VALID_BYTES = 100;
-const MAX_CONCURRENT = 6; // limit parallel downloads
+const MAX_CONCURRENT = 3; // limit parallel downloads; keeps image-heavy tabs from stampeding remote hosts
 
 const CACHE_VERSION_KEY = 'media-cache-version';
 const CURRENT_VERSION = '3';
@@ -23,7 +23,7 @@ function looksLikeImage(bytes: Uint8Array): boolean {
 }
 
 let activeDownloads = 0;
-const pendingQueue: Array<() => void> = [];
+const pendingQueue: (() => void)[] = [];
 
 function runNext() {
   if (pendingQueue.length > 0 && activeDownloads < MAX_CONCURRENT) {
