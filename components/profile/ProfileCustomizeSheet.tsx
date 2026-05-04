@@ -38,6 +38,7 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
   const [homeBase, setHomeBase] = useState('');
   const [instagram, setInstagram] = useState('');
   const [tiktok, setTiktok] = useState('');
+  const [profileVisibility, setProfileVisibility] = useState<'public' | 'companions' | 'private'>('public');
   const [publicStatsEnabled, setPublicStatsEnabled] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
   const [coverUrl, setCoverUrl] = useState<string | undefined>();
@@ -51,6 +52,7 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
     setHomeBase(profile.homeBase ?? '');
     setInstagram(profile.socials?.instagram ?? '');
     setTiktok(profile.socials?.tiktok ?? '');
+    setProfileVisibility(profile.profileVisibility ?? 'public');
     setPublicStatsEnabled(!!profile.publicStatsEnabled);
     setAvatarUrl(profile.avatarUrl);
     setCoverUrl(profile.coverPhotoUrl);
@@ -115,7 +117,8 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
         handle: handle.trim().toLowerCase().replace(/^@/, ''),
         bio: bio.trim(),
         homeBase: homeBase.trim(),
-        publicStatsEnabled,
+        profileVisibility,
+        publicStatsEnabled: profileVisibility === 'public' ? publicStatsEnabled : false,
         socials: {
           ...(instagram.trim() ? { instagram: instagram.trim().replace(/^@/, '') } : {}),
           ...(tiktok.trim() ? { tiktok: tiktok.trim().replace(/^@/, '') } : {}),
@@ -190,16 +193,54 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
           <Field label="Instagram" value={instagram} onChangeText={setInstagram} colors={colors} autoCapitalize="none" prefix="@" />
           <Field label="TikTok" value={tiktok} onChangeText={setTiktok} colors={colors} autoCapitalize="none" prefix="@" />
 
+          <View style={s.privacyCard}>
+            <Text style={s.privacyTitle}>Who can find your profile?</Text>
+            <Text style={s.privacySub}>
+              Public profiles can appear in traveler search. Companion profiles are visible to people who share a trip with you.
+            </Text>
+            <View style={s.visibilityRow}>
+              {[
+                { key: 'public', label: 'Public' },
+                { key: 'companions', label: 'Companions' },
+                { key: 'private', label: 'Private' },
+              ].map((option) => {
+                const active = profileVisibility === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[s.visibilityChip, active && s.visibilityChipActive]}
+                    onPress={() => {
+                      const next = option.key as 'public' | 'companions' | 'private';
+                      setProfileVisibility(next);
+                      if (next !== 'public') setPublicStatsEnabled(false);
+                    }}
+                    activeOpacity={0.78}
+                    disabled={saving}
+                  >
+                    <Text style={[s.visibilityChipText, active && s.visibilityChipTextActive]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           <View style={s.switchRow}>
             <View style={{ flex: 1 }}>
               <Text style={s.switchTitle}>Show stats publicly</Text>
-              <Text style={s.switchSub}>Companions can still see shared-trip sections when allowed.</Text>
+              <Text style={s.switchSub}>
+                {profileVisibility === 'public'
+                  ? 'Companions can still see shared-trip sections when allowed.'
+                  : 'Turn profile visibility public first to share stats outside companions.'}
+              </Text>
             </View>
             <Switch
               value={publicStatsEnabled}
               onValueChange={setPublicStatsEnabled}
+              disabled={profileVisibility !== 'public'}
               trackColor={{ false: colors.border2, true: colors.accentBorder }}
-              thumbColor={publicStatsEnabled ? colors.accent : colors.text3}
+              thumbColor={publicStatsEnabled && profileVisibility === 'public' ? colors.accent : colors.text3}
             />
           </View>
         </ScrollView>
@@ -408,6 +449,53 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontSize: 15,
     fontWeight: '600',
     paddingVertical: 10,
+  },
+  privacyCard: {
+    marginTop: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    padding: 14,
+  },
+  privacyTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  privacySub: {
+    color: colors.text3,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  visibilityRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  visibilityChip: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.canvas,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  visibilityChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentBg,
+  },
+  visibilityChipText: {
+    color: colors.text3,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  visibilityChipTextActive: {
+    color: colors.accent,
   },
   switchRow: {
     marginTop: 18,
