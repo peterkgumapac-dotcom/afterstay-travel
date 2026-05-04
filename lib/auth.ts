@@ -246,11 +246,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (url.includes('join-trip') && joinParamMatch) {
         const code = decodeURIComponent(joinParamMatch[1]);
         const {
-          data: { session: currentSession },
-        } = await withAuthTimeout(supabase.auth.getSession(), 'Session restore timed out.').catch(() => ({
-          data: { session: null },
+          data: { user: currentUser },
+        } = await withAuthTimeout(supabase.auth.getUser(), 'Session restore timed out.').catch(() => ({
+          data: { user: null },
         }));
-        if (currentSession?.user?.id) {
+        if (currentUser?.id) {
           expoRouter.push({ pathname: '/join-trip', params: { code } });
         } else {
           await storePendingInviteCode(code);
@@ -264,11 +264,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (joinPathMatch) {
         const code = decodeURIComponent(joinPathMatch[1]);
         const {
-          data: { session: currentSession },
-        } = await withAuthTimeout(supabase.auth.getSession(), 'Session restore timed out.').catch(() => ({
-          data: { session: null },
+          data: { user: currentUser },
+        } = await withAuthTimeout(supabase.auth.getUser(), 'Session restore timed out.').catch(() => ({
+          data: { user: null },
         }));
-        if (currentSession?.user?.id) {
+        if (currentUser?.id) {
           expoRouter.push({ pathname: '/join-trip', params: { code } });
         } else {
           await storePendingInviteCode(code);

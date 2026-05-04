@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,7 +25,7 @@ import { getPrimaryBookerFlights } from '@/lib/flightSharing';
 import { completeOnboarding } from '@/lib/onboardingProgress';
 import { formatDatePHT } from '@/lib/utils';
 import type { Flight, Trip } from '@/lib/types';
-import { clearPendingInviteCode } from '@/lib/pendingInvite';
+import { clearPendingInviteCode, storePendingInviteCode } from '@/lib/pendingInvite';
 
 type Phase = 'code' | 'welcome' | 'flight';
 
@@ -34,7 +34,7 @@ export default function JoinTripScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const { code: initialCode } = useLocalSearchParams<{ code?: string }>();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [phase, setPhase] = useState<Phase>('code');
   const [code, setCode] = useState(initialCode?.toUpperCase() ?? '');
@@ -60,6 +60,12 @@ export default function JoinTripScreen() {
     [groupFlights, primaryBookerName],
   );
 
+  useEffect(() => {
+    if (name.trim()) return;
+    const fallbackName = user?.user_metadata?.full_name ?? user?.email?.split('@')[0] ?? '';
+    if (fallbackName) setName(fallbackName);
+  }, [name, user?.email, user?.user_metadata?.full_name]);
+
   const buildTravelNotes = (flightNote?: string) => {
     const stayNote = sharesStay ? 'Same stay confirmed' : 'Own stay';
     return [stayNote, flightNote].filter(Boolean).join(' · ');
@@ -74,13 +80,24 @@ export default function JoinTripScreen() {
   };
 
   const handleJoin = async () => {
-    if (!code.trim()) return Alert.alert('Enter an invite code');
+    const normalizedCode = code.trim().toUpperCase();
+    if (!normalizedCode) return Alert.alert('Enter an invite code');
+    if (authLoading) return Alert.alert('Still signing you in', 'Give AfterStay one more second to restore your session, then try again.');
+    if (!user?.id) {
+      await storePendingInviteCode(normalizedCode).catch(() => {});
+      Alert.alert(
+        'Sign in to join',
+        'We saved this invite code. Sign in, then AfterStay will bring you back to the trip join screen.',
+        [{ text: 'Sign in', onPress: () => router.replace('/auth/login' as never) }],
+      );
+      return;
+    }
     if (!name.trim()) return Alert.alert('Enter your name');
 
     setJoining(true);
     try {
-      const result = await joinTripByCode(code.trim(), name.trim());
-      await clearPendingInviteCode(code.trim()).catch(() => {});
+      const result = await joinTripByCode(normalizedCode, name.trim());
+      await clearPendingInviteCode(normalizedCode).catch(() => {});
       setTripInfo(result.trip);
       const [flights, members] = await Promise.all([
         getFlights(result.tripId).catch(() => [] as Flight[]),
@@ -92,7 +109,17 @@ export default function JoinTripScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPhase('welcome');
     } catch (e: any) {
-      Alert.alert('Could not join', e?.message ?? 'Invalid or expired code');
+      const message = e?.message ?? 'Invalid or expired code';
+      if (/sign in|auth/i.test(message)) {
+        await storePendingInviteCode(normalizedCode).catch(() => {});
+        Alert.alert(
+          'Sign in to join',
+          'We saved this invite code. Sign in, then AfterStay will bring you back to the trip join screen.',
+          [{ text: 'Sign in', onPress: () => router.replace('/auth/login' as never) }],
+        );
+      } else {
+        Alert.alert('Could not join', message);
+      }
     } finally {
       setJoining(false);
     }
@@ -212,7 +239,9 @@ export default function JoinTripScreen() {
             {joining ? (
               <ActivityIndicator color={colors.ink} />
             ) : (
-              <Text style={styles.primaryText}>Join trip</Text>
+              <Text style={styles.primaryText}>
+                {authLoading ? 'Checking sign-in...' : user?.id ? 'Join trip' : 'Sign in to join'}
+              </Text>
             )}
           </Pressable>
 
