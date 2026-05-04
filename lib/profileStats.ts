@@ -99,6 +99,26 @@ const COUNTRY_FLAGS: Record<string, string> = {
   US: '🇺🇸',
 };
 
+function flagFromIso2(code?: string | null): string | undefined {
+  const normalized = (code ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) return undefined;
+  const base = 127397;
+  return String.fromCodePoint(...[...normalized].map((char) => char.charCodeAt(0) + base));
+}
+
+function countryNameFromIso2(code?: string | null): string | undefined {
+  const normalized = (code ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) return undefined;
+  try {
+    const DisplayNames = (Intl as typeof Intl & {
+      DisplayNames?: new (locales: string[], options: { type: 'region' }) => { of: (code: string) => string | undefined };
+    }).DisplayNames;
+    return DisplayNames ? new DisplayNames(['en'], { type: 'region' }).of(normalized) ?? undefined : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const PLACE_COUNTRY_FALLBACKS: Record<string, string> = {
   astoria: 'Philippines',
   boracay: 'Philippines',
@@ -142,6 +162,8 @@ function tripNights(trip: Trip): number {
 
 function tripCountry(trip: Trip): string | undefined {
   if (trip.country) return trip.country;
+  const countryFromCode = countryNameFromIso2(trip.countryCode);
+  if (countryFromCode) return countryFromCode;
   const label = trip.destination || trip.name || '';
   const parts = label.split(',').map((part) => part.trim()).filter(Boolean);
   if (parts.length > 1) return normalizeCountryName(parts[parts.length - 1]) ?? parts[parts.length - 1];
@@ -154,11 +176,13 @@ function tripCountry(trip: Trip): string | undefined {
 export function normalizeCountryName(value?: string | null): string | undefined {
   const raw = (value ?? '').trim();
   if (!raw) return undefined;
+  const fromIso = countryNameFromIso2(raw);
+  if (fromIso) return fromIso;
   const normalized = raw.toLowerCase().replace(/\s+/g, ' ');
   if (COUNTRY_ALIASES[normalized]) return COUNTRY_ALIASES[normalized];
   const fallbackKey = Object.keys(PLACE_COUNTRY_FALLBACKS).find((place) => normalized.includes(place));
   if (fallbackKey) return PLACE_COUNTRY_FALLBACKS[fallbackKey];
-  return COUNTRY_CODES[raw] ? raw : undefined;
+  return COUNTRY_CODES[raw] || /^[A-Za-z][A-Za-z\s.'-]{2,}$/.test(raw) ? raw : undefined;
 }
 
 export function normalizeStatsCountries(stats: LifetimeStats): LifetimeStats {
@@ -175,6 +199,7 @@ export function normalizeStatsCountries(stats: LifetimeStats): LifetimeStats {
 }
 
 function countryCode(name: string): string {
+  if (/^[A-Za-z]{2}$/.test(name.trim())) return name.trim().toUpperCase();
   return COUNTRY_CODES[name] ?? name.slice(0, 2).toUpperCase();
 }
 
@@ -225,7 +250,7 @@ function destinationFromTrip(trip: Trip): ProfileMapDestination | undefined {
       label: trip.destination || trip.name,
       lat: trip.latitude,
       lng: trip.longitude,
-      flag: COUNTRY_FLAGS[code],
+      flag: COUNTRY_FLAGS[code] ?? flagFromIso2(code),
     };
   }
   const airportCode = extractAirportCode(trip.destination || trip.name);
@@ -333,7 +358,7 @@ export function buildCountriesVisited(stats: LifetimeStats): CountryVisited[] {
     return {
       code,
       name,
-      flag: COUNTRY_FLAGS[code] ?? '🌍',
+      flag: COUNTRY_FLAGS[code] ?? flagFromIso2(code) ?? '🌍',
     };
   });
 }
@@ -347,7 +372,7 @@ export function buildTravelProgressItems(stats: LifetimeStats, maxItems = 4): Tr
     return {
       code,
       label: name,
-      flag: COUNTRY_FLAGS[code] ?? '🌍',
+      flag: COUNTRY_FLAGS[code] ?? flagFromIso2(code) ?? '🌍',
       progress: countries.length <= 1 ? 1 : index / denominator,
     };
   });
@@ -362,7 +387,7 @@ export function buildTravelProgressItemsFromTrips(trips: Trip[], maxItems = 4): 
     return {
       code,
       label: rawLabel.replace(/,\s*(Philippines|Thailand|Vietnam|Indonesia|Singapore|Japan|South Korea|Korea|United States)$/i, ''),
-      flag: COUNTRY_FLAGS[country ? countryCode(country) : code] ?? '🌍',
+      flag: COUNTRY_FLAGS[country ? countryCode(country) : code] ?? flagFromIso2(country ? countryCode(country) : code) ?? '🌍',
     };
   }).filter((item) => !!item.label);
 

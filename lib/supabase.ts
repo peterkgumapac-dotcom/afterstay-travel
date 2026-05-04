@@ -12,6 +12,8 @@ import { invalidateTripCache } from './tabDataCache';
 import { compressImage } from './compressImage';
 import { MS_PER_DAY } from './utils';
 import { buildWishlistRow } from './wishlist';
+import { normalizeProfileHandle } from './profileHandle';
+import { normalizeTravelFlexVisualFromRpc, type TravelFlexVisual } from './profileTravelVisual';
 
 import type {
   Album,
@@ -3651,7 +3653,7 @@ export async function updateProfile(userId: string, updates: Partial<Omit<Profil
   if (updates.avatarUrl !== undefined) row.avatar_url = updates.avatarUrl || null;
   if (updates.coverPhotoUrl !== undefined) row.cover_photo_url = updates.coverPhotoUrl || null;
   if (updates.phone !== undefined) row.phone = updates.phone || null;
-  if (updates.handle !== undefined) row.handle = updates.handle || null;
+  if (updates.handle !== undefined) row.handle = normalizeProfileHandle(updates.handle) || null;
   if (updates.bio !== undefined) row.bio = updates.bio || null;
   if (updates.homeBase !== undefined) row.home_base = updates.homeBase || null;
   if (updates.profileVisibility !== undefined) row.profile_visibility = updates.profileVisibility;
@@ -3671,7 +3673,7 @@ export async function updateProfile(userId: string, updates: Partial<Omit<Profil
   if (isOwnProfile && canUseProfileRpc) {
     const { error: rpcError } = await supabase.rpc('upsert_own_profile', {
       p_full_name: updates.fullName ?? null,
-      p_handle: updates.handle ?? null,
+      p_handle: updates.handle !== undefined ? normalizeProfileHandle(updates.handle) : null,
       p_avatar_url: updates.avatarUrl ?? null,
       p_phone: updates.phone ?? null,
       p_socials: updates.socials ?? null,
@@ -3703,7 +3705,7 @@ export async function updateProfile(userId: string, updates: Partial<Omit<Profil
 }
 
 export async function isHandleAvailable(handle: string, currentUserId: string): Promise<boolean> {
-  const cleaned = handle.trim().toLowerCase();
+  const cleaned = normalizeProfileHandle(handle);
   if (!cleaned) return false;
 
   const { data: rpcData, error: rpcError } = await supabase.rpc('is_handle_available', {
@@ -3846,6 +3848,30 @@ export async function searchProfiles(query: string): Promise<ProfileSearchResult
   const merged = new Map<string, ProfileSearchResult>();
   for (const result of [...companionResults, ...directResults]) merged.set(result.id, result);
   return [...merged.values()].slice(0, 20);
+}
+
+export async function resolveProfileIdentifier(identifier: string): Promise<string | null> {
+  const raw = identifier.trim();
+  if (!raw) return null;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
+    return raw;
+  }
+
+  const handle = normalizeProfileHandle(raw);
+  if (!handle) return null;
+  const exactMatches = await searchProfiles(handle).catch(() => []);
+  const exact = exactMatches.find((profile) => normalizeProfileHandle(profile.handle) === handle);
+  if (exact) return exact.id;
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, handle, profile_visibility')
+    .eq('profile_visibility', 'public')
+    .ilike('handle', handle)
+    .limit(1)
+    .maybeSingle();
+
+  return data?.id as string | null;
 }
 
 export async function getPublicProfilePosts(userId: string, limit = 20, offset = 0): Promise<FeedPost[]> {
@@ -4879,6 +4905,16 @@ type PublicProfileRpcRow = {
   followersCount?: number;
   followingCount?: number;
   viewerIsFollowing?: boolean;
+  viewerIsFollowedBy?: boolean;
+  viewerIsMutualFollow?: boolean;
+  relationship?: {
+    isSelf?: boolean;
+    isCompanion?: boolean;
+    viewerFollowsUser?: boolean;
+    userFollowsViewer?: boolean;
+    isMutualFollow?: boolean;
+    canMessage?: boolean;
+  };
 };
 
 function mapPublicProfileRpcToProfileRow(row: PublicProfileRpcRow): Record<string, unknown> {
@@ -4919,6 +4955,26 @@ async function getPublicProfileRpc(
     return { profile: null, unavailable: false };
   }
   return { profile: data as PublicProfileRpcRow, unavailable: false };
+}
+
+export async function getProfileTravelVisual(targetUserId: string): Promise<TravelFlexVisual | null> {
+  const { data, error } = await supabase.rpc('get_profile_travel_visual', {
+    p_user_id: targetUserId,
+  });
+
+  if (error) {
+    const canFallback =
+      error.code === 'PGRST202' ||
+      error.message?.includes('Could not find the function') ||
+      error.message?.includes('schema cache') ||
+      error.message?.includes('get_profile_travel_visual');
+    if (!canFallback && __DEV__) {
+      console.warn('[getProfileTravelVisual] failed:', error.message);
+    }
+    return null;
+  }
+
+  return normalizeTravelFlexVisualFromRpc(data);
 }
 
 /** Get companion status between current user and target. */
@@ -5146,23 +5202,31 @@ export async function getFollowState(targetUserId: string): Promise<FollowState>
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { isFollowing: false, followersCount: 0, followingCount: 0 };
+  if (!user) return { isFollowing: false, isFollowedBy: false, followersCount: 0, followingCount: 0 };
 
   const publicProfile = (await getPublicProfileRpc(targetUserId)).profile;
   if (publicProfile) {
+    const isFollowedBy = !!(publicProfile.viewerIsFollowedBy ?? publicProfile.relationship?.userFollowsViewer);
     return {
       isFollowing: !!publicProfile.viewerIsFollowing,
+      isFollowedBy,
       followersCount: Number(publicProfile.followersCount ?? 0),
       followingCount: Number(publicProfile.followingCount ?? 0),
     };
   }
 
-  const [following, followersCount, followingCount] = await Promise.all([
+  const [following, followedBy, followersCount, followingCount] = await Promise.all([
     supabase
       .from('follows')
       .select('following_id')
       .eq('follower_id', user.id)
       .eq('following_id', targetUserId)
+      .maybeSingle(),
+    supabase
+      .from('follows')
+      .select('follower_id')
+      .eq('follower_id', targetUserId)
+      .eq('following_id', user.id)
       .maybeSingle(),
     supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', targetUserId),
     supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', targetUserId),
@@ -5170,6 +5234,7 @@ export async function getFollowState(targetUserId: string): Promise<FollowState>
 
   return {
     isFollowing: !!following.data,
+    isFollowedBy: !!followedBy.data,
     followersCount: followersCount.count ?? 0,
     followingCount: followingCount.count ?? 0,
   };

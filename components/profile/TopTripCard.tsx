@@ -69,15 +69,15 @@ export default function TopTripCard({ trip, photoCount, photoUrls = [], onPress 
 const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   card: {
     marginHorizontal: 16,
-    minHeight: 246,
-    borderRadius: 16,
+    minHeight: 218,
+    borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: _colors.card,
     borderWidth: 1,
     borderColor: _colors.border,
   },
   mosaic: {
-    height: 138,
+    height: 118,
     flexDirection: 'row',
     gap: 3,
   },
@@ -86,7 +86,7 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
     height: '100%',
   },
   sideRail: {
-    width: 96,
+    width: 88,
     gap: 3,
   },
   sideImage: {
@@ -95,20 +95,20 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
   },
   fallback: {
     width: '100%',
-    height: 138,
+    height: 118,
     backgroundColor: _colors.accentBg,
   },
   imageShade: {
     position: 'absolute',
-    top: 56,
+    top: 46,
     left: 0,
     right: 0,
-    height: 82,
+    height: 72,
   },
   content: {
-    paddingHorizontal: 13,
-    paddingTop: 10,
-    paddingBottom: 11,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 9,
   },
   badge: {
     position: 'absolute',
@@ -129,13 +129,13 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
   },
   destination: {
     color: _colors.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0,
   },
   dates: {
     color: _colors.text2,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
   },
@@ -148,14 +148,14 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) => StyleSheet
   },
   meta: {
     color: _colors.text2,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 18,
-    marginTop: 10,
+    marginTop: 7,
   },
   actionItem: {
     flexDirection: 'row',

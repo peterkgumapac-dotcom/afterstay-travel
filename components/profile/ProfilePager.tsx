@@ -48,15 +48,15 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
   const pulseDirection = active === 0 ? 1 : -1;
   const pulseTranslate = pulse.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, pulseDirection * 5],
+    outputRange: [0, pulseDirection * 3],
   });
   const pulseScale = pulse.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: [1, 1.06, 1],
+    outputRange: [1, 1.03, 1],
   });
   const pulseOpacity = pulse.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: [0.72, 1, 0.72],
+    outputRange: [0.22, 0.42, 0.22],
   });
 
   useEffect(() => {
@@ -123,9 +123,9 @@ export default function ProfilePager({ profilePage, memoriesPage }: ProfilePager
             accessibilityLabel={active === 0 ? 'Show memories' : 'Show profile'}
           >
             {active === 0 ? (
-              <ChevronRight size={21} color={colors.accent} strokeWidth={2.6} />
+              <ChevronRight size={18} color={colors.accent} strokeWidth={2.5} />
             ) : (
-              <ChevronLeft size={21} color={colors.accent} strokeWidth={2.6} />
+              <ChevronLeft size={18} color={colors.accent} strokeWidth={2.5} />
             )}
           </Pressable>
         </Animated.View>
@@ -153,26 +153,26 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   edgeRail: {
     position: 'absolute',
-    top: 332,
+    top: 302,
     zIndex: 14,
     elevation: 8,
   },
   edgeRailRight: {
-    right: -2,
+    right: -7,
   },
   edgeRailLeft: {
-    left: -2,
+    left: -7,
   },
   edgePulse: {
-    borderRadius: 22,
+    borderRadius: 18,
   },
   edgeButton: {
-    width: 31,
-    height: 42,
-    borderRadius: 16,
+    width: 24,
+    height: 34,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: 'rgba(253,248,235,0.72)',
+    borderColor: 'rgba(217,202,171,0.62)',
+    backgroundColor: 'rgba(253,248,235,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },

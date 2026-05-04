@@ -59,6 +59,7 @@ import {
   type ProfileSocials,
   type UserPaymentQr,
 } from '@/lib/supabase';
+import { isValidProfileHandle, normalizeProfileHandle } from '@/lib/profileHandle';
 import type { CompanionProfile } from '@/lib/types';
 import type { Trip } from '@/lib/types';
 
@@ -108,8 +109,6 @@ interface ProfileState {
 const STORAGE_PROFILE = 'settings_profile';
 
 const DEFAULT_PROFILE: ProfileState = { name: 'Traveler', avatarUri: '', handle: '', phone: '', socials: {} };
-
-const HANDLE_REGEX = /^[a-z][a-z0-9_]{2,19}$/;
 
 function storageProfileKey(userId?: string | null): string {
   return `${STORAGE_PROFILE}:${userId ?? 'anon'}`;
@@ -246,7 +245,7 @@ export default function SettingsScreen() {
 
   const handleSaveProfile = async () => {
     const trimmedName = editName.trim();
-    const trimmedHandle = editHandle.trim().toLowerCase();
+    const trimmedHandle = normalizeProfileHandle(editHandle);
     if (trimmedName.length === 0) return;
     if (trimmedHandle && handleStatus !== 'available' && trimmedHandle !== profile.handle) return;
 
@@ -266,7 +265,7 @@ export default function SettingsScreen() {
   };
 
   const onHandleChange = (raw: string) => {
-    const cleaned = raw.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const cleaned = normalizeProfileHandle(raw);
     setEditHandle(cleaned);
 
     if (handleCheckTimer.current) clearTimeout(handleCheckTimer.current);
@@ -279,7 +278,7 @@ export default function SettingsScreen() {
       setHandleStatus('available');
       return;
     }
-    if (!HANDLE_REGEX.test(cleaned)) {
+    if (!isValidProfileHandle(cleaned)) {
       setHandleStatus('invalid');
       return;
     }

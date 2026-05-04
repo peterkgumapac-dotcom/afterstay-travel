@@ -18,8 +18,8 @@ interface ProfileFlightMapCardProps {
 }
 
 const VIEW_W = 360;
-const VIEW_H = 210;
-const PAD = 32;
+const VIEW_H = 144;
+const PAD = 24;
 
 const COUNTRY_DESTINATIONS: Record<string, ProfileMapDestination> = {
   Philippines: { code: 'PH', label: 'Philippines', lat: 12.8797, lng: 121.7740, flag: '🇵🇭' },
@@ -90,15 +90,17 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
   return (
     <View style={[s.card, isEmptyProfile && s.compactCard]}>
       <View style={s.head}>
-        <Text style={s.kicker}>Lifetime · Since {stats.earliestTripDate ? new Date(stats.earliestTripDate).getFullYear() : 'now'}</Text>
-        <View style={s.distanceRow}>
-          <Text style={s.distance}>{totalKm.toLocaleString()}</Text>
-          <Text style={s.distanceUnit}>km traveled</Text>
+        <View>
+          <Text style={s.kicker}>Lifetime · Since {stats.earliestTripDate ? new Date(stats.earliestTripDate).getFullYear() : 'now'}</Text>
+          <View style={s.distanceRow}>
+            <Text style={s.distance}>{totalKm.toLocaleString()}</Text>
+            <Text style={s.distanceUnit}>km traveled</Text>
+          </View>
         </View>
       </View>
 
       <View style={[s.mapWrap, isEmptyProfile && s.mapWrapCompact]}>
-        <Svg width="100%" height={isEmptyProfile ? 104 : 132} viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
+        <Svg width="100%" height="100%" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
           <Ellipse cx={104} cy={92} rx={70} ry={34} fill={colors.accentBg} opacity={0.45} />
           <Ellipse cx={238} cy={86} rx={92} ry={38} fill={colors.accentBg} opacity={0.36} />
           <Ellipse cx={210} cy={144} rx={48} ry={24} fill={colors.accentBg} opacity={0.32} />
@@ -200,23 +202,24 @@ export default function ProfileFlightMapCard({ mapData, stats }: ProfileFlightMa
 
 const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.create({
   card: {
-    marginHorizontal: 16,
-    borderRadius: 15,
+    marginHorizontal: 14,
+    borderRadius: 11,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
     overflow: 'hidden',
   },
   compactCard: {
-    borderRadius: 20,
+    borderRadius: 16,
   },
   head: {
-    paddingHorizontal: 14,
-    paddingTop: 11,
+    paddingHorizontal: 12,
+    paddingTop: 7,
+    paddingBottom: 2,
   },
   kicker: {
     color: colors.accent,
-    fontSize: 10,
+    fontSize: 8.5,
     fontWeight: '800',
     letterSpacing: 2,
     textTransform: 'uppercase',
@@ -224,35 +227,35 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   distanceRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 8,
-    marginTop: 6,
+    gap: 7,
+    marginTop: 2,
   },
   distance: {
     color: colors.text,
-    fontSize: 27,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0,
   },
   distanceUnit: {
     color: colors.text2,
-    fontSize: 13,
+    fontSize: 10.5,
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   mapWrap: {
-    height: 140,
+    height: 50,
     position: 'relative',
   },
   mapWrapCompact: {
-    height: 112,
+    height: 46,
   },
   emptyMap: {
     position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 12,
-    minHeight: 34,
-    borderRadius: 14,
+    left: 14,
+    right: 14,
+    bottom: 7,
+    minHeight: 26,
+    borderRadius: 11,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.canvas,
@@ -262,19 +265,19 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     gap: 8,
   },
   emptyMapCompact: {
-    bottom: 18,
+    bottom: 10,
   },
   emptyMapText: {
     color: colors.text3,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '700',
   },
   flag: {
     position: 'absolute',
-    fontSize: 19,
+    fontSize: 13,
   },
   footer: {
-    minHeight: 52,
+    minHeight: 34,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     flexDirection: 'row',
@@ -283,7 +286,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 0,
     borderRightWidth: 1,
     borderRightColor: colors.border,
   },
@@ -292,12 +295,12 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   fvalue: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '800',
   },
   flabel: {
     color: colors.text3,
-    fontSize: 9,
+    fontSize: 7.5,
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 1,

@@ -34,8 +34,10 @@ import {
   getMoments,
   getMutualTrips,
   getProfile,
+  getProfileTravelVisual,
   getPublicProfilePosts,
   getSharedMomentsWith,
+  resolveProfileIdentifier,
   toggleFollow,
 } from '@/lib/supabase';
 import type { Profile } from '@/lib/supabase';
@@ -51,19 +53,15 @@ import CountriesVisited from '@/components/profile/CountriesVisited';
 import ProfileCustomizeSheet from '@/components/profile/ProfileCustomizeSheet';
 import ProfilePager from '@/components/profile/ProfilePager';
 import ProfileCoverHeader from '@/components/profile/ProfileCoverHeader';
-import ProfileFlightMapCard from '@/components/profile/ProfileFlightMapCard';
 import ProfileStatsStrip from '@/components/profile/ProfileStatsStrip';
-import TravelProgressCard from '@/components/profile/TravelProgressCard';
+import TravelFlexCard from '@/components/profile/TravelFlexCard';
+import { buildProfileCoverPhotoUrl } from '@/lib/profileStats';
 import {
-  buildCountriesVisited,
-  buildProfileCoverPhotoUrl,
-  buildProfileMapData,
-  buildProfileStatsFromTrips,
-  buildTravelProgressItems,
-  buildTravelProgressItemsFromTrips,
-  buildTopTrip,
-  normalizeStatsCountries,
-} from '@/lib/profileStats';
+  buildProfileRelationship,
+  buildProfileTravelFacts,
+} from '@/lib/profileIntelligence';
+import type { TravelFlexVisual } from '@/lib/profileTravelVisual';
+import type { FollowState } from '@/lib/types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CARD_W = (SCREEN_W - 48 - 12) / 2;
@@ -108,16 +106,19 @@ export default function CompanionProfileScreen() {
   const [profileFlights, setProfileFlights] = useState<(Flight & { tripId?: string })[]>([]);
   const [sharedMoments, setSharedMoments] = useState<Moment[]>([]);
   const [publicMoments, setPublicMoments] = useState<Moment[]>([]);
+  const [remoteTravelVisual, setRemoteTravelVisual] = useState<TravelFlexVisual | null>(null);
   const [loading, setLoading] = useState(true);
   const [tripFilter, setTripFilter] = useState<TripFilter>('all');
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followState, setFollowState] = useState<FollowState>({ isFollowing: false, isFollowedBy: false, followersCount: 0, followingCount: 0 });
   const [followBusy, setFollowBusy] = useState(false);
   const [customizeVisible, setCustomizeVisible] = useState(false);
   const [selectedMomentIndex, setSelectedMomentIndex] = useState<number | null>(null);
+  const [resolvedUserId, setResolvedUserId] = useState<string | null>(null);
   const loadSeqRef = useRef(0);
 
-  const targetUserId = Array.isArray(userId) ? userId[0] : userId;
-  const isSelf = user?.id === targetUserId;
+  const targetIdentifier = Array.isArray(userId) ? userId[0] : userId;
+  const isSelf = user?.id === resolvedUserId;
 
   const resetProfileState = useCallback(() => {
     setProfile(null);
@@ -126,6 +127,8 @@ export default function CompanionProfileScreen() {
     setProfileFlights([]);
     setSharedMoments([]);
     setPublicMoments([]);
+    setRemoteTravelVisual(null);
+    setResolvedUserId(null);
     setIsFollowing(false);
     setSelectedMomentIndex(null);
   }, []);
@@ -140,26 +143,36 @@ export default function CompanionProfileScreen() {
   }, [router]);
 
   const load = useCallback(async () => {
-    if (!targetUserId) return;
+    if (!targetIdentifier) return;
     const seq = ++loadSeqRef.current;
     const shouldApply = () => seq === loadSeqRef.current;
     resetProfileState();
     setLoading(true);
     try {
+      const targetUserId = await resolveProfileIdentifier(targetIdentifier);
+      if (!shouldApply()) return;
+      setResolvedUserId(targetUserId);
+      if (!targetUserId) {
+        setProfile(null);
+        setRemoteTravelVisual(null);
+        return;
+      }
       const profileResult = await getCompanionProfile(targetUserId);
       if (!shouldApply()) return;
       const viewingSelf = user?.id === targetUserId;
-      const [tripsResult, followResult, ownProfileResult, lifetimeResult] = await Promise.allSettled([
+      const [tripsResult, followResult, ownProfileResult, lifetimeResult, travelVisualResult] = await Promise.allSettled([
         viewingSelf ? getAllUserTrips(targetUserId) : getMutualTrips(targetUserId),
         getFollowState(targetUserId),
         viewingSelf ? getProfile(targetUserId) : Promise.resolve(null),
         getLifetimeStats(targetUserId),
+        getProfileTravelVisual(targetUserId),
       ]);
       if (!shouldApply()) return;
       const trips = tripsResult.status === 'fulfilled' ? tripsResult.value : [];
-      const follow = followResult.status === 'fulfilled' ? followResult.value : { isFollowing: false };
+      const follow = followResult.status === 'fulfilled' ? followResult.value : { isFollowing: false, isFollowedBy: false, followersCount: 0, followingCount: 0 };
       const resolvedOwnProfile = ownProfileResult.status === 'fulfilled' ? ownProfileResult.value : null;
       const lifetimeStats = lifetimeResult.status === 'fulfilled' ? lifetimeResult.value : null;
+      const travelVisual = travelVisualResult.status === 'fulfilled' ? travelVisualResult.value : null;
       const sharedMomentsPromise = viewingSelf
         ? Promise.allSettled(trips.slice(0, 12).map((trip) => getMoments(trip.id)))
           .then((results) => results.flatMap((result) => result.status === 'fulfilled' ? result.value : []))
@@ -185,23 +198,26 @@ export default function CompanionProfileScreen() {
       setProfileFlights(flights);
       setSharedMoments(moments);
       setPublicMoments(publicProfileMoments);
+      setRemoteTravelVisual(travelVisual);
       setIsFollowing(follow.isFollowing);
+      setFollowState(follow);
     } catch (err) {
       if (__DEV__) console.warn('[Profile] load error:', err);
       if (shouldApply()) resetProfileState();
     } finally {
       if (shouldApply()) setLoading(false);
     }
-  }, [resetProfileState, targetUserId, user?.id]);
+  }, [resetProfileState, targetIdentifier, user?.id]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleFollowPress = async () => {
-    if (!targetUserId || followBusy) return;
+    if (!resolvedUserId || followBusy) return;
     setFollowBusy(true);
     try {
-      const next = await toggleFollow(targetUserId);
+      const next = await toggleFollow(resolvedUserId);
       setIsFollowing(next);
+      setFollowState((current) => ({ ...current, isFollowing: next }));
       Haptics.selectionAsync();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Follow is unavailable right now.';
@@ -217,9 +233,14 @@ export default function CompanionProfileScreen() {
   };
 
   const handleMessagePress = () => {
+    const canMessage = !!profile && !isSelf && (profile.companionStatus === 'companion' || (followState.isFollowing && followState.isFollowedBy));
+    if (!canMessage) {
+      Alert.alert('Message locked', 'Message unlocks after you share a trip or follow each other.');
+      return;
+    }
     const sharedTrip = mutualTrips[0];
     if (!sharedTrip?.id) {
-      Alert.alert('No shared trip yet', 'Message opens after you share a trip together.');
+      Alert.alert('Direct message coming soon', 'You follow each other. One-to-one travel messages are next; shared trip chats are available today.');
       return;
     }
     router.push({ pathname: '/group-chat', params: { tripId: sharedTrip.id } } as never);
@@ -274,28 +295,37 @@ export default function CompanionProfileScreen() {
     );
   }
 
-  const isCompanion = profile.companionStatus === 'companion';
+  const relationship = buildProfileRelationship({
+    viewerId: user?.id,
+    profileUserId: resolvedUserId,
+    companionStatus: profile.companionStatus,
+    followState,
+  });
+  const isCompanion = relationship.isCompanion;
   const privacy = profile.companionPrivacy;
   const firstName = profile.fullName.split(' ')[0];
-  const profileMoments = isSelf || isCompanion ? sharedMoments : publicMoments;
-  const computedStats = buildProfileStatsFromTrips({ trips: mutualTrips, moments: profileMoments, flights: profileFlights });
-  const hasLiveCountryStats = computedStats.countriesList.length > 0;
-  const rawStats = profile.lifetimeStats
-    ? {
-      ...profile.lifetimeStats,
-      totalCountries: hasLiveCountryStats ? computedStats.totalCountries : profile.lifetimeStats.totalCountries,
-      countriesList: hasLiveCountryStats ? computedStats.countriesList : profile.lifetimeStats.countriesList,
-      totalMiles: computedStats.totalMiles > 0 ? computedStats.totalMiles : profile.lifetimeStats.totalMiles,
-      totalMoments: Math.max(profile.lifetimeStats.totalMoments, computedStats.totalMoments),
-    }
-    : computedStats;
-  const stats = normalizeStatsCountries(rawStats);
-  const countries = buildCountriesVisited(stats);
-  const tripProgress = buildTravelProgressItemsFromTrips(mutualTrips);
-  const travelProgress = tripProgress.length > 0 ? tripProgress : buildTravelProgressItems(stats);
-  const topTrip = buildTopTrip(mutualTrips);
-  const mapData = buildProfileMapData({ trips: mutualTrips, flights: profileFlights, homeBase: profile.homeBase });
-  const canSeeStats = isSelf || isCompanion || !!profile.publicStatsEnabled;
+  const profileMoments = relationship.isSelf || isCompanion ? sharedMoments : publicMoments;
+  const profileFacts = buildProfileTravelFacts({
+    trips: mutualTrips,
+    moments: profileMoments,
+    flights: profileFlights,
+    homeBase: profile.homeBase,
+    fallbackStats: profile.lifetimeStats,
+    isCompanion,
+  });
+  const stats = profileFacts.stats;
+  const countries = profileFacts.countries;
+  const topTrip = profileFacts.topTrip;
+  const remoteHasTravel = !!remoteTravelVisual && (
+    remoteTravelVisual.counts.trips > 0
+    || remoteTravelVisual.counts.places > 0
+    || remoteTravelVisual.counts.countries > 0
+  );
+  const localHasTravel = profileFacts.travelVisual.counts.trips > 0
+    || profileFacts.travelVisual.counts.places > 0
+    || profileFacts.travelVisual.counts.countries > 0;
+  const travelVisual = remoteHasTravel || !localHasTravel ? remoteTravelVisual ?? profileFacts.travelVisual : profileFacts.travelVisual;
+  const canSeeStats = relationship.isSelf || isCompanion || !!profile.publicStatsEnabled;
   const memoryPhotoUrls = profileMoments.map((moment) => moment.photo).filter((url): url is string => !!url);
   const coverPhotoUrl = buildProfileCoverPhotoUrl({
     explicitCoverUrl: profile.coverPhotoUrl,
@@ -353,8 +383,11 @@ export default function CompanionProfileScreen() {
               bio={profile.bio}
               homeBase={profile.homeBase}
               companionStatus={profile.companionStatus}
-              isSelf={isSelf}
+              isSelf={relationship.isSelf}
               isFollowing={isFollowing}
+              isCompanion={relationship.isCompanion}
+              canMessage={relationship.canMessage}
+              badges={profileFacts.badges}
               stats={stats}
               topTrip={topTrip}
               onCustomize={() => setCustomizeVisible(true)}
@@ -386,25 +419,21 @@ export default function CompanionProfileScreen() {
             )}
 
             {canSeeStats && (privacy.showStats || isSelf || profile.publicStatsEnabled) ? (
-              <ProfileFlightMapCard mapData={mapData} stats={stats} />
+              <TravelFlexCard visual={travelVisual} />
             ) : null}
 
             {topTrip && (isSelf || isCompanion || profile.profileVisibility === 'public') && (
               <>
-                <GroupHeader kicker="TOP TRIP" title="Travel flex" colors={colors as any} />
+                <View style={s.compactSectionHead}>
+                  <Text style={s.compactKicker}>Top trip</Text>
+                  <Text style={s.compactTitle}>Featured trip</Text>
+                </View>
                 <TopTripCard
                   trip={topTrip}
                   photoCount={sharedMoments.length}
                   photoUrls={memoryPhotoUrls}
                   onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: topTrip.id } } as never)}
                 />
-              </>
-            )}
-
-            {canSeeStats && travelProgress.length > 0 && (
-              <>
-                <GroupHeader kicker="TRAVEL PROGRESS" title="Where you've been" colors={colors as any} />
-                <TravelProgressCard items={travelProgress} stats={stats} />
               </>
             )}
 
@@ -421,7 +450,7 @@ export default function CompanionProfileScreen() {
               <>
                 <GroupHeader
                   kicker="TRIPS TOGETHER"
-                  title="Travel memories"
+                  title="Travel History"
                   colors={colors as any}
                   action={mutualTrips.length > 0 ? (
                     <Text style={s.link}>All {mutualTrips.length}</Text>
@@ -698,25 +727,25 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     },
     topbar: {
       position: 'absolute',
-      top: 4,
+      top: 8,
       left: 0,
       right: 0,
       zIndex: 100000,
       elevation: 1000,
       flexDirection: 'row',
       justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 4,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
     },
     iconBtn: {
-      width: 46,
-      height: 46,
-      borderRadius: 23,
+      width: 50,
+      height: 50,
+      borderRadius: 25,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(31,27,23,0.58)',
+      backgroundColor: 'rgba(31,27,23,0.68)',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.28)',
+      borderColor: 'rgba(255,255,255,0.34)',
     },
     scroll: {
       paddingBottom: 96,
@@ -737,6 +766,25 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       fontSize: 12,
       fontWeight: '500',
       color: colors.accent,
+    },
+    compactSectionHead: {
+      paddingHorizontal: 16,
+      paddingTop: 14,
+      paddingBottom: 8,
+    },
+    compactKicker: {
+      color: colors.text3,
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 2.4,
+      textTransform: 'uppercase',
+    },
+    compactTitle: {
+      color: colors.text,
+      fontSize: 21,
+      fontWeight: '800',
+      letterSpacing: 0,
+      marginTop: 2,
     },
     emptyText: {
       color: colors.text3,

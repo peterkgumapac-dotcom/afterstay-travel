@@ -8,6 +8,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { CachedImage } from '@/components/CachedImage';
 import { TripCollage } from '@/components/trip/TripCollage';
 import { lightColors, useTheme } from '@/constants/ThemeContext';
+import type { ProfileBadge } from '@/lib/profileIntelligence';
 import type { CompanionStatus, LifetimeStats, Trip } from '@/lib/types';
 
 interface ProfileCoverHeaderProps {
@@ -20,6 +21,9 @@ interface ProfileCoverHeaderProps {
   companionStatus: CompanionStatus;
   isSelf: boolean;
   isFollowing: boolean;
+  isCompanion?: boolean;
+  canMessage?: boolean;
+  badges?: ProfileBadge[];
   followBusy?: boolean;
   stats: LifetimeStats;
   topTrip?: Trip | null;
@@ -28,12 +32,15 @@ interface ProfileCoverHeaderProps {
   onMessage?: () => void;
 }
 
-function buildTags(stats: LifetimeStats, homeBase?: string): string[] {
-  const tags = ['Travel flex'];
-  if (stats.totalMoments > 0) tags.push('Photo enthusiast');
-  if (stats.totalCountries > 1) tags.push('Country collector');
+function buildTags(stats: LifetimeStats, homeBase?: string, badges?: ProfileBadge[]): string[] {
+  const factBadges = (badges ?? []).map((badge) => badge.label).filter(Boolean);
+  if (factBadges.length > 0) return factBadges.slice(0, 3);
+
+  const tags = ['Travel Flex'];
+  if (stats.totalMoments >= 10) tags.push('Memory Maker');
+  if (stats.totalCountries > 1) tags.push('Globetrotter');
   if (homeBase) tags.push(homeBase);
-  return tags.slice(0, 4);
+  return tags.slice(0, 3);
 }
 
 export default function ProfileCoverHeader({
@@ -46,6 +53,9 @@ export default function ProfileCoverHeader({
   companionStatus,
   isSelf,
   isFollowing,
+  isCompanion = companionStatus === 'companion',
+  canMessage = false,
+  badges,
   followBusy = false,
   stats,
   topTrip,
@@ -57,10 +67,10 @@ export default function ProfileCoverHeader({
   const colors = lightColors;
   const s = getStyles(colors);
   const initial = (fullName || 'Traveler').charAt(0).toUpperCase();
-  const tags = buildTags(stats, homeBase);
+  const tags = buildTags(stats, homeBase, badges);
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
   const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
-  const coverHeight = hasCoverVisual ? Math.min(258, Math.max(228, width * 0.58)) : 214;
+  const coverHeight = hasCoverVisual ? Math.min(224, Math.max(198, width * 0.5)) : 176;
 
   return (
     <View style={s.container}>
@@ -132,7 +142,7 @@ export default function ProfileCoverHeader({
           <Text style={s.name} numberOfLines={1} ellipsizeMode="tail">
             {fullName || 'Traveler'}
           </Text>
-          {companionStatus === 'companion' ? (
+          {isCompanion ? (
             <View style={s.verifiedDot}>
               <Check size={11} color={colors.canvas} strokeWidth={3} />
             </View>
@@ -153,6 +163,12 @@ export default function ProfileCoverHeader({
             </View>
           ))}
         </View>
+        {!isSelf && isCompanion ? (
+          <View style={s.companionPill}>
+            <Check size={12} color={colors.accent} strokeWidth={2.4} />
+            <Text style={s.companionText}>Companion from a shared trip</Text>
+          </View>
+        ) : null}
 
         <View style={s.actions}>
           {isSelf ? (
@@ -160,11 +176,6 @@ export default function ProfileCoverHeader({
               <Pencil size={16} color={colors.canvas} />
               <Text style={s.primaryText}>Customize</Text>
             </TouchableOpacity>
-          ) : companionStatus === 'companion' ? (
-            <View style={s.primaryBtn}>
-              <Check size={16} color={colors.canvas} />
-              <Text style={s.primaryText}>Companion</Text>
-            </View>
           ) : (
             <TouchableOpacity
               style={[s.primaryBtn, followBusy && { opacity: 0.7 }]}
@@ -182,15 +193,20 @@ export default function ProfileCoverHeader({
               <Text style={s.primaryText}>{isFollowing ? 'Following' : 'Follow'}</Text>
             </TouchableOpacity>
           )}
-          {!isSelf ? (
+          {isSelf ? (
+            <TouchableOpacity style={s.secondaryBtn} onPress={onCustomize} activeOpacity={0.75}>
+              <MessageCircle size={15} color={colors.accent} />
+              <Text style={s.secondaryText}>Edit details</Text>
+            </TouchableOpacity>
+          ) : canMessage ? (
             <TouchableOpacity style={s.secondaryBtn} onPress={onMessage} activeOpacity={0.75}>
-              <Send size={16} color={colors.accent} />
+              <Send size={15} color={colors.accent} />
               <Text style={s.secondaryText}>Message</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={s.secondaryBtn} onPress={onCustomize} activeOpacity={0.75}>
-              <MessageCircle size={16} color={colors.accent} />
-              <Text style={s.secondaryText}>Edit details</Text>
+            <TouchableOpacity style={[s.secondaryBtn, s.secondaryDisabled]} activeOpacity={1} disabled>
+              <MessageCircle size={15} color={colors.text3} />
+              <Text style={[s.secondaryText, s.secondaryTextDisabled]}>Message</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={s.iconBtn} activeOpacity={0.75}>
@@ -223,7 +239,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   levelBadge: {
     position: 'absolute',
     right: 18,
-    bottom: 22,
+    bottom: 18,
     zIndex: 4,
     minHeight: 28,
     borderRadius: 14,
@@ -241,7 +257,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   coverEditPill: {
     position: 'absolute',
     right: 18,
-    top: 72,
+    top: 58,
     zIndex: 4,
     minHeight: 28,
     borderRadius: 14,
@@ -257,30 +273,30 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontWeight: '800',
   },
   sheet: {
-    marginTop: -22,
-    paddingHorizontal: 18,
-    paddingTop: 54,
-    paddingBottom: 8,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    marginTop: -12,
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 4,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     backgroundColor: colors.canvas,
   },
   avatarWrap: {
     position: 'absolute',
-    top: -54,
-    left: 18,
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 4,
+    top: -34,
+    left: 16,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 3,
     borderColor: colors.canvas,
     backgroundColor: colors.canvas,
   },
   avatar: {
     width: '100%',
     height: '100%',
-    borderRadius: 42,
-    borderWidth: 3,
+    borderRadius: 29,
+    borderWidth: 2.5,
     borderColor: colors.accent,
   },
   avatarFallback: {
@@ -290,7 +306,7 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   initial: {
     color: colors.text,
-    fontSize: 30,
+    fontSize: 22,
     fontWeight: '800',
   },
   nameRow: {
@@ -301,26 +317,26 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   name: {
     flexShrink: 1,
     color: colors.text,
-    fontSize: 25,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: 0,
   },
   verifiedDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 17,
+    height: 17,
+    borderRadius: 8.5,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   handle: {
     color: colors.accent,
-    fontSize: 14,
+    fontSize: 11.5,
     fontWeight: '700',
-    marginTop: 4,
+    marginTop: 2,
   },
   aboutInline: {
-    marginTop: 7,
+    marginTop: 3,
   },
   aboutLabel: {
     display: 'none',
@@ -332,70 +348,94 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
   },
   bio: {
     color: colors.text2,
-    fontSize: 13.5,
-    lineHeight: 18,
+    fontSize: 11.5,
+    lineHeight: 15,
   },
   tags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 9,
+    gap: 5,
+    marginTop: 5,
   },
   tag: {
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   tagText: {
     color: colors.text2,
-    fontSize: 11,
+    fontSize: 9.5,
     fontWeight: '700',
+  },
+  companionPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentBg,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  companionText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '800',
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 11,
+    gap: 7,
+    marginTop: 7,
   },
   primaryBtn: {
     flex: 1,
-    minHeight: 39,
-    borderRadius: 14,
+    minHeight: 29,
+    borderRadius: 10,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 7,
   },
   primaryText: {
     color: colors.canvas,
-    fontSize: 13.5,
+    fontSize: 11.5,
     fontWeight: '800',
   },
   secondaryBtn: {
     flex: 1,
-    minHeight: 39,
-    borderRadius: 14,
+    minHeight: 29,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 7,
   },
   secondaryText: {
     color: colors.accent,
-    fontSize: 13.5,
+    fontSize: 11.5,
     fontWeight: '800',
   },
+  secondaryDisabled: {
+    opacity: 0.62,
+  },
+  secondaryTextDisabled: {
+    color: colors.text3,
+  },
   iconBtn: {
-    width: 39,
-    height: 39,
-    borderRadius: 14,
+    width: 31,
+    height: 31,
+    borderRadius: 11,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,

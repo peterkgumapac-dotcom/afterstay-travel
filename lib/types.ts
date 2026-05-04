@@ -544,6 +544,7 @@ export interface CompanionProfile {
 
 export interface FollowState {
   isFollowing: boolean;
+  isFollowedBy?: boolean;
   followersCount: number;
   followingCount: number;
 }

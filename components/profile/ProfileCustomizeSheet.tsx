@@ -18,7 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { lightColors, useTheme } from '@/constants/ThemeContext';
 import { optimizeProfileCover } from '@/lib/compressImage';
-import { updateProfile, uploadProfileCoverPhoto, uploadProfilePhoto, type Profile } from '@/lib/supabase';
+import { isHandleAvailable, updateProfile, uploadProfileCoverPhoto, uploadProfilePhoto, type Profile } from '@/lib/supabase';
+import { isValidProfileHandle, normalizeProfileHandle } from '@/lib/profileHandle';
 
 interface ProfileCustomizeSheetProps {
   visible: boolean;
@@ -43,11 +44,12 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
   const [coverUrl, setCoverUrl] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
+  const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
 
   useEffect(() => {
     if (!profile || !visible) return;
     setFullName(profile.fullName ?? '');
-    setHandle(profile.handle ?? '');
+    setHandle(normalizeProfileHandle(profile.handle));
     setBio(profile.bio ?? '');
     setHomeBase(profile.homeBase ?? '');
     setInstagram(profile.socials?.instagram ?? '');
@@ -56,7 +58,22 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
     setPublicStatsEnabled(!!profile.publicStatsEnabled);
     setAvatarUrl(profile.avatarUrl);
     setCoverUrl(profile.coverPhotoUrl);
+    setHandleStatus(profile.handle ? 'available' : 'idle');
   }, [profile, visible]);
+
+  const onHandleChange = (value: string) => {
+    const cleaned = normalizeProfileHandle(value);
+    setHandle(cleaned);
+    if (!cleaned) {
+      setHandleStatus('idle');
+      return;
+    }
+    if (cleaned === normalizeProfileHandle(profile?.handle)) {
+      setHandleStatus('available');
+      return;
+    }
+    setHandleStatus(isValidProfileHandle(cleaned) ? 'idle' : 'invalid');
+  };
 
   const pickAvatar = async () => {
     if (!profile || saving) return;
@@ -110,11 +127,27 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
 
   const save = async () => {
     if (!profile || saving) return;
+    const cleanedHandle = normalizeProfileHandle(handle);
+    if (cleanedHandle && !isValidProfileHandle(cleanedHandle)) {
+      setHandleStatus('invalid');
+      Alert.alert('Handle needs a tweak', 'Use 3-20 characters. Start with a letter, then letters, numbers, or underscores.');
+      return;
+    }
     setSaving(true);
     try {
+      if (cleanedHandle && cleanedHandle !== normalizeProfileHandle(profile.handle)) {
+        setHandleStatus('checking');
+        const available = await isHandleAvailable(cleanedHandle, profile.id);
+        if (!available) {
+          setHandleStatus('taken');
+          Alert.alert('Handle taken', `@${cleanedHandle} is already taken. Try another one.`);
+          return;
+        }
+        setHandleStatus('available');
+      }
       await updateProfile(profile.id, {
         fullName: fullName.trim(),
-        handle: handle.trim().toLowerCase().replace(/^@/, ''),
+        handle: cleanedHandle,
         bio: bio.trim(),
         homeBase: homeBase.trim(),
         profileVisibility,
@@ -187,7 +220,22 @@ export default function ProfileCustomizeSheet({ visible, profile, onClose, onSav
           </View>
 
           <Field label="Name" value={fullName} onChangeText={setFullName} colors={colors} />
-          <Field label="Handle" value={handle} onChangeText={setHandle} colors={colors} autoCapitalize="none" prefix="@" />
+          <Field
+            label="Handle"
+            value={handle}
+            onChangeText={onHandleChange}
+            colors={colors}
+            autoCapitalize="none"
+            prefix="@"
+            hint={
+              handleStatus === 'checking' ? 'Checking...'
+              : handleStatus === 'available' ? 'Available'
+              : handleStatus === 'taken' ? 'Already taken'
+              : handleStatus === 'invalid' ? '3-20 chars, start with a letter'
+              : 'Unique username others can search'
+            }
+            hintTone={handleStatus}
+          />
           <Field label="Bio" value={bio} onChangeText={setBio} colors={colors} multiline maxLength={140} />
           <Field label="Home base" value={homeBase} onChangeText={setHomeBase} colors={colors} />
           <Field label="Instagram" value={instagram} onChangeText={setInstagram} colors={colors} autoCapitalize="none" prefix="@" />
@@ -262,6 +310,8 @@ function Field({
   maxLength,
   autoCapitalize,
   prefix,
+  hint,
+  hintTone = 'idle',
 }: {
   label: string;
   value: string;
@@ -271,8 +321,14 @@ function Field({
   maxLength?: number;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   prefix?: string;
+  hint?: string;
+  hintTone?: 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
 }) {
   const s = getStyles(colors);
+  const hintColor =
+    hintTone === 'available' ? colors.success
+    : hintTone === 'taken' || hintTone === 'invalid' ? colors.danger
+    : colors.text3;
   return (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
@@ -288,6 +344,7 @@ function Field({
           autoCapitalize={autoCapitalize}
         />
       </View>
+      {hint ? <Text style={[s.hint, { color: hintColor }]}>{hint}</Text> : null}
     </View>
   );
 }
@@ -426,6 +483,11 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     textTransform: 'uppercase',
     letterSpacing: 1.4,
     marginBottom: 7,
+  },
+  hint: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: '600',
   },
   inputWrap: {
     minHeight: 46,
