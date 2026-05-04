@@ -54,7 +54,7 @@ async function callProxy<T>(action: string, payload: Record<string, unknown>): P
 
 async function resolvePhotoUrl(photoRef: string, maxWidth = 800): Promise<string | null> {
   const result = await callProxy<{ url: string }>('photo', { photoReference: photoRef, maxWidth });
-  if (result?.url) return result.url;
+  if (isResolvedGooglePhotoUrl(result?.url)) return result.url;
   if (!PUBLIC_PLACES_KEY) return null;
   const params = new URLSearchParams({
     maxwidth: String(maxWidth),
@@ -64,11 +64,24 @@ async function resolvePhotoUrl(photoRef: string, maxWidth = 800): Promise<string
   const photoUrl = `${PLACES_BASE}/photo?${params.toString()}`;
   try {
     const res = await fetch(photoUrl, { redirect: 'follow' });
-    if (res.ok && res.url) return res.url;
+    if (res.ok && isResolvedGooglePhotoUrl(res.url)) return res.url;
   } catch (err) {
     if (__DEV__) console.warn('[google-places] direct photo resolution failed:', err);
   }
-  return photoUrl;
+  return null;
+}
+
+function isGooglePhotoApiUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname === 'maps.googleapis.com' && parsed.pathname.includes('/place/photo');
+  } catch {
+    return false;
+  }
+}
+
+function isResolvedGooglePhotoUrl(url: string | undefined | null): url is string {
+  return isRenderableRemoteImageUrl(url) && !isGooglePhotoApiUrl(url);
 }
 
 async function directSearch(query: string, fields?: string): Promise<any | null> {
@@ -299,7 +312,9 @@ export async function searchNearby(
     lat: place.geometry?.location?.lat ?? 0,
     lng: place.geometry?.location?.lng ?? 0,
     open_now: place.opening_hours?.open_now,
-    photo_url: place.resolved_photo_url ?? (pickBestPhotoRef(place.photos) ? await resolvePhotoUrl(pickBestPhotoRef(place.photos)!, 800) : null),
+    photo_url: isResolvedGooglePhotoUrl(place.resolved_photo_url)
+      ? place.resolved_photo_url
+      : (pickBestPhotoRef(place.photos) ? await resolvePhotoUrl(pickBestPhotoRef(place.photos)!, 800) : null),
     types: place.types ?? [],
     editorial_summary: place.editorial_summary ?? undefined,
   })));
@@ -329,7 +344,9 @@ export async function searchNearbyPage(
     lat: place.geometry?.location?.lat ?? 0,
     lng: place.geometry?.location?.lng ?? 0,
     open_now: place.opening_hours?.open_now,
-    photo_url: place.resolved_photo_url ?? (pickBestPhotoRef(place.photos) ? await resolvePhotoUrl(pickBestPhotoRef(place.photos)!, 800) : null),
+    photo_url: isResolvedGooglePhotoUrl(place.resolved_photo_url)
+      ? place.resolved_photo_url
+      : (pickBestPhotoRef(place.photos) ? await resolvePhotoUrl(pickBestPhotoRef(place.photos)!, 800) : null),
     types: place.types ?? [],
     editorial_summary: place.editorial_summary ?? undefined,
   })));
