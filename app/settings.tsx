@@ -53,13 +53,16 @@ import {
   getUserPaymentQrs,
   isHandleAvailable,
   removeUserPaymentQr,
+  searchProfiles,
   supabase,
   updateProfile,
   uploadProfilePhoto,
+  type ProfileSearchResult,
   type ProfileSocials,
   type UserPaymentQr,
 } from '@/lib/supabase';
 import { isValidProfileHandle, normalizeProfileHandle } from '@/lib/profileHandle';
+import { pushProfile } from '@/lib/profileNavigation';
 import type { CompanionProfile } from '@/lib/types';
 import type { Trip } from '@/lib/types';
 
@@ -1533,11 +1536,34 @@ const styles = StyleSheet.create({
 
 type ThemeColorsLocal = ReturnType<typeof useTheme>['colors'];
 
+const PROFILE_QA_PRESETS = [
+  {
+    id: 'f57ccbe9-6a8c-4aa7-880a-5351ddb53a11',
+    label: 'Main account',
+    hint: '@panginoon',
+  },
+  {
+    id: 'af099b8d-220c-4de8-9b2b-bf7a4c724e1d',
+    label: 'Aaron',
+    hint: '@aaron36',
+  },
+  {
+    id: '8a009ae3-af4d-4cbc-a6d1-9cb158c3dad8',
+    label: 'jpgumapac',
+    hint: '@shyraa',
+  },
+] as const;
+
 function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
   const { segment, isTestMode, refresh } = useUserSegment();
   const { user } = useAuth();
+  const router = useRouter();
   const [override, setOverride] = useState<MockKey | null>(null);
   const [enabled, setEnabled] = useState(false);
+  const [profileQuery, setProfileQuery] = useState('');
+  const [profileResults, setProfileResults] = useState<ProfileSearchResult[]>([]);
+  const [profileSearchLoading, setProfileSearchLoading] = useState(false);
+  const [profileSearchError, setProfileSearchError] = useState<string | null>(null);
 
   useEffect(() => {
     getSegmentOverride().then((val) => {
@@ -1582,6 +1608,45 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
   const handleForceRefresh = async () => {
     await refresh();
     Alert.alert('Refreshed', 'Segment context reloaded from server.');
+  };
+
+  useEffect(() => {
+    const query = profileQuery.trim();
+    if (query.length < 2) {
+      setProfileResults([]);
+      setProfileSearchError(null);
+      setProfileSearchLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setProfileSearchLoading(true);
+    setProfileSearchError(null);
+    const timer = setTimeout(() => {
+      searchProfiles(query)
+        .then((results) => {
+          if (!cancelled) setProfileResults(results);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setProfileResults([]);
+            setProfileSearchError(error instanceof Error ? error.message : 'Profile search failed.');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setProfileSearchLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [profileQuery]);
+
+  const openProfileForQa = (targetUserId?: string | null) => {
+    if (!targetUserId) return;
+    pushProfile(router, targetUserId, user?.id);
   };
 
   return (
@@ -1713,6 +1778,133 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
           <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>Clear All Cache</Text>
           <Text style={{ fontSize: 11, color: colors.text3 }}>Wipe AsyncStorage (requires restart)</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Profile QA viewer */}
+      <View style={{
+        backgroundColor: colors.card,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 16,
+        gap: 12,
+        marginTop: 12,
+      }}>
+        <View style={{ gap: 2 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text2, textTransform: 'uppercase', letterSpacing: 1 }}>
+            Profile QA Viewer
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.text3 }}>
+            Opens profiles as your current account. No impersonation or private access bypass.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={() => openProfileForQa(user?.id)}
+          activeOpacity={0.72}
+          disabled={!user?.id}
+          style={{
+            padding: 12,
+            borderRadius: radius.sm,
+            backgroundColor: colors.bg2,
+            borderWidth: 1,
+            borderColor: colors.border,
+            opacity: user?.id ? 1 : 0.5,
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Open my live profile</Text>
+          <Text style={{ fontSize: 11, color: colors.text3, marginTop: 2 }}>{user?.email ?? 'No signed-in user'}</Text>
+        </TouchableOpacity>
+
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {PROFILE_QA_PRESETS.map((preset) => (
+            <TouchableOpacity
+              key={preset.id}
+              onPress={() => openProfileForQa(preset.id)}
+              activeOpacity={0.72}
+              style={{
+                paddingVertical: 9,
+                paddingHorizontal: 11,
+                borderRadius: 999,
+                backgroundColor: preset.id === user?.id ? '#c4554a' : colors.card2,
+                borderWidth: 1,
+                borderColor: preset.id === user?.id ? '#c4554a' : colors.border,
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: preset.id === user?.id ? '#fff' : colors.text }}>
+                {preset.label}
+              </Text>
+              <Text style={{ fontSize: 10, color: preset.id === user?.id ? 'rgba(255,255,255,0.78)' : colors.text3 }}>
+                {preset.hint}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TextInput
+          value={profileQuery}
+          onChangeText={setProfileQuery}
+          placeholder="Search handle or name"
+          placeholderTextColor={colors.text3}
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={{
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: radius.sm,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            color: colors.text,
+            backgroundColor: colors.bg2,
+            fontSize: 13,
+          }}
+        />
+
+        {profileSearchLoading ? (
+          <View style={{ paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={{ fontSize: 12, color: colors.text3 }}>Searching profiles...</Text>
+          </View>
+        ) : profileSearchError ? (
+          <Text style={{ fontSize: 12, color: colors.danger }}>{profileSearchError}</Text>
+        ) : profileResults.length > 0 ? (
+          <View style={{ gap: 8 }}>
+            {profileResults.map((result) => (
+              <TouchableOpacity
+                key={result.id}
+                onPress={() => openProfileForQa(result.id)}
+                activeOpacity={0.72}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: 10,
+                  borderRadius: radius.sm,
+                  backgroundColor: colors.card2,
+                  borderWidth: 1,
+                  borderColor: result.id === user?.id ? '#c4554a' : colors.border,
+                }}
+              >
+                {result.avatarUrl ? (
+                  <Image source={{ uri: result.avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
+                ) : (
+                  <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.bg2, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: colors.accent, fontWeight: '800' }}>{result.fullName.charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }} numberOfLines={1}>{result.fullName}</Text>
+                  <Text style={{ fontSize: 11, color: colors.text3 }} numberOfLines={1}>
+                    {result.handle ? `@${result.handle}` : result.id === user?.id ? 'Current user' : 'Public profile'}
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={colors.text3} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : profileQuery.trim().length >= 2 ? (
+          <Text style={{ fontSize: 12, color: colors.text3 }}>No public profiles found.</Text>
+        ) : null}
       </View>
     </>
   );
