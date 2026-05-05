@@ -94,7 +94,7 @@ function publicPostToMoment(post: FeedPost): Moment | null {
 }
 
 export default function CompanionProfileScreen() {
-  const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { userId, source } = useLocalSearchParams<{ userId: string; source?: string }>();
   const { user } = useAuth();
   const router = useRouter();
   useTheme();
@@ -119,6 +119,8 @@ export default function CompanionProfileScreen() {
   const loadSeqRef = useRef(0);
 
   const targetIdentifier = Array.isArray(userId) ? userId[0] : userId;
+  const sourceParam = Array.isArray(source) ? source[0] : source;
+  const isSelfRoute = sourceParam === 'self';
   const isSelf = user?.id === resolvedUserId;
 
   const resetProfileState = useCallback(() => {
@@ -152,6 +154,10 @@ export default function CompanionProfileScreen() {
     try {
       const targetUserId = await resolveProfileIdentifier(targetIdentifier);
       if (!shouldApply()) return;
+      if (isSelfRoute && user?.id && targetUserId && targetUserId !== user.id) {
+        router.replace({ pathname: '/profile/[userId]', params: { userId: user.id, source: 'self' } } as never);
+        return;
+      }
       setResolvedUserId(targetUserId);
       if (!targetUserId) {
         setProfile(null);
@@ -208,9 +214,14 @@ export default function CompanionProfileScreen() {
     } finally {
       if (shouldApply()) setLoading(false);
     }
-  }, [resetProfileState, targetIdentifier, user?.id]);
+  }, [isSelfRoute, resetProfileState, router, targetIdentifier, user?.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!isSelfRoute || !user?.id || !targetIdentifier || targetIdentifier === user.id) return;
+    router.replace({ pathname: '/profile/[userId]', params: { userId: user.id, source: 'self' } } as never);
+  }, [isSelfRoute, router, targetIdentifier, user?.id]);
 
   const handleFollowPress = async () => {
     if (!resolvedUserId || followBusy) return;

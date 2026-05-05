@@ -384,7 +384,7 @@ export default function SettingsScreen() {
             style={[s.profileActionButton, !user?.id && { opacity: 0.5 }]}
             onPress={() => {
               if (!user?.id) return;
-              router.push({ pathname: '/profile/[userId]', params: { userId: user.id } } as never);
+              router.push({ pathname: '/profile/[userId]', params: { userId: user.id, source: 'self' } } as never);
             }}
             activeOpacity={0.75}
             disabled={!user?.id}
