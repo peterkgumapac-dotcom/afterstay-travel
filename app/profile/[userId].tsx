@@ -155,7 +155,7 @@ export default function CompanionProfileScreen() {
       const targetUserId = await resolveProfileIdentifier(targetIdentifier);
       if (!shouldApply()) return;
       if (isSelfRoute && user?.id && targetUserId && targetUserId !== user.id) {
-        router.replace({ pathname: '/profile/[userId]', params: { userId: user.id, source: 'self' } } as never);
+        router.replace('/profile/me' as never);
         return;
       }
       setResolvedUserId(targetUserId);
@@ -220,7 +220,7 @@ export default function CompanionProfileScreen() {
 
   useEffect(() => {
     if (!isSelfRoute || !user?.id || !targetIdentifier || targetIdentifier === user.id) return;
-    router.replace({ pathname: '/profile/[userId]', params: { userId: user.id, source: 'self' } } as never);
+    router.replace('/profile/me' as never);
   }, [isSelfRoute, router, targetIdentifier, user?.id]);
 
   const handleFollowPress = async () => {

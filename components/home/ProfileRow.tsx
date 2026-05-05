@@ -32,7 +32,7 @@ export default function ProfileRow({
 
   const goToProfile = () => {
     if (userId) {
-      router.push({ pathname: '/profile/[userId]', params: { userId, source: 'self' } } as never);
+      router.push('/profile/me' as never);
       return;
     }
     router.push('/settings');

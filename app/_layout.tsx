@@ -148,6 +148,15 @@ function RootLayoutInner() {
         <Stack.Screen name="invite" options={{ presentation: 'modal', title: 'Invite Members', headerShown: true }} />
         <Stack.Screen name="join-trip" options={{ presentation: 'modal', title: 'Join Trip', headerShown: true }} />
         <Stack.Screen
+          name="profile/me"
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+            animation: 'slide_from_bottom',
+            animationDuration: 250,
+          }}
+        />
+        <Stack.Screen
           name="profile/[userId]"
           options={{
             presentation: 'modal',
