@@ -74,9 +74,20 @@ export default function ProfileCoverHeader({
   const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
   const coverHeight = hasCoverVisual ? Math.min(224, Math.max(198, width * 0.5)) : 176;
   const creatorPulse = useRef(new Animated.Value(0)).current;
+  const creatorIntro = useRef(new Animated.Value(isSelf ? 0 : 1)).current;
+  const creatorShimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!isSelf) return undefined;
+
+    creatorIntro.setValue(0);
+    creatorShimmer.setValue(0);
+    Animated.spring(creatorIntro, {
+      toValue: 1,
+      friction: 7,
+      tension: 68,
+      useNativeDriver: true,
+    }).start();
 
     const animation = Animated.loop(
       Animated.sequence([
@@ -92,9 +103,29 @@ export default function ProfileCoverHeader({
         }),
       ]),
     );
+    const shimmer = Animated.loop(
+      Animated.sequence([
+        Animated.delay(420),
+        Animated.timing(creatorShimmer, {
+          toValue: 1,
+          duration: 1350,
+          useNativeDriver: true,
+        }),
+        Animated.delay(1100),
+        Animated.timing(creatorShimmer, {
+          toValue: 0,
+          duration: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
     animation.start();
-    return () => animation.stop();
-  }, [creatorPulse, isSelf]);
+    shimmer.start();
+    return () => {
+      animation.stop();
+      shimmer.stop();
+    };
+  }, [creatorIntro, creatorPulse, creatorShimmer, isSelf]);
 
   const creatorGlowScale = creatorPulse.interpolate({
     inputRange: [0, 1],
@@ -103,6 +134,26 @@ export default function ProfileCoverHeader({
   const creatorGlowOpacity = creatorPulse.interpolate({
     inputRange: [0, 0.5, 1],
     outputRange: [0.45, 0.95, 0.45],
+  });
+  const creatorIntroScale = creatorIntro.interpolate({
+    inputRange: [0, 0.7, 1],
+    outputRange: [0.82, 1.06, 1],
+  });
+  const creatorIntroTranslate = creatorIntro.interpolate({
+    inputRange: [0, 1],
+    outputRange: [10, 0],
+  });
+  const creatorShimmerTranslate = creatorShimmer.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-72, 150],
+  });
+  const creatorAuraScale = creatorPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.08],
+  });
+  const creatorAuraOpacity = creatorPulse.interpolate({
+    inputRange: [0, 0.55, 1],
+    outputRange: [0.18, 0.34, 0.18],
   });
 
   return (
@@ -162,6 +213,17 @@ export default function ProfileCoverHeader({
 
       <View style={s.sheet}>
         <View style={s.avatarWrap}>
+          {isSelf ? (
+            <Animated.View
+              style={[
+                s.avatarAura,
+                {
+                  opacity: creatorAuraOpacity,
+                  transform: [{ scale: creatorAuraScale }],
+                },
+              ]}
+            />
+          ) : null}
           {avatarUrl ? (
             <Image source={{ uri: avatarUrl }} style={s.avatar} contentFit="cover" />
           ) : (
@@ -176,7 +238,31 @@ export default function ProfileCoverHeader({
             {fullName || 'Traveler'}
           </Text>
           {isSelf ? (
-            <View style={s.creatorPill} accessibilityLabel="Your profile creator mode">
+            <Animated.View
+              style={[
+                s.creatorPill,
+                {
+                  opacity: creatorIntro,
+                  transform: [
+                    { translateY: creatorIntroTranslate },
+                    { scale: creatorIntroScale },
+                  ],
+                },
+              ]}
+              accessibilityLabel="Your profile creator mode"
+            >
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  s.creatorShimmer,
+                  {
+                    transform: [
+                      { translateX: creatorShimmerTranslate },
+                      { rotate: '-18deg' },
+                    ],
+                  },
+                ]}
+              />
               <View style={s.creatorMarkWrap}>
                 <Animated.View
                   style={[
@@ -190,7 +276,7 @@ export default function ProfileCoverHeader({
                 <Sparkles size={11} color={colors.canvas} strokeWidth={2.4} />
               </View>
               <Text style={s.creatorText}>Creator mode</Text>
-            </View>
+            </Animated.View>
           ) : null}
           {isCompanion ? (
             <View style={s.verifiedDot}>
@@ -342,6 +428,15 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     borderColor: colors.canvas,
     backgroundColor: colors.canvas,
   },
+  avatarAura: {
+    position: 'absolute',
+    left: -7,
+    top: -7,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.accent,
+  },
   avatar: {
     width: '100%',
     height: '100%',
@@ -389,6 +484,19 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     gap: 5,
     paddingLeft: 5,
     paddingRight: 8,
+    overflow: 'hidden',
+    shadowColor: colors.accent,
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  creatorShimmer: {
+    position: 'absolute',
+    top: -8,
+    bottom: -8,
+    width: 24,
+    backgroundColor: 'rgba(255,255,255,0.35)',
   },
   creatorMarkWrap: {
     width: 14,
