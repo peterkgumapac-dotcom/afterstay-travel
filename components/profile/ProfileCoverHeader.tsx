@@ -1,8 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { Check, ChevronDown, Image as ImageIcon, MessageCircle, Pencil, Plus, Send, Sparkles } from 'lucide-react-native';
-import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { CachedImage } from '@/components/CachedImage';
@@ -73,6 +73,37 @@ export default function ProfileCoverHeader({
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
   const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
   const coverHeight = hasCoverVisual ? Math.min(224, Math.max(198, width * 0.5)) : 176;
+  const creatorPulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isSelf) return undefined;
+
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(creatorPulse, {
+          toValue: 1,
+          duration: 950,
+          useNativeDriver: true,
+        }),
+        Animated.timing(creatorPulse, {
+          toValue: 0,
+          duration: 950,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [creatorPulse, isSelf]);
+
+  const creatorGlowScale = creatorPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.18],
+  });
+  const creatorGlowOpacity = creatorPulse.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0.45, 0.95, 0.45],
+  });
 
   return (
     <View style={s.container}>
@@ -144,6 +175,23 @@ export default function ProfileCoverHeader({
           <Text style={s.name} numberOfLines={1} ellipsizeMode="tail">
             {fullName || 'Traveler'}
           </Text>
+          {isSelf ? (
+            <View style={s.creatorPill} accessibilityLabel="Your profile creator mode">
+              <View style={s.creatorMarkWrap}>
+                <Animated.View
+                  style={[
+                    s.creatorGlow,
+                    {
+                      opacity: creatorGlowOpacity,
+                      transform: [{ scale: creatorGlowScale }],
+                    },
+                  ]}
+                />
+                <Sparkles size={11} color={colors.canvas} strokeWidth={2.4} />
+              </View>
+              <Text style={s.creatorText}>Creator mode</Text>
+            </View>
+          ) : null}
           {isCompanion ? (
             <View style={s.verifiedDot}>
               <Check size={11} color={colors.canvas} strokeWidth={3} />
@@ -330,6 +378,37 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  creatorPill: {
+    flexShrink: 0,
+    minHeight: 20,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingLeft: 5,
+    paddingRight: 8,
+  },
+  creatorMarkWrap: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  creatorGlow: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  creatorText: {
+    color: colors.canvas,
+    fontSize: 9.5,
+    fontWeight: '900',
   },
   handle: {
     color: colors.accent,
