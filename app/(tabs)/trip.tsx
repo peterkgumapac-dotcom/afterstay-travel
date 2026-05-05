@@ -32,6 +32,7 @@ import { SummaryTab } from '@/components/trip/SummaryTab';
 import { EssentialsTab } from '@/components/trip/EssentialsTab';
 import FileViewerSheet from '@/components/trip/FileViewerSheet';
 import { useTheme } from '@/constants/ThemeContext';
+import { pushProfile } from '@/lib/profileNavigation';
 import {
   addPackingItem,
   deletePackingItem,
@@ -1150,7 +1151,7 @@ function TripScreen() {
             onMemberEdit={handleMemberEdit}
             onMemberChat={handleMemberChat}
             onMemberProfile={(m) => {
-              if (m.userId) router.push({ pathname: '/profile/[userId]', params: { userId: m.userId } } as never);
+              if (m.userId) pushProfile(router, m.userId, user?.id);
             }}
             onInvite={handleInvite}
             onAddMember={() => router.push('/add-member')}

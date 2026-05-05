@@ -17,6 +17,7 @@ import { useProfilesForPosts } from '@/components/feed/PostFeedList';
 import { useExploreFeed } from '@/hooks/useExploreFeed';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useAuth } from '@/lib/auth';
+import { pushProfile } from '@/lib/profileNavigation';
 import { togglePostLike } from '@/lib/supabase';
 import { sharePost, toggleSave, createStory, deleteStory, getPostTagsForPosts } from '@/lib/moments/exploreMomentsService';
 import type { FeedPost, PostTag, Story } from '@/lib/types';
@@ -154,7 +155,7 @@ export default function ExploreMomentsFeed() {
 
   const handleProfilePress = useCallback(() => {
     if (user?.id) {
-      router.push({ pathname: '/profile/[userId]', params: { userId: user.id } } as never);
+      router.push('/profile/me' as never);
     }
   }, [user, router]);
 
@@ -172,7 +173,7 @@ export default function ExploreMomentsFeed() {
         onComment={() => setCommentPostId(item.id)}
         onShare={() => { sharePost(item.id).catch(() => {}); }}
         onSave={async () => { await toggleSave(item.id); }}
-        onProfilePress={canOpenProfile ? () => router.push({ pathname: '/profile/[userId]', params: { userId: item.userId } } as never) : undefined}
+        onProfilePress={canOpenProfile ? () => pushProfile(router, item.userId, user?.id) : undefined}
         tags={tagsByPost[item.id]}
         isOwner={item.userId === user?.id}
         onDeleted={() => refreshActiveFeed()}
@@ -313,7 +314,7 @@ export default function ExploreMomentsFeed() {
         onProfilePress={(storyUserId) => {
           const story = activeStories.find((item) => item.userId === storyUserId);
           if (!story || !canOpenProfileIdentity(story, user?.id)) return;
-          router.push({ pathname: '/profile/[userId]', params: { userId: storyUserId } } as never);
+          pushProfile(router, storyUserId, user?.id);
         }}
       />
 

@@ -21,6 +21,7 @@ import { MessageCircle, Send, Trash2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
+import { pushProfile } from '@/lib/profileNavigation';
 import { addComment, deleteComment, getComments } from '@/lib/supabase';
 import type { MomentComment, GroupMember } from '@/lib/types';
 
@@ -160,7 +161,7 @@ export default function CommentSheet({ visible, momentId, members = [], onClose,
   const goToProfile = (userId?: string) => {
     if (!userId) return;
     onClose();
-    setTimeout(() => router.push(`/profile/${userId}` as never), 300);
+    setTimeout(() => pushProfile(router, userId, user?.id), 300);
   };
 
   const renderComment = ({ item }: { item: MomentComment }) => {

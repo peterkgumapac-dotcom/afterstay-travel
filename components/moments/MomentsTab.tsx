@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { Camera, Compass, Eye, EyeOff } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
+import { pushProfile } from '@/lib/profileNavigation';
 import { useTabBarVisibility } from '@/app/(tabs)/_layout';
 const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
 import { getMoments, getGroupMembers, getMomentFavorites, getCommentCounts, toggleFavorite, toggleMomentVisibility as toggleVisibility, setMomentVisibility, batchSetMomentVisibility, batchDeleteMoments, getDismissedMomentIds, dismissMoment, undismissMoment, batchDismissMoments, saveGroupPhotoToPrivate, publishMomentToExplore, unpublishMomentFromExplore } from '@/lib/supabase';
@@ -610,7 +611,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
                   key={m.id}
                   onPress={() => {
                     if (m.userId) {
-                      router.push({ pathname: '/profile/[userId]', params: { userId: m.userId } } as never);
+                      pushProfile(router, m.userId, user?.id);
                     }
                   }}
                   style={{ alignItems: 'center', gap: 4, minWidth: 56 }}

@@ -3665,6 +3665,8 @@ export async function updateProfile(userId: string, updates: Partial<Omit<Profil
   if (Object.keys(row).length === 0) return;
 
   const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user?.id) throw new Error('updateProfile: not authenticated');
+  if (authData.user.id !== userId) throw new Error('updateProfile: cannot update another user profile');
   const isOwnProfile = authData?.user?.id === userId;
 
   const rpcSupportedKeys = new Set(['full_name', 'handle', 'avatar_url', 'cover_photo_url', 'phone', 'socials']);
@@ -3941,6 +3943,10 @@ export async function getPublicProfilePosts(userId: string, limit = 20, offset =
 }
 
 async function uploadProfileImage(userId: string, localUri: string, kind: 'avatar' | 'cover'): Promise<string> {
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user?.id) throw new Error('uploadProfileImage: not authenticated');
+  if (authData.user.id !== userId) throw new Error('uploadProfileImage: cannot update another user profile');
+
   const prepared = kind === 'cover' ? localUri : await compressImage(localUri, 500, 0.58);
   const timestamp = Date.now();
   const filename = `${kind}.jpg`;

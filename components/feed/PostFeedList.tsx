@@ -8,6 +8,7 @@ import { FeedCard } from '@/components/feed/FeedCard';
 import { FEED } from '@/components/feed/feedTheme';
 import type { useFeedPosts } from '@/hooks/useFeedPosts';
 import { useAuth } from '@/lib/auth';
+import { pushProfile } from '@/lib/profileNavigation';
 import { togglePostLike, getPostComments, addPostComment, getPublicProfiles } from '@/lib/supabase';
 import type { FeedPost, FeedPostComment } from '@/lib/types';
 
@@ -103,7 +104,7 @@ export function PostFeedList({ feed, profiles, header }: PostFeedListProps) {
                   }));
                 } catch {}
               }}
-              onProfilePress={canOpenProfile ? () => router.push({ pathname: '/profile/[userId]', params: { userId: item.userId } } as never) : undefined}
+              onProfilePress={canOpenProfile ? () => pushProfile(router, item.userId, user?.id) : undefined}
               onPhotoPress={async () => {
                 if (!commentCache[item.id]) {
                   try {

@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { PAPER } from '@/components/feed/feedTheme';
+import { useAuth } from '@/lib/auth';
+import { pushProfile } from '@/lib/profileNavigation';
 import { searchProfiles, type ProfileSearchResult } from '@/lib/supabase';
 
 interface ProfileSearchSheetProps {
@@ -42,6 +44,7 @@ function withTimeout<T>(promise: Promise<T>): Promise<T> {
 
 export default function ProfileSearchSheet({ visible, onClose }: ProfileSearchSheetProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState('');
@@ -103,9 +106,9 @@ export default function ProfileSearchSheet({ visible, onClose }: ProfileSearchSh
   const handleSelect = useCallback((profile: ProfileSearchResult) => {
     onClose();
     setTimeout(() => {
-      router.push({ pathname: '/profile/[userId]', params: { userId: profile.id } } as never);
+      pushProfile(router, profile.id, user?.id);
     }, 200);
-  }, [onClose, router]);
+  }, [onClose, router, user?.id]);
 
   const renderItem = useCallback(({ item }: { item: ProfileSearchResult }) => (
     <TouchableOpacity

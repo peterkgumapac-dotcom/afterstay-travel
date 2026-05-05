@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
+import { pushProfile } from '@/lib/profileNavigation';
 import {
   getActiveTrip,
   getChatMessages,
@@ -99,8 +100,8 @@ export default function GroupChatScreen() {
 
   const goToProfile = useCallback((userId?: string) => {
     if (!userId) return;
-    router.push(`/profile/${userId}` as never);
-  }, [router]);
+    pushProfile(router, userId, user?.id);
+  }, [router, user?.id]);
 
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     const isMe = item.senderName === myName;
