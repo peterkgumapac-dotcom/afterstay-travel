@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -44,9 +44,10 @@ import { spacing, radius } from '@/constants/theme';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { useUserSegment, setSegmentOverride, getSegmentOverride } from '@/contexts/UserSegmentContext';
-import { MOCK_KEYS, MOCK_LABELS, MOCK_DESCRIPTIONS, type MockKey } from '@/lib/mockData';
+import { MOCK_LABELS, MOCK_DESCRIPTIONS, type MockKey } from '@/lib/mockData';
 import {
   addUserPaymentQr,
+  getProfileQaRelationshipState,
   getActiveTrip,
   getCompanions,
   getProfile,
@@ -57,6 +58,8 @@ import {
   supabase,
   updateProfile,
   uploadProfilePhoto,
+  type ProfileQaRelationshipInfo,
+  type ProfileQaRelationshipState,
   type ProfileSearchResult,
   type ProfileSocials,
   type UserPaymentQr,
@@ -1536,23 +1539,79 @@ const styles = StyleSheet.create({
 
 type ThemeColorsLocal = ReturnType<typeof useTheme>['colors'];
 
-const PROFILE_QA_PRESETS = [
+type ProfileQaTarget = {
+  id: string;
+  label: string;
+  handle?: string;
+  expectedState: ProfileQaRelationshipState;
+};
+
+const PROFILE_QA_STATE_ORDER: ProfileQaRelationshipState[] = [
+  'self',
+  'public',
+  'following',
+  'followed_by',
+  'mutual_follow',
+  'companion',
+  'restricted',
+];
+
+const PROFILE_QA_STATE_LABELS: Record<ProfileQaRelationshipState, string> = {
+  self: 'Self',
+  public: 'Public',
+  following: 'Following',
+  followed_by: 'Followed by',
+  mutual_follow: 'Mutual follow',
+  companion: 'Companion',
+  restricted: 'Private / restricted',
+};
+
+const PROFILE_QA_STATE_DESCRIPTIONS: Record<ProfileQaRelationshipState, string> = {
+  self: 'Own profile with customize controls.',
+  public: 'Public profile with no social relationship.',
+  following: 'You follow them; message stays locked.',
+  followed_by: 'They follow you; follow back is available.',
+  mutual_follow: 'Both follow; message unlocks.',
+  companion: 'Shared trip member; companion-safe travel appears.',
+  restricted: 'Private or companion-only profile gates content.',
+};
+
+const PROFILE_QA_PRESETS: ProfileQaTarget[] = [
   {
     id: 'f57ccbe9-6a8c-4aa7-880a-5351ddb53a11',
     label: 'Main account',
-    hint: '@panginoon',
+    handle: '@panginoon',
+    expectedState: 'public',
   },
   {
     id: 'af099b8d-220c-4de8-9b2b-bf7a4c724e1d',
     label: 'Aaron',
-    hint: '@aaron36',
+    handle: '@aaron36',
+    expectedState: 'companion',
   },
   {
     id: '8a009ae3-af4d-4cbc-a6d1-9cb158c3dad8',
     label: 'jpgumapac',
-    hint: '@shyraa',
+    handle: '@shyraa',
+    expectedState: 'public',
   },
-] as const;
+];
+
+const LIFECYCLE_QA_KEYS: MockKey[] = [
+  'new',
+  'planning:draft',
+  'planning:ready',
+  'active:upcoming',
+  'active:inflight',
+  'active:arrived',
+  'active:active',
+  'completed:recent',
+  'returning',
+];
+
+function profileQaStateLabel(state?: ProfileQaRelationshipState): string {
+  return state ? PROFILE_QA_STATE_LABELS[state] : 'Checking';
+}
 
 function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
   const { segment, isTestMode, refresh } = useUserSegment();
@@ -1564,6 +1623,9 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
   const [profileResults, setProfileResults] = useState<ProfileSearchResult[]>([]);
   const [profileSearchLoading, setProfileSearchLoading] = useState(false);
   const [profileSearchError, setProfileSearchError] = useState<string | null>(null);
+  const [profileQaInfo, setProfileQaInfo] = useState<Record<string, ProfileQaRelationshipInfo>>({});
+  const [profileQaLoading, setProfileQaLoading] = useState(false);
+  const [profileQaError, setProfileQaError] = useState<string | null>(null);
 
   useEffect(() => {
     getSegmentOverride().then((val) => {
@@ -1644,6 +1706,52 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
     };
   }, [profileQuery]);
 
+  const profileQaTargets = useMemo<ProfileQaTarget[]>(() => [
+    ...(user?.id
+      ? [{
+        id: user.id,
+        label: 'My live profile',
+        handle: user.email ?? undefined,
+        expectedState: 'self' as ProfileQaRelationshipState,
+      }]
+      : []),
+    ...PROFILE_QA_PRESETS,
+  ], [user?.email, user?.id]);
+
+  useEffect(() => {
+    const ids = [...new Set([
+      ...profileQaTargets.map((target) => target.id),
+      ...profileResults.map((result) => result.id),
+    ].filter(Boolean))];
+
+    if (ids.length === 0) {
+      setProfileQaInfo({});
+      setProfileQaLoading(false);
+      setProfileQaError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setProfileQaLoading(true);
+    setProfileQaError(null);
+    Promise.all(ids.map(async (id) => [id, await getProfileQaRelationshipState(id)] as const))
+      .then((entries) => {
+        if (!cancelled) setProfileQaInfo(Object.fromEntries(entries));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setProfileQaError(error instanceof Error ? error.message : 'Could not classify profile QA states.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProfileQaLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profileQaTargets, profileResults]);
+
   const openProfileForQa = (targetUserId?: string | null) => {
     if (!targetUserId) return;
     pushProfile(router, targetUserId, user?.id);
@@ -1665,10 +1773,10 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
-              Test Mode
+              Lifecycle Test Mode
             </Text>
             <Text style={{ fontSize: 11, color: colors.text3, marginTop: 2 }}>
-              Override user segment with mock data
+              Simulate trip lifecycle UI without writing Supabase rows
             </Text>
           </View>
           <Switch
@@ -1697,10 +1805,10 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
 
             {/* Segment picker */}
             <Text style={{ fontSize: 11, fontWeight: '600', color: colors.text2, textTransform: 'uppercase', letterSpacing: 1 }}>
-              Simulate as
+              Traveler lifecycle
             </Text>
             <View style={{ gap: 8 }}>
-              {MOCK_KEYS.map((key) => {
+              {LIFECYCLE_QA_KEYS.map((key) => {
                 const active = override === key;
                 const isSubPhase = key.startsWith('active:');
                 return (
@@ -1746,6 +1854,9 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
                 );
               })}
             </View>
+            <Text style={{ fontSize: 11, color: colors.text3, lineHeight: 16 }}>
+              Planning again is tested by switching between Returning and Planning Draft or Planning Ready.
+            </Text>
           </>
         )}
       </View>
@@ -1795,50 +1906,85 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
             Profile QA Viewer
           </Text>
           <Text style={{ fontSize: 11, color: colors.text3 }}>
-            Opens profiles as your current account. No impersonation or private access bypass.
+            Relationship states only. Opens as your current account with RLS intact.
           </Text>
         </View>
 
-        <TouchableOpacity
-          onPress={() => openProfileForQa(user?.id)}
-          activeOpacity={0.72}
-          disabled={!user?.id}
-          style={{
-            padding: 12,
-            borderRadius: radius.sm,
-            backgroundColor: colors.bg2,
-            borderWidth: 1,
-            borderColor: colors.border,
-            opacity: user?.id ? 1 : 0.5,
-          }}
-        >
-          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Open my live profile</Text>
-          <Text style={{ fontSize: 11, color: colors.text3, marginTop: 2 }}>{user?.email ?? 'No signed-in user'}</Text>
-        </TouchableOpacity>
+        {profileQaLoading ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={{ fontSize: 12, color: colors.text3 }}>Classifying relationship states...</Text>
+          </View>
+        ) : profileQaError ? (
+          <Text style={{ fontSize: 12, color: colors.danger }}>{profileQaError}</Text>
+        ) : null}
 
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          {PROFILE_QA_PRESETS.map((preset) => (
-            <TouchableOpacity
-              key={preset.id}
-              onPress={() => openProfileForQa(preset.id)}
-              activeOpacity={0.72}
-              style={{
-                paddingVertical: 9,
-                paddingHorizontal: 11,
-                borderRadius: 999,
-                backgroundColor: preset.id === user?.id ? '#c4554a' : colors.card2,
-                borderWidth: 1,
-                borderColor: preset.id === user?.id ? '#c4554a' : colors.border,
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '700', color: preset.id === user?.id ? '#fff' : colors.text }}>
-                {preset.label}
-              </Text>
-              <Text style={{ fontSize: 10, color: preset.id === user?.id ? 'rgba(255,255,255,0.78)' : colors.text3 }}>
-                {preset.hint}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ gap: 8 }}>
+          {PROFILE_QA_STATE_ORDER.map((state) => {
+            const target = profileQaTargets.find((item) => item.expectedState === state);
+            const info = target ? profileQaInfo[target.id] : undefined;
+            const matches = !!info && info.state === state;
+            return (
+              <TouchableOpacity
+                key={state}
+                onPress={() => openProfileForQa(target?.id)}
+                activeOpacity={target ? 0.72 : 1}
+                disabled={!target}
+                style={{
+                  padding: 12,
+                  borderRadius: radius.sm,
+                  backgroundColor: colors.bg2,
+                  borderWidth: 1,
+                  borderColor: matches ? '#c4554a' : colors.border,
+                  opacity: target ? 1 : 0.68,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: matches ? '#c4554a' : target ? colors.text3 : colors.border,
+                  }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }}>
+                      {PROFILE_QA_STATE_LABELS[state]}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.text3, marginTop: 1 }}>
+                      {PROFILE_QA_STATE_DESCRIPTIONS[state]}
+                    </Text>
+                  </View>
+                  {target ? <ChevronRight size={16} color={colors.text3} /> : null}
+                </View>
+
+                <View style={{ marginTop: 9, paddingTop: 9, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  {target ? (
+                    <>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.text }}>
+                        {target.label}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.text3, marginTop: 1 }}>
+                        {target.handle ?? target.id}
+                      </Text>
+                      {info && !matches ? (
+                        <Text style={{ fontSize: 11, color: colors.danger, marginTop: 5 }}>
+                          Expected {PROFILE_QA_STATE_LABELS[state]}, currently {profileQaStateLabel(info.state)}.
+                        </Text>
+                      ) : info ? (
+                        <Text style={{ fontSize: 11, color: colors.text3, marginTop: 5 }}>
+                          Message {info.canMessage ? 'enabled' : 'locked'} · Visibility {info.profileVisibility}
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Text style={{ fontSize: 11, color: colors.text3 }}>
+                      No saved target yet. Use search below to find a real profile in this state.
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <TextInput
@@ -1896,6 +2042,7 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
                   <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }} numberOfLines={1}>{result.fullName}</Text>
                   <Text style={{ fontSize: 11, color: colors.text3 }} numberOfLines={1}>
                     {result.handle ? `@${result.handle}` : result.id === user?.id ? 'Current user' : 'Public profile'}
+                    {profileQaInfo[result.id] ? ` · ${profileQaStateLabel(profileQaInfo[result.id].state)}` : ''}
                   </Text>
                 </View>
                 <ChevronRight size={16} color={colors.text3} />
@@ -1905,6 +2052,31 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
         ) : profileQuery.trim().length >= 2 ? (
           <Text style={{ fontSize: 12, color: colors.text3 }}>No public profiles found.</Text>
         ) : null}
+      </View>
+
+      <View style={{
+        backgroundColor: colors.card,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 16,
+        gap: 10,
+        marginTop: 12,
+      }}>
+        <Text style={{ fontSize: 11, fontWeight: '700', color: colors.text2, textTransform: 'uppercase', letterSpacing: 1 }}>
+          Group Travel Sharing
+        </Text>
+        <Text style={{ fontSize: 12, color: colors.text2, lineHeight: 18 }}>
+          Invites and shared trip membership create companion state. Following never unlocks private trip data.
+        </Text>
+        <View style={{ gap: 6 }}>
+          <Text style={{ fontSize: 11, color: colors.text3, lineHeight: 16 }}>
+            Shared: destination, dates, itinerary, shared places, shared moments, group expenses, member display info, shared flight timing.
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.text3, lineHeight: 16 }}>
+            Private: booking refs, passenger names, IDs, private files, private notes, private expenses, private moments, phone and socials unless allowed.
+          </Text>
+        </View>
       </View>
     </>
   );

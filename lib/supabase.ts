@@ -3732,6 +3732,26 @@ export interface ProfileSearchResult {
   avatarUrl?: string;
 }
 
+export type ProfileQaRelationshipState =
+  | 'self'
+  | 'public'
+  | 'following'
+  | 'followed_by'
+  | 'mutual_follow'
+  | 'companion'
+  | 'restricted';
+
+export interface ProfileQaRelationshipInfo {
+  state: ProfileQaRelationshipState;
+  isSelf: boolean;
+  isCompanion: boolean;
+  viewerFollowsUser: boolean;
+  userFollowsViewer: boolean;
+  isMutualFollow: boolean;
+  canMessage: boolean;
+  profileVisibility: CompanionProfile['profileVisibility'];
+}
+
 export interface PublicProfileRow {
   id: string;
   fullName: string;
@@ -5243,6 +5263,75 @@ export async function getFollowState(targetUserId: string): Promise<FollowState>
     isFollowedBy: !!followedBy.data,
     followersCount: followersCount.count ?? 0,
     followingCount: followingCount.count ?? 0,
+  };
+}
+
+function deriveProfileQaRelationshipState({
+  isSelf,
+  isCompanion,
+  viewerFollowsUser,
+  userFollowsViewer,
+  profileVisibility,
+}: Omit<ProfileQaRelationshipInfo, 'state' | 'isMutualFollow' | 'canMessage'>): ProfileQaRelationshipState {
+  if (isSelf) return 'self';
+  if (isCompanion) return 'companion';
+  if (profileVisibility !== 'public') return 'restricted';
+  if (viewerFollowsUser && userFollowsViewer) return 'mutual_follow';
+  if (viewerFollowsUser) return 'following';
+  if (userFollowsViewer) return 'followed_by';
+  return 'public';
+}
+
+export async function getProfileQaRelationshipState(targetUserId: string): Promise<ProfileQaRelationshipInfo> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const isSelf = !!user?.id && user.id === targetUserId;
+  const [publicProfileResult, companionStatus, followState] = await Promise.all([
+    getPublicProfileRpc(targetUserId).catch(() => ({ profile: null, unavailable: true })),
+    getCompanionStatus(targetUserId).catch(() => 'none' as CompanionStatus),
+    getFollowState(targetUserId).catch(() => ({
+      isFollowing: false,
+      isFollowedBy: false,
+      followersCount: 0,
+      followingCount: 0,
+    })),
+  ]);
+
+  let profileVisibility = publicProfileResult.profile?.profileVisibility ?? (isSelf ? 'public' : undefined);
+  if (isSelf) {
+    const { data: ownProfile } = await supabase
+      .from('profiles')
+      .select('profile_visibility')
+      .eq('id', targetUserId)
+      .maybeSingle();
+    profileVisibility = (ownProfile?.profile_visibility as CompanionProfile['profileVisibility']) ?? profileVisibility ?? 'public';
+  }
+
+  const isCompanion = !isSelf && companionStatus === 'companion';
+  const viewerFollowsUser = !!followState.isFollowing;
+  const userFollowsViewer = !!followState.isFollowedBy;
+  const resolvedVisibility: CompanionProfile['profileVisibility'] = profileVisibility ?? (isCompanion ? 'companions' : 'private');
+  const isMutualFollow = !isSelf && viewerFollowsUser && userFollowsViewer;
+  const canMessage = !isSelf && (isCompanion || isMutualFollow);
+  const state = deriveProfileQaRelationshipState({
+    isSelf,
+    isCompanion,
+    viewerFollowsUser,
+    userFollowsViewer,
+    profileVisibility: resolvedVisibility,
+  });
+
+  return {
+    state,
+    isSelf,
+    isCompanion,
+    viewerFollowsUser,
+    userFollowsViewer,
+    isMutualFollow,
+    canMessage,
+    profileVisibility: resolvedVisibility,
   };
 }
 
