@@ -123,6 +123,16 @@ export function useHomeScreen() {
   testModeRef.current = isTestMode;
   const didInitialLoad = useRef(false);
   const lastFocusRefreshAt = useRef(0);
+  const userRef = useRef(user);
+  const segmentActiveTripRef = useRef<Trip | null>(segmentActiveTrip ?? null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    segmentActiveTripRef.current = segmentActiveTrip ?? null;
+  }, [segmentActiveTrip]);
 
   // ── Raw state ──
   const [_rawTrip, setTrip] = useState<Trip | null>(null);
@@ -266,8 +276,9 @@ export function useHomeScreen() {
       const quickTripsPromise = withTimeout(getHomeQuickTripsPromise(force), [] as QuickTrip[]);
       const lifetimeStatsPromise = withTimeout(getHomeLifetimeStatsPromise(force), null);
 
+      const currentUser = userRef.current;
       const fetchedTrip = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
-      const t = pickHomeLoadedTrip(fetchedTrip, segmentActiveTrip ?? null, force);
+      const t = pickHomeLoadedTrip(fetchedTrip, segmentActiveTripRef.current, force);
       if (t) {
         setTrip(t);
         await cacheSet('trip:active', t);
@@ -298,7 +309,7 @@ export function useHomeScreen() {
           trip: t,
           flights: fs,
           members: mems,
-          userId: user?.id,
+          userId: currentUser?.id,
           manualPhase,
         }));
 
@@ -330,7 +341,7 @@ export function useHomeScreen() {
         quickTripsPromise,
         lifetimeStatsPromise,
       ]);
-      setDebugInfo(`User: ${user?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTripsData.length}`);
+      setDebugInfo(`User: ${currentUser?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTripsData.length}`);
       const split = splitTripsByLifecycle(allTripsData);
       setRPastTrips(split.pastTrips);
       setRDraftTrips(split.draftTrips);
@@ -362,11 +373,11 @@ export function useHomeScreen() {
         setRSavedPlaces(saved.filter(p => p.saved));
       }
 
-      if (user) {
+      if (currentUser) {
         const { getProfile } = await import('@/lib/supabase');
-        const profile = await withTimeout(getProfile(user.id), null);
+        const profile = await withTimeout(getProfile(currentUser.id), null);
         if (profile?.fullName) { setUserName(profile.fullName.split(' ')[0]); if (profile.avatarUrl) setUserAvatar(profile.avatarUrl); }
-        else { setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? user.email?.split('@')[0] ?? ''); if (user.user_metadata?.avatar_url) setUserAvatar(user.user_metadata.avatar_url); }
+        else { setUserName(currentUser.user_metadata?.full_name?.split(' ')[0] ?? currentUser.email?.split('@')[0] ?? ''); if (currentUser.user_metadata?.avatar_url) setUserAvatar(currentUser.user_metadata.avatar_url); }
       }
 
       // Write widget snapshots so headless widget context can read them
@@ -380,7 +391,7 @@ export function useHomeScreen() {
       if (!silent) setLoading(false);
       setRefreshing(false);
     }
-  }, [clearActiveTripSurface, segmentActiveTrip, user]);
+  }, [clearActiveTripSurface]);
 
   // ── Toggle-off recovery ──
   const prevTestMode = useRef(isTestMode);

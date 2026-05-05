@@ -3,7 +3,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
 import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
-import { TiltCard } from '@/components/shared/TiltCard';
 import { safeParse, MS_PER_DAY, MS_PER_HOUR } from '@/lib/utils';
 
 interface Props {
@@ -50,7 +49,7 @@ export function CountdownCard({
 
   if (!hasValidStart) {
     return (
-      <TiltCard style={styles.card}>
+      <View style={styles.card}>
         <View style={styles.topRow}>
           <View>
             <Text style={styles.eyebrow}>Trip timing</Text>
@@ -63,7 +62,7 @@ export function CountdownCard({
         <Text style={styles.fallbackText}>
           Add or rescan your booking details to unlock the countdown.
         </Text>
-      </TiltCard>
+      </View>
     );
   }
 
@@ -88,7 +87,7 @@ export function CountdownCard({
   ];
 
   return (
-    <TiltCard style={styles.card}>
+    <View style={styles.card}>
       {/* Top row: label + stamp */}
       <View style={styles.topRow}>
         <View>
@@ -145,7 +144,7 @@ export function CountdownCard({
           </Svg>
         </AnimatedPressable>
       )}
-    </TiltCard>
+    </View>
   );
 }
 
