@@ -334,8 +334,18 @@ export function useHomeScreen() {
         setFlights(fs); setMembers(mems);
         await cacheSet(`flights:${t.id}`, fs);
 
-        const primary = mems.find(m => m.role === 'Primary');
-        if (primary) { setUserName(primary.name); if (primary.profilePhoto) setUserAvatar(primary.profilePhoto); }
+        // Greeting must reflect the LOGGED-IN user, not the trip primary —
+        // otherwise every guest on Peter's trip sees "Hey Peter" until the
+        // profile fetch on line ~437 overrides it. Look up the current
+        // user's member row instead. The profile fetch later still wins
+        // if it has a more accurate fullName/avatar.
+        const myMember = currentUser?.id
+          ? mems.find(m => m.userId === currentUser.id)
+          : undefined;
+        if (myMember) {
+          if (myMember.name) setUserName(myMember.name);
+          if (myMember.profilePhoto) setUserAvatar(myMember.profilePhoto);
+        }
 
         const cachedTid = await cacheGet<string>('trip:phase:tripId', 0);
         if (cachedTid && cachedTid !== t.id) await cacheSet('trip:phase:override', null);
@@ -622,10 +632,27 @@ export function useHomeScreen() {
         setMembers(mems);
         await cacheSet(`flights:${activeTrip.id}`, fs);
 
-        const primary = mems.find(m => m.role === 'Primary');
-        if (primary) {
-          setUserName(primary.name);
-          if (primary.profilePhoto) setUserAvatar(primary.profilePhoto);
+        // Greeting must reflect the LOGGED-IN user, not the trip primary —
+        // see load() above for the same fix. The pull-to-refresh path was
+        // also seeding userName from `Primary`, which is wrong for guests.
+        const myMember = user?.id
+          ? mems.find(m => m.userId === user.id)
+          : undefined;
+        if (myMember) {
+          if (myMember.name) setUserName(myMember.name);
+          if (myMember.profilePhoto) setUserAvatar(myMember.profilePhoto);
+        }
+
+        // Refresh path was missing the canonical getProfile() override that
+        // load() does — re-fetch so a renamed account picks up immediately
+        // on pull-to-refresh instead of needing an app cold start.
+        if (user?.id) {
+          const { getProfile } = await import('@/lib/supabase');
+          const profile = await withTimeout(getProfile(user.id), null);
+          if (profile?.fullName) {
+            setUserName(profile.fullName.split(' ')[0]);
+            if (profile.avatarUrl) setUserAvatar(profile.avatarUrl);
+          }
         }
 
         const manualPhase = await cacheGet<TripPhase | null>('trip:phase:override', 0);
