@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 
@@ -16,22 +16,37 @@ export interface AppNotification {
  * Fetches notifications from Supabase, provides mark-read and unread count.
  * All operations wrapped in try/catch — never crashes the app.
  */
-export function useNotifications() {
+export function useNotifications(enabled = true) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(false);
+  const userIdRef = useRef<string | undefined>(user?.id);
+  const fetchSeq = useRef(0);
+
+  useEffect(() => {
+    userIdRef.current = user?.id;
+    fetchSeq.current += 1;
+  }, [user?.id]);
 
   const fetchNotifs = useCallback(async () => {
-    if (!user?.id) return;
+    const seq = ++fetchSeq.current;
+    if (!enabled || !user?.id) {
+      setNotifications([]);
+      setLoading(false);
+      return;
+    }
+    const requestUserId = user.id;
+    const isCurrentRequest = () => fetchSeq.current === seq && userIdRef.current === requestUserId;
     try {
       setLoading(true);
       const { data } = await supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', requestUserId)
         .order('created_at', { ascending: false })
         .limit(50);
 
+      if (!isCurrentRequest()) return;
       if (data) {
         setNotifications(
           data.map((n: any) => ({
@@ -51,20 +66,29 @@ export function useNotifications() {
         console.warn('[useNotifications] fetch failed:', err);
       }
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) setLoading(false);
     }
-  }, [user?.id]);
+  }, [enabled, user?.id]);
 
   useEffect(() => { fetchNotifs(); }, [fetchNotifs]);
 
+  useEffect(() => {
+    if (!enabled || !user?.id) {
+      fetchSeq.current += 1;
+      setNotifications([]);
+      setLoading(false);
+    }
+  }, [enabled, user?.id]);
+
   // Realtime subscription — wrapped in try/catch
   useEffect(() => {
-    if (!user?.id) return;
+    if (!enabled || !user?.id) return;
 
     let channel: any;
+    const channelName = `notifs-rt-${user.id}`;
     try {
       channel = supabase
-        .channel('notifs-rt')
+        .channel(channelName)
         .on(
           'postgres_changes',
           {
@@ -97,16 +121,17 @@ export function useNotifications() {
     return () => {
       if (channel) supabase.removeChannel(channel).catch(() => {});
     };
-  }, [user?.id]);
+  }, [enabled, user?.id]);
 
   const markRead = useCallback(async (id: string) => {
+    if (!user?.id) return;
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
     );
     try {
-      await supabase.from('notifications').update({ read: true }).eq('id', id);
+      await supabase.from('notifications').update({ read: true }).eq('id', id).eq('user_id', user.id);
     } catch { /* ignore */ }
-  }, []);
+  }, [user?.id]);
 
   const markAllRead = useCallback(async () => {
     if (!user?.id) return;

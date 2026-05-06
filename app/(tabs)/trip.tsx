@@ -183,6 +183,7 @@ function TripScreen() {
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const { user } = useAuth();
+  const userIdRef = useRef<string | undefined>(user?.id);
   const { isTestMode, mockData } = useUserSegment();
   const testModeRef = useRef(isTestMode);
   testModeRef.current = isTestMode;
@@ -234,6 +235,37 @@ function TripScreen() {
     totalSpent: number;
   } | null>(null);
 
+  const resetTripSurface = useCallback(() => {
+    setTrip(null);
+    setMembersData([]);
+    setFlightsData([]);
+    setPackingItems([]);
+    setFilesData([]);
+    setFilesError(null);
+    setHighlightsData([]);
+    setPastTripsData([]);
+    setDraftTripsData([]);
+    setArchivedTripsData([]);
+    setQuickTripsData([]);
+    setActiveTripSpent(0);
+    setLifetimeStats(null);
+    setSelectedFile(null);
+    setEditingPackingId(null);
+    setEditingPackingText('');
+    setEditMember(null);
+    setEditField(null);
+    setEditValue('');
+    setAddOpen(false);
+  }, []);
+
+  useEffect(() => {
+    userIdRef.current = user?.id;
+    loadSeq.current += 1;
+    resetTripSurface();
+    setLoading(!isTestMode);
+    setRefreshing(false);
+  }, [isTestMode, resetTripSurface, user?.id]);
+
   // Dev test mode: apply mock trip data
   useEffect(() => {
     if (!isTestMode || !mockData) return;
@@ -263,8 +295,11 @@ function TripScreen() {
     if (testModeRef.current) { setLoading(false); setRefreshing(false); return; }
     const { force = false, silent = false } = opts ?? {};
     const seq = ++loadSeq.current;
+    const requestUserId = user?.id;
+    const isCurrentRequest = () => loadSeq.current === seq && userIdRef.current === requestUserId;
     try {
       const t = await getActiveTripPromise(force);
+      if (!isCurrentRequest()) return;
       setTrip(t);
       if (t) {
         const [ms, fs, pk, tfResult] = await Promise.all([
@@ -279,11 +314,19 @@ function TripScreen() {
             }),
           ),
         ]);
+        if (!isCurrentRequest()) return;
         setMembersData(ms);
         setFlightsData(fs);
         setPackingItems(pk);
         setFilesData(tfResult.files);
         setFilesError(tfResult.error);
+      } else {
+        setMembersData([]);
+        setFlightsData([]);
+        setPackingItems([]);
+        setFilesData([]);
+        setFilesError(null);
+        setActiveTripSpent(0);
       }
       // Load lifetime data + expense summary for active trip
       const [stats, highlights, allTrips, expSummary, qTrips] = await Promise.all([
@@ -293,6 +336,7 @@ function TripScreen() {
         getExpenseSummaryPromise(undefined, force).catch(() => ({ total: 0, byCategory: {}, count: 0 })),
         getQuickTripsPromise(force).catch(() => [] as QuickTrip[]),
       ]);
+      if (!isCurrentRequest()) return;
       if (stats) setLifetimeStats(stats);
       setHighlightsData(highlights);
       setActiveTripSpent(expSummary.total);
@@ -334,8 +378,10 @@ function TripScreen() {
     } catch (e) {
       if (__DEV__) console.warn('[TripScreen] load trip data failed:', e);
     } finally {
-      if (!silent) setLoading(false);
-      setRefreshing(false);
+      if (isCurrentRequest()) {
+        if (!silent) setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [user?.id]);
 

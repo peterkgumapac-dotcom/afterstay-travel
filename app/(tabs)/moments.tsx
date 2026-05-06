@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { ChevronDown, Zap } from 'lucide-react-native';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,6 +21,7 @@ import { formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 import type { QuickTrip, QuickTripPhoto } from '@/lib/quickTripTypes';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
+import { useAuth } from '@/lib/auth';
 const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
@@ -52,6 +53,8 @@ function MomentsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
+  const userIdRef = useRef<string | undefined>(user?.id);
   const styles = useMemo(() => getStyles(colors), [colors]);
 
   const { activeTrip: segActiveTrip, pastTrips: segPastTrips, isTestMode } = useUserSegment();
@@ -71,6 +74,20 @@ function MomentsScreen() {
   const [qtCarouselVisible, setQtCarouselVisible] = useState(false);
   const [qtCarouselIndex, setQtCarouselIndex] = useState(0);
 
+  useEffect(() => {
+    userIdRef.current = user?.id;
+    setExtraActiveTrip(null);
+    setExtraPastTrips([]);
+    setQuickTrips([]);
+    setSelectedTripId(undefined);
+    setSelectedType('trip');
+    setShowPicker(false);
+    setQtPhotos([]);
+    setQtCarouselVisible(false);
+    setQtCarouselIndex(0);
+    setLoadingTrips(!isTestMode);
+  }, [isTestMode, user?.id]);
+
   // Fetch trips + quick trips. Moments cannot rely only on UserSegmentContext here,
   // because brand-new accounts often hydrate trip state a beat later than the tab.
   useEffect(() => {
@@ -79,12 +96,14 @@ function MomentsScreen() {
       return;
     }
     let cancelled = false;
+    const requestUserId = user?.id;
+    const isCurrentRequest = () => !cancelled && userIdRef.current === requestUserId;
 
     const applyTrips = (all: Trip[]) => {
       const visible = all.filter((tr) => !tr.deletedAt && !tr.archivedAt);
       const active = visible.find((tr) => !tr.isDraft && (tr.status === 'Active' || tr.status === 'Planning')) ?? null;
       const completed = visible.filter((tr) => tr.status === 'Completed');
-      if (cancelled) return;
+      if (!isCurrentRequest()) return;
       setExtraActiveTrip(active);
       setExtraPastTrips(completed);
       if (!segActiveTrip && active) {
@@ -110,16 +129,16 @@ function MomentsScreen() {
     withTimeout(getAllTripsPromise(false), [] as Trip[])
       .then((trips) => {
         applyTrips(trips);
-        if (!cancelled) setLoadingTrips(false);
+        if (isCurrentRequest()) setLoadingTrips(false);
       }, () => {
-        if (!cancelled) setLoadingTrips(false);
+        if (isCurrentRequest()) setLoadingTrips(false);
       });
 
     withTimeout(getQuickTripsPromise(false), [] as QuickTrip[])
-      .then((trips) => { if (!cancelled) setQuickTrips(trips); });
+      .then((trips) => { if (isCurrentRequest()) setQuickTrips(trips); });
 
     return () => { cancelled = true; };
-  }, [isTestMode, segActiveTrip]);
+  }, [isTestMode, segActiveTrip, user?.id]);
 
   useEffect(() => {
     if (activeTrip) {
@@ -134,9 +153,19 @@ function MomentsScreen() {
   // Fetch photos when a quick trip is selected
   useEffect(() => {
     if (selectedType === 'quick' && selectedTripId) {
-      getQuickTripPhotos(selectedTripId).then(setQtPhotos).catch(() => setQtPhotos([]));
+      let cancelled = false;
+      const requestUserId = user?.id;
+      getQuickTripPhotos(selectedTripId)
+        .then((photos) => {
+          if (!cancelled && userIdRef.current === requestUserId) setQtPhotos(photos);
+        })
+        .catch(() => {
+          if (!cancelled && userIdRef.current === requestUserId) setQtPhotos([]);
+        });
+      return () => { cancelled = true; };
     }
-  }, [selectedType, selectedTripId]);
+    setQtPhotos([]);
+  }, [selectedType, selectedTripId, user?.id]);
 
   const selectedTrip = useMemo(() => {
     if (selectedType === 'quick') {

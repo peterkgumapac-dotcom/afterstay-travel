@@ -4,8 +4,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { AppState, InteractionManager } from 'react-native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 
 import { useAuth } from '@/lib/auth';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
@@ -119,10 +119,12 @@ export function useHomeScreen() {
     loading: segmentLoading,
   } = useUserSegment();
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const testModeRef = useRef(isTestMode);
   testModeRef.current = isTestMode;
   const didInitialLoad = useRef(false);
   const lastFocusRefreshAt = useRef(0);
+  const loadSeq = useRef(0);
   const userRef = useRef(user);
   const segmentActiveTripRef = useRef<Trip | null>(segmentActiveTrip ?? null);
 
@@ -257,10 +259,45 @@ export function useHomeScreen() {
     cacheSet('trip:active', null).catch(() => {});
   }, []);
 
+  const resetHomeSurface = useCallback(() => {
+    loadSeq.current += 1;
+    clearActiveTripSurface();
+    setRPastTrips([]);
+    setRDraftTrips([]);
+    setRUpcomingTrips([]);
+    setRActiveTrips([]);
+    setRQuickTrips([]);
+    setRMoments([]);
+    setRMembers([]);
+    setRSavedPlaces([]);
+    setRStats(null);
+    setRAllTrips([]);
+    setDailyTrackerOn(false);
+    setDailyTrackerTotal(0);
+    setDailyTrackerCount(0);
+    setDailyTrackerByCat({});
+    setUserName('');
+    setUserAvatar(undefined);
+    setDebugInfo('');
+    setHistoryHydrated(false);
+    setError(undefined);
+  }, [clearActiveTripSurface]);
+
+  useEffect(() => {
+    didInitialLoad.current = false;
+    lastFocusRefreshAt.current = 0;
+    resetHomeSurface();
+    setLoading(!isTestMode);
+    setRefreshing(false);
+  }, [isTestMode, resetHomeSurface, user?.id]);
+
   // ── Main loader ──
   const load = useCallback(async (opts?: { force?: boolean; silent?: boolean }) => {
     if (testModeRef.current) { setLoading(false); setRefreshing(false); return; }
     const { force = false, silent = false } = opts ?? {};
+    const seq = ++loadSeq.current;
+    const requestUserId = userRef.current?.id;
+    const isCurrentRequest = () => loadSeq.current === seq && userRef.current?.id === requestUserId;
     try {
       if (!silent) {
         setLoading(true);
@@ -279,6 +316,7 @@ export function useHomeScreen() {
       const currentUser = userRef.current;
       const fetchedTrip = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
       const t = pickHomeLoadedTrip(fetchedTrip, segmentActiveTripRef.current, force);
+      if (!isCurrentRequest()) return;
       if (t) {
         setTrip(t);
         await cacheSet('trip:active', t);
@@ -288,13 +326,12 @@ export function useHomeScreen() {
       }
 
       if (t) {
-        const [fs, ms, mems, places] = await Promise.all([
+        const [fs, mems] = await Promise.all([
           withTimeout(getHomeFlightsPromise(t.id, force), [] as Flight[]),
-          withTimeout(getHomeMomentsPromise(t.id, force), [] as Moment[]),
           withTimeout(getHomeMembersPromise(t.id, force), [] as GroupMember[]),
-          withTimeout(getHomePlacesPromise(t.id, force), [] as Place[]),
         ]);
-        setFlights(fs); setMoments(ms); setMembers(mems); setSavedPlaces(places);
+        if (!isCurrentRequest()) return;
+        setFlights(fs); setMembers(mems);
         await cacheSet(`flights:${t.id}`, fs);
 
         const primary = mems.find(m => m.role === 'Primary');
@@ -313,21 +350,35 @@ export function useHomeScreen() {
           manualPhase,
         }));
 
-        const allExp = await withTimeout(getHomeExpensesPromise(t.id, force), []);
-        setTotalSpent(allExp.reduce((s, e) => s + e.amount, 0));
-        const todayIso = new Date().toISOString().slice(0, 10);
-        const te = allExp.filter(e => e.date === todayIso);
-        setTodaySpent(te.reduce((s, e) => s + e.amount, 0));
-        setTodayCount(te.length);
-
         if (!silent) {
           setLoading(false);
           setRefreshing(false);
         }
+
+        InteractionManager.runAfterInteractions(() => {
+          if (!isCurrentRequest()) return;
+          Promise.all([
+            withTimeout(getHomeMomentsPromise(t.id, force), [] as Moment[]),
+            withTimeout(getHomePlacesPromise(t.id, force), [] as Place[]),
+            withTimeout(getHomeExpensesPromise(t.id, force), []),
+          ]).then(([ms, places, allExp]) => {
+            if (!isCurrentRequest()) return;
+            setMoments(ms);
+            setSavedPlaces(places);
+            setTotalSpent(allExp.reduce((s, e) => s + e.amount, 0));
+            const todayIso = new Date().toISOString().slice(0, 10);
+            const te = allExp.filter(e => e.date === todayIso);
+            setTodaySpent(te.reduce((s, e) => s + e.amount, 0));
+            setTodayCount(te.length);
+          }).catch((err) => {
+            if (__DEV__) console.warn('[Home] deferred trip details failed:', err);
+          });
+        });
       }
 
       // Daily tracker
       const trackerOn = await withTimeout(getDailyTrackerEnabled(), false);
+      if (!isCurrentRequest()) return;
       setDailyTrackerOn(trackerOn);
       if (trackerOn) {
         const ds = await withTimeout(getDailyExpenseSummary(new Date().toISOString().slice(0, 10)), null);
@@ -341,6 +392,7 @@ export function useHomeScreen() {
         quickTripsPromise,
         lifetimeStatsPromise,
       ]);
+      if (!isCurrentRequest()) return;
       setDebugInfo(`User: ${currentUser?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTripsData.length}`);
       const split = splitTripsByLifecycle(allTripsData);
       setRPastTrips(split.pastTrips);
@@ -359,23 +411,29 @@ export function useHomeScreen() {
       const completed = allTripsData.filter(tr => tr.status === 'Completed' && !tr.deletedAt);
       if (completed.length > 0) {
         const ids = completed.slice(0, 3).map(tr => tr.id);
-        const [momR, membersR, saved] = await Promise.all([
-          Promise.all(ids.map(id => withTimeout(getHomeMomentsPromise(id, force), [] as Moment[]))),
-          withTimeout(getHomeMembersPromise(completed[0].id, force), [] as GroupMember[]),
-          withTimeout(getHomePlacesPromise(completed[0].id, force), [] as Place[]),
-        ]);
-        const unique = new Map<string, Moment>();
-        for (const m of momR.flat()) {
-          if (m.photo?.startsWith('http') && !unique.has(m.id)) unique.set(m.id, m);
-        }
-        setRMoments([...unique.values()].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10));
-        setRMembers(membersR);
-        setRSavedPlaces(saved.filter(p => p.saved));
+        InteractionManager.runAfterInteractions(() => {
+          if (!isCurrentRequest()) return;
+          Promise.all([
+            Promise.all(ids.map(id => withTimeout(getHomeMomentsPromise(id, force), [] as Moment[]))),
+            withTimeout(getHomeMembersPromise(completed[0].id, force), [] as GroupMember[]),
+            withTimeout(getHomePlacesPromise(completed[0].id, force), [] as Place[]),
+          ]).then(([momR, membersR, saved]) => {
+            if (!isCurrentRequest()) return;
+            const unique = new Map<string, Moment>();
+            for (const m of momR.flat()) {
+              if (m.photo?.startsWith('http') && !unique.has(m.id)) unique.set(m.id, m);
+            }
+            setRMoments([...unique.values()].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10));
+            setRMembers(membersR);
+            setRSavedPlaces(saved.filter(p => p.saved));
+          }).catch(() => {});
+        });
       }
 
       if (currentUser) {
         const { getProfile } = await import('@/lib/supabase');
         const profile = await withTimeout(getProfile(currentUser.id), null);
+        if (!isCurrentRequest()) return;
         if (profile?.fullName) { setUserName(profile.fullName.split(' ')[0]); if (profile.avatarUrl) setUserAvatar(profile.avatarUrl); }
         else { setUserName(currentUser.user_metadata?.full_name?.split(' ')[0] ?? currentUser.email?.split('@')[0] ?? ''); if (currentUser.user_metadata?.avatar_url) setUserAvatar(currentUser.user_metadata.avatar_url); }
       }
@@ -383,13 +441,15 @@ export function useHomeScreen() {
       // Write widget snapshots so headless widget context can read them
       writeWidgetSnapshots().then(() => refreshAllWidgets()).catch(() => {});
     } catch (e: unknown) {
-      if (!silent) {
+      if (isCurrentRequest() && !silent) {
         setError(e instanceof Error ? e.message : 'Unable to load trip');
         setHistoryHydrated(true);
       }
     } finally {
-      if (!silent) setLoading(false);
-      setRefreshing(false);
+      if (isCurrentRequest()) {
+        if (!silent) setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [clearActiveTripSurface]);
 
@@ -403,6 +463,26 @@ export function useHomeScreen() {
   // ── Cache-first init ──
   useEffect(() => {
     if (testModeRef.current) { setLoaderDone(true); setLoading(false); setHistoryHydrated(true); didInitialLoad.current = true; return; }
+    if (didInitialLoad.current) {
+      const contextTrip = segmentActiveTrip ?? null;
+      const contextTrips = [
+        ...(segmentPastTrips ?? []),
+        ...(segmentDraftTrips ?? []),
+        ...(contextTrip ? [contextTrip] : []),
+      ];
+      if (contextTrips.length > 0) {
+        const split = splitTripsByLifecycle(contextTrips);
+        setRPastTrips((prev) => (prev.length > 0 ? prev : split.pastTrips));
+        setRDraftTrips((prev) => (prev.length > 0 ? prev : split.draftTrips));
+        setRUpcomingTrips((prev) => (prev.length > 0 ? prev : split.upcomingTrips));
+        setRActiveTrips((prev) => (prev.length > 0 ? prev : split.activeTrips));
+        setRAllTrips((prev) => (prev.length > 0 ? prev : contextTrips));
+        setHistoryHydrated(true);
+      } else if (!segmentLoading) {
+        setHistoryHydrated(true);
+      }
+      return;
+    }
     let cancelled = false;
     (async () => {
       const memoryTrip = getHomeActiveTripCached();
@@ -621,7 +701,7 @@ export function useHomeScreen() {
   );
 
   const recomputeCurrentPhase = useCallback(async () => {
-    if (testModeRef.current || !_rawTrip) return;
+    if (testModeRef.current || !_rawTrip || !isFocused || AppState.currentState !== 'active') return;
     const manualPhase = await cacheGet<TripPhase | null>('trip:phase:override', 0);
     setHasPhaseOverride(!!manualPhase);
     setPhaseRaw(computeTripPhase({
@@ -631,7 +711,7 @@ export function useHomeScreen() {
       userId: user?.id,
       manualPhase,
     }));
-  }, [_rawTrip, flights, members, user?.id]);
+  }, [_rawTrip, flights, isFocused, members, user?.id]);
 
   const setManualPhaseOverride = useCallback(async (nextPhase: TripPhase) => {
     await cacheSet('trip:phase:override', nextPhase);
@@ -653,7 +733,7 @@ export function useHomeScreen() {
   }, [_rawTrip, flights, members, user?.id]);
 
   useEffect(() => {
-    if (!_rawTrip || isTestMode) return;
+    if (!_rawTrip || isTestMode || !isFocused) return;
     recomputeCurrentPhase();
     const timer = setInterval(recomputeCurrentPhase, 15_000);
     const sub = AppState.addEventListener('change', (state) => {
@@ -663,7 +743,7 @@ export function useHomeScreen() {
       clearInterval(timer);
       sub.remove();
     };
-  }, [_rawTrip, isTestMode, recomputeCurrentPhase]);
+  }, [_rawTrip, isFocused, isTestMode, recomputeCurrentPhase]);
 
   return {
     // Core (test-mode-aware)

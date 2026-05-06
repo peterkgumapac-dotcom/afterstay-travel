@@ -196,46 +196,53 @@ function getNotifStyle(type: string): NotifStyle {
 
 const DISMISSED_KEY = 'notif_dismissed_local';
 
+function dismissedKeyForUser(userId?: string | null): string {
+  return userId ? `${DISMISSED_KEY}:${userId}` : `${DISMISSED_KEY}:anon`;
+}
+
 // Module-level cache — hydrated from AsyncStorage on first use
 let dismissedLocalIds = new Set<string>();
-let dismissHydrated = false;
+let dismissHydratedFor: string | null = null;
 let dismissListeners: Array<() => void> = [];
 
-async function hydrateDismissed() {
-  if (dismissHydrated) return;
+async function hydrateDismissed(userId?: string | null) {
+  const key = dismissedKeyForUser(userId);
+  if (dismissHydratedFor === key) return;
   try {
-    const raw = await AsyncStorage.getItem(DISMISSED_KEY);
+    const raw = await AsyncStorage.getItem(key);
     if (raw) dismissedLocalIds = new Set(JSON.parse(raw));
+    else dismissedLocalIds = new Set();
   } catch { /* ignore */ }
-  dismissHydrated = true;
+  dismissHydratedFor = key;
 }
 
-function dismissLocal(id: string) {
+function dismissLocal(id: string, userId?: string | null) {
   dismissedLocalIds.add(id);
   dismissListeners.forEach((fn) => fn());
-  AsyncStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissedLocalIds])).catch(() => {});
+  AsyncStorage.setItem(dismissedKeyForUser(userId), JSON.stringify([...dismissedLocalIds])).catch(() => {});
 }
 
-function clearDismissed() {
+function clearDismissed(userId?: string | null) {
   dismissedLocalIds = new Set();
   dismissListeners.forEach((fn) => fn());
-  AsyncStorage.removeItem(DISMISSED_KEY).catch(() => {});
+  AsyncStorage.removeItem(dismissedKeyForUser(userId)).catch(() => {});
 }
 
 function useDismissedCount(): number {
   const [, forceUpdate] = useState(0);
   const listener = useCallback(() => forceUpdate((n) => n + 1), []);
+  const { user } = useAuth();
 
   // Hydrate on first mount
   useEffect(() => {
-    hydrateDismissed().then(() => forceUpdate((n) => n + 1));
-  }, []);
+    hydrateDismissed(user?.id).then(() => forceUpdate((n) => n + 1));
+  }, [user?.id]);
 
   // Register/unregister listener
-  useState(() => {
+  useEffect(() => {
     dismissListeners.push(listener);
     return () => { dismissListeners = dismissListeners.filter((fn) => fn !== listener); };
-  });
+  }, [listener]);
 
   return dismissedLocalIds.size;
 }
@@ -248,8 +255,8 @@ export function useNotificationCount(
   dbUnread?: number,
 ): number {
   const { colors } = useTheme();
-  // Only call useNotifications() as fallback if parent doesn't provide dbUnread
-  const fallback = useNotifications();
+  // Keep hook order stable, but disable fallback work when the parent provides DB state.
+  const fallback = useNotifications(dbUnread === undefined);
   const resolvedDbUnread = dbUnread ?? fallback.unreadCount;
   const dismissed = useDismissedCount();
   const [prefs, setPrefs] = useState<Partial<NotificationPrefs>>({});
@@ -282,7 +289,7 @@ export default function NotificationsSheet({
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   // Use shared state from parent when available; fall back to own instance otherwise
-  const fallback = useNotifications();
+  const fallback = useNotifications(!sharedNotifs || !sharedMarkRead || !sharedMarkAllRead);
   const dbNotifs = sharedNotifs ?? fallback.notifications;
   const markRead = sharedMarkRead ?? fallback.markRead;
   const markAllRead = sharedMarkAllRead ?? fallback.markAllRead;
@@ -338,7 +345,7 @@ export default function NotificationsSheet({
                 <TouchableOpacity
                   onPress={() => {
                     markAllRead();
-                    for (const a of activeLocalAlerts) dismissLocal(a.id);
+                    for (const a of activeLocalAlerts) dismissLocal(a.id, user?.id);
                   }}
                   style={styles.markAllBtn}
                   activeOpacity={0.7}
@@ -396,7 +403,7 @@ export default function NotificationsSheet({
                     activeOpacity={n.action ? 0.7 : 1}
                     onPress={() => {
                       if (isDB) markRead(n.id);
-                      if (!isDB) dismissLocal(n.id);
+                      if (!isDB) dismissLocal(n.id, user?.id);
                       // Group vote items open the voting sheet instead of navigating
                       const isGroupVote = n.id === 'group-votes' || (isDB && (n as any).category?.includes('vote needed'));
                       if (isGroupVote && onGroupVoteTap) {

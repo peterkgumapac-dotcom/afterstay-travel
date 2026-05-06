@@ -1,14 +1,15 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import * as Linking from 'expo-linking';
 import { router as expoRouter } from 'expo-router';
 import { AppState, type AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { secureStorage } from './secureStorage';
-import { clearTripLocalData, setCacheUserId } from './cache';
+import { setCacheUserId } from './cache';
 import { clearGoogleSession } from './googleAuth';
-import { supabase, clearTripCache } from './supabase';
-import { clearTabDataCache, setTabDataCacheUserId } from './tabDataCache';
+import { supabase } from './supabase';
+import { setTabDataCacheUserId } from './tabDataCache';
 import { consumePendingInviteCode, storePendingInviteCode } from './pendingInvite';
+import { clearAccountRuntimeState } from './accountRuntime';
 import type { Session, User } from '@supabase/supabase-js';
 import * as Crypto from 'expo-crypto';
 
@@ -112,9 +113,7 @@ async function ensureSessionProfile(s: Session | null): Promise<void> {
 }
 
 async function clearAccountState(): Promise<void> {
-  clearTripCache();
-  clearTabDataCache();
-  await clearTripLocalData();
+  await clearAccountRuntimeState();
   setCacheUserId(undefined);
   setTabDataCacheUserId(undefined);
 }
@@ -138,6 +137,23 @@ async function resumePendingInvite(s: Session | null): Promise<void> {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const activeUserIdRef = useRef<string | undefined>(undefined);
+
+  const installSession = async (s: Session | null): Promise<void> => {
+    const nextUserId = s?.user?.id;
+    const previousUserId = activeUserIdRef.current;
+
+    if (previousUserId && previousUserId !== nextUserId) {
+      await clearAccountState();
+    } else if (!nextUserId) {
+      await clearAccountState();
+    }
+
+    applyAccountScope(s);
+    activeUserIdRef.current = nextUserId;
+    await ensureSessionProfile(s);
+    setSession(s);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -166,15 +182,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         if (cancelled) return;
 
-        applyAccountScope(s);
-        await ensureSessionProfile(s);
+        await installSession(s);
         if (cancelled) return;
 
-        setSession(s);
         await resumePendingInvite(s);
       } catch (err) {
         if (__DEV__) console.warn('[auth] initial session restore failed:', err);
-        if (!cancelled) setSession(null);
+        if (!cancelled) {
+          await clearAccountState();
+          activeUserIdRef.current = undefined;
+          setSession(null);
+        }
       } finally {
         clearTimeout(watchdog);
         finishLoading();
@@ -186,13 +204,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (_event, s) => {
         if (_event === 'SIGNED_OUT') {
           await clearAccountState();
+          activeUserIdRef.current = undefined;
           setSession(null);
           return;
         }
 
-        applyAccountScope(s);
-        await ensureSessionProfile(s);
-        setSession(s);
+        await installSession(s);
         await resumePendingInvite(s);
       },
     );
@@ -331,9 +348,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         supabase.auth.getSession(),
         'Session restore timed out. Please try again.',
       );
-      applyAccountScope(data.session);
-      await ensureSessionProfile(data.session);
-      setSession(data.session);
+      await installSession(data.session);
       await resumePendingInvite(data.session);
       return { error: null };
     } catch (err) {
@@ -362,6 +377,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await clearGoogleSession();
     await clearAccountState();
     await supabase.auth.signOut();
+    activeUserIdRef.current = undefined;
     setSession(null);
   };
 

@@ -161,6 +161,19 @@ export async function getOfflineFavorites(): Promise<Set<string>> {
   return new Set(rows.map(r => r.moment_id));
 }
 
+export async function clearOfflineFavorites(): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM offline_favorites`);
+}
+
+export async function clearSQLiteAccountCache(): Promise<void> {
+  const database = await getDb();
+  await database.execAsync(`
+    DELETE FROM photo_metadata;
+    DELETE FROM offline_favorites;
+  `);
+}
+
 // ---------------------------------------------------------------------------
 // Cache diagnostics
 // ---------------------------------------------------------------------------
