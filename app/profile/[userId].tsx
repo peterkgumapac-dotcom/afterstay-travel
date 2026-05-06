@@ -189,14 +189,19 @@ export default function CompanionProfileScreen() {
         : getPublicProfilePosts(targetUserId, 24)
           .then((posts) => posts.map(publicPostToMoment).filter((moment): moment is Moment => !!moment))
           .catch(() => []);
-      const [moments, publicProfileMoments] = await Promise.all([sharedMomentsPromise, publicMomentsPromise]);
-      if (!shouldApply()) return;
-      const flights = (await Promise.allSettled(
+      // Flights only depend on `trips`, so fire in parallel with moments
+      // instead of waiting for moments to settle first.
+      const flightsPromise = Promise.allSettled(
         trips.map(async (trip) => {
           const tripFlights = await getFlights(trip.id);
           return tripFlights.map((flight) => ({ ...flight, tripId: trip.id }));
         }),
-      )).flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+      ).then((results) => results.flatMap((result) => result.status === 'fulfilled' ? result.value : []));
+      const [moments, publicProfileMoments, flights] = await Promise.all([
+        sharedMomentsPromise,
+        publicMomentsPromise,
+        flightsPromise,
+      ]);
       if (!shouldApply()) return;
 
       setProfile(lifetimeStats ? { ...profileResult, lifetimeStats } : profileResult);

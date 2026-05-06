@@ -288,11 +288,14 @@ export function useHomeScreen() {
       }
 
       if (t) {
-        const [fs, ms, mems, places] = await Promise.all([
+        // Expenses only depend on tripId — fold into the same parallel batch
+        // instead of waiting for the four trip queries to settle first.
+        const [fs, ms, mems, places, allExp] = await Promise.all([
           withTimeout(getHomeFlightsPromise(t.id, force), [] as Flight[]),
           withTimeout(getHomeMomentsPromise(t.id, force), [] as Moment[]),
           withTimeout(getHomeMembersPromise(t.id, force), [] as GroupMember[]),
           withTimeout(getHomePlacesPromise(t.id, force), [] as Place[]),
+          withTimeout(getHomeExpensesPromise(t.id, force), []),
         ]);
         setFlights(fs); setMoments(ms); setMembers(mems); setSavedPlaces(places);
         await cacheSet(`flights:${t.id}`, fs);
@@ -313,7 +316,6 @@ export function useHomeScreen() {
           manualPhase,
         }));
 
-        const allExp = await withTimeout(getHomeExpensesPromise(t.id, force), []);
         setTotalSpent(allExp.reduce((s, e) => s + e.amount, 0));
         const todayIso = new Date().toISOString().slice(0, 10);
         const te = allExp.filter(e => e.date === todayIso);
