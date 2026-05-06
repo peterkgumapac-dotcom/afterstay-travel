@@ -212,10 +212,30 @@ function BudgetScreen() {
   const [milestoneToShow, setMilestoneToShow] = useState<SavingsMilestone | null>(null);
   const [showDailySheet, setShowDailySheet] = useState(false);
 
+  // React "reset state on prop change" — clear synchronously on auth change
+  // so the previous account's expenses, members, QR codes, savings goal,
+  // budget input never flash for a frame after switching accounts.
+  const [accountBoundUserId, setAccountBoundUserId] = useState<string | undefined>(user?.id);
+  if (accountBoundUserId !== user?.id) {
+    setAccountBoundUserId(user?.id);
+    setTrip(null);
+    setExpenses([]);
+    setExpenseSummary({ total: 0, byCategory: {}, count: 0 });
+    setMembers([]);
+    setPersonFilter(null);
+    setExpandedExpense(null);
+    setShowAllExpenses(false);
+    setBudgetInput('');
+    setPaymentQrs([]);
+    setUserQrs([]);
+    setSavingsGoal(null);
+    setDetailExpense(null);
+  }
+
   // Load savings goal on mount
   useEffect(() => {
     getActiveSavingsGoal().then(setSavingsGoal).catch(() => {});
-  }, []);
+  }, [user?.id]);
 
   // Load user-scoped QR codes (always, regardless of trip)
   useEffect(() => {

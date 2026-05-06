@@ -158,18 +158,6 @@ export function useHomeScreen() {
   const [dailyTrackerByCat, setDailyTrackerByCat] = useState<Record<string, number>>({});
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState<string>();
-  // React "reset state on prop change" pattern. The auth `user.id` flips
-  // before our useEffect cleanup runs, so without this the next render
-  // would show the previous account's name (e.g. "Hey Peter") for one
-  // frame after switching accounts. Setting state during render makes
-  // React discard the in-progress render and re-run with cleared state,
-  // so the stale name never reaches the screen.
-  const [userNameOwnerId, setUserNameOwnerId] = useState<string | undefined>(user?.id);
-  if (userNameOwnerId !== user?.id) {
-    setUserNameOwnerId(user?.id);
-    setUserName('');
-    setUserAvatar(undefined);
-  }
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [rPastTrips, setRPastTrips] = useState<Trip[]>([]);
   const [rDraftTrips, setRDraftTrips] = useState<Trip[]>([]);
@@ -182,6 +170,40 @@ export function useHomeScreen() {
   const [rStats, setRStats] = useState<LifetimeStats | null>(null);
   const [rAllTrips, setRAllTrips] = useState<Trip[]>([]);
   const [debugInfo, setDebugInfo] = useState('');
+
+  // React "reset state on prop change" pattern. The auth `user.id` flips
+  // before our useEffect cleanup runs, so without this the next render
+  // would show the previous account's data (greeting, trip card, members,
+  // moments, lifetime stats…) for one frame after switching accounts —
+  // the "Hey Peter" residue. Setting state during render makes React
+  // discard the in-progress render and re-run with cleared state, so the
+  // stale data never reaches the screen.
+  const [accountBoundUserId, setAccountBoundUserId] = useState<string | undefined>(user?.id);
+  if (accountBoundUserId !== user?.id) {
+    setAccountBoundUserId(user?.id);
+    setUserName('');
+    setUserAvatar(undefined);
+    setTrip(null);
+    setFlights([]);
+    setMoments([]);
+    setMembers([]);
+    setSavedPlaces([]);
+    setTotalSpent(0);
+    setTodaySpent(0);
+    setTodayCount(0);
+    setRPastTrips([]);
+    setRDraftTrips([]);
+    setRUpcomingTrips([]);
+    setRActiveTrips([]);
+    setRQuickTrips([]);
+    setRMoments([]);
+    setRMembers([]);
+    setRSavedPlaces([]);
+    setRStats(null);
+    setRAllTrips([]);
+    setDebugInfo('');
+    setError(undefined);
+  }
 
   // ── Derived (test-mode-aware — use these for ALL rendering) ──
   const trip = isTestMode ? (mockData?.trip ?? null) : _rawTrip;

@@ -235,6 +235,26 @@ function TripScreen() {
     totalSpent: number;
   } | null>(null);
 
+  // React "reset state on prop change" — clear all account-bound trip data
+  // synchronously when auth.user.id flips so this screen never flashes the
+  // previous account's trips/members/flights for a frame after switching.
+  const [accountBoundUserId, setAccountBoundUserId] = useState<string | undefined>(user?.id);
+  if (accountBoundUserId !== user?.id) {
+    setAccountBoundUserId(user?.id);
+    setTrip(null);
+    setMembersData([]);
+    setFlightsData([]);
+    setPackingItems([]);
+    setFilesData([]);
+    setActiveTripSpent(0);
+    setPastTripsData([]);
+    setDraftTripsData([]);
+    setArchivedTripsData([]);
+    setQuickTripsData([]);
+    setHighlightsData([]);
+    setLifetimeStats(null);
+  }
+
   const resetTripSurface = useCallback(() => {
     setTrip(null);
     setMembersData([]);

@@ -178,11 +178,22 @@ export default function SettingsScreen() {
   const [qrNameInput, setQrNameInput] = useState('');
   const [viewingQr, setViewingQr] = useState<UserPaymentQr | null>(null);
 
+  // Reset profile/trip/QR state synchronously when the auth user.id flips,
+  // so the settings tab never shows the previous account's profile (the
+  // "Hey Peter" residue) for a frame after switching accounts.
+  const [accountBoundUserId, setAccountBoundUserId] = useState<string | undefined>(user?.id);
+  if (accountBoundUserId !== user?.id) {
+    setAccountBoundUserId(user?.id);
+    setProfile(DEFAULT_PROFILE);
+    setTrip(null);
+    setUserQrs([]);
+  }
+
   useEffect(() => {
     loadProfile();
     loadTrip();
     if (user?.id) getUserPaymentQrs(user.id).then(setUserQrs).catch(() => {});
-  }, []);
+  }, [user?.id]);
 
   const loadProfile = async () => {
     if (user?.id) {

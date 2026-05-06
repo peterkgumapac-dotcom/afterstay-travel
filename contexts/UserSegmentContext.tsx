@@ -149,6 +149,18 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
   const mounted = useRef(true);
   const currentUserIdRef = useRef<string | null>(null);
 
+  // React "reset state on prop change". When auth.user.id flips, this
+  // provider re-renders with the previous account's `state.profile` for
+  // one frame before load() resolves — anything reading `state.profile`
+  // (settings sheet, profile-completion gate, etc.) would flash stale.
+  // Resetting state during render makes React replay with cleared state.
+  const [accountBoundUserId, setAccountBoundUserId] = useState<string | undefined>(user?.id);
+  if (accountBoundUserId !== user?.id) {
+    setAccountBoundUserId(user?.id);
+    setState({ ...defaultState, loading: !!user?.id });
+    setFreshProfileChecked(false);
+  }
+
   const load = useCallback(async () => {
     if (!user?.id) {
       setFreshProfileChecked(false);

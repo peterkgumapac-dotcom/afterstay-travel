@@ -74,8 +74,13 @@ function MomentsScreen() {
   const [qtCarouselVisible, setQtCarouselVisible] = useState(false);
   const [qtCarouselIndex, setQtCarouselIndex] = useState(0);
 
-  useEffect(() => {
-    userIdRef.current = user?.id;
+  // React "reset state on prop change" — clear synchronously on auth change
+  // so the previous account's quick-trip photos / picker selection never
+  // flash for a frame after switching accounts. The useEffect below still
+  // re-runs the side-effect-y reset (loadingTrips, ref) post-mount.
+  const [accountBoundUserId, setAccountBoundUserId] = useState<string | undefined>(user?.id);
+  if (accountBoundUserId !== user?.id) {
+    setAccountBoundUserId(user?.id);
     setExtraActiveTrip(null);
     setExtraPastTrips([]);
     setQuickTrips([]);
@@ -85,6 +90,10 @@ function MomentsScreen() {
     setQtPhotos([]);
     setQtCarouselVisible(false);
     setQtCarouselIndex(0);
+  }
+
+  useEffect(() => {
+    userIdRef.current = user?.id;
     setLoadingTrips(!isTestMode);
   }, [isTestMode, user?.id]);
 

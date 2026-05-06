@@ -518,6 +518,33 @@ function DiscoverScreenInner() {
   const [showVotingSheet, setShowVotingSheet] = useState(false);
   const [votingPlace, setVotingPlace] = useState<Place | null>(null);
   const { user } = useAuth();
+
+  // React "reset state on prop change" — clear synchronously on auth change
+  // so the previous account's wishlist, saved places, trip context, and
+  // discover-feed never flash for a frame after switching accounts.
+  const [accountBoundUserId, setAccountBoundUserId] = useState<string | undefined>(user?.id);
+  if (accountBoundUserId !== user?.id) {
+    setAccountBoundUserId(user?.id);
+    setWishlistItems([]);
+    setSavedPlaces([]);
+    setPlaces([]);
+    setTripId(null);
+    setTripCoords(null);
+    setTripDest('');
+    setTripStartDate(undefined);
+    setTripEndDate(undefined);
+    setTripDays(undefined);
+    setTripHotel('');
+    setTripGroupSize(0);
+    setTripMembers([]);
+    setExploreCoords(null);
+    setExploreDest('');
+    setExploreQuery('');
+    setExploreResults([]);
+    setVisibleCount(20);
+    setNextPageToken(undefined);
+    placesCache.current = {};
+  }
   const votableTripMembers = useMemo(
     () => tripMembers.filter((member) => !!member.userId),
     [tripMembers],
