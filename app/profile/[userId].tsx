@@ -164,10 +164,13 @@ export default function CompanionProfileScreen() {
         setRemoteTravelVisual(null);
         return;
       }
-      const profileResult = await getCompanionProfile(targetUserId);
-      if (!shouldApply()) return;
       const viewingSelf = user?.id === targetUserId;
-      const [tripsResult, followResult, ownProfileResult, lifetimeResult, travelVisualResult] = await Promise.allSettled([
+      // getCompanionProfile, trips, follow, ownProfile, lifetime, and travelVisual
+      // are all independent of each other — fire them in one parallel batch
+      // instead of awaiting the companion profile first. Saves one network
+      // roundtrip on every profile open (the slowest path the user sees).
+      const [profileSettled, tripsResult, followResult, ownProfileResult, lifetimeResult, travelVisualResult] = await Promise.allSettled([
+        getCompanionProfile(targetUserId),
         viewingSelf ? getAllUserTrips(targetUserId) : getMutualTrips(targetUserId),
         getFollowState(targetUserId),
         viewingSelf ? getProfile(targetUserId) : Promise.resolve(null),
@@ -175,6 +178,14 @@ export default function CompanionProfileScreen() {
         getProfileTravelVisual(targetUserId),
       ]);
       if (!shouldApply()) return;
+      if (profileSettled.status !== 'fulfilled') {
+        // The companion profile is required to render the screen — surface
+        // the error like the previous serial-await would have.
+        throw profileSettled.reason instanceof Error
+          ? profileSettled.reason
+          : new Error('Failed to load profile.');
+      }
+      const profileResult = profileSettled.value;
       const trips = tripsResult.status === 'fulfilled' ? tripsResult.value : [];
       const follow = followResult.status === 'fulfilled' ? followResult.value : { isFollowing: false, isFollowedBy: false, followersCount: 0, followingCount: 0 };
       const resolvedOwnProfile = ownProfileResult.status === 'fulfilled' ? ownProfileResult.value : null;
