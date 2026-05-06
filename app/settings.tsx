@@ -757,9 +757,9 @@ export default function SettingsScreen() {
                   content: {
                     title: 'AfterStay \u00B7 Trip Reminder',
                     body: 'Your Boracay trip memories are waiting! Tap to relive the moments.',
-                    sound: 'default',
+                    sound: true,
                   },
-                  trigger: { seconds: 2, channelId: 'default' } as any,
+                  trigger: { seconds: 2, channelId: 'afterstay' } as any,
                 });
                 Alert.alert('Sent', 'Test notification in 2 seconds');
               }}

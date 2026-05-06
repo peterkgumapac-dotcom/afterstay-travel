@@ -116,7 +116,6 @@ export async function registerPushNotificationsForUser(userId: string): Promise<
         importance: Notifs.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#D4A574',
-        sound: 'default',
         enableVibrate: true,
       });
     }
