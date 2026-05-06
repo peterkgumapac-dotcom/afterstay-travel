@@ -13,6 +13,9 @@ export const CONFIG = {
   get HOTEL_COORDS() { return _hotelCoords; },
   GOOGLE_WEB_CLIENT_ID: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '',
   TRIP_BUDGET_KEY: 'tripBudget_v1',
+  // Server-issued userId for the platform's official AfterStay account.
+  // Empty string disables the verified-badge check (multi-tenant safe default).
+  OFFICIAL_AFTERSTAY_USER_ID: process.env.EXPO_PUBLIC_OFFICIAL_AFTERSTAY_USER_ID || '',
 } as const;
 
 /** Call when the active trip changes to update distance calculations */

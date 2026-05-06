@@ -8,10 +8,12 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { CachedImage } from '@/components/CachedImage';
 import { TripCollage } from '@/components/trip/TripCollage';
 import { lightColors, useTheme } from '@/constants/ThemeContext';
+import { isOfficialAfterStayIdentity } from '@/lib/officialAccount';
 import type { ProfileBadge } from '@/lib/profileIntelligence';
 import type { CompanionStatus, LifetimeStats, Trip } from '@/lib/types';
 
 interface ProfileCoverHeaderProps {
+  userId?: string | null;
   fullName: string;
   handle?: string;
   avatarUrl?: string;
@@ -45,6 +47,7 @@ function buildTags(stats: LifetimeStats, homeBase?: string, badges?: ProfileBadg
 }
 
 export default function ProfileCoverHeader({
+  userId,
   fullName,
   handle,
   avatarUrl,
@@ -73,6 +76,13 @@ export default function ProfileCoverHeader({
   const level = Math.max(1, Math.min(8, Math.floor(stats.totalTrips / 2) + 1));
   const hasCoverVisual = !!coverPhotoUrl || !!topTrip?.id;
   const coverHeight = hasCoverVisual ? Math.min(224, Math.max(198, width * 0.5)) : 176;
+  const badgeLabels = badges?.map((badge) => badge.label) ?? [];
+  const isOfficialAfterStay = isOfficialAfterStayIdentity({
+    userId,
+    fullName,
+    handle,
+    badges: badgeLabels,
+  });
   const creatorPulse = useRef(new Animated.Value(0)).current;
   const creatorIntro = useRef(new Animated.Value(isSelf ? 0 : 1)).current;
   const creatorShimmer = useRef(new Animated.Value(0)).current;
@@ -278,13 +288,23 @@ export default function ProfileCoverHeader({
               <Text style={s.creatorText}>Creator mode</Text>
             </Animated.View>
           ) : null}
-          {isCompanion ? (
+          {isOfficialAfterStay ? (
+            <View style={s.officialVerified} accessibilityLabel="Verified official AfterStay account">
+              <Check size={11} color={colors.canvas} strokeWidth={3} />
+            </View>
+          ) : isCompanion ? (
             <View style={s.verifiedDot}>
               <Check size={11} color={colors.canvas} strokeWidth={3} />
             </View>
           ) : null}
         </View>
         {handle ? <Text style={s.handle}>@{handle}</Text> : null}
+        {isOfficialAfterStay ? (
+          <View style={s.officialPill}>
+            <Sparkles size={12} color={colors.accent} strokeWidth={2.2} />
+            <Text style={s.officialPillText}>Verified travel pulse by AfterStay</Text>
+          </View>
+        ) : null}
         {bio ? (
           <View style={s.aboutInline}>
             <Text style={s.aboutLabel}>{isSelf ? 'About you' : 'About'}</Text>
@@ -474,6 +494,16 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     alignItems: 'center',
     justifyContent: 'center',
   },
+  officialVerified: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.88)',
+  },
   creatorPill: {
     flexShrink: 0,
     minHeight: 20,
@@ -523,6 +553,24 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     fontSize: 11.5,
     fontWeight: '700',
     marginTop: 2,
+  },
+  officialPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentBg,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  officialPillText: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '900',
   },
   aboutInline: {
     marginTop: 3,

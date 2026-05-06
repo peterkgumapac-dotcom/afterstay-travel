@@ -396,6 +396,7 @@ export default function CompanionProfileScreen() {
         profilePage={(
           <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
             <ProfileCoverHeader
+              userId={resolvedUserId}
               fullName={profile.fullName}
               handle={profile.handle}
               avatarUrl={profile.avatarUrl}
