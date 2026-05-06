@@ -158,6 +158,18 @@ export function useHomeScreen() {
   const [dailyTrackerByCat, setDailyTrackerByCat] = useState<Record<string, number>>({});
   const [userName, setUserName] = useState('');
   const [userAvatar, setUserAvatar] = useState<string>();
+  // React "reset state on prop change" pattern. The auth `user.id` flips
+  // before our useEffect cleanup runs, so without this the next render
+  // would show the previous account's name (e.g. "Hey Peter") for one
+  // frame after switching accounts. Setting state during render makes
+  // React discard the in-progress render and re-run with cleared state,
+  // so the stale name never reaches the screen.
+  const [userNameOwnerId, setUserNameOwnerId] = useState<string | undefined>(user?.id);
+  if (userNameOwnerId !== user?.id) {
+    setUserNameOwnerId(user?.id);
+    setUserName('');
+    setUserAvatar(undefined);
+  }
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [rPastTrips, setRPastTrips] = useState<Trip[]>([]);
   const [rDraftTrips, setRDraftTrips] = useState<Trip[]>([]);
