@@ -155,7 +155,8 @@ export default function ExploreMomentsFeed() {
 
   const handleProfilePress = useCallback(() => {
     if (user?.id) {
-      router.push('/profile/me' as never);
+      // Direct route — skip the /profile/me redirect frame.
+      router.push({ pathname: '/profile/[userId]', params: { userId: user.id, source: 'self' } } as never);
     }
   }, [user, router]);
 

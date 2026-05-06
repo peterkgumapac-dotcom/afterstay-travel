@@ -32,7 +32,10 @@ export default function ProfileRow({
 
   const goToProfile = () => {
     if (userId) {
-      router.push('/profile/me' as never);
+      // Route direct to /profile/[userId] instead of /profile/me so we skip
+      // the redirect frame in app/profile/me.tsx (mount → spinner →
+      // useEffect → router.replace). Cuts visible latency on profile open.
+      router.push({ pathname: '/profile/[userId]', params: { userId, source: 'self' } } as never);
       return;
     }
     router.push('/settings');
