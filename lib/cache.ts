@@ -74,6 +74,7 @@ export async function clearTripLocalData(): Promise<void> {
   const scopedKeys = [
     'trip:active',
     'trip:phase:override',
+    'trip:phase:tripId',
     'discover:anchor',
     'discover:travelMode',
   ];
@@ -84,8 +85,14 @@ export async function clearTripLocalData(): Promise<void> {
   // Also clear any flights:* keys
   try {
     const allKeys = await AsyncStorage.getAllKeys();
-    const flightKeys = allKeys.filter(k => k.includes(':flights:'));
-    if (flightKeys.length > 0) await AsyncStorage.multiRemove(flightKeys);
+    const dynamicTripKeys = allKeys.filter(k =>
+      k.includes(':flights:') ||
+      k.includes(':top_picks_hidden') ||
+      k.includes(':top_picks_pool') ||
+      k.includes(':hero:destination-photos:') ||
+      k.includes(':discover:'),
+    );
+    if (dynamicTripKeys.length > 0) await AsyncStorage.multiRemove(dynamicTripKeys);
   } catch { /* ignore */ }
 
   // Global (non-scoped) keys that are trip-specific

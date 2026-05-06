@@ -45,6 +45,15 @@ export function refreshAllWidgets(): Promise<void> {
   return refreshWidgets(...ALL_WIDGETS);
 }
 
+export async function clearWidgetSnapshots(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([WK_TRIP, WK_FLIGHT, WK_BUDGET]);
+  } catch {
+    // Best effort only.
+  }
+  await refreshAllWidgets().catch(() => {});
+}
+
 /**
  * Write widget data snapshots to AsyncStorage under fixed (non-user-scoped) keys.
  * Called from the app context where auth + Supabase are available.
