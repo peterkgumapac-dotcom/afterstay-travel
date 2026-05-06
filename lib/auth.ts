@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { secureStorage } from './secureStorage';
 import { clearTripLocalData, setCacheUserId } from './cache';
 import { clearGoogleSession } from './googleAuth';
+import { queryClient } from './queryClient';
 import { supabase, clearTripCache } from './supabase';
 import { clearTabDataCache, setTabDataCacheUserId } from './tabDataCache';
 import { consumePendingInviteCode, storePendingInviteCode } from './pendingInvite';
@@ -81,8 +82,20 @@ async function migrateSessionToSecureStore(): Promise<void> {
   }
 }
 
+// Track the last applied userId so we can flush cross-user caches when the
+// active account changes (sign-in to different account, QA viewer switch, etc.)
+// without flushing on benign session refresh.
+let lastScopedUserId: string | undefined;
+
 function applyAccountScope(s: Session | null): void {
   const userId = s?.user?.id;
+  if (lastScopedUserId !== undefined && lastScopedUserId !== userId) {
+    // Different user — purge React Query cache so we don't show data from the
+    // previous account while the new account's queries are still in-flight.
+    queryClient.clear();
+    clearTripCache();
+  }
+  lastScopedUserId = userId;
   setCacheUserId(userId);
   setTabDataCacheUserId(userId);
 }
@@ -112,11 +125,13 @@ async function ensureSessionProfile(s: Session | null): Promise<void> {
 }
 
 async function clearAccountState(): Promise<void> {
+  queryClient.clear();
   clearTripCache();
   clearTabDataCache();
   await clearTripLocalData();
   setCacheUserId(undefined);
   setTabDataCacheUserId(undefined);
+  lastScopedUserId = undefined;
 }
 
 let pendingInviteResumeUntil = 0;
