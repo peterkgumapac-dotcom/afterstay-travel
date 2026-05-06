@@ -3,7 +3,7 @@
 
 import { supabase } from './supabase';
 import { CONFIG } from './config';
-import type { AIRecommendation, TripMemoryStats, TripMemoryVibe } from './types';
+import type { TripMemoryStats, TripMemoryVibe } from './types';
 
 // ── Proxy helper ──────────────────────────────────────────────────────
 
@@ -88,57 +88,19 @@ function extractJsonObject(text: string): Record<string, unknown> {
   return JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
 }
 
-// ── Recommendations ───────────────────────────────────────────────────
+// ── Itinerary domain types ────────────────────────────────────────────
+// generateRecommendations() and generateItinerary() were removed — the
+// recommendation surface migrated to the `ai-recommend` Edge Function
+// (web-search-backed, cached in curated_lists). The itinerary generator
+// itself is no longer wired up. The types below are retained because
+// app/(tabs)/discover.tsx still imports them.
 
-function buildRecommendationPrompt(trip?: { destination?: string; accommodation?: string; startDate?: string; endDate?: string; nights?: number }, groupSize = 2): string {
-  const dest = trip?.destination || 'your destination';
-  const hotel = trip?.accommodation || 'your hotel';
-  const dates = trip?.startDate && trip?.endDate ? `${trip.startDate} to ${trip.endDate}` : 'your trip dates';
-  const nights = trip?.nights ?? 7;
-
-  return `You are a local travel expert for ${dest}. The user is staying at ${hotel} for ${nights} nights (${dates}). Generate a Top 5 list for each selected interest category.
-
-For each recommendation include:
-- Name
-- Category
-- Distance from ${hotel} (approximate)
-- Price estimate in local currency
-- One-line reason why
-- Rating (1-5 stars)
-
-Return as JSON array. Format:
-[
-  {
-    "name": "Place Name",
-    "category": "Eat",
-    "distance": "1.2 km",
-    "price_estimate": "500-800/person",
-    "reason": "Best local cuisine with great atmosphere",
-    "rating": 5
-  }
-]
-
-Group of ${groupSize} travelers. Mix popular tourist spots with hidden gems locals know.`;
+export interface ItineraryDay {
+  day: number;
+  date: string;
+  theme: string;
+  activities: ItineraryActivity[];
 }
-
-export async function generateRecommendations(args: {
-  firstTime: 'First visit' | 'Been before' | 'Local-ish';
-  interests: string[];
-  trip?: { destination?: string; accommodation?: string; startDate?: string; endDate?: string; nights?: number };
-  groupSize?: number;
-}): Promise<AIRecommendation[]> {
-  const userMsg = `Visitor profile: ${args.firstTime}.\nInterests (Top 5 per category please): ${args.interests.join(', ')}.\nReturn ONLY a single JSON array, no prose, no code fences.`;
-
-  const text = await callProxy('recommend', {
-    system: buildRecommendationPrompt(args.trip, args.groupSize),
-    userMessage: userMsg,
-  });
-  const json = extractJson(text);
-  if (!Array.isArray(json)) throw new Error('AI did not return a JSON array.');
-  return json as AIRecommendation[];
-}
-
-// ── Itinerary generation ──────────────────────────────────────────────
 
 export interface ItineraryActivity {
   name: string;
@@ -150,140 +112,8 @@ export interface ItineraryActivity {
   description: string;
 }
 
-export interface ItineraryDay {
-  day: number;
-  date: string;
-  theme: string;
-  activities: ItineraryActivity[];
-}
-
-export interface ItineraryDayLegacy {
-  day: number;
-  date: string;
-  theme: string;
-  morning: string;
-  afternoon: string;
-  evening: string;
-  dining: string;
-  tips: string;
-}
-
 export type PlannerScope = 'whole' | 'today' | 'surprise';
 export type PlannerPace = 'relaxed' | 'moderate' | 'packed';
-
-function buildItinerarySystem(ctx: {
-  destination?: string;
-  hotelName?: string;
-  groupSize?: number;
-  budget?: number;
-  budgetCurrency?: string;
-}): string {
-  const dest = ctx.destination || 'the destination';
-  const hotel = ctx.hotelName ? `The user is staying at ${ctx.hotelName}.` : '';
-  const group = ctx.groupSize ? `Group of ${ctx.groupSize} travelers.` : '';
-  const budgetLine = ctx.budget
-    ? `Trip budget: ${ctx.budgetCurrency || 'PHP'} ${ctx.budget.toLocaleString()}. Keep daily costs within a reasonable share of this.`
-    : 'No budget limit — but still be practical with costs.';
-
-  return `You are a local travel expert for ${dest}. ${hotel} ${group}
-${budgetLine}
-
-Return ONLY a JSON array of day objects (no prose, no code fences):
-[
-  {
-    "day": 1,
-    "date": "Apr 21",
-    "theme": "Arrival & Beach Day",
-    "activities": [
-      {
-        "name": "Place or Activity Name",
-        "category": "Food|Beach|Activity|Culture|Nightlife|Wellness|Shopping|Transport",
-        "timeSlot": "morning|afternoon|evening",
-        "duration": "1-2 hrs",
-        "cost": "₱500-800",
-        "tip": "Go early to avoid crowds",
-        "description": "Why this is worth it in one sentence"
-      }
-    ]
-  }
-]
-
-Rules:
-- Use the EXACT dates provided in the user message. The "date" field must match the actual calendar date for each day.
-- Relaxed pace: 2-3 activities per day. Moderate: 3-4. Packed: 5-6.
-- Order activities by time within each day (morning→afternoon→evening).
-- Include at least one food recommendation per day.
-- Mix popular tourist spots with hidden gems locals know.
-- Each activity must have a real place name (not generic like "the beach").
-- Cost should be specific local currency ranges, or "Free".`;
-}
-
-function formatShortDate(d: Date): string {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
-}
-
-function getTimeOfDay(): string {
-  const h = new Date().getHours();
-  if (h < 6) return 'early morning (before 6 AM) — suggest breakfast and morning activities only';
-  if (h < 12) return 'morning — suggest remaining morning + afternoon + evening activities';
-  if (h < 17) return 'afternoon — skip morning, suggest afternoon + evening activities';
-  return 'evening — suggest evening and nightlife activities only';
-}
-
-export async function generateItinerary(args: {
-  scope: PlannerScope;
-  pace: PlannerPace;
-  interests: string[];
-  tripDays?: number;
-  startDate?: string;
-  destination?: string;
-  hotelName?: string;
-  groupSize?: number;
-  budget?: number;
-  budgetCurrency?: string;
-}): Promise<ItineraryDay[]> {
-  const paceDescriptions: Record<PlannerPace, string> = {
-    relaxed: 'Relaxed pace: 2-3 activities/day, plenty of free time and rest.',
-    moderate: 'Moderate pace: 3-4 activities/day, balanced with downtime.',
-    packed: 'Packed schedule: 5-6 activities/day, maximize every hour.',
-  };
-
-  const numDays = args.scope === 'today' ? 1 : (args.tripDays ?? 7);
-  const todayStr = formatShortDate(new Date());
-  const startDateStr = args.startDate ? formatShortDate(new Date(args.startDate + 'T00:00:00+08:00')) : todayStr;
-  const dateInfo = args.scope === 'today'
-    ? `Plan for TODAY only (1 day). Today is ${todayStr}. Current time of day: ${getTimeOfDay()}.`
-    : `${numDays} days, starting ${startDateStr}. Use correct calendar dates for each day.`;
-
-  const surpriseNote = args.scope === 'surprise'
-    ? '\nSurprise the user — pick a random mix of popular and offbeat activities. Vary the theme each day.'
-    : '';
-
-  const userMsg = [
-    `Pace: ${paceDescriptions[args.pace]}`,
-    `Interests: ${args.interests.join(', ')}.`,
-    dateInfo,
-    surpriseNote,
-    'Return ONLY a JSON array, no prose, no code fences.',
-  ].filter(Boolean).join('\n');
-
-  const text = await callProxy('itinerary', {
-    system: buildItinerarySystem({
-      destination: args.destination,
-      hotelName: args.hotelName,
-      groupSize: args.groupSize,
-      budget: args.budget,
-      budgetCurrency: args.budgetCurrency,
-    }),
-    userMessage: userMsg,
-    maxTokens: args.scope === 'today' ? 1024 : 4096,
-  });
-
-  const json = extractJson(text);
-  if (!Array.isArray(json)) throw new Error('AI did not return a JSON array.');
-  return json as ItineraryDay[];
-}
 
 // ── Receipt scanning ───────────────────────────────────────────────────
 
