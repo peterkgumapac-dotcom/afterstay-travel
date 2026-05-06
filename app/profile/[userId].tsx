@@ -152,7 +152,15 @@ export default function CompanionProfileScreen() {
     resetProfileState();
     setLoading(true);
     try {
-      const targetUserId = await resolveProfileIdentifier(targetIdentifier);
+      // For self-route we already know the auth'd user id — skip the
+      // resolveProfileIdentifier round-trip (handle lookup against /profiles).
+      // Cuts one network call on every "View My Profile" tap, which is the
+      // hottest path. Falls back to lookup only when params disagree.
+      const isAuthedSelfTap =
+        isSelfRoute && !!user?.id && (targetIdentifier === user.id || targetIdentifier === 'me');
+      const targetUserId = isAuthedSelfTap
+        ? (user!.id as string)
+        : await resolveProfileIdentifier(targetIdentifier);
       if (!shouldApply()) return;
       if (isSelfRoute && user?.id && targetUserId && targetUserId !== user.id) {
         router.replace('/profile/me' as never);
