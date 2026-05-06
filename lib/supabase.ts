@@ -8,6 +8,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 import { base64ToBytes } from './base64';
 import { clearTripLocalData } from './cache';
+import { registerMutationHandler, tryOrQueueMutation } from './offlineQueue';
 import { invalidateTripCache } from './tabDataCache';
 import { compressImage } from './compressImage';
 import { MS_PER_DAY } from './utils';
@@ -1946,10 +1947,29 @@ export async function deletePackingItem(itemId: string): Promise<void> {
   if (error) throw new Error(`deletePackingItem: ${error.message}`);
 }
 
-export async function togglePacked(itemId: string, packed: boolean): Promise<void> {
+async function togglePackedDirect(itemId: string, packed: boolean): Promise<void> {
   const { error } = await supabase.from(T.packingItems).update({ is_packed: packed }).eq('id', itemId);
   if (error) throw new Error(`togglePacked: ${error.message}`);
 }
+
+export async function togglePacked(itemId: string, packed: boolean): Promise<void> {
+  // Offline-aware: if the network is down, queue the mutation locally and
+  // replay on next foreground. Optimistic UI updates are the caller's
+  // responsibility — by the time we get here the user has already seen
+  // the checkbox flip.
+  await tryOrQueueMutation(
+    'togglePacked',
+    { itemId, packed },
+    () => togglePackedDirect(itemId, packed),
+  );
+}
+
+// Register replay handler for queued togglePacked rows. Module-load is
+// fine here because lib/supabase.ts is imported at app start.
+registerMutationHandler<{ itemId: string; packed: boolean }>(
+  'togglePacked',
+  ({ itemId, packed }) => togglePackedDirect(itemId, packed),
+);
 
 // ---------- EXPENSES ----------
 

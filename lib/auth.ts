@@ -5,6 +5,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { secureStorage } from './secureStorage';
 import { setCacheUserId } from './cache';
+import { replayPendingMutations, setOfflineQueueUserId } from './offlineQueue';
 import { clearGoogleSession } from './googleAuth';
 import { supabase } from './supabase';
 import { setTabDataCacheUserId } from './tabDataCache';
@@ -86,6 +87,15 @@ function applyAccountScope(s: Session | null): void {
   const userId = s?.user?.id;
   setCacheUserId(userId);
   setTabDataCacheUserId(userId);
+  setOfflineQueueUserId(userId);
+  if (userId) {
+    // Fire-and-forget: drain any mutations the user queued while offline
+    // before this session existed. Replay is coalesced internally so this
+    // is safe to call from multiple lifecycle hooks.
+    replayPendingMutations().catch((err) => {
+      if (__DEV__) console.warn('[auth] offline replay failed:', err);
+    });
+  }
 }
 
 async function ensureSessionProfile(s: Session | null): Promise<void> {

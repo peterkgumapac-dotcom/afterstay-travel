@@ -35,6 +35,18 @@ async function initTables() {
       is_favorited INTEGER DEFAULT 1,
       updated_at INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS mutation_queue (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT,
+      kind TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      last_error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_mutation_queue_user ON mutation_queue(user_id);
+    CREATE INDEX IF NOT EXISTS idx_mutation_queue_created ON mutation_queue(created_at);
   `);
 }
 
@@ -168,6 +180,10 @@ export async function clearOfflineFavorites(): Promise<void> {
 
 export async function clearSQLiteAccountCache(): Promise<void> {
   const database = await getDb();
+  // Note: mutation_queue is intentionally NOT cleared here. It is bound to
+  // the queued user via the user_id column and gets pruned per-user by
+  // clearMutationQueueForUser() during sign-out so a user signing back in
+  // can still drain pending writes they made offline.
   await database.execAsync(`
     DELETE FROM photo_metadata;
     DELETE FROM offline_favorites;
@@ -175,15 +191,86 @@ export async function clearSQLiteAccountCache(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Mutation queue (offline writes)
+// ---------------------------------------------------------------------------
+
+export interface QueuedMutation {
+  id: string;
+  userId?: string;
+  kind: string;
+  payload: string;
+  createdAt: number;
+  attempts: number;
+  lastError?: string;
+}
+
+export async function enqueueMutationRow(row: Omit<QueuedMutation, 'attempts' | 'lastError'>): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `INSERT OR REPLACE INTO mutation_queue (id, user_id, kind, payload, created_at, attempts, last_error)
+     VALUES (?, ?, ?, ?, ?, 0, NULL)`,
+    [row.id, row.userId ?? null, row.kind, row.payload, row.createdAt],
+  );
+}
+
+export async function listPendingMutationsForUser(userId: string | undefined): Promise<QueuedMutation[]> {
+  const database = await getDb();
+  const where = userId ? `WHERE user_id = ?` : `WHERE user_id IS NULL`;
+  const args = userId ? [userId] : [];
+  const rows = await database.getAllAsync<{
+    id: string;
+    user_id: string | null;
+    kind: string;
+    payload: string;
+    created_at: number;
+    attempts: number;
+    last_error: string | null;
+  }>(`SELECT * FROM mutation_queue ${where} ORDER BY created_at ASC`, args);
+  return rows.map((r) => ({
+    id: r.id,
+    userId: r.user_id ?? undefined,
+    kind: r.kind,
+    payload: r.payload,
+    createdAt: r.created_at,
+    attempts: r.attempts,
+    lastError: r.last_error ?? undefined,
+  }));
+}
+
+export async function deleteMutationRow(id: string): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(`DELETE FROM mutation_queue WHERE id = ?`, [id]);
+}
+
+export async function markMutationFailedRow(id: string, errorMessage: string): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `UPDATE mutation_queue SET attempts = attempts + 1, last_error = ? WHERE id = ?`,
+    [errorMessage, id],
+  );
+}
+
+export async function clearMutationQueueForUser(userId: string | undefined): Promise<void> {
+  const database = await getDb();
+  if (userId) {
+    await database.runAsync(`DELETE FROM mutation_queue WHERE user_id = ?`, [userId]);
+  } else {
+    await database.runAsync(`DELETE FROM mutation_queue WHERE user_id IS NULL`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Cache diagnostics
 // ---------------------------------------------------------------------------
 
-export async function getCacheStats(): Promise<{ photoCount: number; favoriteCount: number }> {
+export async function getCacheStats(): Promise<{ photoCount: number; favoriteCount: number; queuedMutationCount: number }> {
   const database = await getDb();
   const photoRow = await database.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM photo_metadata`);
   const favRow = await database.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM offline_favorites`);
+  const queueRow = await database.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM mutation_queue`);
   return {
     photoCount: photoRow?.count ?? 0,
     favoriteCount: favRow?.count ?? 0,
+    queuedMutationCount: queueRow?.count ?? 0,
   };
 }

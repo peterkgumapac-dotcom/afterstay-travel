@@ -17,6 +17,7 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useBackgroundTasks } from '@/hooks/useBackgroundTasks';
 import { useAppUpdates } from '@/hooks/useAppUpdates';
 import { verifyConfig } from '@/lib/config';
+import { replayPendingMutations } from '@/lib/offlineQueue';
 import { queryClient } from '@/lib/queryClient';
 import { refreshAllWidgets } from '@/widgets/refresh';
 
@@ -49,12 +50,18 @@ function RootLayoutInner() {
   const appState = useRef(AppState.currentState);
 
   // Refresh Android widgets when app comes to foreground, after auth exists.
+  // Also drain the offline mutation queue — any writes the user made while
+  // offline get replayed once we're back. Replay is internally coalesced
+  // so multiple foreground events won't duplicate work.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
       if (appState.current.match(/inactive|background/) && next === 'active') {
         if (user?.id) {
           refreshAllWidgets().catch((err) => {
             if (__DEV__) console.warn('[Widgets] refresh failed:', err);
+          });
+          replayPendingMutations().catch((err) => {
+            if (__DEV__) console.warn('[OfflineQueue] foreground replay failed:', err);
           });
         }
       }
