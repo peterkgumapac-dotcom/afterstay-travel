@@ -113,6 +113,7 @@ interface ProfileState {
 }
 
 const STORAGE_PROFILE = 'settings_profile';
+const INTERNAL_QA_TOOLS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true';
 
 const DEFAULT_PROFILE: ProfileState = { name: 'Traveler', avatarUri: '', handle: '', phone: '', socials: {} };
 
@@ -782,8 +783,8 @@ export default function SettingsScreen() {
           </>
         )}
 
-        {/* Dev Test Mode — only for peterkgumapac@gmail.com */}
-        {user?.email === 'peterkgumapac@gmail.com' && <DevSegmentSection colors={colors} />}
+        {/* Dev Test Mode — requires internal QA env plus the owner account */}
+        {INTERNAL_QA_TOOLS_ENABLED && user?.email === 'peterkgumapac@gmail.com' && <DevSegmentSection colors={colors} />}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -1919,6 +1920,22 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
           </Text>
           <Text style={{ fontSize: 11, color: colors.text3 }}>
             Relationship states only. Opens as your current account with RLS intact.
+          </Text>
+        </View>
+
+        <View style={{
+          padding: 10,
+          borderRadius: radius.sm,
+          borderWidth: 1,
+          borderColor: '#c4554a',
+          backgroundColor: 'rgba(196,85,74,0.08)',
+          gap: 4,
+        }}>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: '#c4554a', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            QA route viewer
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.text2, lineHeight: 16 }}>
+            This does not switch accounts. You remain signed in as {user?.email ?? 'the current user'} while opening another profile route.
           </Text>
         </View>
 
