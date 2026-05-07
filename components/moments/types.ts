@@ -21,3 +21,16 @@ export interface MomentDisplay extends Moment {
 
 /** People map keyed by initial or full name. */
 export type PeopleMap = Record<string, { name: string; color: string; avatar?: string }>;
+
+export function getMomentImageUri(
+  moment?: Pick<Moment, 'photo' | 'hdPhoto'> | null,
+  options?: { preferHd?: boolean },
+): string {
+  const photo = moment?.photo?.trim();
+  const hdPhoto = moment?.hdPhoto?.trim();
+  return options?.preferHd ? (hdPhoto || photo || '') : (photo || hdPhoto || '');
+}
+
+export function hasMomentImage(moment?: Pick<Moment, 'photo' | 'hdPhoto'> | null): boolean {
+  return getMomentImageUri(moment).length > 0;
+}

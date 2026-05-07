@@ -27,12 +27,20 @@ import { ChevronLeft, Heart, MessageCircle, Share2, Download, MoreHorizontal, Ma
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/constants/ThemeContext';
 import { springPresets, thresholds } from '@/constants/animations';
-import type { MomentDisplay, PeopleMap } from './types';
+import { getMomentImageUri, type MomentDisplay, type PeopleMap } from './types';
 import { HeartBurst } from './HeartBurst';
 import { PhotoActionsSheet, type PhotoAction } from './PhotoActionsSheet';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const FALLBACK_BLURHASH = 'L15OE2-;00xu~q%M4nof00D%00Rj';
+
+function formatMomentShortDate(date?: string): string {
+  if (!date) return '';
+  const normalized = date.includes('T') ? date : `${date}T00:00:00+08:00`;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -98,7 +106,7 @@ const CarouselItem = memo(function CarouselItemComponent({
       runOnJS(handleDoubleTap)();
     });
 
-  const photoUri = moment.hdPhoto || moment.photo;
+  const photoUri = getMomentImageUri(moment);
 
   return (
     <View style={styles.slide}>
@@ -152,7 +160,7 @@ export function PhotoCarousel({
   const [currentIdx, setCurrentIdx] = useState(initialIndex);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
-  const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
+  const [favoriteOverrides, setFavoriteOverrides] = useState<Map<string, boolean>>(new Map());
 
   const scrollX = useSharedValue(initialIndex * SCREEN_W);
   const chromeOpacity = useSharedValue(1);
@@ -169,7 +177,7 @@ export function PhotoCarousel({
     [currentIdx - 2, currentIdx - 1, currentIdx, currentIdx + 1, currentIdx + 2]
       .filter((i) => i >= 0 && i < moments.length)
       .forEach((i) => {
-        const uri = moments[i].hdPhoto || moments[i].photo;
+        const uri = getMomentImageUri(moments[i]);
         if (uri) Image.prefetch(uri).catch(() => {});
       });
   }, [currentIdx, moments]);
@@ -177,7 +185,12 @@ export function PhotoCarousel({
   const handleFavorite = useCallback((moment: MomentDisplay) => {
     if (onFavorite) {
       onFavorite(moment.id);
-      setFavoritedIds((prev) => new Set(prev).add(moment.id));
+      setFavoriteOverrides((prev) => {
+        const next = new Map(prev);
+        const current = prev.has(moment.id) ? prev.get(moment.id)! : !!moment.isFavorited;
+        next.set(moment.id, !current);
+        return next;
+      });
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [onFavorite]);
@@ -269,7 +282,12 @@ export function PhotoCarousel({
     if (onAction && currentMoment) onAction(action, currentMoment);
   }, [currentMoment, onAction]);
 
-  const isFavorited = currentMoment?.isFavorited || favoritedIds.has(currentMoment?.id ?? '');
+  const isFavorited = currentMoment
+    ? (favoriteOverrides.has(currentMoment.id)
+        ? favoriteOverrides.get(currentMoment.id)!
+        : !!currentMoment.isFavorited)
+    : false;
+  const shortDate = formatMomentShortDate(currentMoment?.date);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -355,8 +373,8 @@ export function PhotoCarousel({
               <Text style={styles.sharedByText}>
                 {currentMoment.isMine ? 'You' : authorName.split(' ')[0]}
               </Text>
-              {currentMoment.date && (
-                <Text style={styles.sharedByDate}> · {new Date(currentMoment.date + 'T00:00:00+08:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
+              {shortDate && (
+                <Text style={styles.sharedByDate}> · {shortDate}</Text>
               )}
             </View>
           );
@@ -440,9 +458,10 @@ export function PhotoCarousel({
         onAction={handleAction}
         onClose={() => setActionsVisible(false)}
         photoId={currentMoment?.id ?? ''}
-        currentVisibility={(currentMoment?.visibility as 'shared' | 'private' | 'album') ?? 'shared'}
+        currentVisibility={currentMoment?.visibility ?? 'shared'}
         hasHd={isHd}
-        isMine={currentMoment?.isMine ?? true}
+        hasImage={!!getMomentImageUri(currentMoment)}
+        isMine={!!currentMoment?.isMine}
         isDismissed={dismissedIds?.has(currentMoment?.id ?? '') ?? false}
       />
     </GestureHandlerRootView>

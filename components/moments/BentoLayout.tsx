@@ -6,7 +6,7 @@ import { Check } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
-import type { MomentDisplay } from './types';
+import { getMomentImageUri, type MomentDisplay } from './types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GAP = 3;
@@ -170,11 +170,12 @@ interface BentoCellProps {
 }
 
 function BentoCell({ moment, width, height, selected, selectMode, onPress, onLongPress, colors, tripId: _tripId }: BentoCellProps) {
+  const imageUri = getMomentImageUri(moment);
   const cellContent = (
     <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.card }}>
-      {moment.photo ? (
+      {imageUri ? (
         <Image
-          source={{ uri: moment.photo }}
+          source={{ uri: imageUri }}
           style={{ width: '100%', height: '100%' }}
           contentFit="cover"
           cachePolicy="memory-disk"

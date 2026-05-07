@@ -32,7 +32,7 @@ import { spacing } from '@/constants/theme';
 import { useCurationGesture, type CurationAction } from '@/hooks/useCurationGesture';
 import { GlowOverlay } from '@/components/curation/GlowOverlay';
 import { Avatar } from './Avatar';
-import type { MomentDisplay, PeopleMap } from './types';
+import { getMomentImageUri, hasMomentImage, type MomentDisplay, type PeopleMap } from './types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -143,7 +143,7 @@ export function MomentLightbox({
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
   const renderPhoto = useCallback(({ item }: { item: MomentDisplay }) => {
-    const photoUrl = viewingHd && item.hdPhoto ? item.hdPhoto : item.photo;
+    const photoUrl = getMomentImageUri(item, { preferHd: viewingHd });
     return (
       <View style={{ width: SCREEN_W, flex: 1, justifyContent: 'center' }}>
         {photoUrl ? (
@@ -166,16 +166,17 @@ export function MomentLightbox({
   }, [current]);
 
   const handleShare = useCallback(() => {
-    if (!current?.photo) return;
+    const standardUrl = getMomentImageUri(current);
+    if (!standardUrl) return;
     setMenuVisible(false);
     if (current.hdPhoto) {
       Alert.alert('Share Quality', 'Choose photo quality to share', [
-        { text: 'Standard', onPress: () => doShare(current.photo!) },
+        { text: 'Standard', onPress: () => doShare(standardUrl) },
         { text: 'HD', style: 'default', onPress: () => doShare(current.hdPhoto!) },
         { text: 'Cancel', style: 'cancel' },
       ]);
     } else {
-      doShare(current.photo);
+      doShare(standardUrl);
     }
   }, [current, doShare]);
 
@@ -205,16 +206,17 @@ export function MomentLightbox({
   }, []);
 
   const handleDownload = useCallback(() => {
-    if (!current?.photo) return;
+    const standardUrl = getMomentImageUri(current);
+    if (!standardUrl) return;
     setMenuVisible(false);
     if (current.hdPhoto) {
       Alert.alert('Save Quality', 'Choose photo quality to save', [
-        { text: 'Standard', onPress: () => doDownload(current.photo!) },
+        { text: 'Standard', onPress: () => doDownload(standardUrl) },
         { text: 'HD', style: 'default', onPress: () => doDownload(current.hdPhoto!) },
         { text: 'Cancel', style: 'cancel' },
       ]);
     } else {
-      doDownload(current.photo);
+      doDownload(standardUrl);
     }
   }, [current, doDownload]);
 
@@ -266,29 +268,56 @@ export function MomentLightbox({
         </View>
 
         {/* Photo pager — takes most of the screen */}
-        <Animated.View style={[{ flex: 1 }, onCurate ? cardStyle : undefined]}>
-          <FlatList
-            ref={flatListRef}
-            data={moments}
-            renderItem={renderPhoto}
-            keyExtractor={(item) => item.id}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            initialScrollIndex={Math.min(index, moments.length - 1)}
-            getItemLayout={(_, idx) => ({
-              length: SCREEN_W,
-              offset: SCREEN_W * idx,
-              index: idx,
-            })}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={viewabilityConfig}
-            decelerationRate="fast"
-            scrollEnabled
-            style={{ flex: 1 }}
-          />
-          {onCurate && <GlowOverlay glowStyle={glowStyle} />}
-        </Animated.View>
+        {onCurate ? (
+          <GestureDetector gesture={curationGesture}>
+            <Animated.View style={[{ flex: 1 }, cardStyle]}>
+              <FlatList
+                ref={flatListRef}
+                data={moments}
+                renderItem={renderPhoto}
+                keyExtractor={(item) => item.id}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                initialScrollIndex={Math.min(index, moments.length - 1)}
+                getItemLayout={(_, idx) => ({
+                  length: SCREEN_W,
+                  offset: SCREEN_W * idx,
+                  index: idx,
+                })}
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig}
+                decelerationRate="fast"
+                scrollEnabled
+                style={{ flex: 1 }}
+              />
+              <GlowOverlay glowStyle={glowStyle} />
+            </Animated.View>
+          </GestureDetector>
+        ) : (
+          <Animated.View style={{ flex: 1 }}>
+            <FlatList
+              ref={flatListRef}
+              data={moments}
+              renderItem={renderPhoto}
+              keyExtractor={(item) => item.id}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              initialScrollIndex={Math.min(index, moments.length - 1)}
+              getItemLayout={(_, idx) => ({
+                length: SCREEN_W,
+                offset: SCREEN_W * idx,
+                index: idx,
+              })}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={viewabilityConfig}
+              decelerationRate="fast"
+              scrollEnabled
+              style={{ flex: 1 }}
+            />
+          </Animated.View>
+        )}
 
         {/* Favorite toast */}
         {favToast && (
@@ -403,7 +432,7 @@ export function MomentLightbox({
                 Haptics.selectionAsync();
                 Share.share({
                   message: [current.caption, current.location].filter(Boolean).join(' · '),
-                  url: current.photo,
+                  url: getMomentImageUri(current),
                 });
               }}
               style={styles.reactionBtn}
@@ -456,8 +485,8 @@ export function MomentLightbox({
                 )}
                 <MenuAction icon={Share2} label="Share" onPress={handleShare} />
                 <MenuAction icon={Download} label="Save to Device" onPress={handleDownload} />
-                {onFilm && current?.photo && <MenuAction icon={Film} label="Film Editor" onPress={handleFilm} />}
-                {onEdit && <MenuAction icon={Edit3} label="Edit Details" onPress={handleEdit} />}
+                {onFilm && hasMomentImage(current) && <MenuAction icon={Film} label="Edit Image" onPress={handleFilm} />}
+                {onEdit && current.isMine && <MenuAction icon={Edit3} label="Edit Details" onPress={handleEdit} />}
                 {onToggleVisibility && current.isMine && (
                   <MenuAction
                     icon={current.visibility === 'private' ? Eye : EyeOff}

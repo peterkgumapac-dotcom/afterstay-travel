@@ -32,7 +32,7 @@ import { cachePhotoMeta, getCachedPhotosByTrip } from '@/lib/cache/sqliteCache';
 import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Moment, GroupMember, MomentVisibility } from '@/lib/types';
-import type { MomentDisplay, PeopleMap } from './types';
+import { getMomentImageUri, hasMomentImage, type MomentDisplay, type PeopleMap } from './types';
 import { PersonChips } from './PersonChips';
 import { ScopeChips } from './ScopeChips';
 import type { ScopeFilter } from './ScopeChips';
@@ -113,6 +113,9 @@ function buildMomentDisplays(
       authorKey,
       authorColor: personEntry?.color,
       authorAvatar: personEntry?.avatar,
+      // Treat moments with no `userId` (legacy rows pre-user_id, mock/seed data) as
+      // editable by the current user — strict equality alone hides the edit menu
+      // for the uploader's own old photos. New rows always have user_id set.
       isMine: !!(currentUserId && (m.userId === currentUserId || !m.userId)),
       favoriteCount: fav?.count ?? 0,
       isFavorited: !!(currentUserId && fav?.userIds.includes(currentUserId)),
@@ -263,19 +266,20 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   }, []);
 
   const handlePhotoAction = useCallback((action: PhotoAction, moment: MomentDisplay) => {
+    const imageUrl = getMomentImageUri(moment);
     if (action === 'share') {
       Share.share({
         message: [moment.caption, moment.location].filter(Boolean).join(' — '),
-        url: moment.photo,
+        url: imageUrl,
       });
     } else if (action === 'share-hd') {
-      const hdUrl = moment.hdPhoto || moment.photo;
+      const hdUrl = getMomentImageUri(moment, { preferHd: true });
       Share.share({
         message: [moment.caption, moment.location].filter(Boolean).join(' — '),
         url: hdUrl,
       });
     } else if (action === 'download-hd') {
-      const hdUrl = moment.hdPhoto || moment.photo;
+      const hdUrl = getMomentImageUri(moment, { preferHd: true });
       if (hdUrl) {
         (async () => {
           try {
@@ -289,6 +293,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         })();
       }
     } else if (action === 'reel') {
+      if (!imageUrl) return;
       setFilmMoments([moment]);
       setFilmInitIdx(0);
     } else if (action === 'archive') {
@@ -386,8 +391,8 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const source = day === 'all' ? rawMoments : rawMoments.filter((m) => m.date === day);
     const photosForCuration = source
-      .filter((m) => m.photo)
-      .map((m) => ({ id: m.id, uri: m.photo! }));
+      .filter(hasMomentImage)
+      .map((m) => ({ id: m.id, uri: getMomentImageUri(m, { preferHd: true }) }));
     if (photosForCuration.length === 0) return;
     const dateLabel = day === 'all' ? 'All Days' : formatDatePHT(day);
     setCurationDay({ dateLabel, photos: photosForCuration });
@@ -460,7 +465,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           moments.map((m) => ({
             id: m.id,
             tripId,
-            photoUrl: m.photo ?? undefined,
+            photoUrl: getMomentImageUri(m) || undefined,
             caption: m.caption ?? undefined,
             location: m.location ?? undefined,
             date: m.date ?? undefined,
@@ -471,9 +476,9 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       }
 
       // Prefetch first 20 photos
-      moments.filter((m) => m.photo).slice(0, 20).forEach((m) => {
+      moments.filter(hasMomentImage).slice(0, 20).forEach((m) => {
         const { Image: ExpoImg } = require('expo-image');
-        ExpoImg.prefetch(m.photo!).catch(() => {});
+        ExpoImg.prefetch(getMomentImageUri(m)).catch(() => {});
       });
     } finally {
       if (!silent) setLoading(false);
@@ -533,7 +538,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const filtered = useMemo(() => {
     let result = allMoments;
     if (activePerson) result = result.filter((m) => m.userId === activePerson);
-    if (activeScope === 'group') result = result.filter((m) => m.visibility === 'shared');
+    if (activeScope === 'group') result = result.filter((m) => m.visibility === 'shared' || m.visibility === 'public');
     else if (activeScope === 'me') result = result.filter((m) => m.visibility === 'private');
     else if (activeScope === 'album') result = result.filter((m) => m.visibility === 'album');
     else if (activeScope === 'favorites') result = result.filter((m) => (m.favoriteCount ?? 0) > 0 || m.isFavorited);
@@ -824,7 +829,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       {/* ---- Photo grid picker for Film ---- */}
       <PhotoGridPicker
         visible={showPhotoPicker}
-        moments={filtered.filter((m) => m.photo)}
+        moments={filtered.filter(hasMomentImage)}
         onConfirm={(selected) => {
           setShowPhotoPicker(false);
           setFilmMoments(selected);

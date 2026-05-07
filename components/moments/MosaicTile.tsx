@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/constants/ThemeContext';
 import { CachedImage } from '@/components/CachedImage';
 import { Avatar } from './Avatar';
-import type { MomentDisplay, PeopleMap } from './types';
+import { getMomentImageUri, type MomentDisplay, type PeopleMap } from './types';
 
 interface MosaicTileProps {
   moment: MomentDisplay;
@@ -28,6 +28,7 @@ export function MosaicTile({
   const person = people[authorKey];
   const authorColor = person?.color ?? '#999';
   const { colors } = useTheme();
+  const imageUri = getMomentImageUri(moment);
 
   return (
     <TouchableOpacity
@@ -44,8 +45,8 @@ export function MosaicTile({
       ]}
     >
       <View style={styles.image}>
-        {moment.photo ? (
-          <CachedImage remoteUrl={moment.photo} style={StyleSheet.absoluteFillObject} />
+        {imageUri ? (
+          <CachedImage remoteUrl={imageUri} style={StyleSheet.absoluteFillObject} />
         ) : (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.card2 }]} />
         )}

@@ -36,7 +36,7 @@ import { formatDatePHT } from '@/lib/utils';
 import { usePolaroidLayout } from '@/hooks/usePolaroidLayout';
 import { FilmFilterStrip } from './FilmFilterStrip';
 import { FILM_FILTERS, type FilmFilter } from '@/hooks/useFilmFilters';
-import type { MomentDisplay } from './types';
+import { getMomentImageUri, type MomentDisplay } from './types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -89,9 +89,15 @@ interface PolaroidCollageProps {
 
 // ── Wrapper: only mounts inner when visible (fixes Rules of Hooks) ─────────
 
+const POLAROID_COLLAGE_MAX_SLOTS = 7;
+
 export function PolaroidCollage({ visible, moments, onClose }: PolaroidCollageProps) {
   if (!visible || moments.length === 0) return null;
-  return <PolaroidCollageInner moments={moments} onClose={onClose} />;
+  // Hooks below allocate exactly POLAROID_COLLAGE_MAX_SLOTS image slots, so cap input.
+  const capped = moments.length > POLAROID_COLLAGE_MAX_SLOTS
+    ? moments.slice(0, POLAROID_COLLAGE_MAX_SLOTS)
+    : moments;
+  return <PolaroidCollageInner moments={capped} onClose={onClose} />;
 }
 
 // ── Inner component (safe to call variable hooks — moment count is stable) ─
@@ -133,13 +139,13 @@ function PolaroidCollageInner({ moments, onClose }: { moments: MomentDisplay[]; 
 
   // Load Skia images — each slot is a stable hook call since moments.length
   // is fixed for the lifetime of this component (it unmounts on close).
-  const img0 = useSlotImage(moments[0]?.photo);
-  const img1 = useSlotImage(moments[1]?.photo);
-  const img2 = useSlotImage(moments[2]?.photo);
-  const img3 = useSlotImage(moments[3]?.photo);
-  const img4 = useSlotImage(moments[4]?.photo);
-  const img5 = useSlotImage(moments[5]?.photo);
-  const img6 = useSlotImage(moments[6]?.photo);
+  const img0 = useSlotImage(getMomentImageUri(moments[0]));
+  const img1 = useSlotImage(getMomentImageUri(moments[1]));
+  const img2 = useSlotImage(getMomentImageUri(moments[2]));
+  const img3 = useSlotImage(getMomentImageUri(moments[3]));
+  const img4 = useSlotImage(getMomentImageUri(moments[4]));
+  const img5 = useSlotImage(getMomentImageUri(moments[5]));
+  const img6 = useSlotImage(getMomentImageUri(moments[6]));
   const skiaImages = useMemo(
     () => [img0, img1, img2, img3, img4, img5, img6].slice(0, moments.length),
     [img0, img1, img2, img3, img4, img5, img6, moments.length],
@@ -263,7 +269,7 @@ function PolaroidCollageInner({ moments, onClose }: { moments: MomentDisplay[]; 
 
   // ── Render ───────────────────────────────────────────────────────────────
 
-  const firstPhotoUri = moments[0]?.photo ?? '';
+  const firstPhotoUri = getMomentImageUri(moments[0]);
 
   return (
     <Modal

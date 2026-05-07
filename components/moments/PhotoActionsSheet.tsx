@@ -22,6 +22,7 @@ import {
   Share2,
   Download,
   BookmarkPlus,
+  Eye,
   EyeOff,
   Film,
   Trash2,
@@ -62,6 +63,7 @@ interface PhotoActionsSheetProps {
   photoId: string;
   currentVisibility?: MomentVisibility;
   hasHd?: boolean;
+  hasImage?: boolean;
   isMine?: boolean;
   isDismissed?: boolean;
 }
@@ -102,6 +104,7 @@ export function PhotoActionsSheet({
   onClose,
   currentVisibility = 'shared',
   hasHd = false,
+  hasImage = true,
   isMine = true,
   isDismissed = false,
 }: PhotoActionsSheetProps) {
@@ -150,7 +153,7 @@ export function PhotoActionsSheet({
   if (!visible) return null;
 
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents={visible ? 'auto' : 'none'}>
+    <View style={[StyleSheet.absoluteFillObject, styles.overlayRoot]} pointerEvents={visible ? 'auto' : 'none'}>
       {/* Backdrop */}
       <Animated.View style={[styles.backdrop, backdropStyle]}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
@@ -171,74 +174,89 @@ export function PhotoActionsSheet({
           </View>
 
           {/* ── Visibility section ── */}
-          <Text style={[styles.sectionLabel, { color: colors.text3 }]}>WHO CAN SEE</Text>
-          <View style={styles.visibilityRow}>
-            <Pressable
-              onPress={() => { Haptics.selectionAsync(); onAction('set-private'); }}
-              style={[
-                styles.visPill,
-                { borderColor: colors.border },
-                currentVisibility === 'private' && { borderColor: colors.warn, backgroundColor: colors.accentDim },
-              ]}
-            >
-              <Lock size={16} color={currentVisibility === 'private' ? colors.warn : colors.text3} strokeWidth={2} />
-              <Text style={[styles.visPillLabel, { color: currentVisibility === 'private' ? colors.warn : colors.text2 }]}>Just Me</Text>
-            </Pressable>
+          {isMine ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: colors.text3 }]}>WHO CAN SEE</Text>
+              <View style={styles.visibilityRow}>
+                <Pressable
+                  onPress={() => { Haptics.selectionAsync(); onAction('set-private'); }}
+                  style={[
+                    styles.visPill,
+                    { borderColor: colors.border },
+                    currentVisibility === 'private' && { borderColor: colors.warn, backgroundColor: colors.accentDim },
+                  ]}
+                >
+                  <Lock size={16} color={currentVisibility === 'private' ? colors.warn : colors.text3} strokeWidth={2} />
+                  <Text style={[styles.visPillLabel, { color: currentVisibility === 'private' ? colors.warn : colors.text2 }]}>Just Me</Text>
+                </Pressable>
 
-            <Pressable
-              onPress={() => { Haptics.selectionAsync(); onAction('set-album'); }}
-              style={[
-                styles.visPill,
-                { borderColor: colors.border },
-                currentVisibility === 'album' && { borderColor: colors.accentLt, backgroundColor: colors.accentDim },
-              ]}
-            >
-              <Images size={16} color={currentVisibility === 'album' ? colors.accentLt : colors.text3} strokeWidth={2} />
-              <Text style={[styles.visPillLabel, { color: currentVisibility === 'album' ? colors.accentLt : colors.text2 }]}>Album</Text>
-            </Pressable>
+                <Pressable
+                  onPress={() => { Haptics.selectionAsync(); onAction('set-album'); }}
+                  style={[
+                    styles.visPill,
+                    { borderColor: colors.border },
+                    currentVisibility === 'album' && { borderColor: colors.accentLt, backgroundColor: colors.accentDim },
+                  ]}
+                >
+                  <Images size={16} color={currentVisibility === 'album' ? colors.accentLt : colors.text3} strokeWidth={2} />
+                  <Text style={[styles.visPillLabel, { color: currentVisibility === 'album' ? colors.accentLt : colors.text2 }]}>Album</Text>
+                </Pressable>
 
-            <Pressable
-              onPress={() => { Haptics.selectionAsync(); onAction('set-shared'); }}
-              style={[
-                styles.visPill,
-                { borderColor: colors.border },
-                currentVisibility === 'shared' && { borderColor: colors.accent, backgroundColor: colors.accentBg },
-              ]}
-            >
-              <Users size={16} color={currentVisibility === 'shared' ? colors.accent : colors.text3} strokeWidth={2} />
-              <Text style={[styles.visPillLabel, { color: currentVisibility === 'shared' ? colors.accent : colors.text2 }]}>Group</Text>
-            </Pressable>
+                <Pressable
+                  onPress={() => { Haptics.selectionAsync(); onAction('set-shared'); }}
+                  style={[
+                    styles.visPill,
+                    { borderColor: colors.border },
+                    currentVisibility === 'shared' && { borderColor: colors.accent, backgroundColor: colors.accentBg },
+                  ]}
+                >
+                  <Users size={16} color={currentVisibility === 'shared' ? colors.accent : colors.text3} strokeWidth={2} />
+                  <Text style={[styles.visPillLabel, { color: currentVisibility === 'shared' ? colors.accent : colors.text2 }]}>Group</Text>
+                </Pressable>
 
-            <Pressable
-              onPress={() => { Haptics.selectionAsync(); onAction('set-public'); }}
-              style={[
-                styles.visPill,
-                { borderColor: colors.border },
-                currentVisibility === 'public' && { borderColor: colors.success, backgroundColor: colors.accentBg },
-              ]}
-            >
-              <Globe size={16} color={currentVisibility === 'public' ? colors.success : colors.text3} strokeWidth={2} />
-              <Text style={[styles.visPillLabel, { color: currentVisibility === 'public' ? colors.success : colors.text2 }]}>Public</Text>
-            </Pressable>
-          </View>
+                <Pressable
+                  onPress={() => { Haptics.selectionAsync(); onAction('set-public'); }}
+                  style={[
+                    styles.visPill,
+                    { borderColor: colors.border },
+                    currentVisibility === 'public' && { borderColor: colors.success, backgroundColor: colors.accentBg },
+                  ]}
+                >
+                  <Globe size={16} color={currentVisibility === 'public' ? colors.success : colors.text3} strokeWidth={2} />
+                  <Text style={[styles.visPillLabel, { color: currentVisibility === 'public' ? colors.success : colors.text2 }]}>Public</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <View style={[styles.readOnlyNotice, { borderColor: colors.border, backgroundColor: colors.card }]}>
+              <Users size={16} color={colors.accent} strokeWidth={2} />
+              <Text style={[styles.readOnlyText, { color: colors.text2 }]}>
+                Shared by a trip companion. You can save, share, hide, or edit a copy.
+              </Text>
+            </View>
+          )}
 
           {/* ── Actions grid ── */}
           <Text style={[styles.sectionLabel, { color: colors.text3, marginTop: 16 }]}>ACTIONS</Text>
           <View style={styles.actionsGrid}>
-            <ActionItem
-              icon={Edit3}
-              label="Edit"
-              color={colors.info}
-              bgColor={colors.accentDim}
-              onPress={() => onAction('edit')}
-            />
-            <ActionItem
-              icon={Film}
-              label="Add to Reel"
-              color={colors.accentLt}
-              bgColor={colors.accentDim}
-              onPress={() => onAction('reel')}
-            />
+            {hasImage && (
+              <ActionItem
+                icon={Film}
+                label="Edit image"
+                color={colors.accentLt}
+                bgColor={colors.accentDim}
+                onPress={() => onAction('reel')}
+              />
+            )}
+            {isMine && (
+              <ActionItem
+                icon={Edit3}
+                label="Edit details"
+                color={colors.info}
+                bgColor={colors.accentDim}
+                onPress={() => onAction('edit')}
+              />
+            )}
             <ActionItem
               icon={Share2}
               label="Share"
@@ -264,16 +282,18 @@ export function PhotoActionsSheet({
                 onPress={() => onAction('download-hd')}
               />
             )}
-            <ActionItem
-              icon={Trash2}
-              label="Delete"
-              color={colors.danger}
-              bgColor={colors.accentDim}
-              onPress={() => onAction('delete')}
-            />
+            {isMine && (
+              <ActionItem
+                icon={Trash2}
+                label="Delete"
+                color={colors.danger}
+                bgColor={colors.accentDim}
+                onPress={() => onAction('delete')}
+              />
+            )}
             {!isMine && currentVisibility === 'shared' && (
               <ActionItem
-                icon={isDismissed ? EyeOff : EyeOff}
+                icon={isDismissed ? Eye : EyeOff}
                 label={isDismissed ? 'Show Again' : 'Hide'}
                 color={colors.text3}
                 bgColor={colors.accentDim}
@@ -308,9 +328,14 @@ export function PhotoActionsSheet({
 }
 
 const styles = StyleSheet.create({
+  overlayRoot: {
+    zIndex: 100,
+    elevation: 100,
+  },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 100,
   },
   sheet: {
     position: 'absolute',
@@ -321,6 +346,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     paddingTop: 12,
     paddingHorizontal: 20,
+    zIndex: 101,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -352,6 +378,7 @@ const styles = StyleSheet.create({
   // ── Visibility pills ──
   visibilityRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginBottom: 8,
   },
@@ -364,6 +391,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1.5,
+  },
+  readOnlyNotice: {
+    minHeight: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  readOnlyText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
   },
   visPillLabel: {
     fontSize: 13,

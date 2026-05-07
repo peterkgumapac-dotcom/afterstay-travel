@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Keyboard,
   Modal,
@@ -45,7 +46,7 @@ import { CaptionOverlay, type CaptionMode } from './CaptionOverlay';
 import { AdjustmentStrip } from './AdjustmentStrip';
 import { FILM_FILTERS, type FilmFilter } from '@/hooks/useFilmFilters';
 import { usePhotoAdjustments, DEFAULT_ADJUSTMENTS, type AdjustmentValues } from '@/hooks/usePhotoAdjustments';
-import type { MomentDisplay } from './types';
+import { getMomentImageUri, type MomentDisplay } from './types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PHOTO_ASPECT = 4 / 3;
@@ -87,6 +88,16 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
   const [customCaption, setCustomCaption] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState('');
+  const exportAbortedRef = useRef(false);
+
+  // Abort any in-flight batch export when the editor closes.
+  useEffect(() => {
+    if (!visible) {
+      exportAbortedRef.current = true;
+    } else {
+      exportAbortedRef.current = false;
+    }
+  }, [visible]);
   const [toast, setToast] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
 
@@ -104,7 +115,7 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
 
   const isBatchMode = moments.length > 1;
   const moment = moments[currentIdx];
-  const photoUri = moment?.photo ?? '';
+  const photoUri = getMomentImageUri(moment);
   const isLastPhoto = currentIdx >= moments.length - 1;
 
   // ── Toast helper ──────────────────────────────────────────────────────────
@@ -118,6 +129,16 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
   useEffect(() => () => {
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
   }, []);
+
+  // If the editor was opened on a moment whose photo URL never resolved
+  // (still uploading, network glitch, deleted from storage), bail with an
+  // explanation instead of trapping the user on a permanent black canvas.
+  useEffect(() => {
+    if (!visible || !moment || photoUri) return;
+    Alert.alert("Photo isn't ready yet", 'This photo is still uploading or could not be loaded. Try again in a moment.', [
+      { text: 'OK', onPress: onClose },
+    ]);
+  }, [visible, moment, photoUri, onClose]);
 
   // ── Caption text builder ──────────────────────────────────────────────────
 
@@ -216,10 +237,11 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
     if (!moment) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
+    let newCount = 0;
     setQueue((prev) => {
       // Replace if already queued
       const filtered = prev.filter((q) => q.momentId !== moment.id);
-      return [
+      const next = [
         ...filtered,
         {
           momentId: moment.id,
@@ -229,9 +251,11 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
           captionText: captionMode === 'custom' ? customCaption : '',
         },
       ];
+      newCount = next.length;
+      return next;
     });
 
-    showToast(`Added to queue (${queue.length + 1})`);
+    showToast(`Added to queue (${newCount})`);
 
     // Advance to next photo if not the last
     if (!isLastPhoto) {
@@ -262,9 +286,10 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
     // For each queued item: switch to that photo+filter, wait for render,
     // snapshot the canvas, and save. We process sequentially.
     for (let i = 0; i < queue.length; i++) {
+      if (exportAbortedRef.current) break;
       const item = queue[i];
       const m = moments.find((mo) => mo.id === item.momentId);
-      if (!m?.photo) continue;
+      if (!m || !getMomentImageUri(m)) continue;
 
       setExportProgress(`Saving ${i + 1} of ${queue.length}...`);
 
@@ -279,11 +304,13 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
       // We poll the canvas ref for a valid snapshot up to 2s.
       let uri: string | null = null;
       for (let attempt = 0; attempt < 10; attempt++) {
+        if (exportAbortedRef.current) break;
         await new Promise((r) => setTimeout(r, 300));
         uri = await exportImage();
         if (uri) break;
       }
 
+      if (exportAbortedRef.current) break;
       if (uri) {
         try {
           await MediaLibrary.saveToLibraryAsync(uri);
@@ -292,6 +319,12 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
           // continue with remaining
         }
       }
+    }
+
+    if (exportAbortedRef.current) {
+      setExportProgress('');
+      setExporting(false);
+      return;
     }
 
     setExportProgress('');
@@ -307,7 +340,7 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
     setActiveFilter(filter);
   }, []);
 
-  if (!visible || !moment) return null;
+  if (!visible || !moment || !photoUri) return null;
 
   const isQueued = queue.some((q) => q.momentId === moment.id);
 

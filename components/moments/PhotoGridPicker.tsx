@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Canvas, Image as SkiaImage, useImage } from '@shopify/react-native-skia';
 
 import { useTheme } from '@/constants/ThemeContext';
-import type { MomentDisplay } from './types';
+import { getMomentImageUri, type MomentDisplay } from './types';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const GRID_GAP = 3;
@@ -71,7 +71,7 @@ export function PhotoGridPicker({ visible, moments, onConfirm, onClose }: PhotoG
           style={[s.thumb, isSelected && s.thumbSelected]}
           accessibilityLabel={`${item.caption || 'Photo'}${isSelected ? ', selected' : ''}`}
         >
-          <SkiaThumb uri={item.photo ?? ''} size={THUMB_SIZE} />
+          <SkiaThumb uri={getMomentImageUri(item)} size={THUMB_SIZE} />
           {isSelected && (
             <View style={s.checkBadge}>
               <Check size={14} color="#000" strokeWidth={3} />

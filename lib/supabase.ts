@@ -493,15 +493,37 @@ export function resolvePhotoUrl(photo: string | undefined): string | undefined {
   return url;
 }
 
+function isUsableMomentUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return !(trimmed.endsWith('/') || !trimmed.match(/\.\w{2,5}($|\?)/));
+}
+
+function normalizeMomentStoragePath(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!trimmed.startsWith('http')) return trimmed.replace(/^\/+/, '');
+  const marker = '/storage/v1/object/';
+  const markerIndex = trimmed.indexOf(marker);
+  if (markerIndex === -1) return undefined;
+  const afterObject = trimmed.slice(markerIndex + marker.length);
+  const bucketPath = afterObject.replace(/^public\//, '').replace(/^sign\//, '');
+  const momentsPrefix = 'moments/';
+  if (!bucketPath.startsWith(momentsPrefix)) return undefined;
+  return bucketPath.slice(momentsPrefix.length).split('?')[0];
+}
+
 function momentPhotoUrl(row: Record<string, unknown>): string | undefined {
-  let url = row.public_url as string | undefined;
+  let url = [row.public_url, row.photo_url, row.photo].find(isUsableMomentUrl);
   // Detect truncated public_url (ends with "/" or "/trips/" instead of a filename)
-  if (url && (url.endsWith('/') || !url.match(/\.\w{2,5}$/))) {
+  if (url && !isUsableMomentUrl(url)) {
     url = undefined; // force fallback to storage_path
   }
   // Fallback: reconstruct from storage_path if public_url wasn't saved or was truncated
   if (!url) {
-    const storagePath = row.storage_path as string | undefined;
+    const storagePath = normalizeMomentStoragePath(row.storage_path);
     if (storagePath && SUPABASE_URL) {
       url = `${SUPABASE_URL}/storage/v1/object/public/moments/${storagePath}`;
     }
@@ -514,12 +536,42 @@ function momentPhotoUrl(row: Record<string, unknown>): string | undefined {
   return url;
 }
 
+// Signed URL cache — keep URL stable across fetches so expo-image's disk cache
+// (keyed on the URL) keeps hitting instead of refetching every render.
+// Supabase signed URLs are valid for up to 7 days; we use 24h TTL and refresh
+// 1h before expiry.
+const SIGNED_URL_TTL_SECONDS = 24 * 60 * 60;
+const SIGNED_URL_REFRESH_MARGIN_MS = 60 * 60 * 1000;
+const signedMomentUrlCache = new Map<string, { url: string; expiresAtMs: number }>();
+
+async function signedMomentPhotoUrl(row: Record<string, unknown>): Promise<string | undefined> {
+  const storagePath = normalizeMomentStoragePath(row.storage_path);
+  if (!storagePath) return undefined;
+
+  const cached = signedMomentUrlCache.get(storagePath);
+  if (cached && cached.expiresAtMs - Date.now() > SIGNED_URL_REFRESH_MARGIN_MS) {
+    return cached.url;
+  }
+
+  const { data, error } = await supabase.storage
+    .from('moments')
+    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
+  if (error || !data?.signedUrl) return undefined;
+
+  signedMomentUrlCache.set(storagePath, {
+    url: data.signedUrl,
+    expiresAtMs: Date.now() + SIGNED_URL_TTL_SECONDS * 1000,
+  });
+  return data.signedUrl;
+}
+
 function mapMoment(row: Record<string, unknown>): Moment {
   return {
     id: row.id as string,
     caption: (row.caption as string) ?? '',
     photo: momentPhotoUrl(row),
     hdPhoto: (row.hd_url as string) ?? undefined,
+    storagePath: normalizeMomentStoragePath(row.storage_path),
     blurhash: (row.blurhash as string) ?? undefined,
     location: (row.location as string) ?? undefined,
     takenBy: (row.uploaded_by as string) ?? undefined,
@@ -533,6 +585,15 @@ function mapMoment(row: Record<string, unknown>): Moment {
     dayNumber: num(row.day_number),
     latitude: num(row.latitude),
     longitude: num(row.longitude),
+  };
+}
+
+async function mapMomentForViewer(row: Record<string, unknown>): Promise<Moment> {
+  const signedPhoto = await signedMomentPhotoUrl(row).catch(() => undefined);
+  const mapped = mapMoment(row);
+  return {
+    ...mapped,
+    photo: signedPhoto ?? mapped.photo,
   };
 }
 
@@ -2613,7 +2674,7 @@ export async function getMoments(tripId?: string): Promise<Moment[]> {
     return false;
   });
 
-  return filtered.map(mapMoment);
+  return Promise.all(filtered.map(mapMomentForViewer));
 }
 
 // Build a human-readable filename for moment photos.
@@ -3300,7 +3361,7 @@ export async function getAlbumMoments(albumId: string): Promise<Moment[]> {
     .order('taken_at', { ascending: false });
 
   if (mError) throw new Error(`getAlbumMoments: ${mError.message}`);
-  return (moments ?? []).map(mapMoment);
+  return Promise.all((moments ?? []).map(mapMomentForViewer));
 }
 
 /** Get moments added since user's last view (for pending intake). */
@@ -5487,7 +5548,7 @@ export async function getSharedMomentsWith(targetUserId: string): Promise<Moment
     .order('taken_at', { ascending: false })
     .limit(50);
 
-  return (data ?? []).map(mapMoment);
+  return Promise.all((data ?? []).map(mapMomentForViewer));
 }
 
 /** Update companion privacy settings. */

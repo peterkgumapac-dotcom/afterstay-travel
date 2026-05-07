@@ -205,6 +205,7 @@ export interface Moment {
   caption: string;
   photo?: string;
   hdPhoto?: string;
+  storagePath?: string;
   blurhash?: string;
   location?: string;
   takenBy?: string;

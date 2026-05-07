@@ -22,7 +22,7 @@ import Svg, {
 import { useTheme } from '@/constants/ThemeContext';
 import { formatDatePHT } from '@/lib/utils';
 import { Avatar } from './Avatar';
-import type { MomentDisplay, PeopleMap } from './types';
+import { getMomentImageUri, type MomentDisplay, type PeopleMap } from './types';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -147,7 +147,7 @@ function AnimatedPin({ cluster, isRevealed, isCurrent, authorColor, onPress, peo
 
   const stackSize = cluster.items.length;
   const primary = cluster.items[0];
-  const photoUri = primary.photo;
+  const photoUri = getMomentImageUri(primary);
 
   return (
     <Animated.View
@@ -777,9 +777,9 @@ export function MapLayout({ items, onOpen, people }: MapLayoutProps) {
                   { borderColor: colors.border, borderWidth: 1 },
                 ]}
               >
-                {m.photo ? (
+                {getMomentImageUri(m) ? (
                   <Image
-                    source={{ uri: m.photo }}
+                    source={{ uri: getMomentImageUri(m) }}
                     style={[
                       styles.listThumbImage,
                       !isRevealed && styles.listThumbGrayscale,

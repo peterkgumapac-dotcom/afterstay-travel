@@ -17,7 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { CachedImage } from '@/components/CachedImage';
 import { useTheme } from '@/constants/ThemeContext';
 import { springPresets, durations, thresholds } from '@/constants/animations';
-import type { MomentDisplay } from './types';
+import { getMomentImageUri, type MomentDisplay } from './types';
 import { SelectionOverlay } from './SelectionOverlay';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -146,9 +146,9 @@ function PhotoItemComponent({
           ]}
           accessibilityLabel={`${moment.caption || 'Photo'}${selected ? ', selected' : ''}`}
         >
-          {moment.photo ? (
+          {getMomentImageUri(moment) ? (
             <CachedImage
-              remoteUrl={moment.photo}
+              remoteUrl={getMomentImageUri(moment)}
               style={StyleSheet.absoluteFillObject}
               blurhash={moment.blurhash}
             />
