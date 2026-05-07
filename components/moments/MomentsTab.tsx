@@ -113,10 +113,7 @@ function buildMomentDisplays(
       authorKey,
       authorColor: personEntry?.color,
       authorAvatar: personEntry?.avatar,
-      // Treat moments with no `userId` (legacy rows pre-user_id, mock/seed data) as
-      // editable by the current user — strict equality alone hides the edit menu
-      // for the uploader's own old photos. New rows always have user_id set.
-      isMine: !!(currentUserId && (m.userId === currentUserId || !m.userId)),
+      isMine: !!(currentUserId && m.userId === currentUserId),
       favoriteCount: fav?.count ?? 0,
       isFavorited: !!(currentUserId && fav?.userIds.includes(currentUserId)),
       commentCount: m.id ? (commentCounts?.[m.id] ?? 0) : 0,

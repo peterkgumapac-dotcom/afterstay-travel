@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, Share } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -6,17 +6,38 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { PhotoViewer } from '@/components/moments/PhotoViewer';
+import { FilmEditor } from '@/components/moments/FilmEditor';
+import { PhotoEditSheet } from '@/components/moments/PhotoEditSheet';
 import type { PhotoAction } from '@/components/moments/PhotoActionsSheet';
 import type { MomentDisplay, PeopleMap } from '@/components/moments/types';
-import { shareMomentToGroup, deleteMoment, toggleMomentVisibility } from '@/lib/supabase';
+import { shareMomentToGroup, deleteMoment, toggleMomentVisibility, supabase } from '@/lib/supabase';
 
 export default function PhotoViewerRoute() {
   const router = useRouter();
   const params = useLocalSearchParams<{ moments: string; initialIndex: string; people: string }>();
 
-  const moments: MomentDisplay[] = params.moments ? JSON.parse(params.moments) : [];
+  const [moments, setMoments] = useState<MomentDisplay[]>(() => (
+    params.moments ? JSON.parse(params.moments) : []
+  ));
   const initialIndex = params.initialIndex ? Number(params.initialIndex) : 0;
   const people: PeopleMap = params.people ? JSON.parse(params.people) : {};
+  const [editMoment, setEditMoment] = useState<MomentDisplay | null>(null);
+  const [filmMoment, setFilmMoment] = useState<MomentDisplay | null>(null);
+
+  const handleEditSave = useCallback(async (id: string, updates: { caption?: string; location?: string }) => {
+    try {
+      const { error } = await supabase.from('moments').update({
+        caption: updates.caption ?? null,
+        location: updates.location ?? null,
+      }).eq('id', id);
+      if (error) throw error;
+      setMoments((prev) =>
+        prev.map((m) => m.id === id ? { ...m, caption: updates.caption ?? m.caption, location: updates.location ?? m.location } : m),
+      );
+    } catch (e: unknown) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Could not update photo details');
+    }
+  }, []);
 
   const handleAction = useCallback(async (action: PhotoAction, moment: MomentDisplay) => {
     switch (action) {
@@ -108,19 +129,45 @@ export default function PhotoViewerRoute() {
         break;
       }
 
-      case 'reel':
-      case 'edit':
+      case 'reel': {
+        setFilmMoment(moment);
         break;
+      }
+
+      case 'edit': {
+        if (!moment.isMine) {
+          Alert.alert('Read only', 'Only the uploader can edit this photo.');
+          break;
+        }
+        setEditMoment(moment);
+        break;
+      }
     }
   }, [router]);
 
   return (
-    <PhotoViewer
-      moments={moments}
-      initialIndex={initialIndex}
-      people={people}
-      onClose={() => router.back()}
-      onAction={handleAction}
-    />
+    <>
+      <PhotoViewer
+        moments={moments}
+        initialIndex={initialIndex}
+        people={people}
+        onClose={() => router.back()}
+        onAction={handleAction}
+      />
+      <PhotoEditSheet
+        visible={editMoment !== null}
+        moment={editMoment}
+        onSave={handleEditSave}
+        onClose={() => setEditMoment(null)}
+      />
+      {filmMoment && (
+        <FilmEditor
+          visible={filmMoment !== null}
+          moments={[filmMoment]}
+          initialIndex={0}
+          onClose={() => setFilmMoment(null)}
+        />
+      )}
+    </>
   );
 }

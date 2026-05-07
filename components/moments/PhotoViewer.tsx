@@ -169,6 +169,10 @@ export function PhotoViewer({
         onAction={handleAction}
         onClose={() => setActionsVisible(false)}
         photoId={current?.id ?? ''}
+        currentVisibility={current?.visibility ?? 'shared'}
+        hasHd={!!current?.hdPhoto}
+        hasImage={!!current?.photo || !!current?.hdPhoto}
+        isMine={!!current?.isMine}
       />
     </GestureHandlerRootView>
   );

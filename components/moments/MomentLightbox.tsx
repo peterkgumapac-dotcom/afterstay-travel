@@ -485,7 +485,7 @@ export function MomentLightbox({
                 )}
                 <MenuAction icon={Share2} label="Share" onPress={handleShare} />
                 <MenuAction icon={Download} label="Save to Device" onPress={handleDownload} />
-                {onFilm && hasMomentImage(current) && <MenuAction icon={Film} label="Edit Image" onPress={handleFilm} />}
+                {onFilm && hasMomentImage(current) && <MenuAction icon={Film} label="Create Reel" onPress={handleFilm} />}
                 {onEdit && current.isMine && <MenuAction icon={Edit3} label="Edit Details" onPress={handleEdit} />}
                 {onToggleVisibility && current.isMine && (
                   <MenuAction

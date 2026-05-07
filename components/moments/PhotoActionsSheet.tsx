@@ -242,7 +242,7 @@ export function PhotoActionsSheet({
             {hasImage && (
               <ActionItem
                 icon={Film}
-                label="Edit image"
+                label="Create reel"
                 color={colors.accentLt}
                 bgColor={colors.accentDim}
                 onPress={() => onAction('reel')}
