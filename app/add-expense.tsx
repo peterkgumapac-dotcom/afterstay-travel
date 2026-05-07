@@ -23,7 +23,18 @@ import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { getPlaceLocation, placeAutocomplete } from '@/lib/google-places';
-import { addDailyExpense, addExpense, addExpenseSplits, deleteExpense, getActiveTrip, getGroupMembers, getUserPaymentQrs, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
+import {
+  addDailyExpense,
+  addExpense,
+  addExpenseSplits,
+  addStandaloneExpenseSplits,
+  deleteExpense,
+  getActiveTrip,
+  getGroupMembers,
+  getUserPaymentQrs,
+  notifyExpenseAdded,
+  updateExpense,
+} from '@/lib/supabase';
 import type { UserPaymentQr } from '@/lib/supabase';
 import { addQuickTripExpense, addQuickTripExpenseSplits, deleteQuickTripExpense, getQuickTripCompanions } from '@/lib/quickTrips';
 import type { QuickTripCompanion } from '@/lib/quickTripTypes';
@@ -454,7 +465,35 @@ export default function AddExpenseScreen() {
       } else if (expenseType === 'quick-trip') {
         throw new Error('Choose or create a Quick Trip before saving this receipt.');
       } else if (expenseType === 'personal') {
-        await addExpense({ ...expenseData, standalone: true });
+        const newExpense = await addExpense({ ...expenseData, standalone: true });
+        try {
+          if (newExpense?.id && hasPeople) {
+            const splits = splitAmountsFromReceipt
+              ? splitPeople
+                  .filter((person) => (splitAmountsFromReceipt[person.id] ?? splitAmountsFromReceipt[person.name] ?? 0) > 0)
+                  .map((person) => ({
+                    personName: person.name,
+                    amount: splitAmountsFromReceipt[person.id] ?? splitAmountsFromReceipt[person.name] ?? 0,
+                  }))
+              : (() => {
+                  const selected = splitPeople.filter((person) => splitAssignments[person.id]?.selected);
+                  const people = selected.length > 0 ? selected : splitPeople;
+                  return people.map((person) => {
+                    const custom = Number(splitAssignments[person.id]?.amount);
+                    return {
+                      personName: person.name,
+                      amount: splitType === 'Custom' && custom > 0 ? custom : n / people.length,
+                    };
+                  });
+                })();
+            if (splits.length > 0) {
+              await addStandaloneExpenseSplits(newExpense.id, splits);
+            }
+          }
+        } catch (err: any) {
+          if (newExpense?.id) await deleteExpense(newExpense.id).catch(() => {});
+          throw new Error(err?.message ? `Split save failed: ${err.message}` : 'Split save failed. Nothing was saved.');
+        }
       } else {
         const newExpense = await addExpense({
           ...expenseData,

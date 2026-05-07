@@ -1715,6 +1715,68 @@ export async function unsettleExpenseSplit(splitId: string): Promise<void> {
   if (error) throw new Error(`unsettleExpenseSplit: ${error.message}`);
 }
 
+export async function addStandaloneExpenseSplits(
+  expenseId: string,
+  splits: { personName: string; amount: number }[],
+): Promise<ExpenseSplit[]> {
+  if (splits.length === 0) return [];
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData?.user?.id;
+  if (!userId) throw new Error('addStandaloneExpenseSplits: No active user');
+
+  const rows = splits.map((s) => ({
+    expense_id: expenseId,
+    user_id: userId,
+    person_name: s.personName,
+    amount: s.amount,
+  }));
+  const { data, error } = await supabase.from('standalone_expense_splits').insert(rows).select();
+  if (error) throw new Error(`addStandaloneExpenseSplits: ${error.message}`);
+  return (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: row.id as string,
+      expenseId: row.expense_id as string,
+      tripId: '',
+      memberId: row.id as string,
+      memberName: row.person_name as string,
+      amount: Number(row.amount ?? 0),
+      settled: (row.settled as boolean) ?? false,
+      settledAt: (row.settled_at as string) ?? undefined,
+    };
+  });
+}
+
+export async function getStandaloneExpenseSplits(expenseId: string): Promise<ExpenseSplit[]> {
+  const { data, error } = await supabase
+    .from('standalone_expense_splits')
+    .select('*')
+    .eq('expense_id', expenseId)
+    .order('created_at');
+  if (error) throw new Error(`getStandaloneExpenseSplits: ${error.message}`);
+  return (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: row.id as string,
+      expenseId: row.expense_id as string,
+      tripId: '',
+      memberId: row.id as string,
+      memberName: row.person_name as string,
+      amount: Number(row.amount ?? 0),
+      settled: (row.settled as boolean) ?? false,
+      settledAt: (row.settled_at as string) ?? undefined,
+    };
+  });
+}
+
+export async function settleStandaloneExpenseSplit(splitId: string): Promise<void> {
+  const { error } = await supabase
+    .from('standalone_expense_splits')
+    .update({ settled: true, settled_at: new Date().toISOString() })
+    .eq('id', splitId);
+  if (error) throw new Error(`settleStandaloneExpenseSplit: ${error.message}`);
+}
+
 /** Calculate net balances between group members for a trip */
 export interface MemberBalance {
   memberId: string;

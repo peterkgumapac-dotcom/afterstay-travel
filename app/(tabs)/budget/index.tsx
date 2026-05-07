@@ -638,6 +638,10 @@ function BudgetScreen() {
     () => historyExpenses.filter(e => e.source === 'trip' || e.source === 'quick-trip'),
     [historyExpenses],
   );
+  const noTripSettleExpenses = useMemo(
+    () => historyExpenses.filter(e => (e.source === 'trip' || e.source === 'quick-trip' || e.source === 'standalone') && (e.paidBy || e.splitType)),
+    [historyExpenses],
+  );
   const filteredHistoryExpenses = useMemo(() => {
     switch (historyFilter) {
       case 'trip':
@@ -778,15 +782,13 @@ function BudgetScreen() {
           {/* ── SETTLE UP TAB (no-trip) ── */}
           {tab === 'settle' && (
             <View style={{ gap: 16 }}>
-              {/* Show shared travel expenses only. Normal expenses stay separate. */}
-              {travelExpenses.filter(e => e.paidBy || e.splitType).length > 0 ? (
+              {noTripSettleExpenses.length > 0 ? (
                 <>
                   <Text style={styles.historyLabel}>WHO OWES WHAT</Text>
-                  {travelExpenses
-                    .filter(e => e.paidBy || e.splitType)
+                  {noTripSettleExpenses
                     .slice(0, 20)
                     .map((e) => {
-                      const badge = e.sourceLabel ?? (e.source === 'quick-trip' ? 'Quick Trip' : 'Trip');
+                      const badge = e.sourceLabel ?? (e.source === 'quick-trip' ? 'Quick Trip' : e.source === 'standalone' ? 'Just Log It' : 'Trip');
                       return (
                         <TouchableOpacity
                           key={e.id}
@@ -829,7 +831,7 @@ function BudgetScreen() {
                   <Users size={28} color={colors.text3} strokeWidth={1.5} />
                   <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>No shared expenses</Text>
                   <Text style={{ fontSize: 13, color: colors.text3, textAlign: 'center' }}>
-                    Add shared trip or quick-trip expenses to see who owes whom.
+                    Add split trip, quick-trip, or Just Log It expenses to see who owes whom.
                   </Text>
                 </View>
               )}

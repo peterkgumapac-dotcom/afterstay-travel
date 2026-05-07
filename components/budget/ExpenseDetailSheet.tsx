@@ -6,7 +6,12 @@ import { Check, Pencil, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
 import { spacing } from '@/constants/theme';
 import { formatCurrency, formatDatePHT } from '@/lib/utils';
-import { getExpenseSplits, settleExpenseSplit } from '@/lib/supabase';
+import {
+  getExpenseSplits,
+  getStandaloneExpenseSplits,
+  settleExpenseSplit,
+  settleStandaloneExpenseSplit,
+} from '@/lib/supabase';
 import type { ExpenseSplit } from '@/lib/supabase';
 import type { Expense } from '@/lib/types';
 import { getQuickTripExpenseSplits, settleQuickTripExpenseSplit } from '@/lib/quickTrips';
@@ -32,7 +37,9 @@ export function ExpenseDetailSheet({ visible, expense, currency = 'PHP', onClose
     if (visible && expense?.id) {
       const loadSplits = expense.source === 'quick-trip'
         ? getQuickTripExpenseSplits(expense.id)
-        : getExpenseSplits(expense.id);
+        : expense.source === 'standalone'
+          ? getStandaloneExpenseSplits(expense.id)
+          : getExpenseSplits(expense.id);
       loadSplits.then(setSplits).catch(() => setSplits([]));
     } else {
       setSplits([]);
@@ -51,6 +58,8 @@ export function ExpenseDetailSheet({ visible, expense, currency = 'PHP', onClose
           onPress: async () => {
             if (source === 'quick-trip') {
               await settleQuickTripExpenseSplit(split.id);
+            } else if (source === 'standalone') {
+              await settleStandaloneExpenseSplit(split.id);
             } else {
               await settleExpenseSplit(split.id);
             }

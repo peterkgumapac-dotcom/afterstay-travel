@@ -73,11 +73,18 @@ export async function getUnifiedExpenseHistory(
     qtExpensesPromise,
   ])
 
+  const standaloneExpenseIds = standaloneExpenses.map((e) => e.id).filter(Boolean)
   const tripExpenseRows = (tripRes.data ?? []) as Record<string, unknown>[]
   const tripExpenseIds = tripExpenseRows.map((r) => r.id as string).filter(Boolean)
   const qtExpenseRows = (qtRes.data ?? []) as Record<string, unknown>[]
   const qtExpenseIds = qtExpenseRows.map((r) => r.id as string).filter(Boolean)
-  const [tripSplitRes, qtCompanionRes, qtSplitRes] = await Promise.all([
+  const [standaloneSplitRes, tripSplitRes, qtCompanionRes, qtSplitRes] = await Promise.all([
+    standaloneExpenseIds.length > 0
+      ? supabase
+          .from('standalone_expense_splits')
+          .select('expense_id, person_name, amount, settled, settled_at')
+          .in('expense_id', standaloneExpenseIds)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     tripExpenseIds.length > 0
       ? supabase
           .from('expense_splits')
@@ -97,6 +104,14 @@ export async function getUnifiedExpenseHistory(
           .in('quick_trip_expense_id', qtExpenseIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ])
+
+  const standaloneSplitsByExpense = new Map<string, Record<string, unknown>[]>()
+  for (const split of (standaloneSplitRes.data ?? []) as Record<string, unknown>[]) {
+    const expenseId = split.expense_id as string
+    const rows = standaloneSplitsByExpense.get(expenseId) ?? []
+    rows.push(split)
+    standaloneSplitsByExpense.set(expenseId, rows)
+  }
 
   const tripSplitsByExpense = new Map<string, Record<string, unknown>[]>()
   for (const split of (tripSplitRes.data ?? []) as Record<string, unknown>[]) {
@@ -149,6 +164,14 @@ export async function getUnifiedExpenseHistory(
 
   // Map standalone expenses (already fetched as Expense[])
   for (const e of standaloneExpenses) {
+    const expenseSplits = standaloneSplitsByExpense.get(e.id) ?? []
+    const splitSummary = expenseSplits
+      .map((split) => {
+        const settled = split.settled || split.settled_at ? ' settled' : ''
+        return `${(split.person_name as string) ?? 'Friend'}: ${e.currency || 'PHP'} ${toNum(split.amount).toFixed(2)}${settled}`
+      })
+      .join('\n')
+
     items.push({
       id: e.id,
       description: e.description || 'Expense',
@@ -157,6 +180,10 @@ export async function getUnifiedExpenseHistory(
       category: e.category || 'Other',
       date: e.date,
       source: 'standalone',
+      paidBy: e.paidBy,
+      splitType: e.splitType,
+      placeName: e.placeName,
+      notes: splitSummary ? `Split:\n${splitSummary}` : e.notes,
     })
   }
 
