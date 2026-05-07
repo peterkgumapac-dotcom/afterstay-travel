@@ -14,6 +14,7 @@ import { ArrowRight, CheckCircle, QrCode, Send, Users, X } from 'lucide-react-na
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
+import { useAuth } from '@/lib/auth';
 import {
   getTripBalances,
   getTripSplits,
@@ -37,6 +38,16 @@ interface DebtEdge {
   amount: number;
 }
 
+function displayMemberName(name?: string): string {
+  const cleaned = (name ?? '').replace(/^\[QA\s+\d{8}\]\s*/i, '').trim();
+  const first = cleaned.split(/\s+/).find(Boolean);
+  return first || 'Traveler';
+}
+
+function memberInitial(name?: string): string {
+  return displayMemberName(name).charAt(0).toUpperCase();
+}
+
 function computeDebts(balances: MemberBalance[]): DebtEdge[] {
   const debtors = balances.filter((b) => b.net < -1).map((b) => ({ ...b }));
   const creditors = balances.filter((b) => b.net > 1).map((b) => ({ ...b }));
@@ -55,9 +66,9 @@ function computeDebts(balances: MemberBalance[]): DebtEdge[] {
     if (amount > 1) {
       edges.push({
         from: d.memberId,
-        fromName: d.memberName.split(' ')[0],
+        fromName: displayMemberName(d.memberName),
         to: c.memberId,
-        toName: c.memberName.split(' ')[0],
+        toName: displayMemberName(c.memberName),
         amount,
       });
     }
@@ -87,7 +98,7 @@ function computeInsights(expenses: Expense[], members: GroupMember[], balances: 
     if (entries.length < 2) continue;
     entries.sort(([, a], [, b]) => b - a);
     const [topPayer] = entries[0];
-    const firstName = topPayer.split(' ')[0];
+    const firstName = displayMemberName(topPayer);
     const label = cat === 'Food' ? 'food' : cat === 'Transport' ? 'transport' : cat === 'Activity' ? 'activities' : cat === 'Shopping' ? 'shopping' : cat.toLowerCase();
     insights.push(`${firstName} covered most ${label}`);
   }
@@ -101,14 +112,14 @@ function computeInsights(expenses: Expense[], members: GroupMember[], balances: 
   }
   for (const [name, count] of Object.entries(unsettledByMember)) {
     if (count >= 2) {
-      insights.push(`${name.split(' ')[0]} has ${count} unsettled splits`);
+      insights.push(`${displayMemberName(name)} has ${count} unsettled splits`);
     }
   }
 
   // Most generous payer
   const biggestPayer = balances.reduce((top, b) => b.totalPaid > top.totalPaid ? b : top, balances[0]);
   if (biggestPayer && biggestPayer.totalPaid > 0 && members.length >= 2) {
-    insights.push(`${biggestPayer.memberName.split(' ')[0]} paid the most overall`);
+    insights.push(`${displayMemberName(biggestPayer.memberName)} paid the most overall`);
   }
 
   return insights.slice(0, 3);
@@ -125,6 +136,7 @@ interface GroupBalanceCardProps {
 
 export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: GroupBalanceCardProps) {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const s = useMemo(() => getStyles(colors), [colors]);
   const currency = trip.costCurrency ?? 'PHP';
 
@@ -159,20 +171,22 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
   const debts = useMemo(() => computeDebts(balances), [balances]);
   const insights = useMemo(() => computeInsights(expenses, members, balances, splits), [expenses, members, balances, splits]);
 
+  const currentMember = useMemo(
+    () => members.find((m) => m.userId && m.userId === user?.id) ?? members.find((m) => m.role === 'Primary'),
+    [members, user?.id],
+  );
+
   const youOwe = useMemo(() => debts.filter((d) => {
-    const me = members.find((m) => m.role === 'Primary');
-    return me && d.from === me.id;
-  }), [debts, members]);
+    return currentMember && d.from === currentMember.id;
+  }), [currentMember, debts]);
 
   const owedToYou = useMemo(() => debts.filter((d) => {
-    const me = members.find((m) => m.role === 'Primary');
-    return me && d.to === me.id;
-  }), [debts, members]);
+    return currentMember && d.to === currentMember.id;
+  }), [currentMember, debts]);
 
   const otherDebts = useMemo(() => debts.filter((d) => {
-    const me = members.find((m) => m.role === 'Primary');
-    return me && d.from !== me.id && d.to !== me.id;
-  }), [debts, members]);
+    return currentMember && d.from !== currentMember.id && d.to !== currentMember.id;
+  }), [currentMember, debts]);
 
   // Settle all unsettled splits for a debtor→creditor pair
   const handleSettle = useCallback(async (edge: DebtEdge) => {
@@ -323,10 +337,10 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
           return (
             <View key={b.memberId} style={s.memberRow}>
               <View style={[s.memberAvatar, { backgroundColor: isPositive ? colors.accentDim : isNegative ? `${colors.danger}22` : colors.card2 }]}>
-                <Text style={s.memberAvatarText}>{b.memberName.charAt(0)}</Text>
+                <Text style={s.memberAvatarText}>{memberInitial(b.memberName)}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.memberName}>{b.memberName.split(' ')[0]}</Text>
+                <Text style={s.memberName} numberOfLines={1}>{displayMemberName(b.memberName)}</Text>
                 <Text style={s.memberDetail}>
                   Paid {formatCurrency(b.totalPaid, currency)} · Owes {formatCurrency(b.totalOwed, currency)}
                 </Text>
@@ -364,7 +378,7 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
                 <View style={s.settleFlow}>
                   <View style={s.settleFlowPerson}>
                     <View style={[s.memberAvatar, { backgroundColor: `${colors.danger}22`, width: 44, height: 44 }]}>
-                      <Text style={[s.memberAvatarText, { fontSize: 17 }]}>{settleEdge.fromName.charAt(0)}</Text>
+                      <Text style={[s.memberAvatarText, { fontSize: 17 }]}>{memberInitial(settleEdge.fromName)}</Text>
                     </View>
                     <Text style={s.settleFlowName}>{settleEdge.fromName}</Text>
                   </View>
@@ -374,7 +388,7 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
                   </View>
                   <View style={s.settleFlowPerson}>
                     <View style={[s.memberAvatar, { backgroundColor: colors.accentDim, width: 44, height: 44 }]}>
-                      <Text style={[s.memberAvatarText, { fontSize: 17 }]}>{settleEdge.toName.charAt(0)}</Text>
+                      <Text style={[s.memberAvatarText, { fontSize: 17 }]}>{memberInitial(settleEdge.toName)}</Text>
                     </View>
                     <Text style={s.settleFlowName}>{settleEdge.toName}</Text>
                   </View>
@@ -447,7 +461,7 @@ function DebtRow({ edge, currency, colors, direction, onSettle, onRemind }: Debt
         backgroundColor: direction === 'owe' ? `${colors.danger}22` : direction === 'owed' ? colors.accentDim : colors.card2,
       }]}>
         <Text style={s.memberAvatarText}>
-          {direction === 'owe' ? edge.fromName.charAt(0) : edge.toName.charAt(0)}
+          {memberInitial(direction === 'owe' ? edge.fromName : edge.toName)}
         </Text>
       </View>
       <View style={{ flex: 1 }}>

@@ -133,6 +133,54 @@ export interface ScannedReceipt {
   items: ReceiptLineItem[];
 }
 
+const RECEIPT_CATEGORIES = new Set<ScannedReceipt['category']>([
+  'Food',
+  'Transport',
+  'Activity',
+  'Accommodation',
+  'Shopping',
+  'Other',
+]);
+
+function normalizeReceiptCategory(value: unknown): ScannedReceipt['category'] {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (['food', 'restaurant', 'dining', 'cafe', 'bar', 'meal', 'lunch', 'dinner'].includes(raw)) return 'Food';
+  if (['transport', 'transportation', 'taxi', 'ride', 'ferry', 'flight', 'bus', 'train'].includes(raw)) return 'Transport';
+  if (['activity', 'activities', 'tour', 'experience', 'ticket', 'tickets'].includes(raw)) return 'Activity';
+  if (['accommodation', 'hotel', 'stay', 'lodging'].includes(raw)) return 'Accommodation';
+  if (['shopping', 'retail', 'store'].includes(raw)) return 'Shopping';
+  return RECEIPT_CATEGORIES.has(value as ScannedReceipt['category']) ? value as ScannedReceipt['category'] : 'Other';
+}
+
+function normalizeScannedReceipt(input: Record<string, unknown>): ScannedReceipt {
+  const rawItems = Array.isArray(input.items) ? input.items : [];
+  const items = rawItems.map((raw) => {
+    const item = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const qty = Number(item.qty ?? item.quantity ?? 1);
+    const amount = Number(item.amount ?? item.price ?? item.total ?? 0);
+    return {
+      name: String(item.name ?? item.item ?? 'Item').trim() || 'Item',
+      qty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+      amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+    };
+  }).filter((item) => item.amount > 0);
+
+  const amount = Number(input.amount ?? input.total ?? 0);
+  const today = new Date().toISOString().slice(0, 10);
+
+  return {
+    placeName: String(input.placeName ?? input.merchant ?? input.store ?? 'Receipt').trim() || 'Receipt',
+    description: String(input.description ?? 'Scanned receipt').trim() || 'Scanned receipt',
+    amount: Number.isFinite(amount) && amount > 0
+      ? amount
+      : items.reduce((sum, item) => sum + item.amount, 0),
+    currency: String(input.currency ?? 'PHP').trim().toUpperCase() || 'PHP',
+    category: normalizeReceiptCategory(input.category),
+    date: String(input.date ?? today).slice(0, 10) || today,
+    items,
+  };
+}
+
 export async function scanReceipt(base64Image: string, mimeType: string = 'image/jpeg'): Promise<ScannedReceipt> {
   const prompt = `Extract receipt information from this image. Read every line item with its quantity and price. Return ONLY a JSON object (no prose, no code fences) with these fields:
 {
@@ -165,7 +213,7 @@ Rules:
   const firstBrace = candidate.indexOf('{');
   const lastBrace = candidate.lastIndexOf('}');
   if (firstBrace === -1 || lastBrace === -1) throw new Error('Could not parse receipt data.');
-  return JSON.parse(candidate.slice(firstBrace, lastBrace + 1)) as ScannedReceipt;
+  return normalizeScannedReceipt(JSON.parse(candidate.slice(firstBrace, lastBrace + 1)) as Record<string, unknown>);
 }
 
 // ── Trip document scanner ─────────────────────────────────────────────
