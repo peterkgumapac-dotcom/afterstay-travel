@@ -9,15 +9,17 @@ import { formatCurrency, formatDatePHT } from '@/lib/utils';
 import { getExpenseSplits, settleExpenseSplit } from '@/lib/supabase';
 import type { ExpenseSplit } from '@/lib/supabase';
 import type { Expense } from '@/lib/types';
+import { getQuickTripExpenseSplits, settleQuickTripExpenseSplit } from '@/lib/quickTrips';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
+type ExpenseWithSource = Expense & { source?: 'trip' | 'quick-trip' | 'standalone' | 'daily'; sourceId?: string };
 
 interface Props {
   visible: boolean;
-  expense: Expense | null;
+  expense: ExpenseWithSource | null;
   currency?: string;
   onClose: () => void;
-  onEdit: (expense: Expense) => void;
+  onEdit: (expense: ExpenseWithSource) => void;
   onDelete: (id: string) => void;
 }
 
@@ -28,13 +30,17 @@ export function ExpenseDetailSheet({ visible, expense, currency = 'PHP', onClose
 
   useEffect(() => {
     if (visible && expense?.id) {
-      getExpenseSplits(expense.id).then(setSplits).catch(() => setSplits([]));
+      const loadSplits = expense.source === 'quick-trip'
+        ? getQuickTripExpenseSplits(expense.id)
+        : getExpenseSplits(expense.id);
+      loadSplits.then(setSplits).catch(() => setSplits([]));
     } else {
       setSplits([]);
     }
-  }, [visible, expense?.id]);
+  }, [visible, expense?.id, expense?.source]);
 
   const handleSettle = async (split: ExpenseSplit) => {
+    const source = expense?.source;
     Alert.alert(
       'Settle',
       `Mark ${formatCurrency(split.amount, currency)} for ${split.memberName} as settled?`,
@@ -43,7 +49,11 @@ export function ExpenseDetailSheet({ visible, expense, currency = 'PHP', onClose
         {
           text: 'Settled',
           onPress: async () => {
-            await settleExpenseSplit(split.id).catch(() => {});
+            if (source === 'quick-trip') {
+              await settleQuickTripExpenseSplit(split.id);
+            } else {
+              await settleExpenseSplit(split.id);
+            }
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setSplits(prev => prev.map(s => s.id === split.id ? { ...s, settled: true, settledAt: new Date().toISOString() } : s));
           },
@@ -55,6 +65,7 @@ export function ExpenseDetailSheet({ visible, expense, currency = 'PHP', onClose
   if (!expense) return null;
 
   const settledCount = splits.filter(s => s.settled).length;
+  const canEdit = expense.source !== 'quick-trip';
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -135,14 +146,16 @@ export function ExpenseDetailSheet({ visible, expense, currency = 'PHP', onClose
 
           {/* Actions */}
           <View style={s.actions}>
-            <TouchableOpacity
-              style={s.actionBtn}
-              onPress={() => { onClose(); onEdit(expense); }}
-              activeOpacity={0.7}
-            >
-              <Pencil size={16} color={colors.accent} strokeWidth={2} />
-              <Text style={[s.actionText, { color: colors.accent }]}>Edit</Text>
-            </TouchableOpacity>
+            {canEdit && (
+              <TouchableOpacity
+                style={s.actionBtn}
+                onPress={() => { onClose(); onEdit(expense); }}
+                activeOpacity={0.7}
+              >
+                <Pencil size={16} color={colors.accent} strokeWidth={2} />
+                <Text style={[s.actionText, { color: colors.accent }]}>Edit</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={s.actionBtn}
               onPress={() => {

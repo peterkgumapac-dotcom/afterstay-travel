@@ -23,9 +23,9 @@ import Select from '@/components/Select';
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
 import { getPlaceLocation, placeAutocomplete } from '@/lib/google-places';
-import { addDailyExpense, addExpense, addExpenseSplits, getActiveTrip, getGroupMembers, getUserPaymentQrs, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
+import { addDailyExpense, addExpense, addExpenseSplits, deleteExpense, getActiveTrip, getGroupMembers, getUserPaymentQrs, notifyExpenseAdded, updateExpense } from '@/lib/supabase';
 import type { UserPaymentQr } from '@/lib/supabase';
-import { addQuickTripExpense, addQuickTripExpenseSplits, getQuickTripCompanions } from '@/lib/quickTrips';
+import { addQuickTripExpense, addQuickTripExpenseSplits, deleteQuickTripExpense, getQuickTripCompanions } from '@/lib/quickTrips';
 import type { QuickTripCompanion } from '@/lib/quickTripTypes';
 import { useAuth } from '@/lib/auth';
 import type { DailyExpenseCategory, Expense, GroupMember } from '@/lib/types';
@@ -69,6 +69,48 @@ const EXPENSE_TYPES: { id: ExpenseType; label: string; icon: any; desc: string }
   { id: 'personal', label: 'Personal', icon: NotebookPen, desc: 'Just for you' },
 ];
 
+function parseReceiptSplits(value?: string): Record<string, number> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const splits: Record<string, number> = {};
+    for (const [key, amount] of Object.entries(parsed)) {
+      const n = Number(amount);
+      if (Number.isFinite(n) && n > 0) splits[key] = n;
+    }
+    return splits;
+  } catch {
+    return null;
+  }
+}
+
+function buildSplitAssignmentsFromPeople(
+  people: { id: string; name: string }[],
+  receiptSplits?: Record<string, number> | null,
+): Record<string, { selected: boolean; amount: string }> {
+  const next: Record<string, { selected: boolean; amount: string }> = {};
+  for (const person of people) {
+    const receiptAmount = receiptSplits?.[person.id] ?? receiptSplits?.[person.name];
+    next[person.id] = {
+      selected: receiptAmount == null ? true : receiptAmount > 0,
+      amount: receiptAmount == null ? '' : receiptAmount.toFixed(2),
+    };
+  }
+  return next;
+}
+
+function resolveExpenseType(target?: string, quickTripId?: string, tripId?: string): ExpenseType {
+  if (quickTripId || target === 'quick-trip') return 'quick-trip';
+  if (target === 'daily-tracker') return 'daily-tracker';
+  if (target === 'standalone' || target === 'personal') return 'personal';
+  if (tripId || target === 'trip') return 'trip';
+  return 'trip';
+}
+
+function nearlyEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.01;
+}
+
 export default function AddExpenseScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -76,6 +118,7 @@ export default function AddExpenseScreen() {
   const params = useLocalSearchParams<{
     editId?: string;
     target?: 'trip' | 'quick-trip' | 'standalone' | 'daily-tracker';
+    tripId?: string;
     quickTripId?: string;
     description?: string;
     amount?: string;
@@ -143,11 +186,10 @@ export default function AddExpenseScreen() {
   );
 
   // Expense type (replaces params.target)
-  const initialType: ExpenseType = params.target === 'quick-trip' ? 'quick-trip'
-    : params.target === 'daily-tracker' ? 'daily-tracker'
-    : params.target === 'standalone' ? 'personal' : 'trip';
+  const initialType: ExpenseType = resolveExpenseType(params.target, params.quickTripId, params.tripId);
   const [expenseType, setExpenseType] = useState<ExpenseType>(initialType);
   const [hasActiveTrip, setHasActiveTrip] = useState(true);
+  const [activeTripId, setActiveTripId] = useState(params.tripId ?? '');
 
   // User QR codes
   const [userQrs, setUserQrs] = useState<UserPaymentQr[]>([]);
@@ -158,6 +200,7 @@ export default function AddExpenseScreen() {
   const [companions, setCompanions] = useState<QuickTripCompanion[]>([]);
   const [adHocNames, setAdHocNames] = useState<string[]>([]); // parsed from sharedWith
   const [newPersonName, setNewPersonName] = useState('');
+  const receiptSplitAmounts = parseReceiptSplits(params.receiptSplits);
 
   // Unified people list for splitting — adapts to expense type
   const splitPeople: { id: string; name: string }[] = (() => {
@@ -169,27 +212,30 @@ export default function AddExpenseScreen() {
   const hasPeople = splitPeople.length > 1;
 
   useEffect(() => {
+    setExpenseType(resolveExpenseType(params.target, params.quickTripId, params.tripId));
+  }, [params.target, params.quickTripId, params.tripId]);
+
+  useEffect(() => {
     // Load group members
-    getGroupMembers()
-      .then(ms => {
-        const names = ms.map(m => m.name);
-        setMembers(names);
-        setMemberObjects(ms);
-        const currentUserMember = user?.id ? ms.find(m => m.userId === user.id) : undefined;
-        if (!paidBy && (currentUserMember?.name || names[0])) {
-          setPaidBy(currentUserMember?.name ?? names[0]);
-        }
-        const init: Record<string, { selected: boolean; amount: string }> = {};
-        for (const m of ms) {
-          init[m.id] = { selected: true, amount: '' };
-        }
-        setSplitAssignments(init);
-      })
-      .catch(() => {});
+    if (initialType === 'trip') {
+      getGroupMembers(params.tripId)
+        .then(ms => {
+          const names = ms.map(m => m.name);
+          setMembers(names);
+          setMemberObjects(ms);
+          const currentUserMember = user?.id ? ms.find(m => m.userId === user.id) : undefined;
+          if (!paidBy && (currentUserMember?.name || names[0])) {
+            setPaidBy(currentUserMember?.name ?? names[0]);
+          }
+          setSplitAssignments(buildSplitAssignmentsFromPeople(ms.map((m) => ({ id: m.id, name: m.name })), receiptSplitAmounts));
+        })
+        .catch(() => {});
+    }
 
     // Check if active trip exists
     getActiveTrip().then(t => {
       setHasActiveTrip(!!t);
+      if (t?.id) setActiveTripId((current) => current || t.id);
       if (!t && expenseType === 'trip') setExpenseType('personal');
     }).catch(() => {
       setHasActiveTrip(false);
@@ -206,18 +252,25 @@ export default function AddExpenseScreen() {
       getQuickTripCompanions(params.quickTripId).then((cs) => {
         setCompanions(cs);
         if (!paidBy && cs[0]) setPaidBy(cs[0].displayName);
-        setSplitAssignments((prev) => {
-          const next = { ...prev };
-          for (const c of cs) next[c.id] = next[c.id] ?? { selected: true, amount: '' };
-          return next;
-        });
+        setSplitAssignments((prev) => ({
+          ...prev,
+          ...buildSplitAssignmentsFromPeople(cs.map((c) => ({ id: c.id, name: c.displayName })), receiptSplitAmounts),
+        }));
       }).catch(() => {});
     }
 
     if (params.receiptPeople) {
       try {
         const names = JSON.parse(params.receiptPeople) as string[];
-        setAdHocNames(names.filter(Boolean));
+        const filteredNames = names.filter(Boolean);
+        setAdHocNames(filteredNames);
+        setSplitAssignments((prev) => ({
+          ...prev,
+          ...buildSplitAssignmentsFromPeople(
+            filteredNames.map((name, index) => ({ id: `adhoc-${index}`, name })),
+            receiptSplitAmounts,
+          ),
+        }));
       } catch {}
     }
   }, []);
@@ -271,6 +324,7 @@ export default function AddExpenseScreen() {
       pathname: '/scan-receipt',
       params: {
         expenseType,
+        ...(expenseType === 'trip' && activeTripId ? { tripId: activeTripId } : {}),
         ...(expenseType === 'quick-trip' && params.quickTripId ? { quickTripId: params.quickTripId } : {}),
         ...(expenseType === 'personal' && adHocNames.length >= 2 ? { receiptPeople: JSON.stringify(adHocNames) } : {}),
       },
@@ -292,14 +346,25 @@ export default function AddExpenseScreen() {
     if (!description.trim()) return Alert.alert('Description required');
     if (!Number.isFinite(n) || n <= 0) return Alert.alert('Amount must be a positive number');
 
+    const splitAmountsFromReceipt = receiptSplitAmounts;
+    if (hasPeople && splitType === 'Custom') {
+      const customTotal = splitAmountsFromReceipt
+        ? Object.values(splitAmountsFromReceipt).reduce((sum, value) => sum + value, 0)
+        : splitPeople
+            .filter((person) => splitAssignments[person.id]?.selected)
+            .reduce((sum, person) => sum + Number(splitAssignments[person.id]?.amount || 0), 0);
+      if (!nearlyEqual(customTotal, n)) {
+        Alert.alert(
+          'Split total does not match',
+          `Your split adds up to ${currency} ${customTotal.toFixed(2)}, but the expense total is ${currency} ${n.toFixed(2)}.`,
+        );
+        return;
+      }
+    }
+
     submittingRef.current = true;
     setSubmitting(true);
     try {
-      const splitAmountsFromReceipt = params.receiptSplits
-        ? (() => {
-            try { return JSON.parse(params.receiptSplits!) as Record<string, number>; } catch { return null; }
-          })()
-        : null;
       const buildSplitNote = () => {
         const rows: string[] = [];
         if (splitAmountsFromReceipt) {
@@ -378,7 +443,12 @@ export default function AddExpenseScreen() {
                 });
               })();
           if (splits.length > 0) {
-            await addQuickTripExpenseSplits(quickTripExpenseId, splits);
+            try {
+              await addQuickTripExpenseSplits(quickTripExpenseId, splits);
+            } catch (err: any) {
+              await deleteQuickTripExpense(quickTripExpenseId, params.quickTripId).catch(() => {});
+              throw new Error(err?.message ? `Split save failed: ${err.message}` : 'Split save failed. Nothing was saved.');
+            }
           }
         }
       } else if (expenseType === 'quick-trip') {
@@ -386,54 +456,56 @@ export default function AddExpenseScreen() {
       } else if (expenseType === 'personal') {
         await addExpense({ ...expenseData, standalone: true });
       } else {
-        const newExpense = await addExpense(expenseData);
+        const newExpense = await addExpense({
+          ...expenseData,
+          ...(params.tripId || activeTripId ? { tripId: params.tripId || activeTripId } : {}),
+        });
         const tripId = (newExpense as any).tripId ?? (newExpense as any).trip_id ?? '';
 
-        // Receipt scan splits (pre-computed per-member amounts from ReceiptItemReview)
-        if (newExpense?.id && params.receiptSplits && tripId && memberObjects.length > 1) {
-          try {
-            const splitAmounts = JSON.parse(params.receiptSplits) as Record<string, number>;
+        try {
+          // Receipt scan splits (pre-computed per-member amounts from ReceiptItemReview)
+          if (newExpense?.id && splitAmountsFromReceipt && tripId && memberObjects.length > 1) {
             const splits = memberObjects
-              .filter((m) => (splitAmounts[m.id] ?? splitAmounts[m.name] ?? 0) > 0)
+              .filter((m) => (splitAmountsFromReceipt[m.id] ?? splitAmountsFromReceipt[m.name] ?? 0) > 0)
               .map((m) => ({
                 memberId: m.id,
                 memberName: m.name,
-                amount: splitAmounts[m.id] ?? splitAmounts[m.name] ?? 0,
+                amount: splitAmountsFromReceipt[m.id] ?? splitAmountsFromReceipt[m.name] ?? 0,
               }));
             if (splits.length > 0) {
               await addExpenseSplits(newExpense.id, tripId, splits);
             }
-          } catch (err) {
-            if (__DEV__) console.warn('[AddExpense] receipt splits failed:', err);
           }
-        }
-        // Manual splits — Custom or Individual
-        else if (newExpense?.id && splitType !== 'Equal' && memberObjects.length > 1 && tripId) {
-          const n = Number(amount);
-          const selected = memberObjects.filter((m) => splitAssignments[m.id]?.selected);
-          if (selected.length > 0) {
-            const splits = selected.map((m) => {
-              const custom = Number(splitAssignments[m.id]?.amount);
-              return {
-                memberId: m.id,
-                memberName: m.name,
-                amount: splitType === 'Custom' && custom > 0 ? custom : n / selected.length,
-              };
-            });
+          // Manual splits — Custom or Individual
+          else if (newExpense?.id && splitType !== 'Equal' && memberObjects.length > 1 && tripId) {
+            const selected = memberObjects.filter((m) => splitAssignments[m.id]?.selected);
+            if (selected.length > 0) {
+              const splits = selected.map((m) => {
+                const custom = Number(splitAssignments[m.id]?.amount);
+                return {
+                  memberId: m.id,
+                  memberName: m.name,
+                  amount: splitType === 'Custom' && custom > 0 ? custom : n / selected.length,
+                };
+              });
+              await addExpenseSplits(newExpense.id, tripId, splits);
+            }
+          }
+          // Auto-create equal splits for group expenses
+          else if (newExpense?.id && splitType === 'Equal' && memberObjects.length > 1 && tripId) {
+            const perPerson = n / memberObjects.length;
+            const splits = memberObjects.map((m) => ({
+              memberId: m.id,
+              memberName: m.name,
+              amount: perPerson,
+            }));
             await addExpenseSplits(newExpense.id, tripId, splits);
           }
+        } catch (err: any) {
+          if (newExpense?.id) await deleteExpense(newExpense.id).catch(() => {});
+          throw new Error(err?.message ? `Split save failed: ${err.message}` : 'Split save failed. Nothing was saved.');
         }
-        // Auto-create equal splits for group expenses
-        else if (newExpense?.id && splitType === 'Equal' && memberObjects.length > 1 && tripId) {
-          const n = Number(amount);
-          const perPerson = n / memberObjects.length;
-          const splits = memberObjects.map((m) => ({
-            memberId: m.id,
-            memberName: m.name,
-            amount: perPerson,
-          }));
-          await addExpenseSplits(newExpense.id, tripId, splits);
-        }
+
         // Notify group members about new expense (best-effort, non-blocking)
         if (user?.id && members.length >= 2) {
           notifyExpenseAdded(
@@ -468,6 +540,7 @@ export default function AddExpenseScreen() {
               pathname: '/scan-receipt',
               params: {
                 expenseType,
+                ...(expenseType === 'trip' && activeTripId ? { tripId: activeTripId } : {}),
                 ...(expenseType === 'quick-trip' && params.quickTripId ? { quickTripId: params.quickTripId } : {}),
                 ...(expenseType === 'personal' && adHocNames.length >= 2 ? { receiptPeople: JSON.stringify(adHocNames) } : {}),
               },

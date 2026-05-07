@@ -10,6 +10,7 @@ import type {
   QuickTripExpenseSplit,
   CreateQuickTripInput,
 } from './quickTripTypes';
+import type { ExpenseSplit } from './supabase';
 
 // ---------- MAPPERS ----------
 
@@ -292,6 +293,55 @@ export async function addQuickTripExpenseSplits(
   const { data, error } = await supabase.from('quick_trip_expense_splits').insert(rows).select();
   if (error) throw new Error(`Failed to add quick trip splits: ${error.message}`);
   return (data ?? []).map((r) => mapExpenseSplit(r as Record<string, unknown>));
+}
+
+/** Fetch quick-trip split rows with companion names for detail/settle UI. */
+export async function getQuickTripExpenseSplits(quickTripExpenseId: string): Promise<ExpenseSplit[]> {
+  const { data, error } = await supabase
+    .from('quick_trip_expense_splits')
+    .select('*')
+    .eq('quick_trip_expense_id', quickTripExpenseId)
+    .order('created_at');
+  if (error) throw new Error(`getQuickTripExpenseSplits: ${error.message}`);
+
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const companionIds = rows.map((row) => row.companion_id as string).filter(Boolean);
+  const { data: companions } = companionIds.length > 0
+    ? await supabase.from('quick_trip_companions').select('id, display_name, quick_trip_id').in('id', companionIds)
+    : { data: [] as Record<string, unknown>[] };
+
+  const companionMap = new Map(
+    ((companions ?? []) as Record<string, unknown>[]).map((row) => [
+      row.id as string,
+      {
+        name: (row.display_name as string) ?? 'Traveler',
+        quickTripId: (row.quick_trip_id as string) ?? '',
+      },
+    ]),
+  );
+
+  return rows.map((row) => {
+    const companion = companionMap.get(row.companion_id as string);
+    return {
+      id: row.id as string,
+      expenseId: row.quick_trip_expense_id as string,
+      tripId: companion?.quickTripId ?? '',
+      memberId: row.companion_id as string,
+      memberName: companion?.name ?? 'Traveler',
+      amount: Number(row.amount_owed ?? 0),
+      settled: Boolean(row.settled_at),
+      settledAt: row.settled_at as string | undefined,
+    };
+  });
+}
+
+/** Mark a quick-trip split as settled. */
+export async function settleQuickTripExpenseSplit(splitId: string): Promise<void> {
+  const { error } = await supabase
+    .from('quick_trip_expense_splits')
+    .update({ settled_at: new Date().toISOString() })
+    .eq('id', splitId);
+  if (error) throw new Error(`settleQuickTripExpenseSplit: ${error.message}`);
 }
 
 /** Delete an expense and update denormalized total. */

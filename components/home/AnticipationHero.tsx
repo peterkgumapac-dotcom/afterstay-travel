@@ -23,11 +23,10 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import { filterRenderableImageUrls, isRenderableRemoteImageUrl } from '@/lib/imageUrl';
 import type { GroupMember } from '@/lib/types';
 
-const HERO_H = 320;
+const HERO_H = 214;
 const SLIDE_DURATION = 4500; // 4.5s per slide
 const DEST_PHOTO_TIMEOUT_MS = 10000;
 
-const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
 const HERO_ACCENT_SETS = [
   ['#0f2f2f', '#d8ab7a', '#f3e6c8'],
   ['#23344d', '#e0b173', '#f5eddc'],
@@ -59,6 +58,7 @@ interface Props {
   bookingRef?: string;
   members?: GroupMember[];
   resolveDestinationFallback?: boolean;
+  onViewTrip?: () => void;
 }
 
 export const AnticipationHero: React.FC<Props> = ({
@@ -71,6 +71,7 @@ export const AnticipationHero: React.FC<Props> = ({
   bookingRef,
   members = [],
   resolveDestinationFallback = true,
+  onViewTrip,
 }) => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -216,22 +217,36 @@ export const AnticipationHero: React.FC<Props> = ({
     },
     [heroPhotos.length],
   );
+  const companionLabel = useMemo(() => {
+    if (members.length === 0) return '';
+    return members.length === 1
+      ? 'Solo traveler'
+      : `You + ${members.length - 1} traveler${members.length > 2 ? 's' : ''}`;
+  }, [members.length]);
+
+  const metaLabel = useMemo(
+    () => [dateRange, companionLabel].filter(Boolean).join(' · '),
+    [companionLabel, dateRange],
+  );
+
+  const renderActionRow = () => (
+    <View style={styles.actionRow}>
+      <Pressable style={[styles.actionButton, styles.actionButtonPrimary]} onPress={onViewTrip} hitSlop={6}>
+        <Text style={[styles.actionText, styles.actionTextPrimary]}>View Trip</Text>
+      </Pressable>
+    </View>
+  );
+
   const renderDesignedHero = () => (
     <>
       <LinearGradient
-        colors={[accentSet[0], colors.bg2, colors.bg]}
-        locations={[0, 0.56, 1]}
+        colors={[colors.card, colors.bg2, colors.bg]}
+        locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <View style={[styles.sun, { backgroundColor: accentSet[1] }]} />
-      <View style={[styles.orbit, styles.orbitOne, { borderColor: accentSet[2] }]} />
-      <View style={[styles.orbit, styles.orbitTwo, { borderColor: accentSet[1] }]} />
-      <View style={styles.horizon}>
-        <View style={[styles.hill, styles.hillBack, { backgroundColor: accentSet[0] }]} />
-        <View style={[styles.hill, styles.hillMid, { backgroundColor: colors.card }]} />
-        <View style={[styles.hill, styles.hillFront, { backgroundColor: colors.bg }]} />
-      </View>
-      <View style={styles.routeLine} />
+      <View style={[styles.accentGlow, { backgroundColor: accentSet[1] }]} />
+      <View style={[styles.mapLine, styles.mapLineOne, { borderColor: accentSet[2] }]} />
+      <View style={[styles.mapLine, styles.mapLineTwo, { borderColor: accentSet[1] }]} />
       <View style={[styles.routeDot, styles.routeDotStart]} />
       <View style={[styles.routeDot, styles.routeDotEnd, { backgroundColor: accentSet[1] }]} />
     </>
@@ -258,30 +273,8 @@ export const AnticipationHero: React.FC<Props> = ({
             </View>
             <Text style={styles.hotelName}>{displayTitle}</Text>
             {displaySubtitle ? <Text style={styles.roomInfo}>{displaySubtitle}</Text> : null}
-            {members.length > 0 && (
-              <View style={styles.groupRow}>
-                {members.map((m, i) => (
-                  <View
-                    key={m.id}
-                    style={[
-                      styles.groupAvatar,
-                      {
-                        backgroundColor: MEMBER_COLORS[i % MEMBER_COLORS.length],
-                        marginLeft: i === 0 ? 0 : -8,
-                        zIndex: members.length - i,
-                      },
-                    ]}
-                  >
-                    <Text style={styles.groupAvatarText}>{m.name.charAt(0).toUpperCase()}</Text>
-                  </View>
-                ))}
-                <Text style={styles.groupText}>
-                  {members.length === 1
-                    ? 'Solo traveler'
-                    : `You + ${members.length - 1} traveler${members.length > 2 ? 's' : ''}`}
-                </Text>
-              </View>
-            )}
+            {metaLabel ? <Text style={styles.metaText}>{metaLabel}</Text> : null}
+            {renderActionRow()}
           </View>
         </View>
       </View>
@@ -371,33 +364,8 @@ export const AnticipationHero: React.FC<Props> = ({
             <Text style={styles.roomInfo}>{roomInfo || (!hotelName ? dateRange : displaySubtitle)}</Text>
           )}
 
-          {/* Group member avatars */}
-          {members.length > 0 && (
-            <View style={styles.groupRow}>
-              {members.map((m, i) => (
-                <View
-                  key={m.id}
-                  style={[
-                    styles.groupAvatar,
-                    {
-                      backgroundColor: MEMBER_COLORS[i % MEMBER_COLORS.length],
-                      marginLeft: i === 0 ? 0 : -8,
-                      zIndex: members.length - i,
-                    },
-                  ]}
-                >
-                  <Text style={styles.groupAvatarText}>
-                    {m.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              ))}
-              <Text style={styles.groupText}>
-                {members.length === 1
-                  ? 'Solo traveler'
-                  : `You + ${members.length - 1} traveler${members.length > 2 ? 's' : ''}`}
-              </Text>
-            </View>
-          )}
+          {metaLabel ? <Text style={styles.metaText}>{metaLabel}</Text> : null}
+          {renderActionRow()}
         </View>
       </View>
     </View>
@@ -409,11 +377,11 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     outerWrap: {
       paddingHorizontal: 16,
       paddingTop: 4,
-      paddingBottom: 14,
+      paddingBottom: 10,
     },
     container: {
       height: HERO_H,
-      borderRadius: 22,
+      borderRadius: 20,
       overflow: 'hidden',
       borderWidth: 1,
       borderColor: colors.border,
@@ -438,16 +406,16 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     },
     bottomInfo: {
       position: 'absolute',
-      bottom: 16,
-      left: 18,
-      right: 18,
+      bottom: 12,
+      left: 16,
+      right: 16,
       zIndex: 3,
     },
     confirmRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      marginBottom: 6,
+      marginBottom: 5,
     },
     confirmBadge: {
       borderWidth: 1,
@@ -469,20 +437,50 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     },
     hotelName: {
       color: '#fff',
-      fontSize: 22,
-      fontWeight: '500',
-      letterSpacing: -0.02 * 22,
-      lineHeight: 22 * 1.1,
-      marginBottom: 3,
+      fontSize: 20,
+      fontWeight: '700',
+      letterSpacing: -0.2,
+      lineHeight: 22,
+      marginBottom: 2,
     },
     roomInfo: {
       color: 'rgba(255,255,255,0.8)',
       fontSize: 12,
+      lineHeight: 16,
     },
-    groupRow: {
+    metaText: {
+      color: 'rgba(255,255,255,0.7)',
+      fontSize: 11,
+      lineHeight: 15,
+      marginTop: 2,
+    },
+    actionRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      gap: 8,
       marginTop: 10,
+    },
+    actionButton: {
+      minHeight: 34,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.28)',
+      paddingHorizontal: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    actionButtonPrimary: {
+      backgroundColor: 'rgba(216,171,122,0.95)',
+      borderColor: 'rgba(216,171,122,0.95)',
+    },
+    actionText: {
+      color: 'rgba(255,255,255,0.88)',
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    actionTextPrimary: {
+      color: '#160d08',
     },
     groupAvatar: {
       width: 26,
@@ -503,33 +501,33 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       fontSize: 11,
       marginLeft: 10,
     },
-    sun: {
+    accentGlow: {
       position: 'absolute',
-      top: 34,
-      right: 34,
-      width: 84,
-      height: 84,
-      borderRadius: 42,
-      opacity: 0.9,
+      top: -34,
+      right: -22,
+      width: 150,
+      height: 150,
+      borderRadius: 75,
+      opacity: 0.16,
     },
-    orbit: {
+    mapLine: {
       position: 'absolute',
       borderWidth: 1,
-      opacity: 0.22,
-      transform: [{ rotate: '-12deg' }],
+      opacity: 0.16,
+      transform: [{ rotate: '-8deg' }],
     },
-    orbitOne: {
-      top: 64,
-      left: -42,
-      width: 260,
-      height: 100,
-      borderRadius: 130,
+    mapLineOne: {
+      top: 46,
+      left: -34,
+      width: 280,
+      height: 74,
+      borderRadius: 140,
     },
-    orbitTwo: {
-      top: 112,
+    mapLineTwo: {
+      top: 98,
       right: -58,
       width: 240,
-      height: 88,
+      height: 70,
       borderRadius: 120,
     },
     horizon: {
@@ -565,7 +563,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       position: 'absolute',
       left: 44,
       right: 46,
-      bottom: 96,
+      bottom: 78,
       borderTopWidth: 1,
       borderStyle: 'dashed',
       borderColor: 'rgba(255,255,255,0.32)',
@@ -582,10 +580,10 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
     },
     routeDotStart: {
       left: 46,
-      bottom: 88,
+      bottom: 70,
     },
     routeDotEnd: {
       right: 48,
-      bottom: 116,
+      bottom: 94,
     },
   });

@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -40,7 +39,6 @@ import {
   getQuickTripPhotos,
   getQuickTripCompanions,
   getQuickTripExpenses,
-  addQuickTripExpense,
   deleteQuickTripExpense,
   deleteQuickTrip,
 } from '@/lib/quickTrips';
@@ -80,11 +78,6 @@ export default function QuickTripDetailScreen() {
     [photos, trip],
   );
 
-  // Add expense form
-  const [showAddExpense, setShowAddExpense] = useState(false);
-  const [expDesc, setExpDesc] = useState('');
-  const [expAmount, setExpAmount] = useState('');
-
   const load = useCallback(async () => {
     if (!quickTripId) return;
     try {
@@ -108,20 +101,9 @@ export default function QuickTripDetailScreen() {
   const totalSpent = useMemo(() => expenses.reduce((sum, e) => sum + e.amount, 0), [expenses]);
   const currency = trip?.totalSpendCurrency ?? 'PHP';
 
-  const handleAddExpense = async () => {
-    const amount = parseFloat(expAmount);
-    if (!quickTripId || isNaN(amount) || amount <= 0) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await addQuickTripExpense({
-      quickTripId,
-      amount,
-      description: expDesc.trim() || undefined,
-      currency,
-    });
-    setExpDesc('');
-    setExpAmount('');
-    setShowAddExpense(false);
-    load();
+  const handleAddExpense = () => {
+    if (!quickTripId) return;
+    router.push({ pathname: '/add-expense', params: { target: 'quick-trip', quickTripId } } as never);
   };
 
   const handleScanReceipt = () => {
@@ -298,50 +280,24 @@ export default function QuickTripDetailScreen() {
           ))}
 
           {/* Add expense */}
-          {showAddExpense ? (
-            <View style={styles.addExpenseForm}>
-              <TextInput
-                style={styles.addExpInput}
-                value={expDesc}
-                onChangeText={setExpDesc}
-                placeholder="What was it?"
-                placeholderTextColor={colors.text3}
-              />
-              <View style={styles.addExpAmountRow}>
-                <Text style={styles.addExpCurrency}>{currency}</Text>
-                <TextInput
-                  style={[styles.addExpInput, { flex: 1 }]}
-                  value={expAmount}
-                  onChangeText={setExpAmount}
-                  placeholder="0.00"
-                  placeholderTextColor={colors.text3}
-                  keyboardType="decimal-pad"
-                />
-                <TouchableOpacity onPress={handleAddExpense} style={styles.addExpSaveBtn}>
-                  <Text style={styles.addExpSaveText}>Add</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.expenseActionRow}>
-              <TouchableOpacity
-                style={[styles.addExpenseBtn, { flex: 1 }]}
-                onPress={() => setShowAddExpense(true)}
-                activeOpacity={0.7}
-              >
-                <Plus size={16} color={colors.accent} />
-                <Text style={styles.addExpenseText}>Add expense</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.addExpenseBtn, { flex: 1 }]}
-                onPress={handleScanReceipt}
-                activeOpacity={0.7}
-              >
-                <ScanLine size={16} color={colors.accent} />
-                <Text style={styles.addExpenseText}>Scan receipt</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          <View style={styles.expenseActionRow}>
+            <TouchableOpacity
+              style={[styles.addExpenseBtn, { flex: 1 }]}
+              onPress={handleAddExpense}
+              activeOpacity={0.7}
+            >
+              <Plus size={16} color={colors.accent} />
+              <Text style={styles.addExpenseText}>Add expense</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.addExpenseBtn, { flex: 1 }]}
+              onPress={handleScanReceipt}
+              activeOpacity={0.7}
+            >
+              <ScanLine size={16} color={colors.accent} />
+              <Text style={styles.addExpenseText}>Scan receipt</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Notes */}
@@ -436,21 +392,6 @@ const getStyles = (colors: ThemeColors) =>
       borderWidth: 1.5, borderColor: colors.accentBorder, borderStyle: 'dashed',
     },
     addExpenseText: { fontSize: 13, fontWeight: '600', color: colors.accent },
-
-    addExpenseForm: {
-      padding: 14, borderRadius: 14, backgroundColor: colors.card,
-      borderWidth: 1, borderColor: colors.accentBorder, gap: 10, marginTop: 4,
-    },
-    addExpInput: {
-      fontSize: 14, color: colors.text, paddingVertical: 8, paddingHorizontal: 12,
-      backgroundColor: colors.card2, borderRadius: 10,
-    },
-    addExpAmountRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    addExpCurrency: { fontSize: 14, fontWeight: '600', color: colors.text3 },
-    addExpSaveBtn: {
-      paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.accent,
-    },
-    addExpSaveText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
     notesText: { fontSize: 14, color: colors.text2, lineHeight: 20 },
   });

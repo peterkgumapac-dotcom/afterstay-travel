@@ -569,6 +569,7 @@ export interface UnifiedExpenseHistoryItem {
   paidBy?: string;
   splitType?: string;
   placeName?: string;
+  notes?: string;
 }
 
 // ── Daily Expense Tracker ────────────────────────────────────────────

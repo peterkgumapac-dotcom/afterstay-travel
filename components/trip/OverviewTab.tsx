@@ -302,7 +302,7 @@ export function OverviewTab({
           <GroupHeader kicker="Transit · Both ways" title="Flights" colors={colors} />
           <View style={styles.flightsList}>
             {flights.map((f, i) => (
-              <MiniFlightCard key={f.ref || i} f={f} colors={colors} tripId={trip?.id} />
+              <MiniFlightCard key={`${f.ref || 'flight'}-${i}`} f={f} colors={colors} tripId={trip?.id} />
             ))}
           </View>
         </>

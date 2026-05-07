@@ -590,6 +590,7 @@ function HomeScreen() {
           bookingRef={trip.bookingRef ? `Agoda #${trip.bookingRef}` : undefined}
           members={members}
           resolveDestinationFallback={false}
+          onViewTrip={() => openTripOverview()}
         />
 
         {/* 2b. Daily Tracker strip */}

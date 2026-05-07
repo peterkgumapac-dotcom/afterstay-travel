@@ -43,7 +43,7 @@ import {
 } from '@/lib/supabase';
 import type { PaymentQr, UserPaymentQr } from '@/lib/supabase';
 import { getUnifiedExpenseHistory } from '@/lib/expenseHistory';
-import { getQuickTrips } from '@/lib/quickTrips';
+import { deleteQuickTripExpense, getQuickTrips } from '@/lib/quickTrips';
 import type { QuickTrip } from '@/lib/quickTripTypes';
 import ExpenseTargetSheet from '@/components/budget/ExpenseTargetSheet';
 import { ExpenseDetailSheet } from '@/components/budget/ExpenseDetailSheet';
@@ -68,6 +68,7 @@ import type { Expense, ExpenseTarget, GroupMember, Trip, UnifiedExpenseHistoryIt
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type BudgetState = 'cruising' | 'low' | 'over';
+type DetailExpense = Expense & { source?: UnifiedExpenseHistoryItem['source']; sourceId?: string };
 type BudgetMode = 'budget' | 'group';
 type TabId = 'expenses' | 'savings' | 'settle' | 'fate';
 type MoneySummary = { today: number; week: number; month: number; currency: string };
@@ -196,7 +197,7 @@ function BudgetScreen() {
   const [qrNameInput, setQrNameInput] = useState('');
 
   // Expense detail sheet
-  const [detailExpense, setDetailExpense] = useState<Expense | null>(null);
+  const [detailExpense, setDetailExpense] = useState<DetailExpense | null>(null);
 
   // User-scoped QR codes (visible in all states)
   const [userQrs, setUserQrs] = useState<UserPaymentQr[]>([]);
@@ -471,6 +472,25 @@ function BudgetScreen() {
     ]);
   }, [load]);
 
+  const handleDeleteHistoryExpense = useCallback((item: UnifiedExpenseHistoryItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert('Delete Expense', `Delete "${item.description}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          if (item.source === 'quick-trip' && item.sourceId) {
+            await deleteQuickTripExpense(item.id, item.sourceId).catch(() => {});
+          } else {
+            await deleteExpense(item.id).catch(() => {});
+          }
+          load(true);
+        },
+      },
+    ]);
+  }, [load]);
+
   const handleEditExpense = useCallback((e: Expense) => {
     router.push({
       pathname: '/add-expense',
@@ -570,9 +590,9 @@ function BudgetScreen() {
     switch (target.type) {
       case 'trip':
         if (action === 'scan') {
-          router.push({ pathname: '/scan-receipt', params: { expenseType: 'trip' } } as never);
+          router.push({ pathname: '/scan-receipt', params: { expenseType: 'trip', ...(trip?.id ? { tripId: trip.id } : {}) } } as never);
         } else {
-          router.push('/add-expense' as never);
+          router.push(trip?.id ? `/add-expense?tripId=${trip.id}` as never : '/add-expense' as never);
         }
         break;
       case 'quick-trip':
@@ -780,6 +800,9 @@ function BudgetScreen() {
                             date: e.date,
                             paidBy: e.paidBy,
                             splitType: e.splitType as Expense['splitType'],
+                            notes: e.notes,
+                            source: e.source,
+                            sourceId: e.sourceId,
                           })}
                           activeOpacity={0.7}
                         >
@@ -970,7 +993,7 @@ function BudgetScreen() {
                                     date: e.date,
                                   },
                                 })}
-                                onDelete={() => handleDeleteExpense(e.id, e.description)}
+                                onDelete={() => handleDeleteHistoryExpense(e)}
                               >
                                 <TouchableOpacity
                                   style={styles.historyRow}
@@ -983,6 +1006,10 @@ function BudgetScreen() {
                                     date: e.date,
                                     paidBy: e.paidBy,
                                     placeName: e.placeName,
+                                    splitType: e.splitType as Expense['splitType'],
+                                    notes: e.notes,
+                                    source: e.source,
+                                    sourceId: e.sourceId,
                                   })}
                                   activeOpacity={0.7}
                                 >
@@ -1069,7 +1096,7 @@ function BudgetScreen() {
                         date: e.date,
                       },
                     })}
-                    onDelete={() => handleDeleteExpense(e.id, e.description)}
+                    onDelete={() => handleDeleteHistoryExpense(e)}
                   >
                     <TouchableOpacity
                       style={styles.historyRow}
@@ -1082,6 +1109,10 @@ function BudgetScreen() {
                         date: e.date,
                         paidBy: e.paidBy,
                         placeName: e.placeName,
+                        splitType: e.splitType as Expense['splitType'],
+                        notes: e.notes,
+                        source: e.source,
+                        sourceId: e.sourceId,
                       })}
                       activeOpacity={0.7}
                     >
@@ -1822,7 +1853,14 @@ function BudgetScreen() {
         currency={trip?.costCurrency ?? 'PHP'}
         onClose={() => setDetailExpense(null)}
         onEdit={(e) => handleEditExpense(e)}
-        onDelete={(id) => handleDeleteExpense(id, detailExpense?.description ?? '')}
+        onDelete={() => {
+          if (!detailExpense) return;
+          if (detailExpense.source) {
+            handleDeleteHistoryExpense(detailExpense as UnifiedExpenseHistoryItem);
+          } else {
+            handleDeleteExpense(detailExpense.id, detailExpense.description);
+          }
+        }}
       />
 
       {/* QR view modal — branded card */}

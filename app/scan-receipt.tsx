@@ -37,10 +37,11 @@ export default function ScanReceiptScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
-  const { expenseType, quickTripId, receiptPeople } = useLocalSearchParams<{
+  const { expenseType, quickTripId, receiptPeople, tripId } = useLocalSearchParams<{
     expenseType?: string;
     quickTripId?: string;
     receiptPeople?: string;
+    tripId?: string;
   }>();
   const receiptTarget = normalizeExpenseTarget(expenseType);
   const [phase, setPhase] = useState<Phase>('picking');
@@ -76,9 +77,9 @@ export default function ScanReceiptScreen() {
         return [];
       }
     }
-    const trip = await getActiveTrip().catch(() => null);
-    if (!trip) return [];
-    return getGroupMembers(trip.id).catch(() => []);
+    const resolvedTripId = tripId || (await getActiveTrip(true).catch(() => null))?.id;
+    if (!resolvedTripId) return [];
+    return getGroupMembers(resolvedTripId).catch(() => []);
   };
 
   // Load group members for item assignment
@@ -155,7 +156,7 @@ export default function ScanReceiptScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      const reviewMembers = membersLoading ? await loadMembersForTarget() : members;
+      const reviewMembers = membersLoading || members.length < 2 ? await loadMembersForTarget() : members;
       if (reviewMembers.length !== members.length) setMembers(reviewMembers);
 
       if (receiptTarget !== 'daily-tracker' && scanned.items.length > 0 && reviewMembers.length >= 2) {
@@ -183,6 +184,7 @@ export default function ScanReceiptScreen() {
             notes: itemLines,
             photoUri: asset.uri,
             ...(receiptTarget ? { target: receiptTarget } : {}),
+            ...(receiptTarget === 'trip' && tripId ? { tripId } : {}),
             ...(receiptTarget === 'quick-trip' && quickTripId ? { quickTripId } : {}),
             ...(receiptTarget === 'standalone' && receiptPeople ? { receiptPeople } : {}),
           },
@@ -271,6 +273,7 @@ export default function ScanReceiptScreen() {
               splitType: 'Custom',
               receiptSplits: JSON.stringify(splitAmounts),
               ...(receiptTarget ? { target: receiptTarget } : {}),
+              ...(receiptTarget === 'trip' && tripId ? { tripId } : {}),
               ...(receiptTarget === 'quick-trip' && quickTripId ? { quickTripId } : {}),
               ...(receiptTarget === 'standalone' && receiptPeople ? { receiptPeople } : {}),
             },
@@ -284,12 +287,11 @@ export default function ScanReceiptScreen() {
   if (phase === 'scanning') {
     return (
       <View style={styles.container}>
-        {imageUri ? <Image source={{ uri: imageUri }} style={styles.preview} resizeMode="contain" /> : null}
-        <View style={styles.overlay}>
+        <View style={styles.scanningOverlay}>
           <AfterStayLoader
             message="Scanning receipt..."
             detail={RECEIPT_SCAN_STEPS[scanStep]}
-            progress={(scanStep + 1) / RECEIPT_SCAN_STEPS.length}
+            progress={Math.min((scanStep + 1) / RECEIPT_SCAN_STEPS.length, 0.95)}
           />
         </View>
       </View>
@@ -355,6 +357,12 @@ const getStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
       paddingHorizontal: spacing.xl,
       gap: spacing.md,
+    },
+    scanningOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#0f0d0b',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     scanningText: {
       color: colors.text,
