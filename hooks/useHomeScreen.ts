@@ -91,6 +91,26 @@ type TimedValue<T> =
   | { status: 'timeout' }
   | { status: 'error'; error: unknown };
 
+type HomeProfileIdentity = {
+  fullName?: string | null;
+  avatarUrl?: string | null;
+};
+
+type HomeAuthIdentity = {
+  email?: string | null;
+  user_metadata?: {
+    full_name?: string | null;
+    avatar_url?: string | null;
+  } | null;
+};
+
+function resolveAuthIdentity(profile: HomeProfileIdentity | null, user: HomeAuthIdentity | null | undefined) {
+  const fullName = profile?.fullName ?? user?.user_metadata?.full_name ?? '';
+  const name = fullName.trim().split(/\s+/)[0] || user?.email?.split('@')[0] || '';
+  const avatarUrl = profile?.avatarUrl ?? user?.user_metadata?.avatar_url ?? undefined;
+  return { name, avatarUrl };
+}
+
 function withTimeoutStatus<T>(promise: Promise<T>, ms = HOME_REQUEST_TIMEOUT_MS): Promise<TimedValue<T>> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => resolve({ status: 'timeout' }), ms);
@@ -348,6 +368,16 @@ export function useHomeScreen() {
       const lifetimeStatsPromise = withTimeout(getHomeLifetimeStatsPromise(force), null);
 
       const currentUser = userRef.current;
+      const profilePromise = currentUser
+        ? import('@/lib/supabase')
+          .then(({ getProfile }) => withTimeout(getProfile(currentUser.id), null as HomeProfileIdentity | null))
+          .catch(() => null as HomeProfileIdentity | null)
+        : Promise.resolve(null as HomeProfileIdentity | null);
+      if (currentUser) {
+        const identity = resolveAuthIdentity(null, currentUser);
+        setUserName(identity.name);
+        setUserAvatar(identity.avatarUrl);
+      }
       const fetchedTrip = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
       const t = pickHomeLoadedTrip(fetchedTrip, segmentActiveTripRef.current, force);
       if (!isCurrentRequest()) return;
@@ -367,19 +397,6 @@ export function useHomeScreen() {
         if (!isCurrentRequest()) return;
         setFlights(fs); setMembers(mems);
         await cacheSet(`flights:${t.id}`, fs);
-
-        // Greeting must reflect the LOGGED-IN user, not the trip primary —
-        // otherwise every guest on Peter's trip sees "Hey Peter" until the
-        // profile fetch on line ~437 overrides it. Look up the current
-        // user's member row instead. The profile fetch later still wins
-        // if it has a more accurate fullName/avatar.
-        const myMember = currentUser?.id
-          ? mems.find(m => m.userId === currentUser.id)
-          : undefined;
-        if (myMember) {
-          if (myMember.name) setUserName(myMember.name);
-          if (myMember.profilePhoto) setUserAvatar(myMember.profilePhoto);
-        }
 
         const cachedTid = await cacheGet<string>('trip:phase:tripId', 0);
         if (cachedTid && cachedTid !== t.id) await cacheSet('trip:phase:override', null);
@@ -475,11 +492,11 @@ export function useHomeScreen() {
       }
 
       if (currentUser) {
-        const { getProfile } = await import('@/lib/supabase');
-        const profile = await withTimeout(getProfile(currentUser.id), null);
+        const profile = await profilePromise;
         if (!isCurrentRequest()) return;
-        if (profile?.fullName) { setUserName(profile.fullName.split(' ')[0]); if (profile.avatarUrl) setUserAvatar(profile.avatarUrl); }
-        else { setUserName(currentUser.user_metadata?.full_name?.split(' ')[0] ?? currentUser.email?.split('@')[0] ?? ''); if (currentUser.user_metadata?.avatar_url) setUserAvatar(currentUser.user_metadata.avatar_url); }
+        const identity = resolveAuthIdentity(profile, currentUser);
+        setUserName(identity.name);
+        setUserAvatar(identity.avatarUrl);
       }
 
       // Write widget snapshots so headless widget context can read them
@@ -645,6 +662,7 @@ export function useHomeScreen() {
     (async () => {
       try {
         const freshTripResult = await withTimeoutStatus(getHomeActiveTripPromise(true));
+        const refreshUser = userRef.current;
         let activeTrip: Trip = currentTrip;
         if (freshTripResult.status === 'ok') {
           if (!freshTripResult.value) {
@@ -657,36 +675,31 @@ export function useHomeScreen() {
         setTrip(activeTrip);
         if (activeTrip.hotelLat && activeTrip.hotelLng) setHotelCoords(activeTrip.hotelLat, activeTrip.hotelLng);
 
-        const [fs, mems, allExp] = await Promise.all([
+        const profilePromise = refreshUser?.id
+          ? import('@/lib/supabase')
+            .then(({ getProfile }) => withTimeout(getProfile(refreshUser.id), null as HomeProfileIdentity | null))
+            .catch(() => null as HomeProfileIdentity | null)
+          : Promise.resolve(null as HomeProfileIdentity | null);
+        if (refreshUser) {
+          const identity = resolveAuthIdentity(null, refreshUser);
+          setUserName(identity.name);
+          setUserAvatar(identity.avatarUrl);
+        }
+
+        const [fs, mems, allExp, profile] = await Promise.all([
           withTimeout(getHomeFlightsPromise(activeTrip.id, true), [] as Flight[]),
           withTimeout(getHomeMembersPromise(activeTrip.id, true), [] as GroupMember[]),
           withTimeout(getHomeExpensesPromise(activeTrip.id, true), []),
+          profilePromise,
         ]);
         setFlights(fs);
         setMembers(mems);
         await cacheSet(`flights:${activeTrip.id}`, fs);
 
-        // Greeting must reflect the LOGGED-IN user, not the trip primary —
-        // see load() above for the same fix. The pull-to-refresh path was
-        // also seeding userName from `Primary`, which is wrong for guests.
-        const myMember = user?.id
-          ? mems.find(m => m.userId === user.id)
-          : undefined;
-        if (myMember) {
-          if (myMember.name) setUserName(myMember.name);
-          if (myMember.profilePhoto) setUserAvatar(myMember.profilePhoto);
-        }
-
-        // Refresh path was missing the canonical getProfile() override that
-        // load() does — re-fetch so a renamed account picks up immediately
-        // on pull-to-refresh instead of needing an app cold start.
-        if (user?.id) {
-          const { getProfile } = await import('@/lib/supabase');
-          const profile = await withTimeout(getProfile(user.id), null);
-          if (profile?.fullName) {
-            setUserName(profile.fullName.split(' ')[0]);
-            if (profile.avatarUrl) setUserAvatar(profile.avatarUrl);
-          }
+        if (refreshUser) {
+          const identity = resolveAuthIdentity(profile, refreshUser);
+          setUserName(identity.name);
+          setUserAvatar(identity.avatarUrl);
         }
 
         const manualPhase = await cacheGet<TripPhase | null>('trip:phase:override', 0);
@@ -695,7 +708,7 @@ export function useHomeScreen() {
           trip: activeTrip,
           flights: fs,
           members: mems,
-          userId: user?.id,
+          userId: refreshUser?.id,
           manualPhase,
         }));
 
@@ -733,7 +746,7 @@ export function useHomeScreen() {
         setRefreshing(false);
       }
     })();
-  }, [_rawTrip, clearActiveTripSurface, dailyTrackerOn, load, user?.id]);
+  }, [_rawTrip, clearActiveTripSurface, dailyTrackerOn, load]);
 
   // Override flights/moments/members/savedPlaces in test mode too
   const effectiveFlights = useMemo(

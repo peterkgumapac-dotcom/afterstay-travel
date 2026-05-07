@@ -16,6 +16,10 @@ export function safeParse(iso: string): Date {
   return new Date(iso);
 }
 
+function isValidDate(date: Date): boolean {
+  return Number.isFinite(date.getTime());
+}
+
 function daysUntil(iso: string, now: Date = new Date()): number {
   const target = safeParse(iso);
   const ms = target.getTime() - now.getTime();
@@ -53,6 +57,7 @@ function toPht(iso: string): Date {
 function formatTime(iso: string): string {
   // Manual PHT (UTC+8) formatting — device-timezone-safe
   const pht = toPht(iso);
+  if (!isValidDate(pht)) return '';
   let h = pht.getUTCHours();
   const m = pht.getUTCMinutes();
   const ampm = h >= 12 ? 'PM' : 'AM';
@@ -78,6 +83,7 @@ export function formatTimePHT(iso: string): string {
 
 export function formatDatePHT(iso: string): string {
   const d = toPht(iso);
+  if (!isValidDate(d)) return '';
   return `${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
