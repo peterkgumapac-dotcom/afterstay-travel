@@ -175,7 +175,10 @@ export default function AddExpenseScreen() {
         const names = ms.map(m => m.name);
         setMembers(names);
         setMemberObjects(ms);
-        if (!paidBy && names[0]) setPaidBy(names[0]);
+        const currentUserMember = user?.id ? ms.find(m => m.userId === user.id) : undefined;
+        if (!paidBy && (currentUserMember?.name || names[0])) {
+          setPaidBy(currentUserMember?.name ?? names[0]);
+        }
         const init: Record<string, { selected: boolean; amount: string }> = {};
         for (const m of ms) {
           init[m.id] = { selected: true, amount: '' };
@@ -440,9 +443,9 @@ export default function AddExpenseScreen() {
           ).catch(() => {});
         }
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      writeWidgetSnapshots().then(() => refreshWidgets('DailyBudget')).catch(() => {});
       router.back();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      writeWidgetSnapshots().then(() => refreshWidgets('DailyBudget')).catch(() => {});
     } catch (e: any) {
       Alert.alert('Save failed', e?.message ?? 'Unknown error');
     } finally {

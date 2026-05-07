@@ -632,7 +632,7 @@ export async function getActiveTrip(forceRefresh = false): Promise<Trip | null> 
     cachedTripUserId = userId;
   }
 
-  if (cachedTrip !== undefined && !forceRefresh) return cachedTrip;
+  if (cachedTrip !== undefined && cachedTrip !== null && !forceRefresh) return cachedTrip;
 
   // Trips owned by user (is_draft must not be true — allow null and false).
   // Fetch a small window, then filter deleted/archived locally so one stale
@@ -2062,6 +2062,7 @@ export async function addExpense(
     .insert({
       ...(tripId ? { trip_id: tripId } : {}),
       ...(input.standalone ? { user_id: authData?.user?.id } : {}),
+      visibility: tripId ? 'shared' : 'private',
       title: input.description,
       amount: input.amount,
       currency: input.currency,
