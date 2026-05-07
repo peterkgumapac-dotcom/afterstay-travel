@@ -33,6 +33,33 @@ function normalizeExpenseTarget(expenseType?: string): 'trip' | 'quick-trip' | '
   return undefined;
 }
 
+function normalizeSplitAmountsToTotal(amounts: Record<string, number>, total: number): Record<string, number> {
+  const entries = Object.entries(amounts).filter(([, amount]) => amount > 0);
+  if (entries.length === 0 || !Number.isFinite(total) || total <= 0) return amounts;
+
+  const splitTotal = entries.reduce((sum, [, amount]) => sum + amount, 0);
+  const delta = total - splitTotal;
+  if (Math.abs(delta) < 0.01) return amounts;
+
+  if (splitTotal <= 0) {
+    const perHead = total / entries.length;
+    return Object.fromEntries(entries.map(([id]) => [id, perHead]));
+  }
+
+  let allocated = 0;
+  const next: Record<string, number> = {};
+  entries.forEach(([id, amount], index) => {
+    if (index === entries.length - 1) {
+      next[id] = Math.max(0, total - allocated);
+      return;
+    }
+    const adjusted = Math.max(0, amount + delta * (amount / splitTotal));
+    next[id] = adjusted;
+    allocated += adjusted;
+  });
+  return next;
+}
+
 export default function ScanReceiptScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -77,6 +104,7 @@ export default function ScanReceiptScreen() {
         return [];
       }
     }
+    if (receiptTarget === 'standalone') return [];
     const resolvedTripId = tripId || (await getActiveTrip(true).catch(() => null))?.id;
     if (!resolvedTripId) return [];
     return getGroupMembers(resolvedTripId).catch(() => []);
@@ -259,6 +287,10 @@ export default function ScanReceiptScreen() {
             }
           }
 
+          const normalizedSplitAmounts = normalizeSplitAmountsToTotal(splitAmounts, scannedData.amount);
+          const standaloneReceiptPeople =
+            receiptTarget === 'standalone' ? JSON.stringify(members.map((member) => member.name).filter(Boolean)) : undefined;
+
           router.replace({
             pathname: '/add-expense',
             params: {
@@ -271,11 +303,11 @@ export default function ScanReceiptScreen() {
               notes: itemLines,
               photoUri: imageUri ?? '',
               splitType: 'Custom',
-              receiptSplits: JSON.stringify(splitAmounts),
+              receiptSplits: JSON.stringify(normalizedSplitAmounts),
               ...(receiptTarget ? { target: receiptTarget } : {}),
               ...(receiptTarget === 'trip' && tripId ? { tripId } : {}),
               ...(receiptTarget === 'quick-trip' && quickTripId ? { quickTripId } : {}),
-              ...(receiptTarget === 'standalone' && receiptPeople ? { receiptPeople } : {}),
+              ...(standaloneReceiptPeople ? { receiptPeople: standaloneReceiptPeople } : {}),
             },
           });
         }}

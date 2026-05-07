@@ -209,6 +209,7 @@ export default function AddExpenseScreen() {
 
   // Quick trip companions
   const [companions, setCompanions] = useState<QuickTripCompanion[]>([]);
+  const [companionsLoading, setCompanionsLoading] = useState(false);
   const [adHocNames, setAdHocNames] = useState<string[]>([]); // parsed from sharedWith
   const [newPersonName, setNewPersonName] = useState('');
   const receiptSplitAmounts = parseReceiptSplits(params.receiptSplits);
@@ -260,6 +261,7 @@ export default function AddExpenseScreen() {
 
     // Load quick trip companions if applicable
     if (params.quickTripId) {
+      setCompanionsLoading(true);
       getQuickTripCompanions(params.quickTripId).then((cs) => {
         setCompanions(cs);
         if (!paidBy && cs[0]) setPaidBy(cs[0].displayName);
@@ -267,7 +269,7 @@ export default function AddExpenseScreen() {
           ...prev,
           ...buildSplitAssignmentsFromPeople(cs.map((c) => ({ id: c.id, name: c.displayName })), receiptSplitAmounts),
         }));
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => setCompanionsLoading(false));
     }
 
     if (params.receiptPeople) {
@@ -425,6 +427,10 @@ export default function AddExpenseScreen() {
           placeName: placeName.trim() || undefined,
         });
       } else if (expenseType === 'quick-trip' && params.quickTripId) {
+        if (companionsLoading) {
+          Alert.alert('Still loading people', 'Give us a moment to load this Quick Trip before saving the split.');
+          return;
+        }
         const paidByCompanion = companions.find((c) => c.displayName === paidBy);
         const splitTypeForQuickTrip = splitAmountsFromReceipt || splitType !== 'Equal' ? 'custom' : 'even';
         const quickTripExpenseId = await addQuickTripExpense({
