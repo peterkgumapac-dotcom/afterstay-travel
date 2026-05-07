@@ -1799,9 +1799,9 @@ function BudgetScreen() {
         {tab === 'settle' && trip && members.length < 2 && (
           <View style={{ alignItems: 'center', paddingVertical: 40, gap: 8 }}>
             <Users size={28} color={colors.text3} strokeWidth={1.5} />
-            <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>No shared expenses yet</Text>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: colors.text }}>No group yet</Text>
             <Text style={{ fontSize: 13, color: colors.text3, textAlign: 'center' }}>
-              Add a shared expense to unlock Settle Up.
+              Invite trip members first. Shared expenses will appear here automatically once your group starts adding them.
             </Text>
           </View>
         )}

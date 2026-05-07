@@ -301,6 +301,12 @@ export default function JoinTripScreen() {
             )}
           </Animated.View>
 
+          <Animated.View entering={FadeInDown.duration(350).delay(220)} style={styles.accessCard}>
+            <Text style={styles.accessText}>
+              You can now see this trip's shared expenses in Budget. Settle reminders are sent separately when someone taps Remind.
+            </Text>
+          </Animated.View>
+
           <Animated.View entering={FadeInDown.duration(350).delay(300)}>
             <View style={styles.sharedPanel}>
               <Text style={styles.sharedTitle}>What are you sharing?</Text>
@@ -530,6 +536,19 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       fontSize: 12,
       color: colors.text3,
       marginTop: spacing.xs,
+    },
+    accessCard: {
+      padding: spacing.md,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      borderRadius: radius.md,
+    },
+    accessText: {
+      fontSize: 12,
+      lineHeight: 18,
+      color: colors.text2,
+      textAlign: 'center',
     },
     sharedPanel: {
       gap: spacing.sm,

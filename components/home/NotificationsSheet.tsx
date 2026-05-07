@@ -175,6 +175,7 @@ interface NotifStyle {
 
 const NOTIF_STYLES: Record<string, NotifStyle> = {
   expense_added:      { icon: DollarSign,  colorKey: 'accent' },
+  settle_debts:       { icon: DollarSign,  colorKey: 'warn' },
   budget_threshold:   { icon: TrendingUp,  colorKey: 'danger' },
   member_joined:      { icon: UserPlus,    colorKey: 'accent' },
   check_in_reminder:  { icon: Clock,       colorKey: 'gold' },
@@ -190,6 +191,26 @@ const NOTIF_STYLES: Record<string, NotifStyle> = {
 
 function getNotifStyle(type: string): NotifStyle {
   return NOTIF_STYLES[type] ?? { icon: Bell, colorKey: 'text2' };
+}
+
+function getDBNotificationAction(type: string): string | undefined {
+  if (type === 'expense_added' || type === 'settle_debts' || type === 'budget_threshold') {
+    return '/(tabs)/budget';
+  }
+  if (type === 'member_joined') return '/(tabs)/trip';
+  if (type === 'vote_needed') return '/(tabs)/discover';
+  if (type === 'moment_comment' || type === 'moments_added' || type === 'trip_recap_ready') return '/(tabs)/moments';
+  if (
+    type === 'check_in_reminder' ||
+    type === 'check_out_reminder' ||
+    type === 'flight_boarding' ||
+    type === 'departure_prep' ||
+    type === 'trip_starting' ||
+    type === 'last_day'
+  ) {
+    return '/(tabs)/home';
+  }
+  return undefined;
 }
 
 // ── Dismissed local alerts (persisted to AsyncStorage) ──────────────
@@ -311,18 +332,19 @@ export default function NotificationsSheet({
       const ns = getNotifStyle(n.type);
       const iconColor = colors[ns.colorKey];
       return {
-      id: n.id,
-      icon: ns.icon,
-      iconColor,
-      iconBg: colors.accentDim,
-      title: n.title,
-      body: n.body,
-      category: n.type.replace(/_/g, ' '),
-      priority: 'medium' as const,
-      source: 'db' as const,
-      read: n.read,
-      createdAt: n.createdAt,
-    };
+        id: n.id,
+        icon: ns.icon,
+        iconColor,
+        iconBg: colors.accentDim,
+        title: n.title,
+        body: n.body,
+        category: n.type.replace(/_/g, ' '),
+        action: getDBNotificationAction(n.type),
+        priority: 'medium' as const,
+        source: 'db' as const,
+        read: n.read,
+        createdAt: n.createdAt,
+      };
     }),
     [dbNotifs, colors],
   );

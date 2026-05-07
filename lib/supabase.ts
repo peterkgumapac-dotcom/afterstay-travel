@@ -2629,12 +2629,18 @@ export async function notifyExpenseAdded(
     const members = await getGroupMembers(tripId);
     if (members.length < 2) return;
     const currency = expense.currency ?? 'PHP';
+    const { data: tripRow } = await supabase
+      .from(T.trips)
+      .select('destination, name')
+      .eq('id', tripId)
+      .maybeSingle();
+    const tripName = ((tripRow?.destination as string | undefined) || (tripRow?.name as string | undefined) || '').trim();
     await notifyAllMembers(
       tripId,
       'expense_added',
-      `${expense.paidBy} added an expense`,
-      `${expense.description} — ${currency} ${expense.amount.toLocaleString()}`,
-      { expenseDescription: expense.description, amount: expense.amount },
+      'Shared trip expense added',
+      `${expense.paidBy} added ${expense.description}${tripName ? ` to ${tripName}` : ''}: ${currency} ${expense.amount.toLocaleString()}. Open Budget to see your split.`,
+      { expenseDescription: expense.description, amount: expense.amount, tripName },
       addedByUserId,
     );
   } catch {
@@ -2657,8 +2663,8 @@ export async function notifySettlementReminder(input: {
     userId: input.debtorUserId,
     tripId: input.tripId,
     type: 'settle_debts',
-    title: `${input.creditorName} reminded you to settle up`,
-    body: `Outstanding balance: ${currency} ${input.amount.toLocaleString()}`,
+    title: 'Settle-up reminder',
+    body: `${input.creditorName} reminded you to settle ${currency} ${input.amount.toLocaleString()}. Open Budget > Settle Up.`,
     data: {
       tripId: input.tripId,
       debtorMemberId: input.debtorMemberId,
