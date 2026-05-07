@@ -44,6 +44,7 @@ export function usePushNotifications() {
               case 'vote_needed':
                 router.push('/(tabs)/discover' as never); break;
               case 'expense_added':
+              case 'settle_debts':
               case 'budget_threshold':
                 router.push('/(tabs)/budget' as never); break;
               case 'member_joined':

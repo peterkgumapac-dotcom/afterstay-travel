@@ -65,6 +65,7 @@ export const DEFAULT_PREFS: NotificationPrefs = {
 const NOTIF_TYPE_TO_CATEGORY: Record<string, keyof NotificationCategoryPrefs> = {
   // DB notifications
   expense_added: 'expenseAlerts',
+  settle_debts: 'expenseAlerts',
   member_joined: 'groupActivity',
   budget_threshold: 'budgetAlerts',
   vote_needed: 'groupActivity',

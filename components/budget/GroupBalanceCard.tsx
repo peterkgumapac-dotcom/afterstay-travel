@@ -20,6 +20,7 @@ import {
   getTripSplits,
   settleExpenseSplit,
   getPaymentQrs,
+  notifySettlementReminder,
 } from '@/lib/supabase';
 import type { MemberBalance, PaymentQr } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
@@ -224,6 +225,37 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
     setShowSettleModal(true);
   }, []);
 
+  const sendSettleReminder = useCallback(async (edge: DebtEdge) => {
+    const debtor = members.find((member) => member.id === edge.from);
+    if (!debtor?.userId) {
+      Alert.alert(
+        'Reminder not sent',
+        `${edge.fromName} has not joined this trip in AfterStay yet. Share the trip invite first, then reminders can go through the app.`,
+      );
+      return;
+    }
+    if (!currentMember || !user?.id) {
+      Alert.alert('Reminder not sent', 'We could not confirm your trip member profile. Reopen Budget and try again.');
+      return;
+    }
+
+    try {
+      await notifySettlementReminder({
+        tripId: trip.id,
+        debtorUserId: debtor.userId,
+        debtorMemberId: debtor.id,
+        creditorName: displayMemberName(currentMember.name),
+        amount: edge.amount,
+        currency,
+        requestedByUserId: user.id,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Reminder sent', `${edge.fromName} will see this in AfterStay.`);
+    } catch {
+      Alert.alert('Reminder failed', 'Could not send the reminder. Please try again.');
+    }
+  }, [currency, currentMember, members, trip.id, user?.id]);
+
   if (members.length < 2) {
     return (
       <View style={s.emptyWrap}>
@@ -290,7 +322,7 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
                   `Send ${edge.fromName} a reminder for ${formatCurrency(edge.amount, currency)}?`,
                   [
                     { text: 'Not now', style: 'cancel' },
-                    { text: 'Remind', onPress: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success) },
+                    { text: 'Remind', onPress: () => { sendSettleReminder(edge).catch(() => {}); } },
                   ],
                 );
               }}

@@ -2642,6 +2642,33 @@ export async function notifyExpenseAdded(
   }
 }
 
+/** Remind one trip member to settle an outstanding balance. */
+export async function notifySettlementReminder(input: {
+  tripId: string;
+  debtorUserId: string;
+  debtorMemberId: string;
+  creditorName: string;
+  amount: number;
+  currency?: string;
+  requestedByUserId: string;
+}): Promise<void> {
+  const currency = input.currency ?? 'PHP';
+  await insertNotification({
+    userId: input.debtorUserId,
+    tripId: input.tripId,
+    type: 'settle_debts',
+    title: `${input.creditorName} reminded you to settle up`,
+    body: `Outstanding balance: ${currency} ${input.amount.toLocaleString()}`,
+    data: {
+      tripId: input.tripId,
+      debtorMemberId: input.debtorMemberId,
+      amount: input.amount,
+      currency,
+      requestedByUserId: input.requestedByUserId,
+    },
+  });
+}
+
 /** Notify existing members when someone joins the trip. */
 export async function notifyMemberJoined(tripId: string, memberName: string, joinerUserId: string): Promise<void> {
   try {
