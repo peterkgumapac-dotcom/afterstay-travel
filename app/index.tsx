@@ -5,6 +5,7 @@ import AfterStayLoader from '@/components/AfterStayLoader';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { getOnboardingProgress, isOnboardingIncomplete } from '@/lib/onboardingProgress';
 import { deriveUserStatus } from '@/lib/userStatus';
+import { getProfile, type Profile } from '@/lib/supabase';
 import { preloadHomeData } from '@/hooks/useTabHomeData';
 
 type IndexTarget = 'welcome' | 'onboarding' | 'home' | null;
@@ -12,6 +13,20 @@ type IndexTarget = 'welcome' | 'onboarding' | 'home' | null;
 function routeHome(setTarget: (target: IndexTarget) => void) {
   preloadHomeData().catch(() => {});
   setTarget('home');
+}
+
+function profileImpliesExistingAccount(profile: Profile | null): boolean {
+  if (!profile) return false;
+  const onboardingStatus = String(profile.onboardingState?.status ?? '').toLowerCase();
+  return (
+    profile.tripCount > 0 ||
+    profile.completedTripCount > 0 ||
+    Boolean(profile.lastTripId) ||
+    Boolean(profile.onboardedAt) ||
+    onboardingStatus === 'complete' ||
+    onboardingStatus === 'skipped' ||
+    profile.userSegment !== 'new'
+  );
 }
 
 export default function Index() {
@@ -40,28 +55,32 @@ export default function Index() {
         }
 
         const flag = await cacheGet<boolean>(`onboarding_complete:${session.user.id}`);
-        if (flag) {
-          if (__DEV__) console.log('[Index] onboarding flag cached — skipping check');
-          routeHome(setTarget);
-          return;
-        }
 
         // Derive status from Supabase trips.
         // Retries are built into deriveUserStatus (auth token race on cold start)
-        const result = await deriveUserStatus(session.user.id);
+        const [result, profile] = await Promise.all([
+          deriveUserStatus(session.user.id),
+          getProfile(session.user.id).catch(() => null),
+        ]);
+        const hasExistingProfileState = profileImpliesExistingAccount(profile);
         if (__DEV__)
           console.log(
             '[Index] derived status:',
             result.status,
             '| trips:',
             result.completedTrips.length + result.planningTrips.length + (result.activeTrip ? 1 : 0),
+            '| profileExisting:',
+            hasExistingProfileState,
           );
 
         if (result.uncertain || result.error) {
           if (__DEV__) console.warn('[Index] trip status uncertain — avoiding new-user redirect:', result.error);
           const cachedFlag = await cacheGet<boolean>(`onboarding_complete:${session.user.id}`);
           const cachedProgress = await getOnboardingProgress(session.user.id);
-          if (cachedProgress && isOnboardingIncomplete(cachedProgress)) {
+          if (hasExistingProfileState) {
+            await cacheSet(`onboarding_complete:${session.user.id}`, true);
+            routeHome(setTarget);
+          } else if (cachedProgress && isOnboardingIncomplete(cachedProgress)) {
             if (cachedProgress.stage === 'planning_draft') routeHome(setTarget);
             else setTarget('onboarding');
           } else {
@@ -71,9 +90,13 @@ export default function Index() {
           return;
         }
 
-        if (result.status !== 'new') {
+        if (result.status !== 'new' || hasExistingProfileState) {
           // User has trips — restore the flag and skip onboarding
           await cacheSet(`onboarding_complete:${session.user.id}`, true);
+          routeHome(setTarget);
+        } else if (flag) {
+          // A cached completion flag can let a truly no-trip returning account
+          // into Home, but it must never skip the fresh status check above.
           routeHome(setTarget);
         } else {
           setTarget('welcome');

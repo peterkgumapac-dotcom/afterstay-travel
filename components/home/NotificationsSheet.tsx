@@ -63,6 +63,7 @@ type MergedNotification = LocalNotification | DBNotification;
 interface NotificationsSheetProps {
   visible: boolean;
   onClose: () => void;
+  tripStatus?: 'upcoming' | 'active' | 'completed';
   dayOfTrip: number;
   totalDays: number;
   daysLeft: number;
@@ -85,10 +86,11 @@ function generateLocalAlerts(
   props: Omit<NotificationsSheetProps, 'visible' | 'onClose'>,
   colors: ThemeColors,
 ): LocalNotification[] {
-  const { dayOfTrip, totalDays, daysLeft, spent, budget, savedPlaces, members, destination } = props;
+  const { tripStatus, dayOfTrip, totalDays, daysLeft, spent, budget, savedPlaces, members, destination } = props;
   const items: LocalNotification[] = [];
+  const isActiveTrip = tripStatus === 'active';
 
-  if (budget > 0 && dayOfTrip > 1 && daysLeft > 0) {
+  if (isActiveTrip && budget > 0 && dayOfTrip > 1 && daysLeft > 0) {
     const projected = (spent / dayOfTrip) * totalDays;
     const diff = projected - budget;
     if (diff > 0) {
@@ -101,7 +103,7 @@ function generateLocalAlerts(
     }
   }
 
-  if (budget > 0 && dayOfTrip > 0) {
+  if (isActiveTrip && budget > 0 && dayOfTrip > 0) {
     const dailyBudget = budget / totalDays;
     const avgDaily = spent / dayOfTrip;
     if (avgDaily > dailyBudget * 1.5) {
@@ -137,7 +139,7 @@ function generateLocalAlerts(
     });
   }
 
-  if (daysLeft === 0) {
+  if (isActiveTrip && daysLeft === 0) {
     items.push({
       id: 'last-day', icon: Clock, iconColor: colors.warn,
       iconBg: colors.accentDim, title: 'Last day!',
@@ -146,7 +148,7 @@ function generateLocalAlerts(
     });
   }
 
-  if (daysLeft === 1) {
+  if (isActiveTrip && daysLeft === 1) {
     items.push({
       id: 'ending-soon', icon: AlertTriangle, iconColor: colors.warn,
       iconBg: colors.accentDim, title: 'Trip ending tomorrow',
@@ -289,7 +291,7 @@ export function useNotificationCount(
 
   const localAlerts = useMemo(
     () => filterLocalAlertsByPrefs(generateLocalAlerts(props, colors), prefs),
-    [props.dayOfTrip, props.totalDays, props.daysLeft, props.spent, props.budget, props.savedPlaces, props.members, props.destination, colors, prefs],
+    [props.tripStatus, props.dayOfTrip, props.totalDays, props.daysLeft, props.spent, props.budget, props.savedPlaces, props.members, props.destination, colors, prefs],
   );
   const localCount = localAlerts.filter((a) => !dismissedLocalIds.has(a.id)).length;
   return localCount + resolvedDbUnread;
@@ -323,7 +325,7 @@ export default function NotificationsSheet({
 
   const localAlerts = useMemo(
     () => filterLocalAlertsByPrefs(generateLocalAlerts(dataProps, colors), prefs),
-    [dataProps.dayOfTrip, dataProps.totalDays, dataProps.daysLeft, dataProps.spent, dataProps.budget, dataProps.savedPlaces, dataProps.members, dataProps.destination, colors, prefs],
+    [dataProps.tripStatus, dataProps.dayOfTrip, dataProps.totalDays, dataProps.daysLeft, dataProps.spent, dataProps.budget, dataProps.savedPlaces, dataProps.members, dataProps.destination, colors, prefs],
   );
 
   // Convert DB notifications to display format
@@ -383,8 +385,8 @@ export default function NotificationsSheet({
           </View>
 
           <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
-            {/* DEV-ONLY: Test notification button — remove before release */}
-            {__DEV__ && (
+            {process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true' &&
+              user?.email?.toLowerCase() === process.env.EXPO_PUBLIC_INTERNAL_QA_TESTER_EMAIL?.trim().toLowerCase() && (
               <TouchableOpacity
                 style={{ backgroundColor: colors.accent, padding: 12, borderRadius: 10, marginBottom: 12, alignItems: 'center' }}
                 onPress={async () => {

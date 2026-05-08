@@ -41,11 +41,15 @@ export default function QuickTripCreateScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
-  const { returnTo, photoUris } = useLocalSearchParams<{ returnTo?: string; photoUris?: string }>();
-  const canCreateWithoutPhotos = returnTo === 'scan-receipt';
+  const { returnTo, photoUris } = useLocalSearchParams<{
+    returnTo?: string;
+    photoUris?: string;
+    allowNoPhotos?: string;
+  }>();
+  const canCreateWithoutPhotos = true;
 
   // Phase
-  const [phase, setPhase] = useState<Phase>('photos');
+  const [phase, setPhase] = useState<Phase>('review');
 
   // Photo state
   const [photos, setPhotos] = useState<{ uri: string }[]>([]);
@@ -72,7 +76,8 @@ export default function QuickTripCreateScreen() {
   const pendingDateRef = useRef<Date>(new Date());
   const initializedPickerRef = useRef(false);
 
-  // Pre-populate from passed photoUris or open picker
+  // Pre-populate from passed photoUris. Quick Trips should be fast, so
+  // photos are optional and the picker is launched only when users ask.
   useEffect(() => {
     if (initializedPickerRef.current) return;
     initializedPickerRef.current = true;
@@ -84,8 +89,14 @@ export default function QuickTripCreateScreen() {
         return;
       }
     }
-    pickPhotos();
+    setPhase('review');
   }, [photoUris]);
+
+  useEffect(() => {
+    if (canCreateWithoutPhotos && photos.length === 0) {
+      setPhase('review');
+    }
+  }, [canCreateWithoutPhotos, photos.length]);
 
   const pickPhotos = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -349,6 +360,9 @@ export default function QuickTripCreateScreen() {
           ))}
           <TouchableOpacity style={styles.carouselAdd} onPress={pickPhotos}>
             <Plus size={20} color={colors.accent} />
+            {photos.length === 0 && (
+              <Text style={styles.carouselAddText}>Add photos</Text>
+            )}
           </TouchableOpacity>
         </ScrollView>
 
@@ -489,10 +503,11 @@ const getStyles = (colors: ThemeColors) =>
     carousel: { marginBottom: 20, marginHorizontal: -20, paddingHorizontal: 20 },
     carouselImage: { width: 160, height: 120, borderRadius: 14, marginRight: 8 },
     carouselAdd: {
-      width: 60, height: 120, borderRadius: 14,
+      width: 120, height: 120, borderRadius: 14,
       borderWidth: 1.5, borderColor: colors.accentBorder, borderStyle: 'dashed',
-      alignItems: 'center', justifyContent: 'center',
+      alignItems: 'center', justifyContent: 'center', gap: 6,
     },
+    carouselAddText: { fontSize: 12, color: colors.accent, fontWeight: '700' },
 
     fieldLabel: {
       fontSize: 11, fontWeight: '600', color: colors.text3,

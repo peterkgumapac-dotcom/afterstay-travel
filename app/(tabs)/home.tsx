@@ -326,6 +326,7 @@ function HomeScreen() {
   // Notification count for bell badge
   const notifProps = useMemo(
     () => ({
+      tripStatus: countdown.status,
       dayOfTrip: countdown.status === 'active' ? (countdown.dayNumber ?? 1) : 1,
       totalDays: countdown.totalDays,
       daysLeft: countdown.daysLeft,
@@ -452,7 +453,7 @@ function HomeScreen() {
               }
             }}
             onQuickTripPress={(id) => router.push(`/quick-trip-detail?quickTripId=${id}`)}
-            onAddQuickTrip={() => router.push('/quick-trip-create')}
+            onAddQuickTrip={() => router.push('/quick-trip-create?allowNoPhotos=1')}
             onAddMoment={() => router.push(`/add-moment?tripId=${pastTrips[0]?.id ?? ''}`)}
             onBellPress={() => setShowNotifications(true)}
             onSeeAllTrips={() => router.push('/(tabs)/trip')}

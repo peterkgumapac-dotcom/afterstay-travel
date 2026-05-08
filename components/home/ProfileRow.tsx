@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Settings } from 'lucide-react-native';
+import { Settings, UserRound } from 'lucide-react-native';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
@@ -27,6 +27,7 @@ export default function ProfileRow({
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const firstName = userName.split(' ')[0];
   const initial = firstName.charAt(0).toUpperCase();
 
@@ -89,7 +90,7 @@ export default function ProfileRow({
         </View>
       </View>
 
-      {/* Right: bell + settings + avatar */}
+      {/* Right: bell + profile + settings */}
       <View style={styles.rightSide}>
         {/* Notifications bell */}
         <AnimatedPressable
@@ -121,15 +122,6 @@ export default function ProfileRow({
           )}
         </AnimatedPressable>
 
-        <AnimatedPressable
-          onPress={goToSettings}
-          style={styles.iconButton}
-          accessibilityLabel="Settings"
-          accessibilityRole="button"
-        >
-          <Settings size={18} color={colors.text2} strokeWidth={1.8} />
-        </AnimatedPressable>
-
         {/* Avatar — opens profile */}
         <AnimatedPressable
           onPress={goToProfile}
@@ -137,13 +129,30 @@ export default function ProfileRow({
           accessibilityLabel="View profile"
           accessibilityRole="button"
         >
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          {avatarUrl && !avatarFailed ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatar}
+              onError={() => setAvatarFailed(true)}
+            />
           ) : (
             <View style={styles.avatarFallback}>
-              <Text style={styles.avatarInitial}>{initial}</Text>
+              {initial ? (
+                <Text style={styles.avatarInitial}>{initial}</Text>
+              ) : (
+                <UserRound size={18} color="#fff" strokeWidth={2} />
+              )}
             </View>
           )}
+        </AnimatedPressable>
+
+        <AnimatedPressable
+          onPress={goToSettings}
+          style={styles.iconButton}
+          accessibilityLabel="Settings"
+          accessibilityRole="button"
+        >
+          <Settings size={18} color={colors.text2} strokeWidth={1.8} />
         </AnimatedPressable>
       </View>
     </View>
@@ -199,8 +208,9 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       alignItems: 'center',
       gap: 4,
       flexShrink: 0,
-      minWidth: 112,
+      width: 124,
       justifyContent: 'flex-end',
+      overflow: 'visible',
     },
     iconButton: {
       width: 36,

@@ -206,7 +206,7 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
         segment: cachedSegment,
         profile: scopedCachedProfile ?? prev.profile,
         activeTrip: cachedTrip !== undefined ? cachedTrip : prev.activeTrip,
-        loading: false,
+        loading: cachedSegment === 'new',
       }));
     }
 

@@ -374,7 +374,7 @@ function MomentsScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
-                onPress={() => router.push('/quick-trip-create' as never)}
+                onPress={() => router.push('/quick-trip-create?allowNoPhotos=1' as never)}
                 activeOpacity={0.7}
               >
                 <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>Quick Trip</Text>

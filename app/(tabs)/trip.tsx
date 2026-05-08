@@ -1269,7 +1269,7 @@ function TripScreen() {
               router.push({ pathname, params: { tripId } } as never);
             }}
             onQuickTripPress={(id) => router.push({ pathname: '/quick-trip-detail', params: { quickTripId: id } } as never)}
-            onAddQuickTrip={() => router.push('/quick-trip-create' as never)}
+            onAddQuickTrip={() => router.push('/quick-trip-create?allowNoPhotos=1' as never)}
             onDeleteTrip={handleSoftDelete}
             onDeleteDraft={handleDeleteDraft}
             onArchiveTrip={handleArchiveIncoming}

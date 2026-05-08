@@ -45,7 +45,7 @@ export const FloatingActionButton: React.FC = () => {
   const actions: FabAction[] = useMemo(() => {
     const items: FabAction[] = [
       { id: 'moment', icon: Camera, label: 'Capture Moment', onPress: () => router.push('/add-moment') },
-      { id: 'quick-trip', icon: Zap, label: 'Quick Trip', onPress: () => router.push('/quick-trip-create' as never) },
+      { id: 'quick-trip', icon: Zap, label: 'Quick Trip', onPress: () => router.push('/quick-trip-create?allowNoPhotos=1' as never) },
       { id: 'expense', icon: Receipt, label: 'Add Expense', onPress: () => router.push('/add-expense') },
     ];
     if (isPlane) {
