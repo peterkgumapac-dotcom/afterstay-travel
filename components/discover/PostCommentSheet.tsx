@@ -35,7 +35,9 @@ type MentionSuggestion = {
 };
 
 function timeSince(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  const time = new Date(dateStr).getTime();
+  if (!Number.isFinite(time)) return 'just now';
+  const seconds = Math.floor((Date.now() - time) / 1000);
   if (seconds < 60) return 'just now';
   const mins = Math.floor(seconds / 60);
   if (mins < 60) return `${mins}m`;

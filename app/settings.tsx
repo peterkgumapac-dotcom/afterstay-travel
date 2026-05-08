@@ -113,12 +113,17 @@ interface ProfileState {
 }
 
 const STORAGE_PROFILE = 'settings_profile';
+const INTERNAL_QA_TESTER_EMAIL = process.env.EXPO_PUBLIC_INTERNAL_QA_TESTER_EMAIL?.trim().toLowerCase() ?? '';
 const INTERNAL_QA_TOOLS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true';
 
 const DEFAULT_PROFILE: ProfileState = { name: 'Traveler', avatarUri: '', handle: '', phone: '', socials: {} };
 
 function storageProfileKey(userId?: string | null): string {
   return `${STORAGE_PROFILE}:${userId ?? 'anon'}`;
+}
+
+function canShowInternalQaTools(email?: string | null): boolean {
+  return INTERNAL_QA_TOOLS_ENABLED && Boolean(INTERNAL_QA_TESTER_EMAIL) && email?.toLowerCase() === INTERNAL_QA_TESTER_EMAIL;
 }
 
 function shortUpdateId(): string | null {
@@ -157,6 +162,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { mode, colors, toggle: toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
+  const showInternalQaTools = canShowInternalQaTools(user?.email);
   const [profile, setProfile] = useState<ProfileState>(DEFAULT_PROFILE);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -337,6 +343,7 @@ export default function SettingsScreen() {
 
   const formatDate = (iso: string) => {
     const d = new Date(iso.length === 10 ? `${iso}T00:00:00+08:00` : iso);
+    if (!Number.isFinite(d.getTime())) return 'Date TBA';
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
@@ -757,7 +764,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Test Notification */}
-        {user?.email === 'peterkgumapac@gmail.com' && (
+        {showInternalQaTools && (
           <>
             <SectionLabel label="Notifications" textColor={colors.text3} />
             <TouchableOpacity
@@ -784,7 +791,7 @@ export default function SettingsScreen() {
         )}
 
         {/* Dev Test Mode — requires internal QA env plus the owner account */}
-        {INTERNAL_QA_TOOLS_ENABLED && user?.email === 'peterkgumapac@gmail.com' && <DevSegmentSection colors={colors} />}
+        {showInternalQaTools && <DevSegmentSection colors={colors} />}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -1767,7 +1774,15 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
 
   const openProfileForQa = (targetUserId?: string | null) => {
     if (!targetUserId) return;
-    pushProfile(router, targetUserId, user?.id);
+    if (targetUserId === user?.id) {
+      pushProfile(router, targetUserId, user.id);
+      return;
+    }
+
+    router.push({
+      pathname: '/profile/[userId]',
+      params: { userId: targetUserId, qa: '1' },
+    } as never);
   };
 
   return (

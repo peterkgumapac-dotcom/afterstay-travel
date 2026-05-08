@@ -9,7 +9,8 @@ const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
  * Android-safe date parser. Date-only strings like "2026-04-20" get parsed as
  * UTC midnight which shifts the date — append PHT timezone to avoid that.
  */
-export function safeParse(iso: string): Date {
+export function safeParse(iso?: string | null): Date {
+  if (!iso) return new Date(Number.NaN);
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
     return new Date(iso + 'T00:00:00+08:00');
   }
@@ -20,20 +21,22 @@ function isValidDate(date: Date): boolean {
   return Number.isFinite(date.getTime());
 }
 
-function daysUntil(iso: string, now: Date = new Date()): number {
+function daysUntil(iso: string | null | undefined, now: Date = new Date()): number {
   const target = safeParse(iso);
+  if (!isValidDate(target)) return 0;
   const ms = target.getTime() - now.getTime();
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
 }
 
 export function tripStatusLabel(
-  startIso: string,
-  endIso: string,
-  nights: number,
+  startIso: string | null | undefined,
+  endIso: string | null | undefined,
+  nights: number = 1,
   now: Date = new Date()
 ): string {
   const start = safeParse(startIso);
   const end = safeParse(endIso);
+  if (!isValidDate(start) || !isValidDate(end)) return 'Planning';
   if (now < start) {
     const days = daysUntil(startIso, now);
     if (days === 0) return 'Today';
@@ -48,13 +51,14 @@ export function tripStatusLabel(
 
 /** Convert any ISO string to a Date offset to PHT wall-clock time.
  *  Use getUTC* methods on the returned Date to read PHT components. */
-function toPht(iso: string): Date {
+function toPht(iso?: string | null): Date {
   const d = safeParse(iso);
+  if (!isValidDate(d)) return d;
   // d.getTime() is always UTC ms — add PHT offset and use getUTC* to read
   return new Date(d.getTime() + 8 * 60 * 60 * 1000);
 }
 
-function formatTime(iso: string): string {
+function formatTime(iso?: string | null): string {
   // Manual PHT (UTC+8) formatting — device-timezone-safe
   const pht = toPht(iso);
   if (!isValidDate(pht)) return '';
@@ -77,11 +81,11 @@ export function formatCurrency(amount: number, currency: string = 'PHP'): string
   }
 }
 
-export function formatTimePHT(iso: string): string {
+export function formatTimePHT(iso?: string | null): string {
   return formatTime(iso);
 }
 
-export function formatDatePHT(iso: string): string {
+export function formatDatePHT(iso?: string | null): string {
   const d = toPht(iso);
   if (!isValidDate(d)) return '';
   return `${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}`;

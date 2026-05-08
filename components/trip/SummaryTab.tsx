@@ -595,6 +595,7 @@ function getTripStatusLabel(type: TripCardStatus, trip: PastTripDisplay): string
 function formatDate(iso: string): string {
   if (!iso) return '';
   const d = new Date(iso + 'T00:00:00+08:00');
+  if (!Number.isFinite(d.getTime())) return '';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 

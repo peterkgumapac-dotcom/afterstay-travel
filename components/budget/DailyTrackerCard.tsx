@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { ChevronRight, Plus, Settings2, Trash2, X } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, ChevronUp, Plus, Settings2, Trash2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatCurrency, formatDatePHT } from '@/lib/utils';
@@ -29,13 +29,15 @@ const CURRENCIES = ['PHP', 'USD', 'EUR', 'JPY', 'GBP', 'SGD', 'THB', 'KRW', 'VND
 interface DailyTrackerCardProps {
   onAddExpense: () => void;
   onScanReceipt: () => void;
+  embedded?: boolean;
 }
 
-export function DailyTrackerCard({ onAddExpense, onScanReceipt }: DailyTrackerCardProps) {
+export function DailyTrackerCard({ onAddExpense, onScanReceipt, embedded = false }: DailyTrackerCardProps) {
   const { colors } = useTheme();
   const s = useMemo(() => getStyles(colors), [colors]);
 
   const [enabled, setEnabled] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [period, setPeriod] = useState<Period>('weekly');
   const [summary, setSummary] = useState<DailyExpensePeriodSummary | null>(null);
   const [loading, setLoading] = useState(false);
@@ -115,6 +117,7 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt }: DailyTrackerCa
   const pct = budget && budget > 0 ? Math.min(100, (spent / budget) * 100) : 0;
   const paceColor = pct > 90 ? '#c4554a' : pct > 70 ? '#e2b361' : '#4ade80';
   const maxCat = summary ? Math.max(1, ...Object.values(summary.byCategory)) : 1;
+  const periodLabel = period === 'daily' ? 'Today' : period === 'weekly' ? 'This week' : 'This month';
 
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
@@ -132,14 +135,31 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt }: DailyTrackerCa
   }, [expenses]);
 
   return (
-    <View style={[s.card, enabled && s.cardOn]}>
+    <View style={[s.card, embedded && s.cardEmbedded, enabled && s.cardOn]}>
       {/* Header */}
       <View style={s.row}>
-        <Text style={s.title}>EVERYDAY SPENDING</Text>
+        <View>
+          <Text style={s.title}>Everyday spending</Text>
+          <Text style={s.subtitle}>Separate from trip budgets</Text>
+        </View>
         <View style={s.headerRight}>
-          {enabled && (
+          {enabled && expanded && (
             <TouchableOpacity onPress={() => setShowSettings(!showSettings)} style={s.gearBtn} activeOpacity={0.7}>
               <Settings2 size={18} color={showSettings ? colors.accent : colors.text3} strokeWidth={1.8} />
+            </TouchableOpacity>
+          )}
+          {enabled && (
+            <TouchableOpacity
+              onPress={() => setExpanded(prev => !prev)}
+              style={s.gearBtn}
+              activeOpacity={0.7}
+              accessibilityLabel={expanded ? 'Collapse details' : 'Expand details'}
+            >
+              {expanded ? (
+                <ChevronUp size={18} color={colors.text3} strokeWidth={1.8} />
+              ) : (
+                <ChevronDown size={18} color={colors.text3} strokeWidth={1.8} />
+              )}
             </TouchableOpacity>
           )}
           <Switch value={enabled} onValueChange={handleToggle} trackColor={{ false: colors.border, true: colors.accent }} thumbColor="#fff" />
@@ -148,7 +168,37 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt }: DailyTrackerCa
 
       {!enabled && <Text style={s.offText}>Track everyday spending between trips</Text>}
 
-      {enabled && (
+      {enabled && !expanded && (
+        <>
+          <View style={s.compactSummary}>
+            <View>
+              <Text style={s.compactAmount}>
+                {summary ? formatCurrency(spent, cur) : loading ? '...' : formatCurrency(0, cur)}
+              </Text>
+              <Text style={s.compactMeta}>
+                {periodLabel}
+                {summary ? ` · ${summary.count} expense${summary.count !== 1 ? 's' : ''}` : ' · ready to track'}
+              </Text>
+            </View>
+            {budget && budget > 0 && period !== 'daily' && (
+              <View style={s.compactBudgetPill}>
+                <Text style={s.compactBudgetText}>{Math.round(pct)}%</Text>
+              </View>
+            )}
+          </View>
+          <View style={s.actions}>
+            <TouchableOpacity style={s.addBtn} onPress={onAddExpense} activeOpacity={0.7}>
+              <Plus size={15} color={colors.bg} strokeWidth={2.5} />
+              <Text style={s.addText}>Add</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.scanBtn} onPress={onScanReceipt} activeOpacity={0.7}>
+              <Text style={s.scanText}>Scan</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {enabled && expanded && (
         <>
           {/* Settings panel */}
           {showSettings && (
@@ -286,7 +336,7 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt }: DailyTrackerCa
           {/* Actions */}
           <View style={s.actions}>
             <TouchableOpacity style={s.addBtn} onPress={onAddExpense} activeOpacity={0.7}>
-              <Plus size={15} color="#fff" strokeWidth={2.5} />
+              <Plus size={15} color={colors.bg} strokeWidth={2.5} />
               <Text style={s.addText}>Add</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.scanBtn} onPress={onScanReceipt} activeOpacity={0.7}>
@@ -302,11 +352,18 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt }: DailyTrackerCa
 const getStyles = (c: ThemeColors) => StyleSheet.create({
   card: { backgroundColor: c.card, borderRadius: 16, borderWidth: 1, borderColor: c.border, padding: 16, marginHorizontal: 16, marginBottom: 14 },
   cardOn: { borderColor: c.accentBorder },
+  cardEmbedded: { marginHorizontal: 0, marginBottom: 0 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { fontSize: 11, fontWeight: '700', color: c.text3, letterSpacing: 1.2 },
+  subtitle: { fontSize: 11, color: c.text3, marginTop: 2 },
   offText: { fontSize: 13, color: c.text3, marginTop: 6 },
   gearBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: c.bg2, alignItems: 'center', justifyContent: 'center' },
+  compactSummary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, gap: 12 },
+  compactAmount: { fontSize: 24, fontWeight: '700', color: c.text, letterSpacing: -0.6 },
+  compactMeta: { fontSize: 12, color: c.text3, marginTop: 2 },
+  compactBudgetPill: { minWidth: 48, minHeight: 32, borderRadius: 999, backgroundColor: c.accentBg, borderWidth: 1, borderColor: c.accentBorder, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  compactBudgetText: { fontSize: 12, fontWeight: '800', color: c.accent },
 
   // Nudge
   nudge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: c.accentBg, borderRadius: 10, borderWidth: 1, borderColor: c.accentBorder },

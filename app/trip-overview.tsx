@@ -61,6 +61,7 @@ function formatDate(iso: string): string {
   if (!iso) return '—';
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const d = safeParse(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
   const utcMs = d.getTime() + d.getTimezoneOffset() * 60000;
   const pht = new Date(utcMs + 8 * 60 * 60 * 1000);
   return `${MONTHS[pht.getMonth()]} ${pht.getDate()}`;
@@ -69,6 +70,7 @@ function formatDate(iso: string): string {
 function formatTime(iso: string): string {
   if (!iso) return '—';
   const d = safeParse(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
   const utcMs = d.getTime() + d.getTimezoneOffset() * 60000;
   const pht = new Date(utcMs + 8 * 60 * 60 * 1000);
   let h = pht.getHours();

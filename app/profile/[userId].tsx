@@ -94,7 +94,7 @@ function publicPostToMoment(post: FeedPost): Moment | null {
 }
 
 export default function CompanionProfileScreen() {
-  const { userId, source } = useLocalSearchParams<{ userId: string; source?: string }>();
+  const { userId, source, qa } = useLocalSearchParams<{ userId: string; source?: string; qa?: string }>();
   const { user } = useAuth();
   const router = useRouter();
   useTheme();
@@ -120,8 +120,10 @@ export default function CompanionProfileScreen() {
 
   const targetIdentifier = Array.isArray(userId) ? userId[0] : userId;
   const sourceParam = Array.isArray(source) ? source[0] : source;
+  const qaParam = Array.isArray(qa) ? qa[0] : qa;
   const isSelfRoute = sourceParam === 'self';
   const isSelf = user?.id === resolvedUserId;
+  const isQaView = qaParam === '1' && !!resolvedUserId && !isSelf;
 
   const resetProfileState = useCallback(() => {
     setProfile(null);
@@ -416,6 +418,14 @@ export default function CompanionProfileScreen() {
         </Pressable>
       </View>
 
+      {isQaView ? (
+        <View style={s.qaBanner} pointerEvents="none">
+          <Text style={s.qaBannerText} numberOfLines={1}>
+            QA view · signed in as {user?.email ?? 'current account'}
+          </Text>
+        </View>
+      ) : null}
+
       <ProfilePager
         profilePage={(
           <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -455,9 +465,12 @@ export default function CompanionProfileScreen() {
                     </Text>
                     <Text style={s.crossedSub}>
                       You both traveled here
-                      {mutualTrips[0]?.startDate
-                        ? ` · ${new Date(mutualTrips[0].startDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
-                        : ''}
+                      {(() => {
+                        const time = mutualTrips[0]?.startDate ? new Date(mutualTrips[0].startDate).getTime() : Number.NaN;
+                        return Number.isFinite(time)
+                          ? ` · ${new Date(time).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+                          : '';
+                      })()}
                     </Text>
                   </View>
                 </View>
@@ -796,6 +809,26 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
       shadowOpacity: 0.22,
       shadowRadius: 8,
       shadowOffset: { width: 0, height: 3 },
+    },
+    qaBanner: {
+      position: 'absolute',
+      top: 70,
+      left: 76,
+      right: 76,
+      zIndex: 99999,
+      elevation: 999,
+      alignItems: 'center',
+    },
+    qaBannerText: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      overflow: 'hidden',
+      backgroundColor: 'rgba(196,85,74,0.9)',
+      color: '#fff',
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0,
     },
     scroll: {
       paddingBottom: 96,

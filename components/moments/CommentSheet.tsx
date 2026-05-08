@@ -148,7 +148,9 @@ export default function CommentSheet({ visible, momentId, members = [], onClose,
   };
 
   const timeAgo = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime();
+    const time = new Date(iso).getTime();
+    if (!Number.isFinite(time)) return 'now';
+    const diff = Date.now() - time;
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'now';
     if (mins < 60) return `${mins}m`;
