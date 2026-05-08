@@ -1,5 +1,8 @@
-import React, { useCallback, useState, useEffect, memo, useMemo } from 'react';
+import React, { useCallback, useRef, useState, useEffect, memo } from 'react';
 import {
+  FlatList,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   View,
   Text,
   StyleSheet,
@@ -25,7 +28,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { ChevronLeft, Heart, MessageCircle, Share2, Download, MoreHorizontal, MapPin, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { springPresets, thresholds } from '@/constants/animations';
+import { springPresets } from '@/constants/animations';
 import { mediumUrl } from '@/lib/imageUrl';
 import { getMomentImageUri, type MomentDisplay, type PeopleMap } from './types';
 import { HeartBurst } from './HeartBurst';
@@ -65,6 +68,7 @@ interface CarouselItemProps {
   isNearActive: boolean;
   isActive: boolean;
   activeZoomScale: SharedValue<number>;
+  onZoomStateChange: (zoomed: boolean) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +81,7 @@ const CarouselItem = memo(function CarouselItemComponent({
   isNearActive,
   isActive,
   activeZoomScale,
+  onZoomStateChange,
 }: CarouselItemProps) {
   const [burstVisible, setBurstVisible] = useState(false);
   const [burstCenter, setBurstCenter] = useState({ x: SCREEN_W / 2, y: SCREEN_H / 2 });
@@ -100,8 +105,9 @@ const CarouselItem = memo(function CarouselItemComponent({
     }
     if (!isActive) {
       activeZoomScale.value = 1;
+      onZoomStateChange(false);
     }
-  }, [activeZoomScale, hasBeenVisible, isActive, isNearActive, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY]);
+  }, [activeZoomScale, hasBeenVisible, isActive, isNearActive, onZoomStateChange, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY]);
 
   // No scale/opacity animation — clean flat slide
   const animatedStyle = useAnimatedStyle(() => ({
@@ -146,17 +152,27 @@ const CarouselItem = memo(function CarouselItemComponent({
         savedTranslateX.value = 0;
         savedTranslateY.value = 0;
         if (isActive) activeZoomScale.value = 1;
+        if (isActive) runOnJS(onZoomStateChange)(false);
       } else {
         savedScale.value = scale.value;
         if (isActive) activeZoomScale.value = scale.value;
+        if (isActive) runOnJS(onZoomStateChange)(true);
       }
     });
 
   const zoomPan = Gesture.Pan()
+    .manualActivation(true)
     .minDistance(3)
+    .onTouchesMove((_, manager) => {
+      'worklet';
+      if (scale.value > 1.02) {
+        manager.activate();
+      } else {
+        manager.fail();
+      }
+    })
     .onUpdate((event) => {
       'worklet';
-      if (scale.value <= 1.02) return;
       const maxX = (SCREEN_W * (scale.value - 1)) / 2;
       const maxY = (SCREEN_H * (scale.value - 1)) / 2;
       translateX.value = Math.max(-maxX, Math.min(maxX, savedTranslateX.value + event.translationX));
@@ -221,12 +237,13 @@ export function PhotoCarousel({
   actionsEnabled = true,
 }: PhotoCarouselProps) {
   const insets = useSafeAreaInsets();
+  const listRef = useRef<FlatList<MomentDisplay>>(null);
   const [currentIdx, setCurrentIdx] = useState(initialIndex);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
+  const [isZoomed, setIsZoomed] = useState(false);
   const [favoriteOverrides, setFavoriteOverrides] = useState<Map<string, boolean>>(new Map());
 
-  const scrollX = useSharedValue(initialIndex * SCREEN_W);
   const chromeOpacity = useSharedValue(1);
   const activeZoomScale = useSharedValue(1);
 
@@ -234,19 +251,16 @@ export function PhotoCarousel({
   const isHd = !!currentMoment?.hdPhoto;
   const canShowActions = actionsEnabled && !!currentMoment;
   const canShowMore = canShowActions && !!onAction;
-  const visibleIndices = useMemo(() => {
-    const start = Math.max(0, currentIdx - 2);
-    const end = Math.min(moments.length - 1, currentIdx + 2);
-    return Array.from({ length: end - start + 1 }, (_, offset) => start + offset);
-  }, [currentIdx, moments.length]);
-
   useEffect(() => {
     const maxIndex = Math.max(0, moments.length - 1);
     const nextIndex = Math.max(0, Math.min(initialIndex, maxIndex));
     setCurrentIdx((prev) => (prev === nextIndex ? prev : nextIndex));
-    scrollX.value = nextIndex * SCREEN_W;
     activeZoomScale.value = 1;
-  }, [activeZoomScale, initialIndex, moments.length, scrollX]);
+    setIsZoomed(false);
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({ index: nextIndex, animated: false });
+    });
+  }, [activeZoomScale, initialIndex, moments.length]);
 
   useEffect(() => {
     if (onIndexChange) onIndexChange(currentIdx);
@@ -282,56 +296,6 @@ export function PhotoCarousel({
     chromeOpacity.value = withTiming(next ? 1 : 0, { duration: 200 });
   }, [chromeVisible]);
 
-  // ---------------------------------------------------------------------------
-  // Gestures
-  // ---------------------------------------------------------------------------
-
-  // Horizontal pan for swiping between photos
-  const horizontalPan = Gesture.Pan()
-    .activeOffsetX([-15, 15])
-    .failOffsetY([-10, 10])
-    .onUpdate((event) => {
-      'worklet';
-      if (activeZoomScale.value > 1.02) return;
-      const translation = event.translationX;
-      const baseX = currentIdx * SCREEN_W;
-      if ((currentIdx === 0 && translation > 0) || (currentIdx === moments.length - 1 && translation < 0)) {
-        scrollX.value = baseX + translation * thresholds.edgeResistance;
-      } else {
-        scrollX.value = baseX + translation;
-      }
-    })
-    .onEnd((event) => {
-      'worklet';
-      if (activeZoomScale.value > 1.02) {
-        scrollX.value = withSpring(currentIdx * SCREEN_W, springPresets.CAROUSEL_SNAP);
-        return;
-      }
-      const velocity = event.velocityX;
-      const translation = event.translationX;
-      const shouldAdvance = Math.abs(translation) > 80 || Math.abs(velocity) > thresholds.flickVelocity;
-      const direction = translation < 0 ? 'left' : 'right';
-
-      if (shouldAdvance) {
-        if (direction === 'left' && currentIdx < moments.length - 1) {
-          scrollX.value = withSpring((currentIdx + 1) * SCREEN_W, springPresets.CAROUSEL_SNAP);
-          activeZoomScale.value = 1;
-          runOnJS(setCurrentIdx)(currentIdx + 1);
-          runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
-        } else if (direction === 'right' && currentIdx > 0) {
-          scrollX.value = withSpring((currentIdx - 1) * SCREEN_W, springPresets.CAROUSEL_SNAP);
-          activeZoomScale.value = 1;
-          runOnJS(setCurrentIdx)(currentIdx - 1);
-          runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
-        } else {
-          scrollX.value = withSpring(currentIdx * SCREEN_W, springPresets.CAROUSEL_SNAP);
-        }
-      } else {
-        scrollX.value = withSpring(currentIdx * SCREEN_W, springPresets.CAROUSEL_SNAP);
-      }
-    });
-
-  // Single tap toggles chrome
   const singleTap = Gesture.Tap()
     .numberOfTaps(1)
     .onEnd(() => {
@@ -339,10 +303,29 @@ export function PhotoCarousel({
       runOnJS(toggleChrome)();
     });
 
-  const composedGestures = Gesture.Simultaneous(
-    horizontalPan,
-    singleTap,
-  );
+  const handleMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const nextIndex = Math.max(0, Math.min(
+      moments.length - 1,
+      Math.round(event.nativeEvent.contentOffset.x / SCREEN_W),
+    ));
+    if (nextIndex !== currentIdx) {
+      setCurrentIdx(nextIndex);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    activeZoomScale.value = 1;
+    setIsZoomed(false);
+  }, [activeZoomScale, currentIdx, moments.length]);
+
+  const renderPhoto = useCallback(({ item, index }: { item: MomentDisplay; index: number }) => (
+    <CarouselItem
+      moment={item}
+      onDoubleTap={handleFavorite}
+      isNearActive={Math.abs(index - currentIdx) <= 2}
+      isActive={index === currentIdx}
+      activeZoomScale={activeZoomScale}
+      onZoomStateChange={setIsZoomed}
+    />
+  ), [activeZoomScale, currentIdx, handleFavorite]);
 
   // ---------------------------------------------------------------------------
   // Animated styles
@@ -358,10 +341,6 @@ export function PhotoCarousel({
 
   const chromeStyle = useAnimatedStyle(() => ({
     opacity: chromeOpacity.value,
-  }));
-
-  const trackStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -scrollX.value }],
   }));
 
   const handleAction = useCallback((action: PhotoAction) => {
@@ -385,25 +364,30 @@ export function PhotoCarousel({
       {/* Background */}
       <Animated.View style={[styles.bg, bgStyle]} />
 
-      {/* Photo track */}
-      <GestureDetector gesture={composedGestures}>
+      <GestureDetector gesture={singleTap}>
         <Animated.View style={[styles.trackContainer, containerStyle]}>
-          <Animated.View style={[styles.track, { width: SCREEN_W * moments.length }, trackStyle]}>
-            {visibleIndices.map((idx) => {
-              const moment = moments[idx];
-              return (
-                <View key={moment.id} style={[styles.virtualSlide, { left: idx * SCREEN_W }]}>
-                  <CarouselItem
-                    moment={moment}
-                    onDoubleTap={handleFavorite}
-                    isNearActive={Math.abs(idx - currentIdx) <= 2}
-                    isActive={idx === currentIdx}
-                    activeZoomScale={activeZoomScale}
-                  />
-                </View>
-              );
-            })}
-          </Animated.View>
+          <FlatList
+            ref={listRef}
+            data={moments}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPhoto}
+            horizontal
+            pagingEnabled
+            scrollEnabled={!isZoomed}
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={Math.max(0, Math.min(initialIndex, moments.length - 1))}
+            getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
+            initialNumToRender={3}
+            maxToRenderPerBatch={3}
+            windowSize={5}
+            removeClippedSubviews
+            onMomentumScrollEnd={handleMomentumEnd}
+            onScrollToIndexFailed={({ index }) => {
+              requestAnimationFrame(() => {
+                listRef.current?.scrollToOffset({ offset: index * SCREEN_W, animated: false });
+              });
+            }}
+          />
         </Animated.View>
       </GestureDetector>
 
@@ -537,14 +521,14 @@ export function PhotoCarousel({
               </Pressable>
             ) : null}
 
-            {isHd && onAction ? (
+            {onAction && currentMoment && getMomentImageUri(currentMoment) ? (
               <Pressable
                 onPress={() => {
                   Haptics.selectionAsync();
                   if (currentMoment) onAction('download-hd', currentMoment);
                 }}
                 style={styles.actionBtn}
-                accessibilityLabel="Save HD"
+                accessibilityLabel={isHd ? 'Save HD' : 'Save photo'}
               >
                 <Download size={20} color="#fff" strokeWidth={2} />
               </Pressable>

@@ -159,16 +159,21 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       paddingHorizontal: 20,
       paddingTop: 4,
       paddingBottom: 10,
+      gap: 8,
     },
     leftSide: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
       flex: 1,
+      flexShrink: 1,
       marginRight: 8,
+      minWidth: 0,
     },
     brandTextCol: {
       flexDirection: 'column',
+      flexShrink: 1,
+      minWidth: 0,
     },
     brandName: {
       color: colors.text,
@@ -193,6 +198,7 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
+      flexShrink: 0,
     },
     iconButton: {
       width: 44,
@@ -225,11 +231,13 @@ const getStyles = (colors: ReturnType<typeof import('@/constants/ThemeContext').
       borderRadius: 999,
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: colors.accent,
     },
     avatar: {
       width: 36,
       height: 36,
       borderRadius: 999,
+      backgroundColor: colors.accent,
     },
     avatarFallback: {
       width: 36,

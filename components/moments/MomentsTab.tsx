@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
 import { useIsFocused } from '@react-navigation/native';
 import {
   Alert,
@@ -13,6 +14,7 @@ import {
   Share,
   Modal,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { Camera, Eye, EyeOff } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
@@ -274,13 +276,22 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       if (hdUrl) {
         (async () => {
           try {
-            const { shareAsync } = await import('expo-sharing');
-            const FileSystem = await import('expo-file-system/legacy');
-            const ext = hdUrl.match(/\.\w+$/)?.[0] || '.jpeg';
-            const localPath = `${FileSystem.cacheDirectory}moment-hd-${moment.id}${ext}`;
+            const { status } = await MediaLibrary.requestPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permission needed', 'Allow photo library access to save photos.');
+              return;
+            }
+            const cleanUrl = hdUrl.split('?')[0] ?? hdUrl;
+            const ext = cleanUrl.match(/\.(jpe?g|png|heic|webp)$/i)?.[0] || '.jpeg';
+            const localPath = `${FileSystem.cacheDirectory}moment-${moment.id}${ext}`;
             const download = await FileSystem.downloadAsync(hdUrl, localPath);
-            await shareAsync(download.uri);
-          } catch (err) { if (__DEV__) console.warn('[Moments] HD download failed:', err); }
+            await MediaLibrary.saveToLibraryAsync(download.uri);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert('Saved', 'Photo saved to your gallery.');
+          } catch (err) {
+            Alert.alert('Save failed', 'Could not save this photo. Please try again.');
+            if (__DEV__) console.warn('[Moments] photo save failed:', err);
+          }
         })();
       }
     } else if (action === 'edit-photo') {

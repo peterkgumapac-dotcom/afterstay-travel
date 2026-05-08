@@ -103,7 +103,7 @@ export function PhotoActionsSheet({
   onClose,
   currentVisibility = 'shared',
   hasHd = false,
-  hasImage: _hasImage = true,
+  hasImage = true,
   isMine = true,
   isDismissed = false,
 }: PhotoActionsSheetProps) {
@@ -254,10 +254,10 @@ export function PhotoActionsSheet({
                 onPress={() => onAction('share-hd')}
               />
             )}
-            {hasHd && (
+            {hasImage && (
               <ActionItem
                 icon={Download}
-                label="Save HD"
+                label={hasHd ? 'Save HD' : 'Save Photo'}
                 color={colors.accent}
                 bgColor={colors.accentDim}
                 onPress={() => onAction('download-hd')}
