@@ -13,12 +13,14 @@ import StoryViewer from '@/components/discover/StoryViewer';
 import PostCommentSheet from '@/components/discover/PostCommentSheet';
 import ProfileSearchSheet from '@/components/discover/ProfileSearchSheet';
 import { PAPER } from '@/components/feed/feedTheme';
+import { useTheme } from '@/constants/ThemeContext';
 import { useProfilesForPosts } from '@/components/feed/PostFeedList';
 import { useExploreFeed } from '@/hooks/useExploreFeed';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useAuth } from '@/lib/auth';
 import { pushProfile } from '@/lib/profileNavigation';
 import { togglePostLike } from '@/lib/supabase';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 import { sharePost, toggleSave, createStory, deleteStory, getPostTagsForPosts } from '@/lib/moments/exploreMomentsService';
 import type { FeedPost, PostTag, Story } from '@/lib/types';
 
@@ -27,8 +29,20 @@ type FeedMode = 'recent' | 'trending' | 'saved';
 const CHIPS: { id: FeedMode; label: string }[] = [
   { id: 'recent', label: 'Recent' },
   { id: 'trending', label: 'Trending' },
-  { id: 'saved', label: 'Saved' },
+  { id: 'saved', label: 'Saved Ideas' },
 ];
+
+function PaperTexture() {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View style={[styles.paperFiber, styles.paperFiberOne]} />
+      <View style={[styles.paperFiber, styles.paperFiberTwo]} />
+      <View style={[styles.paperFiber, styles.paperFiberThree]} />
+      <View style={[styles.paperStain, styles.paperStainTop]} />
+      <View style={[styles.paperStain, styles.paperStainBottom]} />
+    </View>
+  );
+}
 
 function canOpenProfileIdentity(item: Pick<FeedPost, 'userId' | 'userName' | 'userAvatar'>, currentUserId?: string): boolean {
   if (!item.userId) return false;
@@ -38,10 +52,13 @@ function canOpenProfileIdentity(item: Pick<FeedPost, 'userId' | 'userName' | 'us
 
 export default function ExploreMomentsFeed() {
   const router = useRouter();
+  const { colors } = useTheme();
   const { user } = useAuth();
   const { profile } = useUserSegment();
   const [mode, setMode] = useState<FeedMode>('recent');
   const [searchVisible, setSearchVisible] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [resolvedAvatarUri, setResolvedAvatarUri] = useState<string | undefined>();
   const recentFeed = useExploreFeed('recent', mode === 'recent');
   const trendingFeed = useExploreFeed('trending', mode === 'trending');
   const savedFeed = useExploreFeed('saved', mode === 'saved');
@@ -185,32 +202,61 @@ export default function ExploreMomentsFeed() {
 
   const avatarUri = profile?.avatarUrl;
   const displayName = profile?.fullName?.split(' ')[0] ?? 'traveler';
+  const showAvatarPhoto = Boolean(resolvedAvatarUri && !avatarFailed);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAvatarFailed(false);
+    setResolvedAvatarUri(undefined);
+    if (!avatarUri) return () => { cancelled = true; };
+    resolveRenderableStorageUrl(avatarUri, 'avatars')
+      .then((url) => {
+        if (!cancelled) setResolvedAvatarUri(url);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedAvatarUri(avatarUri);
+      });
+    return () => { cancelled = true; };
+  }, [avatarUri]);
 
   const headerContent = (
-    <View>
+    <View style={styles.headerPaper}>
+      <PaperTexture />
       {/* Compose bar */}
       <View style={styles.composeBar}>
-        <TouchableOpacity onPress={handleProfilePress} activeOpacity={0.7}>
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={styles.composeAvatar} />
-          ) : (
-            <View style={[styles.composeAvatar, styles.composeAvatarPlaceholder]}>
-              <Text style={styles.composeAvatarInitial}>
-                {displayName.charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        <View style={styles.composeInputCluster}>
+          <TouchableOpacity
+            onPress={handleProfilePress}
+            activeOpacity={0.7}
+            style={styles.composeAvatarAnchor}
+            accessibilityLabel="Open your profile"
+          >
+            {showAvatarPhoto ? (
+              <Image
+                source={{ uri: resolvedAvatarUri }}
+                style={styles.composeAvatar}
+                contentFit="cover"
+                onError={() => setAvatarFailed(true)}
+              />
+            ) : (
+              <View style={[styles.composeAvatar, styles.composeAvatarPlaceholder]}>
+                <Text style={styles.composeAvatarInitial}>
+                  {displayName.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.composeInput}
-          onPress={handleCompose}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.composeInputText}>
-            Share a moment, {displayName}...
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.composeInput}
+            onPress={handleCompose}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.composeInputText} numberOfLines={1}>
+              Share a moment, {displayName}...
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity
           style={styles.composePhotoBtn}
@@ -261,7 +307,7 @@ export default function ExploreMomentsFeed() {
   );
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: colors.bg }]}>
       <FlatList
         data={activeFeed.posts}
         keyExtractor={(item) => item.id}
@@ -338,21 +384,89 @@ export default function ExploreMomentsFeed() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: PAPER.ivory },
+  root: { flex: 1 },
+  headerPaper: {
+    marginHorizontal: 12,
+    marginTop: 6,
+    marginBottom: 10,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(184, 169, 140, 0.58)',
+    backgroundColor: PAPER.ivory,
+    overflow: 'hidden',
+    shadowColor: '#3d2a12',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 1,
+  },
+  paperFiber: {
+    position: 'absolute',
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(61, 42, 18, 0.08)',
+    transform: [{ rotate: '-5deg' }],
+  },
+  paperFiberOne: {
+    width: '74%',
+    top: 42,
+    left: -24,
+  },
+  paperFiberTwo: {
+    width: '56%',
+    top: 132,
+    right: -12,
+  },
+  paperFiberThree: {
+    width: '82%',
+    bottom: 44,
+    left: 34,
+    backgroundColor: 'rgba(255, 255, 255, 0.20)',
+  },
+  paperStain: {
+    position: 'absolute',
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: 'rgba(157, 112, 55, 0.06)',
+  },
+  paperStainTop: {
+    top: -54,
+    right: -26,
+  },
+  paperStainBottom: {
+    bottom: -66,
+    left: -30,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  },
 
   /* ── Compose bar ── */
   composeBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingTop: 22,
     paddingBottom: 12,
     gap: 10,
   },
+  composeInputCluster: {
+    flex: 1,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  composeAvatarAnchor: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    zIndex: 3,
+    borderRadius: 23,
+    borderWidth: 3,
+    borderColor: PAPER.ivory,
+    backgroundColor: PAPER.ivory,
+  },
   composeAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
   },
   composeAvatarPlaceholder: {
     backgroundColor: PAPER.postcardEdge,
@@ -365,14 +479,14 @@ const styles = StyleSheet.create({
     color: PAPER.postcardInk,
   },
   composeInput: {
-    flex: 1,
-    height: 38,
-    borderRadius: 19,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: PAPER.ivoryClean,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: PAPER.rule,
     justifyContent: 'center',
-    paddingHorizontal: 14,
+    paddingLeft: 58,
+    paddingRight: 14,
   },
   composeInputText: {
     fontSize: 14,

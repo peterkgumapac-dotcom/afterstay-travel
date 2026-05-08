@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
-import { CheckCircle, MapPin, Sparkles, Users } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
+import { CheckCircle, MapPin, Newspaper, Users } from 'lucide-react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dimensions, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { PAPER } from '@/components/feed/feedTheme';
@@ -8,6 +8,7 @@ import MomentEngagementBar from '@/components/discover/MomentEngagementBar';
 import PostOptionsMenu from '@/components/discover/PostOptionsMenu';
 import PolaroidCollage from '@/components/discover/PolaroidCollage';
 import { isOfficialAfterStayPost, isTravelPulsePost } from '@/lib/officialAccount';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 import type { FeedPost, PostTag } from '@/lib/types';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -28,8 +29,23 @@ interface ExploreMomentCardProps {
   onHidden?: () => void;
 }
 
+function PaperTexture() {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View style={[styles.paperFiber, styles.paperFiberOne]} />
+      <View style={[styles.paperFiber, styles.paperFiberTwo]} />
+      <View style={[styles.paperFiber, styles.paperFiberThree]} />
+      <View style={[styles.paperStain, styles.paperStainTop]} />
+      <View style={[styles.paperStain, styles.paperStainBottom]} />
+      <View style={styles.innerPaperRule} />
+    </View>
+  );
+}
+
 function timeSince(dateStr: string): string {
-  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  const time = new Date(dateStr).getTime();
+  if (!Number.isFinite(time)) return 'just now';
+  const seconds = Math.floor((Date.now() - time) / 1000);
   if (seconds < 60) return 'just now';
   const mins = Math.floor(seconds / 60);
   if (mins < 60) return `${mins}m`;
@@ -54,6 +70,30 @@ function getPostBadge(post: FeedPost): string | undefined {
   if (isTravelPulsePost(post)) return 'Travel Pulse';
   if (isOfficialAfterStayPost(post)) return 'AfterStay Pick';
   return undefined;
+}
+
+function getTravelNote(post: FeedPost): { label: string; value: string } | null {
+  const postType = textMeta(post.metadata?.postType);
+  const fromMetadata =
+    textMeta(post.metadata?.whySave) ??
+    textMeta(post.metadata?.whyUnderrated) ??
+    textMeta(post.metadata?.whatToOrder) ??
+    textMeta(post.metadata?.tip) ??
+    textMeta(post.metadata?.bestTime);
+
+  if (postType === 'hidden_gem') {
+    const value = fromMetadata ?? post.caption;
+    return value ? { label: 'Why save it', value } : null;
+  }
+  if (postType === 'food_find') {
+    const value = textMeta(post.metadata?.whatToOrder) ?? fromMetadata ?? post.caption;
+    return value ? { label: 'What to try', value } : null;
+  }
+  if (postType === 'trip_highlight') {
+    const value = fromMetadata;
+    return value ? { label: 'Trip note', value } : null;
+  }
+  return null;
 }
 
 type TravelPulseItem = {
@@ -96,17 +136,78 @@ export default function ExploreMomentCard({
   const isOfficial = isOfficialAfterStayPost(post);
   const isTravelPulse = isTravelPulsePost(post);
   const postBadge = getPostBadge(post);
+  const travelNote = getTravelNote(post);
   const pulseItems = isTravelPulse ? getTravelPulseItems(post) : [];
   const lastChecked = textMeta(post.metadata?.lastChecked);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string | undefined>();
+  const [failedMedia, setFailedMedia] = useState<Set<string>>(() => new Set());
+  const [resolvedMediaUrls, setResolvedMediaUrls] = useState<Record<string, string>>({});
 
   // Full-screen photo viewer
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
 
+  useEffect(() => {
+    let cancelled = false;
+    setAvatarFailed(false);
+    setResolvedAvatarUrl(undefined);
+    if (!post.userAvatar) return () => { cancelled = true; };
+    resolveRenderableStorageUrl(post.userAvatar, 'avatars')
+      .then((url) => {
+        if (!cancelled) setResolvedAvatarUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedAvatarUrl(post.userAvatar);
+      });
+    return () => { cancelled = true; };
+  }, [post.userAvatar]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFailedMedia(new Set());
+    const entries = [
+      ...(post.media ?? []).map((media, index) => [`media:${media.id || index}`, media.mediaUrl] as const),
+      ...(post.photoUrl ? [['photo', post.photoUrl] as const] : []),
+    ].filter(([, url]) => !!url);
+
+    if (entries.length === 0) {
+      setResolvedMediaUrls({});
+      return () => { cancelled = true; };
+    }
+
+    Promise.all(entries.map(async ([key, url]) => {
+      try {
+        return [key, await resolveRenderableStorageUrl(url)] as const;
+      } catch {
+        return [key, url] as const;
+      }
+    }))
+      .then((resolved) => {
+        if (cancelled) return;
+        const nextUrls = resolved.reduce<Record<string, string>>((acc, [key, url]) => {
+          if (url) acc[key] = url;
+          return acc;
+        }, {});
+        setResolvedMediaUrls(nextUrls);
+      })
+    return () => { cancelled = true; };
+  }, [post.media, post.photoUrl]);
+
+  const mediaWithResolvedUrls = useMemo(() => (post.media ?? []).map((media, index) => {
+    const key = `media:${media.id || index}`;
+    return {
+      ...media,
+      resolvedUrl: resolvedMediaUrls[key] ?? media.mediaUrl,
+      renderKey: key,
+    };
+  }), [post.media, resolvedMediaUrls]);
+
+  const resolvedPhotoUrl = resolvedMediaUrls.photo ?? post.photoUrl;
   const allPhotos = hasMedia
-    ? (post.media ?? []).map((m) => m.mediaUrl)
-    : post.photoUrl ? [post.photoUrl] : [];
+    ? mediaWithResolvedUrls.map((m) => m.resolvedUrl).filter(Boolean)
+    : resolvedPhotoUrl ? [resolvedPhotoUrl] : [];
 
   const openViewer = useCallback((idx: number) => {
     setViewerIndex(idx);
@@ -121,11 +222,14 @@ export default function ExploreMomentCard({
 
   return (
     <View style={[styles.card, isOfficial && styles.officialCard, isTravelPulse && styles.pulseCard]}>
+      <PaperTexture />
       {isOfficial ? (
         <View style={styles.officialRail}>
-          <Sparkles size={12} color={PAPER.stamp} strokeWidth={2.1} />
+          <View style={styles.officialRailIcon}>
+            <Newspaper size={11} color={PAPER.stamp} strokeWidth={2.2} />
+          </View>
           <Text style={styles.officialRailText}>
-            {isTravelPulse ? 'Official daily travel briefing' : 'Official AfterStay'}
+            {isTravelPulse ? 'Travel Pulse briefing' : 'Official AfterStay'}
           </Text>
           {lastChecked ? <Text style={styles.officialRailTime}>Checked {lastChecked}</Text> : null}
         </View>
@@ -138,8 +242,13 @@ export default function ExploreMomentCard({
         activeOpacity={onProfilePress ? 0.7 : 1}
         disabled={!onProfilePress}
       >
-        {post.userAvatar ? (
-          <Image source={{ uri: post.userAvatar }} style={styles.avatar} contentFit="cover" />
+        {resolvedAvatarUrl && !avatarFailed ? (
+          <Image
+            source={{ uri: resolvedAvatarUrl }}
+            style={styles.avatar}
+            contentFit="cover"
+            onError={() => setAvatarFailed(true)}
+          />
         ) : (
           <View style={[styles.avatar, styles.avatarPlaceholder]}>
             <Text style={styles.avatarLetter}>
@@ -170,7 +279,7 @@ export default function ExploreMomentCard({
       ) : null}
 
       {/* Caption — above media */}
-      {post.caption ? (
+      {post.caption && (!travelNote || travelNote.value !== post.caption) ? (
         <View style={styles.captionWrap}>
           <Text style={styles.caption}>
             {post.caption}
@@ -222,7 +331,7 @@ export default function ExploreMomentCard({
         ) : isCarousel && hasMedia ? (
           <View>
             <FlatList
-              data={post.media}
+              data={mediaWithResolvedUrls}
               keyExtractor={(m) => m.id || String(m.orderIndex)}
               horizontal
               pagingEnabled
@@ -231,7 +340,18 @@ export default function ExploreMomentCard({
               scrollEventThrottle={16}
               renderItem={({ item, index }) => (
                 <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(index)}>
-                  <Image source={{ uri: item.mediaUrl }} style={styles.carouselImg} contentFit="cover" />
+                  {item.resolvedUrl && !failedMedia.has(item.renderKey) ? (
+                    <Image
+                      source={{ uri: item.resolvedUrl }}
+                      style={styles.carouselImg}
+                      contentFit="cover"
+                      onError={() => setFailedMedia((prev) => new Set(prev).add(item.renderKey))}
+                    />
+                  ) : (
+                    <View style={[styles.carouselImg, styles.mediaFallback]}>
+                      <Text style={styles.mediaFallbackText}>Photo unavailable</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               )}
             />
@@ -243,12 +363,34 @@ export default function ExploreMomentCard({
               </View>
             )}
           </View>
-        ) : post.photoUrl ? (
+        ) : resolvedPhotoUrl ? (
           <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(0)}>
-            <Image source={{ uri: post.photoUrl }} style={styles.singleImg} contentFit="cover" />
+            {!failedMedia.has('photo') ? (
+              <Image
+                source={{ uri: resolvedPhotoUrl }}
+                style={styles.singleImg}
+                contentFit="cover"
+                onError={() => setFailedMedia((prev) => new Set(prev).add('photo'))}
+              />
+            ) : (
+              <View style={[styles.singleImg, styles.mediaFallback]}>
+                <Text style={styles.mediaFallbackText}>Photo unavailable</Text>
+              </View>
+            )}
           </TouchableOpacity>
         ) : null}
       </View>
+
+      {travelNote ? (
+        <View style={styles.travelNote}>
+          <View pointerEvents="none" style={styles.travelNoteLines}>
+            <View style={styles.travelNoteLine} />
+            <View style={styles.travelNoteLine} />
+          </View>
+          <Text style={styles.travelNoteLabel}>{travelNote.label}</Text>
+          <Text style={styles.travelNoteText}>{travelNote.value}</Text>
+        </View>
+      ) : null}
 
       {/* Engagement bar */}
       <MomentEngagementBar
@@ -311,6 +453,59 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: PAPER.rule,
+    shadowColor: '#3d2a12',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  paperFiber: {
+    position: 'absolute',
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(61, 42, 18, 0.055)',
+    transform: [{ rotate: '-3deg' }],
+  },
+  paperFiberOne: {
+    width: '76%',
+    top: 76,
+    left: -18,
+  },
+  paperFiberTwo: {
+    width: '62%',
+    top: 214,
+    right: -10,
+    backgroundColor: 'rgba(255, 255, 255, 0.24)',
+  },
+  paperFiberThree: {
+    width: '86%',
+    bottom: 92,
+    left: 24,
+  },
+  paperStain: {
+    position: 'absolute',
+    width: 148,
+    height: 148,
+    borderRadius: 74,
+    backgroundColor: 'rgba(157, 112, 55, 0.045)',
+  },
+  paperStainTop: {
+    top: 0,
+    right: 0,
+  },
+  paperStainBottom: {
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+  },
+  innerPaperRule: {
+    position: 'absolute',
+    top: 5,
+    left: 5,
+    right: 5,
+    bottom: 5,
+    borderRadius: 9,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.34)',
   },
   officialCard: {
     borderColor: 'rgba(157, 112, 55, 0.38)',
@@ -324,28 +519,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#fffaf0',
   },
   officialRail: {
-    minHeight: 32,
+    minHeight: 38,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(157, 112, 55, 0.22)',
-    backgroundColor: 'rgba(233, 211, 171, 0.34)',
+    borderBottomColor: 'rgba(157, 112, 55, 0.30)',
+    backgroundColor: 'rgba(239, 230, 207, 0.88)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 8,
     paddingHorizontal: 14,
+  },
+  officialRailIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 250, 240, 0.86)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(157, 112, 55, 0.38)',
   },
   officialRailText: {
     flex: 1,
     color: PAPER.stamp,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.35,
+    textTransform: 'uppercase',
   },
   officialRailTime: {
     color: PAPER.inkLight,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 10.5,
+    fontWeight: '800',
   },
 
   // Header
@@ -500,6 +706,53 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginHorizontal: 8,
     marginBottom: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.70)',
+    backgroundColor: PAPER.photoBorder,
+  },
+  mediaFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(232, 228, 219, 0.78)',
+  },
+  mediaFallbackText: {
+    color: PAPER.inkLight,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  travelNote: {
+    marginHorizontal: 10,
+    marginTop: 8,
+    marginBottom: 2,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(184, 169, 140, 0.55)',
+    backgroundColor: 'rgba(255, 250, 240, 0.72)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    overflow: 'hidden',
+  },
+  travelNoteLines: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    gap: 18,
+    paddingHorizontal: 12,
+    opacity: 0.55,
+  },
+  travelNoteLine: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(184, 169, 140, 0.42)',
+  },
+  travelNoteLabel: {
+    color: PAPER.stamp,
+    fontSize: 11,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  travelNoteText: {
+    color: PAPER.inkDark,
+    fontSize: 14,
+    lineHeight: 20,
   },
   singleImg: {
     width: '100%',
