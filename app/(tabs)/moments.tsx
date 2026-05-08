@@ -1,6 +1,6 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronDown, Zap } from 'lucide-react-native';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -153,6 +153,17 @@ function MomentsScreen() {
 
     return () => { cancelled = true; };
   }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      const requestUserId = user.id;
+      withTimeout(getQuickTripsPromise(true), [] as QuickTrip[])
+        .then((trips) => {
+          if (userIdRef.current === requestUserId) setQuickTrips(trips);
+        });
+    }, [user?.id]),
+  );
 
   const tripCandidates = useMemo(() => {
     const map = new Map<string, Trip>();

@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { supabase, uploadExpenseReceiptPhoto } from './supabase';
 import { base64ToBytes } from './base64';
 import { compressImage } from './compressImage';
+import { invalidateTripCache } from './tabDataCache';
 import type {
   QuickTrip,
   QuickTripPhoto,
@@ -217,12 +218,14 @@ export async function createQuickTrip(input: CreateQuickTripInput): Promise<stri
     await supabase.from('quick_trip_companions').insert(companionRows);
   }
 
+  invalidateTripCache();
   return quickTripId;
 }
 
 /** Delete a quick trip (cascade deletes photos, companions, expenses). */
 export async function deleteQuickTrip(id: string): Promise<void> {
   await supabase.from('quick_trips').delete().eq('id', id);
+  invalidateTripCache();
 }
 
 // ---------- EXPENSES ----------
@@ -366,4 +369,5 @@ async function refreshQuickTripTotal(quickTripId: string): Promise<void> {
     .from('quick_trips')
     .update({ total_spend_amount: total, updated_at: new Date().toISOString() })
     .eq('id', quickTripId);
+  invalidateTripCache();
 }

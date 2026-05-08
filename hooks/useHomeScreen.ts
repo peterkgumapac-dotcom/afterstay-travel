@@ -607,10 +607,16 @@ export function useHomeScreen() {
     const unsub = navigation.addListener('focus', () => {
       if (!didInitialLoad.current || testModeRef.current) return;
       const tripId = _rawTrip?.id;
-      if (!tripId) return;
+      withTimeout(getHomeQuickTripsPromise(true), [] as QuickTrip[])
+        .then(setRQuickTrips)
+        .catch(() => {});
       const now = Date.now();
       if (now - lastFocusRefreshAt.current < 60_000) return;
       lastFocusRefreshAt.current = now;
+      if (!tripId) {
+        load({ force: true, silent: true }).catch(() => {});
+        return;
+      }
       Promise.all([
         withTimeoutStatus(getHomeActiveTripPromise(false)),
         withTimeout(getHomeExpensesPromise(tripId, false), []),

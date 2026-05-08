@@ -489,6 +489,15 @@ function TripScreen() {
     }, [activeTab, refreshEssentialsData, trip?.id]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab !== 'summary' || testModeRef.current) return;
+      refreshSummaryData().catch((e) => {
+        if (__DEV__) console.warn('[TripScreen] summary focus refresh failed:', e);
+      });
+    }, [activeTab, refreshSummaryData]),
+  );
+
   useEffect(() => {
     // Cache-first: restore cached data instantly if available
     const cachedTrip = getActiveTripCached();
