@@ -7,6 +7,7 @@ import { PAPER } from '@/components/feed/feedTheme';
 import MomentEngagementBar from '@/components/discover/MomentEngagementBar';
 import PostOptionsMenu from '@/components/discover/PostOptionsMenu';
 import PolaroidCollage from '@/components/discover/PolaroidCollage';
+import { mediumUrl, smallUrl } from '@/lib/imageUrl';
 import { isOfficialAfterStayPost, isTravelPulsePost } from '@/lib/officialAccount';
 import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 import type { FeedPost, PostTag } from '@/lib/types';
@@ -222,7 +223,7 @@ export default function ExploreMomentCard({
 
   const collageMedia = useMemo(() => mediaWithResolvedUrls.map((media) => ({
     ...media,
-    mediaUrl: media.resolvedUrl,
+    mediaUrl: smallUrl(media.resolvedUrl) ?? media.resolvedUrl,
   })), [mediaWithResolvedUrls]);
 
   return (
@@ -350,7 +351,7 @@ export default function ExploreMomentCard({
                 <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(index)}>
                   {item.resolvedUrl && !failedMedia.has(item.renderKey) ? (
                     <Image
-                      source={{ uri: item.resolvedUrl }}
+                      source={{ uri: smallUrl(item.resolvedUrl) ?? item.resolvedUrl }}
                       style={styles.carouselImg}
                       contentFit="cover"
                       cachePolicy="memory-disk"
@@ -378,7 +379,7 @@ export default function ExploreMomentCard({
           <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(0)}>
             {!failedMedia.has('photo') ? (
               <Image
-                source={{ uri: resolvedPhotoUrl }}
+                source={{ uri: smallUrl(resolvedPhotoUrl) ?? resolvedPhotoUrl }}
                 style={styles.singleImg}
                 contentFit="cover"
                 cachePolicy="memory-disk"
@@ -448,7 +449,7 @@ export default function ExploreMomentCard({
               getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
               renderItem={({ item }) => (
                 <Image
-                  source={{ uri: item }}
+                  source={{ uri: mediumUrl(item) ?? item }}
                   style={styles.viewerImg}
                   contentFit="contain"
                   cachePolicy="memory-disk"
@@ -458,7 +459,7 @@ export default function ExploreMomentCard({
             />
           ) : allPhotos[0] ? (
             <Image
-              source={{ uri: allPhotos[0] }}
+              source={{ uri: mediumUrl(allPhotos[0]) ?? allPhotos[0] }}
               style={styles.viewerImg}
               contentFit="contain"
               cachePolicy="memory-disk"

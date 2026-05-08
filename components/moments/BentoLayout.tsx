@@ -15,9 +15,11 @@ import { Check } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
+import { smallUrl, thumbUrl } from '@/lib/imageUrl';
 import { getMomentImageUri, type MomentDisplay } from './types';
 
 const GAP = 3;
+const LARGE_ALBUM_THRESHOLD = 40;
 
 type BentoRow =
   | { key: string; kind: 'hero'; items: [MomentDisplay, MomentDisplay, MomentDisplay] }
@@ -86,7 +88,9 @@ export function BentoLayout({
 }: BentoLayoutProps) {
   const { colors } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
-  const rows = useMemo(() => buildRows(items), [items]);
+  const useGalleryGrid = items.length >= LARGE_ALBUM_THRESHOLD;
+  const galleryCellSize = useMemo(() => Math.floor((screenWidth - GAP * 5) / 3), [screenWidth]);
+  const rows = useMemo(() => (useGalleryGrid ? [] : buildRows(items)), [items, useGalleryGrid]);
 
   const handlePress = useCallback(
     (item: MomentDisplay) => {
@@ -98,6 +102,32 @@ export function BentoLayout({
     },
     [selectMode, onOpen, onToggleSelect],
   );
+
+  const renderGalleryItem = useCallback(
+    ({ item }: ListRenderItemInfo<MomentDisplay>) => (
+      <View style={styles.galleryCell}>
+        <BentoCell
+          moment={item}
+          width={galleryCellSize}
+          height={galleryCellSize}
+          selected={selectedIds.has(item.id)}
+          selectMode={selectMode}
+          onPress={() => handlePress(item)}
+          onLongPress={() => onLongPress(item.id)}
+          colors={colors}
+          tripId={tripId}
+          compact
+        />
+      </View>
+    ),
+    [colors, galleryCellSize, handlePress, onLongPress, selectMode, selectedIds, tripId],
+  );
+
+  const getGalleryItemLayout = useCallback((_: ArrayLike<MomentDisplay> | null | undefined, index: number) => {
+    const row = Math.floor(index / 3);
+    const length = galleryCellSize + GAP;
+    return { length, offset: row * length, index };
+  }, [galleryCellSize]);
 
   const renderRow = useCallback(
     ({ item: row }: ListRenderItemInfo<BentoRow>) => {
@@ -204,19 +234,39 @@ export function BentoLayout({
   );
 
   return (
-    <FlatList
-      data={rows}
-      keyExtractor={(row) => row.key}
-      renderItem={renderRow}
-      contentContainerStyle={[styles.container, contentContainerStyle]}
-      initialNumToRender={3}
-      maxToRenderPerBatch={2}
-      updateCellsBatchingPeriod={50}
-      windowSize={5}
-      removeClippedSubviews
-      refreshing={refreshing}
-      onRefresh={onRefresh}
-    />
+    useGalleryGrid ? (
+      <FlatList
+        key="gallery-grid"
+        data={items}
+        keyExtractor={(item) => item.id}
+        renderItem={renderGalleryItem}
+        numColumns={3}
+        getItemLayout={getGalleryItemLayout}
+        contentContainerStyle={[styles.galleryContainer, contentContainerStyle]}
+        initialNumToRender={12}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={60}
+        windowSize={7}
+        removeClippedSubviews
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      />
+    ) : (
+      <FlatList
+        key="bento-grid"
+        data={rows}
+        keyExtractor={(row) => row.key}
+        renderItem={renderRow}
+        contentContainerStyle={[styles.container, contentContainerStyle]}
+        initialNumToRender={3}
+        maxToRenderPerBatch={2}
+        updateCellsBatchingPeriod={50}
+        windowSize={5}
+        removeClippedSubviews
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      />
+    )
   );
 }
 
@@ -230,10 +280,12 @@ interface BentoCellProps {
   onLongPress: () => void;
   colors: any;
   tripId?: string;
+  compact?: boolean;
 }
 
-const BentoCell = memo(function BentoCellComponent({ moment, width, height, selected, selectMode, onPress, onLongPress, colors, tripId: _tripId }: BentoCellProps) {
-  const imageUri = getMomentImageUri(moment);
+const BentoCell = memo(function BentoCellComponent({ moment, width, height, selected, selectMode, onPress, onLongPress, colors, tripId: _tripId, compact = false }: BentoCellProps) {
+  const rawImageUri = getMomentImageUri(moment);
+  const imageUri = compact ? thumbUrl(rawImageUri) : smallUrl(rawImageUri);
   const cellContent = (
     <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.card }}>
       {imageUri ? (
@@ -258,13 +310,13 @@ const BentoCell = memo(function BentoCellComponent({ moment, width, height, sele
           </View>
         )}
         {/* Location label */}
-        {moment.place && moment.place !== 'Untitled' && !selectMode && (
+        {!compact && moment.place && moment.place !== 'Untitled' && !selectMode && (
           <View style={styles.locationBadge}>
             <Text style={styles.locationText} numberOfLines={1}>{moment.place}</Text>
           </View>
         )}
         {/* Author avatar badge */}
-        {moment.authorKey && !selectMode && (
+        {!compact && moment.authorKey && !selectMode && (
           <View style={[styles.authorBadge, { backgroundColor: moment.authorColor ?? '#a64d1e' }]}>
             {moment.authorAvatar ? (
               <Image
@@ -298,12 +350,15 @@ const BentoCell = memo(function BentoCellComponent({ moment, width, height, sele
   prev.selectMode === next.selectMode &&
   prev.width === next.width &&
   prev.height === next.height &&
+  prev.compact === next.compact &&
   prev.colors.card === next.colors.card &&
   prev.colors.accent === next.colors.accent
 ));
 
 const styles = StyleSheet.create({
   container: { paddingHorizontal: GAP },
+  galleryContainer: { paddingHorizontal: GAP, paddingTop: GAP },
+  galleryCell: { paddingLeft: GAP, paddingBottom: GAP },
   row: { flexDirection: 'row', gap: GAP, marginBottom: GAP },
   selectOverlay: {
     ...StyleSheet.absoluteFillObject,

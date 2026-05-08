@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { CachedImage } from '@/components/CachedImage';
 import { useTheme } from '@/constants/ThemeContext';
 import { springPresets, durations, thresholds } from '@/constants/animations';
+import { thumbUrl } from '@/lib/imageUrl';
 import { getMomentImageUri, type MomentDisplay } from './types';
 import { SelectionOverlay } from './SelectionOverlay';
 
@@ -148,7 +149,7 @@ function PhotoItemComponent({
         >
           {getMomentImageUri(moment) ? (
             <CachedImage
-              remoteUrl={getMomentImageUri(moment)}
+              remoteUrl={thumbUrl(getMomentImageUri(moment)) ?? getMomentImageUri(moment)}
               style={StyleSheet.absoluteFillObject}
               blurhash={moment.blurhash}
             />

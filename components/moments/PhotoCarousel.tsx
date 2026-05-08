@@ -26,6 +26,7 @@ import * as Haptics from 'expo-haptics';
 import { ChevronLeft, Heart, MessageCircle, Share2, Download, MoreHorizontal, MapPin, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { springPresets, thresholds } from '@/constants/animations';
+import { mediumUrl } from '@/lib/imageUrl';
 import { getMomentImageUri, type MomentDisplay, type PeopleMap } from './types';
 import { HeartBurst } from './HeartBurst';
 import { PhotoActionsSheet, type PhotoAction } from './PhotoActionsSheet';
@@ -167,7 +168,7 @@ const CarouselItem = memo(function CarouselItemComponent({
       savedTranslateY.value = translateY.value;
     });
 
-  const photoUri = getMomentImageUri(moment);
+  const photoUri = mediumUrl(getMomentImageUri(moment));
 
   return (
     <View style={styles.slide}>
@@ -256,7 +257,7 @@ export function PhotoCarousel({
     [currentIdx - 1, currentIdx + 1]
       .filter((i) => i >= 0 && i < moments.length)
       .forEach((i) => {
-        const uri = getMomentImageUri(moments[i]);
+        const uri = mediumUrl(getMomentImageUri(moments[i]));
         if (uri) Image.prefetch(uri).catch(() => {});
       });
   }, [currentIdx, moments]);
