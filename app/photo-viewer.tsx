@@ -6,7 +6,6 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { PhotoViewer } from '@/components/moments/PhotoViewer';
-import { FilmEditor } from '@/components/moments/FilmEditor';
 import { PhotoEditSheet } from '@/components/moments/PhotoEditSheet';
 import type { PhotoAction } from '@/components/moments/PhotoActionsSheet';
 import type { MomentDisplay, PeopleMap } from '@/components/moments/types';
@@ -22,7 +21,6 @@ export default function PhotoViewerRoute() {
   const initialIndex = params.initialIndex ? Number(params.initialIndex) : 0;
   const people: PeopleMap = params.people ? JSON.parse(params.people) : {};
   const [editMoment, setEditMoment] = useState<MomentDisplay | null>(null);
-  const [filmMoment, setFilmMoment] = useState<MomentDisplay | null>(null);
 
   const handleEditSave = useCallback(async (id: string, updates: { caption?: string; location?: string }) => {
     try {
@@ -129,8 +127,11 @@ export default function PhotoViewerRoute() {
         break;
       }
 
+      case 'edit-photo': {
+        break;
+      }
+
       case 'reel': {
-        setFilmMoment(moment);
         break;
       }
 
@@ -160,14 +161,6 @@ export default function PhotoViewerRoute() {
         onSave={handleEditSave}
         onClose={() => setEditMoment(null)}
       />
-      {filmMoment && (
-        <FilmEditor
-          visible={filmMoment !== null}
-          moments={[filmMoment]}
-          initialIndex={0}
-          onClose={() => setFilmMoment(null)}
-        />
-      )}
     </>
   );
 }

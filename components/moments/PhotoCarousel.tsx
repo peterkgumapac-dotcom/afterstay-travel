@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, memo } from 'react';
+import React, { useCallback, useState, useEffect, memo, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import Animated, {
   withSpring,
   withTiming,
   runOnJS,
-  type SharedValue,
 } from 'react-native-reanimated';
 import {
   Gesture,
@@ -20,12 +19,12 @@ import {
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
 import { Image } from 'expo-image';
+import { Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Image as RNImage } from 'react-native';
 import { ChevronLeft, Heart, MessageCircle, Share2, Download, MoreHorizontal, MapPin, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '@/constants/ThemeContext';
 import { springPresets, thresholds } from '@/constants/animations';
 import { getMomentImageUri, type MomentDisplay, type PeopleMap } from './types';
 import { HeartBurst } from './HeartBurst';
@@ -60,8 +59,6 @@ interface PhotoCarouselProps {
 
 interface CarouselItemProps {
   moment: MomentDisplay;
-  index: number;
-  scrollX: SharedValue<number>;
   onDoubleTap: (moment: MomentDisplay) => void;
   isNearActive: boolean;
 }
@@ -72,22 +69,27 @@ interface CarouselItemProps {
 
 const CarouselItem = memo(function CarouselItemComponent({
   moment,
-  index,
-  scrollX,
   onDoubleTap,
   isNearActive,
 }: CarouselItemProps) {
   const [burstVisible, setBurstVisible] = useState(false);
   const [burstCenter, setBurstCenter] = useState({ x: SCREEN_W / 2, y: SCREEN_H / 2 });
   const [hasBeenVisible, setHasBeenVisible] = useState(isNearActive);
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
 
   useEffect(() => {
     if (isNearActive && !hasBeenVisible) setHasBeenVisible(true);
-  }, [isNearActive]);
+    if (!isNearActive) {
+      scale.value = 1;
+      savedScale.value = 1;
+    }
+  }, [hasBeenVisible, isNearActive, savedScale, scale]);
 
   // No scale/opacity animation — clean flat slide
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: 1,
+    transform: [{ scale: scale.value }],
   }));
 
   const handleDoubleTap = useCallback(() => {
@@ -106,22 +108,39 @@ const CarouselItem = memo(function CarouselItemComponent({
       runOnJS(handleDoubleTap)();
     });
 
+  const pinch = Gesture.Pinch()
+    .onUpdate((event) => {
+      'worklet';
+      scale.value = Math.max(1, Math.min(4, savedScale.value * event.scale));
+    })
+    .onEnd(() => {
+      'worklet';
+      if (scale.value < 1.05) {
+        scale.value = withSpring(1, springPresets.GENTLE);
+        savedScale.value = 1;
+      } else {
+        savedScale.value = scale.value;
+      }
+    });
+
   const photoUri = getMomentImageUri(moment);
 
   return (
     <View style={styles.slide}>
-      <GestureDetector gesture={doubleTap}>
+      <GestureDetector gesture={Gesture.Simultaneous(doubleTap, pinch)}>
         <Animated.View style={[styles.photoWrap, animatedStyle]}>
           {hasBeenVisible && photoUri && (
-            <Image
-              source={{ uri: photoUri }}
-              style={StyleSheet.absoluteFill}
-              contentFit="contain"
-              placeholder={moment.blurhash ? { blurhash: moment.blurhash } : { blurhash: FALLBACK_BLURHASH }}
-              cachePolicy="memory-disk"
-              recyclingKey={moment.id}
-              transition={120}
-            />
+            <Link.AppleZoomTarget>
+              <Image
+                source={{ uri: photoUri }}
+                style={styles.fullscreenImage}
+                contentFit="contain"
+                placeholder={moment.blurhash ? { blurhash: moment.blurhash } : { blurhash: FALLBACK_BLURHASH }}
+                cachePolicy="memory-disk"
+                recyclingKey={moment.id}
+                transition={120}
+              />
+            </Link.AppleZoomTarget>
           )}
         </Animated.View>
       </GestureDetector>
@@ -136,7 +155,6 @@ const CarouselItem = memo(function CarouselItemComponent({
   );
 }, (prev, next) =>
   prev.moment.id === next.moment.id &&
-  prev.index === next.index &&
   prev.isNearActive === next.isNearActive
 );
 
@@ -155,7 +173,6 @@ export function PhotoCarousel({
   onIndexChange,
   dismissedIds,
 }: PhotoCarouselProps) {
-  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [currentIdx, setCurrentIdx] = useState(initialIndex);
   const [actionsVisible, setActionsVisible] = useState(false);
@@ -167,6 +184,18 @@ export function PhotoCarousel({
 
   const currentMoment = moments[currentIdx];
   const isHd = !!currentMoment?.hdPhoto;
+  const visibleIndices = useMemo(() => {
+    const start = Math.max(0, currentIdx - 2);
+    const end = Math.min(moments.length - 1, currentIdx + 2);
+    return Array.from({ length: end - start + 1 }, (_, offset) => start + offset);
+  }, [currentIdx, moments.length]);
+
+  useEffect(() => {
+    const maxIndex = Math.max(0, moments.length - 1);
+    const nextIndex = Math.max(0, Math.min(initialIndex, maxIndex));
+    setCurrentIdx((prev) => (prev === nextIndex ? prev : nextIndex));
+    scrollX.value = nextIndex * SCREEN_W;
+  }, [initialIndex, moments.length, scrollX]);
 
   useEffect(() => {
     if (onIndexChange) onIndexChange(currentIdx);
@@ -301,23 +330,19 @@ export function PhotoCarousel({
       {/* Photo track */}
       <GestureDetector gesture={composedGestures}>
         <Animated.View style={[styles.trackContainer, containerStyle]}>
-          <Animated.View
-            style={[
-              styles.track,
-              { width: SCREEN_W * moments.length },
-              trackStyle,
-            ]}
-          >
-            {moments.map((moment, idx) => (
-              <CarouselItem
-                key={moment.id}
-                moment={moment}
-                index={idx}
-                scrollX={scrollX}
-                onDoubleTap={handleFavorite}
-                isNearActive={Math.abs(idx - currentIdx) <= 2}
-              />
-            ))}
+          <Animated.View style={[styles.track, { width: SCREEN_W * moments.length }, trackStyle]}>
+            {visibleIndices.map((idx) => {
+              const moment = moments[idx];
+              return (
+                <View key={moment.id} style={[styles.virtualSlide, { left: idx * SCREEN_W }]}>
+                  <CarouselItem
+                    moment={moment}
+                    onDoubleTap={handleFavorite}
+                    isNearActive={Math.abs(idx - currentIdx) <= 2}
+                  />
+                </View>
+              );
+            })}
           </Animated.View>
         </Animated.View>
       </GestureDetector>
@@ -486,8 +511,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   track: {
-    flexDirection: 'row',
     flex: 1,
+    position: 'relative',
+  },
+  virtualSlide: {
+    position: 'absolute',
+    top: 0,
+    width: SCREEN_W,
+    height: SCREEN_H,
   },
   slide: {
     width: SCREEN_W,
@@ -500,6 +531,10 @@ const styles = StyleSheet.create({
     height: SCREEN_H,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  fullscreenImage: {
+    width: SCREEN_W,
+    height: SCREEN_H,
   },
 
   // ── Top chrome ──
@@ -565,7 +600,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   captionWrap: {
-    marginBottom: 16,
+    maxHeight: 84,
+    marginBottom: 12,
   },
   locationRow: {
     flexDirection: 'row',

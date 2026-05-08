@@ -24,9 +24,7 @@ import {
   BookmarkPlus,
   Eye,
   EyeOff,
-  Film,
   Trash2,
-  Edit3,
   Lock,
   Images,
   Users,
@@ -48,6 +46,7 @@ export type PhotoAction =
   | 'archive'       // legacy — kept for compat
   | 'delete'
   | 'edit'
+  | 'edit-photo'
   | 'set-private'
   | 'set-album'
   | 'set-shared'
@@ -104,7 +103,7 @@ export function PhotoActionsSheet({
   onClose,
   currentVisibility = 'shared',
   hasHd = false,
-  hasImage = true,
+  hasImage: _hasImage = true,
   isMine = true,
   isDismissed = false,
 }: PhotoActionsSheetProps) {
@@ -231,7 +230,7 @@ export function PhotoActionsSheet({
             <View style={[styles.readOnlyNotice, { borderColor: colors.border, backgroundColor: colors.card }]}>
               <Users size={16} color={colors.accent} strokeWidth={2} />
               <Text style={[styles.readOnlyText, { color: colors.text2 }]}>
-                Shared by a trip companion. You can save, share, hide, or edit a copy.
+                Shared by a trip companion. You can save, share, or hide it.
               </Text>
             </View>
           )}
@@ -239,24 +238,6 @@ export function PhotoActionsSheet({
           {/* ── Actions grid ── */}
           <Text style={[styles.sectionLabel, { color: colors.text3, marginTop: 16 }]}>ACTIONS</Text>
           <View style={styles.actionsGrid}>
-            {hasImage && (
-              <ActionItem
-                icon={Film}
-                label="Create reel"
-                color={colors.accentLt}
-                bgColor={colors.accentDim}
-                onPress={() => onAction('reel')}
-              />
-            )}
-            {isMine && (
-              <ActionItem
-                icon={Edit3}
-                label="Edit details"
-                color={colors.info}
-                bgColor={colors.accentDim}
-                onPress={() => onAction('edit')}
-              />
-            )}
             <ActionItem
               icon={Share2}
               label="Share"

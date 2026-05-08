@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, TouchableOpacity, StyleSheet, Animated,
   Modal, Pressable, Text, Platform,
@@ -38,6 +38,9 @@ export const FloatingActionButton: React.FC = () => {
 
   const isPlane = !transport || transport === 'plane';
   const isBudgetRoute = pathname.includes('/budget');
+  const isComposedRoute = ['/moments', '/discover', '/photo-viewer'].some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
 
   const actions: FabAction[] = useMemo(() => {
     const items: FabAction[] = [
@@ -88,7 +91,7 @@ export const FloatingActionButton: React.FC = () => {
 
   const rotation = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '135deg'] });
 
-  if (isBudgetRoute) return null;
+  if (isBudgetRoute || isComposedRoute) return null;
 
   return (
     <>

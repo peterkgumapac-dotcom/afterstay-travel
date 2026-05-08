@@ -206,43 +206,57 @@ function RootLayoutInner() {
         />
         <Stack.Screen
           name="place-details"
-          options={{ presentation: 'modal', title: 'Place Details', headerShown: true }}
+          options={{
+            presentation: 'modal',
+            title: 'Place Details',
+            headerShown: true,
+            animation: 'fade_from_bottom',
+            animationDuration: 250,
+          }}
         />
         <Stack.Screen
           name="trip-summary"
-          options={{ presentation: 'modal', title: 'Trip Summary', headerShown: false }}
+          options={{
+            presentation: 'modal',
+            title: 'Trip Summary',
+            headerShown: false,
+            animation: 'fade_from_bottom',
+            animationDuration: 250,
+          }}
         />
         <Stack.Screen
           name="trip-recap"
-          options={{ presentation: 'fullScreenModal', title: 'Trip Recap', headerShown: false, animation: 'fade' }}
+          options={{ presentation: 'fullScreenModal', title: 'Trip Recap', headerShown: false, animation: 'fade', animationDuration: 200 }}
         />
         <Stack.Screen
           name="photo-viewer"
           options={{
             presentation: 'fullScreenModal',
             headerShown: false,
+            animation: 'fade',
+            animationDuration: 200,
             contentStyle: { backgroundColor: 'transparent' },
           }}
         />
         <Stack.Screen
           name="quick-trip-create"
-          options={{ presentation: 'modal', title: 'Quick Trip', headerShown: false }}
+          options={{ presentation: 'modal', title: 'Quick Trip', headerShown: false, animation: 'slide_from_bottom', animationDuration: 250 }}
         />
         <Stack.Screen
           name="quick-trip-detail"
-          options={{ presentation: 'modal', title: 'Quick Trip', headerShown: false }}
+          options={{ presentation: 'modal', title: 'Quick Trip', headerShown: false, animation: 'fade_from_bottom', animationDuration: 250 }}
         />
         <Stack.Screen
           name="notification-settings"
-          options={{ presentation: 'modal', title: 'Notifications', headerShown: false }}
+          options={{ presentation: 'modal', title: 'Notifications', headerShown: false, animation: 'fade_from_bottom', animationDuration: 250 }}
         />
-        <Stack.Screen name="create-post" options={{ presentation: 'modal', title: 'New Post', headerShown: false }} />
+        <Stack.Screen name="create-post" options={{ presentation: 'modal', title: 'New Post', headerShown: false, animation: 'slide_from_bottom', animationDuration: 250 }} />
         <Stack.Screen
           name="trip-memory"
-          options={{ presentation: 'modal', title: 'Trip Memory', headerShown: false }}
+          options={{ presentation: 'modal', title: 'Trip Memory', headerShown: false, animation: 'fade_from_bottom', animationDuration: 250 }}
         />
-        <Stack.Screen name="new-album" options={{ presentation: 'modal', title: 'New Album', headerShown: false }} />
-        <Stack.Screen name="album-detail" options={{ presentation: 'modal', title: 'Album', headerShown: false }} />
+        <Stack.Screen name="new-album" options={{ presentation: 'modal', title: 'New Album', headerShown: false, animation: 'slide_from_bottom', animationDuration: 250 }} />
+        <Stack.Screen name="album-detail" options={{ presentation: 'modal', title: 'Album', headerShown: false, animation: 'fade_from_bottom', animationDuration: 250 }} />
         <Stack.Screen name="welcome" options={{ headerShown: false }} />
         <Stack.Screen
           name="trip-wrapped"
