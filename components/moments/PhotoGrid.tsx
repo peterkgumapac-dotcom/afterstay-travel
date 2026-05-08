@@ -209,15 +209,6 @@ export function PhotoGrid({
     }
   }, [onAction]);
 
-  const handleAddToReel = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const selected = moments.filter((m) => selectedIds.has(m.id));
-    if (selected.length > 0 && onAction) {
-      onAction('reel', selected[0]);
-    }
-    exitSelectionMode();
-  }, [selectedIds, moments, onAction, exitSelectionMode]);
-
   const renderItem = useCallback(
     ({ item, index }: { item: MomentDisplay; index: number }) => (
       <PhotoItem
@@ -238,26 +229,6 @@ export function PhotoGrid({
   );
 
   // FAB animation
-  const fabTranslateY = useSharedValue(100);
-  const fabScale = useSharedValue(0);
-
-  useEffect(() => {
-    if (selectionMode && selectedIds.size > 0) {
-      fabTranslateY.value = withSpring(0, springPresets.SHEET_REVEAL);
-      fabScale.value = withSpring(1, springPresets.SHEET_REVEAL);
-    } else {
-      fabTranslateY.value = withSpring(100, springPresets.SHEET_REVEAL);
-      fabScale.value = withSpring(0, springPresets.SHEET_REVEAL);
-    }
-  }, [selectionMode, selectedIds.size]);
-
-  const fabStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: fabTranslateY.value },
-      { scale: fabScale.value },
-    ],
-  }));
-
   // Selection header animation
   const headerHeight = useSharedValue(0);
 
@@ -346,23 +317,6 @@ export function PhotoGrid({
           />
         </Animated.View>
       </GestureDetector>
-
-      {/* Add to Reel FAB */}
-      <Animated.View
-        style={[
-          styles.fab,
-          { bottom: insets.bottom + 20 },
-          fabStyle,
-        ]}
-      >
-        <Pressable
-          onPress={handleAddToReel}
-          style={styles.fabBtn}
-        >
-          <Film size={20} color="#000" strokeWidth={2} />
-          <Text style={styles.fabText}>Add to Reel</Text>
-        </Pressable>
-      </Animated.View>
 
       {/* Fullscreen Carousel */}
       <Modal
@@ -459,31 +413,5 @@ const styles = StyleSheet.create({
     color: '#857d70',
     textAlign: 'center',
     lineHeight: 20,
-  },
-  fab: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  fabBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#d8ab7a',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 999,
-    shadowColor: '#d8ab7a',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  fabText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#000',
   },
 });

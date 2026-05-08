@@ -207,6 +207,7 @@ export default function QuickTripDetailScreen() {
             initialIndex={carouselIndex}
             people={{}}
             onClose={() => setCarouselVisible(false)}
+            actionsEnabled={false}
           />
         </Modal>
 

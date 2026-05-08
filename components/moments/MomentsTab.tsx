@@ -449,37 +449,38 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       setFavoriteMap(favs);
       setLoadError(null);
 
-      // Fetch comment counts + dismissals in parallel
+      // Keep first paint light; enrich counts, dismissals, cache writes, and
+      // image warmup after navigation/scroll interactions settle.
       const momentIds = moments.map(m => m.id).filter(Boolean) as string[];
-      if (momentIds.length > 0) {
-        getCommentCounts(momentIds).then(setCommentCountMap).catch(() => {});
-      }
-      if (tripId) {
-        getDismissedMomentIds(tripId).then(setDismissedIds).catch(() => {});
-      }
+      setTimeout(() => {
+        if (momentIds.length > 0) {
+          getCommentCounts(momentIds).then(setCommentCountMap).catch(() => {});
+        }
+        if (tripId) {
+          getDismissedMomentIds(tripId).then(setDismissedIds).catch(() => {});
+        }
 
-      // Cache photo metadata to SQLite for offline
-      if (tripId && moments.length > 0) {
-        await cachePhotoMeta(
-          moments.map((m) => ({
-            id: m.id,
-            tripId,
-            photoUrl: getMomentImageUri(m) || undefined,
-            caption: m.caption ?? undefined,
-            location: m.location ?? undefined,
-            date: m.date ?? undefined,
-            takenBy: m.takenBy ?? undefined,
-            visibility: m.visibility ?? undefined,
-          }))
-        ).catch(() => {});
-      }
+        if (tripId && moments.length > 0) {
+          cachePhotoMeta(
+            moments.map((m) => ({
+              id: m.id,
+              tripId,
+              photoUrl: getMomentImageUri(m) || undefined,
+              caption: m.caption ?? undefined,
+              location: m.location ?? undefined,
+              date: m.date ?? undefined,
+              takenBy: m.takenBy ?? undefined,
+              visibility: m.visibility ?? undefined,
+            }))
+          ).catch(() => {});
+        }
 
-      const prefetch = () => {
-        moments.filter(hasMomentImage).slice(0, 8).forEach((m) => {
-          Image.prefetch(getMomentImageUri(m)).catch(() => {});
-        });
-      };
-      setTimeout(prefetch, 350);
+        setTimeout(() => {
+          moments.filter(hasMomentImage).slice(0, 3).forEach((m) => {
+            Image.prefetch(getMomentImageUri(m)).catch(() => {});
+          });
+        }, 800);
+      }, 400);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not load moments';
       if (__DEV__) console.warn('[Moments] load failed:', error);

@@ -215,10 +215,15 @@ export default function ExploreMomentCard({
     onPhotoPress?.(idx);
   }, [onPhotoPress]);
 
-  const onScroll = useCallback((e: { nativeEvent: { contentOffset: { x: number } } }) => {
+  const onCarouselSettle = useCallback((e: { nativeEvent: { contentOffset: { x: number } } }) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / (MEDIA_W - 32));
     setCarouselIndex(idx);
   }, []);
+
+  const collageMedia = useMemo(() => mediaWithResolvedUrls.map((media) => ({
+    ...media,
+    mediaUrl: media.resolvedUrl,
+  })), [mediaWithResolvedUrls]);
 
   return (
     <View style={[styles.card, isOfficial && styles.officialCard, isTravelPulse && styles.pulseCard]}>
@@ -326,7 +331,7 @@ export default function ExploreMomentCard({
       <View style={styles.mediaWrap}>
         {isCollage && hasMedia ? (
           <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(0)}>
-            <PolaroidCollage media={post.media!} />
+            <PolaroidCollage media={collageMedia} />
           </TouchableOpacity>
         ) : isCarousel && hasMedia ? (
           <View>
@@ -336,8 +341,11 @@ export default function ExploreMomentCard({
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
-              onScroll={onScroll}
-              scrollEventThrottle={16}
+              onMomentumScrollEnd={onCarouselSettle}
+              initialNumToRender={1}
+              maxToRenderPerBatch={1}
+              windowSize={3}
+              removeClippedSubviews
               renderItem={({ item, index }) => (
                 <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(index)}>
                   {item.resolvedUrl && !failedMedia.has(item.renderKey) ? (
@@ -345,6 +353,9 @@ export default function ExploreMomentCard({
                       source={{ uri: item.resolvedUrl }}
                       style={styles.carouselImg}
                       contentFit="cover"
+                      cachePolicy="memory-disk"
+                      recyclingKey={item.renderKey}
+                      transition={0}
                       onError={() => setFailedMedia((prev) => new Set(prev).add(item.renderKey))}
                     />
                   ) : (
@@ -370,6 +381,9 @@ export default function ExploreMomentCard({
                 source={{ uri: resolvedPhotoUrl }}
                 style={styles.singleImg}
                 contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={`single-${post.id}-${resolvedPhotoUrl}`}
+                transition={0}
                 onError={() => setFailedMedia((prev) => new Set(prev).add('photo'))}
               />
             ) : (
@@ -433,11 +447,23 @@ export default function ExploreMomentCard({
               initialScrollIndex={viewerIndex}
               getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
               renderItem={({ item }) => (
-                <Image source={{ uri: item }} style={styles.viewerImg} contentFit="contain" />
+                <Image
+                  source={{ uri: item }}
+                  style={styles.viewerImg}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                  recyclingKey={`viewer-${post.id}-${item}`}
+                />
               )}
             />
           ) : allPhotos[0] ? (
-            <Image source={{ uri: allPhotos[0] }} style={styles.viewerImg} contentFit="contain" />
+            <Image
+              source={{ uri: allPhotos[0] }}
+              style={styles.viewerImg}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+              recyclingKey={`viewer-${post.id}-${allPhotos[0]}`}
+            />
           ) : null}
         </View>
       </Modal>

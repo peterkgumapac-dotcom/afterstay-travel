@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import {
   FlatList,
   Pressable,
@@ -11,7 +11,6 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Image as RNImage } from 'react-native';
 import { Check } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -210,10 +209,10 @@ export function BentoLayout({
       keyExtractor={(row) => row.key}
       renderItem={renderRow}
       contentContainerStyle={[styles.container, contentContainerStyle]}
-      initialNumToRender={5}
-      maxToRenderPerBatch={5}
+      initialNumToRender={3}
+      maxToRenderPerBatch={2}
       updateCellsBatchingPeriod={50}
-      windowSize={7}
+      windowSize={5}
       removeClippedSubviews
       refreshing={refreshing}
       onRefresh={onRefresh}
@@ -233,7 +232,7 @@ interface BentoCellProps {
   tripId?: string;
 }
 
-function BentoCell({ moment, width, height, selected, selectMode, onPress, onLongPress, colors, tripId: _tripId }: BentoCellProps) {
+const BentoCell = memo(function BentoCellComponent({ moment, width, height, selected, selectMode, onPress, onLongPress, colors, tripId: _tripId }: BentoCellProps) {
   const imageUri = getMomentImageUri(moment);
   const cellContent = (
     <View style={{ width, height, borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.card }}>
@@ -245,7 +244,7 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
           cachePolicy="memory-disk"
           recyclingKey={moment.id}
           placeholder={moment.blurhash ? { blurhash: moment.blurhash } : undefined}
-          transition={80}
+          transition={0}
         />
       ) : (
         <View style={{ width: '100%', height: '100%', backgroundColor: colors.card }} />
@@ -268,7 +267,13 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
         {moment.authorKey && !selectMode && (
           <View style={[styles.authorBadge, { backgroundColor: moment.authorColor ?? '#a64d1e' }]}>
             {moment.authorAvatar ? (
-              <RNImage source={{ uri: moment.authorAvatar }} style={styles.authorAvatarImg} />
+              <Image
+                source={{ uri: moment.authorAvatar }}
+                style={styles.authorAvatarImg}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={`author-${moment.authorAvatar}`}
+              />
             ) : (
               <Text style={styles.authorInitial}>{moment.authorKey}</Text>
             )}
@@ -282,7 +287,20 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
       {cellContent}
     </Pressable>
   );
-}
+}, (prev, next) => (
+  prev.moment.id === next.moment.id &&
+  prev.moment.photo === next.moment.photo &&
+  prev.moment.hdPhoto === next.moment.hdPhoto &&
+  prev.moment.blurhash === next.moment.blurhash &&
+  prev.moment.place === next.moment.place &&
+  prev.moment.authorAvatar === next.moment.authorAvatar &&
+  prev.selected === next.selected &&
+  prev.selectMode === next.selectMode &&
+  prev.width === next.width &&
+  prev.height === next.height &&
+  prev.colors.card === next.colors.card &&
+  prev.colors.accent === next.colors.accent
+));
 
 const styles = StyleSheet.create({
   container: { paddingHorizontal: GAP },

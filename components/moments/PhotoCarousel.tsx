@@ -9,6 +9,7 @@ import {
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  type SharedValue,
   withSpring,
   withTiming,
   runOnJS,
@@ -22,7 +23,6 @@ import { Image } from 'expo-image';
 import { Link } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Image as RNImage } from 'react-native';
 import { ChevronLeft, Heart, MessageCircle, Share2, Download, MoreHorizontal, MapPin, Sparkles } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { springPresets, thresholds } from '@/constants/animations';
@@ -55,12 +55,15 @@ interface PhotoCarouselProps {
   onAction?: (action: PhotoAction, moment: MomentDisplay) => void;
   onIndexChange?: (index: number) => void;
   dismissedIds?: Set<string>;
+  actionsEnabled?: boolean;
 }
 
 interface CarouselItemProps {
   moment: MomentDisplay;
   onDoubleTap: (moment: MomentDisplay) => void;
   isNearActive: boolean;
+  isActive: boolean;
+  activeZoomScale: SharedValue<number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,25 +74,42 @@ const CarouselItem = memo(function CarouselItemComponent({
   moment,
   onDoubleTap,
   isNearActive,
+  isActive,
+  activeZoomScale,
 }: CarouselItemProps) {
   const [burstVisible, setBurstVisible] = useState(false);
   const [burstCenter, setBurstCenter] = useState({ x: SCREEN_W / 2, y: SCREEN_H / 2 });
   const [hasBeenVisible, setHasBeenVisible] = useState(isNearActive);
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
 
   useEffect(() => {
     if (isNearActive && !hasBeenVisible) setHasBeenVisible(true);
     if (!isNearActive) {
       scale.value = 1;
       savedScale.value = 1;
+      translateX.value = 0;
+      translateY.value = 0;
+      savedTranslateX.value = 0;
+      savedTranslateY.value = 0;
     }
-  }, [hasBeenVisible, isNearActive, savedScale, scale]);
+    if (!isActive) {
+      activeZoomScale.value = 1;
+    }
+  }, [activeZoomScale, hasBeenVisible, isActive, isNearActive, savedScale, savedTranslateX, savedTranslateY, scale, translateX, translateY]);
 
   // No scale/opacity animation — clean flat slide
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: 1,
-    transform: [{ scale: scale.value }],
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
   }));
 
   const handleDoubleTap = useCallback(() => {
@@ -111,23 +131,47 @@ const CarouselItem = memo(function CarouselItemComponent({
   const pinch = Gesture.Pinch()
     .onUpdate((event) => {
       'worklet';
-      scale.value = Math.max(1, Math.min(4, savedScale.value * event.scale));
+      const nextScale = Math.max(1, Math.min(4, savedScale.value * event.scale));
+      scale.value = nextScale;
+      if (isActive) activeZoomScale.value = nextScale;
     })
     .onEnd(() => {
       'worklet';
       if (scale.value < 1.05) {
         scale.value = withSpring(1, springPresets.GENTLE);
         savedScale.value = 1;
+        translateX.value = withSpring(0, springPresets.GENTLE);
+        translateY.value = withSpring(0, springPresets.GENTLE);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+        if (isActive) activeZoomScale.value = 1;
       } else {
         savedScale.value = scale.value;
+        if (isActive) activeZoomScale.value = scale.value;
       }
+    });
+
+  const zoomPan = Gesture.Pan()
+    .minDistance(3)
+    .onUpdate((event) => {
+      'worklet';
+      if (scale.value <= 1.02) return;
+      const maxX = (SCREEN_W * (scale.value - 1)) / 2;
+      const maxY = (SCREEN_H * (scale.value - 1)) / 2;
+      translateX.value = Math.max(-maxX, Math.min(maxX, savedTranslateX.value + event.translationX));
+      translateY.value = Math.max(-maxY, Math.min(maxY, savedTranslateY.value + event.translationY));
+    })
+    .onEnd(() => {
+      'worklet';
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
     });
 
   const photoUri = getMomentImageUri(moment);
 
   return (
     <View style={styles.slide}>
-      <GestureDetector gesture={Gesture.Simultaneous(doubleTap, pinch)}>
+      <GestureDetector gesture={Gesture.Simultaneous(doubleTap, pinch, zoomPan)}>
         <Animated.View style={[styles.photoWrap, animatedStyle]}>
           {hasBeenVisible && photoUri && (
             <Link.AppleZoomTarget>
@@ -155,7 +199,8 @@ const CarouselItem = memo(function CarouselItemComponent({
   );
 }, (prev, next) =>
   prev.moment.id === next.moment.id &&
-  prev.isNearActive === next.isNearActive
+  prev.isNearActive === next.isNearActive &&
+  prev.isActive === next.isActive
 );
 
 // ---------------------------------------------------------------------------
@@ -172,6 +217,7 @@ export function PhotoCarousel({
   onAction,
   onIndexChange,
   dismissedIds,
+  actionsEnabled = true,
 }: PhotoCarouselProps) {
   const insets = useSafeAreaInsets();
   const [currentIdx, setCurrentIdx] = useState(initialIndex);
@@ -181,9 +227,12 @@ export function PhotoCarousel({
 
   const scrollX = useSharedValue(initialIndex * SCREEN_W);
   const chromeOpacity = useSharedValue(1);
+  const activeZoomScale = useSharedValue(1);
 
   const currentMoment = moments[currentIdx];
   const isHd = !!currentMoment?.hdPhoto;
+  const canShowActions = actionsEnabled && !!currentMoment;
+  const canShowMore = canShowActions && !!onAction;
   const visibleIndices = useMemo(() => {
     const start = Math.max(0, currentIdx - 2);
     const end = Math.min(moments.length - 1, currentIdx + 2);
@@ -195,15 +244,16 @@ export function PhotoCarousel({
     const nextIndex = Math.max(0, Math.min(initialIndex, maxIndex));
     setCurrentIdx((prev) => (prev === nextIndex ? prev : nextIndex));
     scrollX.value = nextIndex * SCREEN_W;
-  }, [initialIndex, moments.length, scrollX]);
+    activeZoomScale.value = 1;
+  }, [activeZoomScale, initialIndex, moments.length, scrollX]);
 
   useEffect(() => {
     if (onIndexChange) onIndexChange(currentIdx);
-  }, [currentIdx]);
+  }, [currentIdx, onIndexChange]);
 
-  // Preload ±2 adjacent (HD when available)
+  // Keep prefetch tight; mounted neighbor slides already do the heavy lifting.
   useEffect(() => {
-    [currentIdx - 2, currentIdx - 1, currentIdx, currentIdx + 1, currentIdx + 2]
+    [currentIdx - 1, currentIdx + 1]
       .filter((i) => i >= 0 && i < moments.length)
       .forEach((i) => {
         const uri = getMomentImageUri(moments[i]);
@@ -241,6 +291,7 @@ export function PhotoCarousel({
     .failOffsetY([-10, 10])
     .onUpdate((event) => {
       'worklet';
+      if (activeZoomScale.value > 1.02) return;
       const translation = event.translationX;
       const baseX = currentIdx * SCREEN_W;
       if ((currentIdx === 0 && translation > 0) || (currentIdx === moments.length - 1 && translation < 0)) {
@@ -251,6 +302,10 @@ export function PhotoCarousel({
     })
     .onEnd((event) => {
       'worklet';
+      if (activeZoomScale.value > 1.02) {
+        scrollX.value = withSpring(currentIdx * SCREEN_W, springPresets.CAROUSEL_SNAP);
+        return;
+      }
       const velocity = event.velocityX;
       const translation = event.translationX;
       const shouldAdvance = Math.abs(translation) > 80 || Math.abs(velocity) > thresholds.flickVelocity;
@@ -259,10 +314,12 @@ export function PhotoCarousel({
       if (shouldAdvance) {
         if (direction === 'left' && currentIdx < moments.length - 1) {
           scrollX.value = withSpring((currentIdx + 1) * SCREEN_W, springPresets.CAROUSEL_SNAP);
+          activeZoomScale.value = 1;
           runOnJS(setCurrentIdx)(currentIdx + 1);
           runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
         } else if (direction === 'right' && currentIdx > 0) {
           scrollX.value = withSpring((currentIdx - 1) * SCREEN_W, springPresets.CAROUSEL_SNAP);
+          activeZoomScale.value = 1;
           runOnJS(setCurrentIdx)(currentIdx - 1);
           runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
         } else {
@@ -339,6 +396,8 @@ export function PhotoCarousel({
                     moment={moment}
                     onDoubleTap={handleFavorite}
                     isNearActive={Math.abs(idx - currentIdx) <= 2}
+                    isActive={idx === currentIdx}
+                    activeZoomScale={activeZoomScale}
                   />
                 </View>
               );
@@ -368,9 +427,11 @@ export function PhotoCarousel({
           )}
         </View>
 
-        <Pressable onPress={() => { Haptics.selectionAsync(); setActionsVisible(true); }} style={styles.pill} accessibilityLabel="More actions">
-          <MoreHorizontal size={18} color="#fff" strokeWidth={1.8} />
-        </Pressable>
+        {canShowMore ? (
+          <Pressable onPress={() => { Haptics.selectionAsync(); setActionsVisible(true); }} style={styles.pill} accessibilityLabel="More actions">
+            <MoreHorizontal size={18} color="#fff" strokeWidth={1.8} />
+          </Pressable>
+        ) : <View style={styles.pillSpacer} />}
       </Animated.View>
 
       {/* ── Bottom chrome: caption + actions ── */}
@@ -390,7 +451,13 @@ export function PhotoCarousel({
             <View style={styles.sharedByRow}>
               <View style={[styles.sharedByAvatar, { backgroundColor: currentMoment.authorColor ?? '#a64d1e' }]}>
                 {personEntry?.avatar ? (
-                  <RNImage source={{ uri: personEntry.avatar }} style={styles.sharedByAvatarImg} />
+                  <Image
+                    source={{ uri: personEntry.avatar }}
+                    style={styles.sharedByAvatarImg}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    recyclingKey={`viewer-avatar-${personEntry.avatar}`}
+                  />
                 ) : (
                   <Text style={styles.sharedByInitial}>{authorName.charAt(0).toUpperCase()}</Text>
                 )}
@@ -421,74 +488,84 @@ export function PhotoCarousel({
         )}
 
         {/* Action buttons */}
-        <View style={styles.actionRow}>
-          <Pressable
-            onPress={() => currentMoment && handleFavorite(currentMoment)}
-            style={styles.actionBtn}
-            accessibilityLabel={isFavorited ? 'Unfavorite' : 'Favorite'}
-          >
-            <Heart
-              size={22}
-              color={isFavorited ? '#ff4d6a' : '#fff'}
-              fill={isFavorited ? '#ff4d6a' : 'transparent'}
-              strokeWidth={2}
-            />
-          </Pressable>
+        {canShowActions && (onFavorite || onComment || onAction) ? (
+          <View style={styles.actionRow}>
+            {onFavorite ? (
+              <Pressable
+                onPress={() => currentMoment && handleFavorite(currentMoment)}
+                style={styles.actionBtn}
+                accessibilityLabel={isFavorited ? 'Unfavorite' : 'Favorite'}
+              >
+                <Heart
+                  size={22}
+                  color={isFavorited ? '#ff4d6a' : '#fff'}
+                  fill={isFavorited ? '#ff4d6a' : 'transparent'}
+                  strokeWidth={2}
+                />
+              </Pressable>
+            ) : null}
 
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              if (currentMoment && onComment) onComment(currentMoment.id);
-            }}
-            style={styles.actionBtn}
-            accessibilityLabel="Comments"
-          >
-            <MessageCircle size={20} color="#fff" strokeWidth={2} />
-            {(currentMoment?.commentCount ?? 0) > 0 && (
-              <View style={styles.commentBadge}>
-                <Text style={styles.commentBadgeText}>{currentMoment!.commentCount}</Text>
-              </View>
-            )}
-          </Pressable>
+            {onComment ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  if (currentMoment) onComment(currentMoment.id);
+                }}
+                style={styles.actionBtn}
+                accessibilityLabel="Comments"
+              >
+                <MessageCircle size={20} color="#fff" strokeWidth={2} />
+                {(currentMoment?.commentCount ?? 0) > 0 && (
+                  <View style={styles.commentBadge}>
+                    <Text style={styles.commentBadgeText}>{currentMoment!.commentCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+            ) : null}
 
-          <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              if (currentMoment && onAction) onAction('share', currentMoment);
-            }}
-            style={styles.actionBtn}
-            accessibilityLabel="Share"
-          >
-            <Share2 size={20} color="#fff" strokeWidth={2} />
-          </Pressable>
+            {onAction ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  if (currentMoment) onAction('share', currentMoment);
+                }}
+                style={styles.actionBtn}
+                accessibilityLabel="Share"
+              >
+                <Share2 size={20} color="#fff" strokeWidth={2} />
+              </Pressable>
+            ) : null}
 
-          {isHd && (
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                if (currentMoment && onAction) onAction('download-hd', currentMoment);
-              }}
-              style={styles.actionBtn}
-              accessibilityLabel="Save HD"
-            >
-              <Download size={20} color="#fff" strokeWidth={2} />
-            </Pressable>
-          )}
-        </View>
+            {isHd && onAction ? (
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  if (currentMoment) onAction('download-hd', currentMoment);
+                }}
+                style={styles.actionBtn}
+                accessibilityLabel="Save HD"
+              >
+                <Download size={20} color="#fff" strokeWidth={2} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </Animated.View>
 
       {/* Actions Sheet */}
-      <PhotoActionsSheet
-        visible={actionsVisible}
-        onAction={handleAction}
-        onClose={() => setActionsVisible(false)}
-        photoId={currentMoment?.id ?? ''}
-        currentVisibility={currentMoment?.visibility ?? 'shared'}
-        hasHd={isHd}
-        hasImage={!!getMomentImageUri(currentMoment)}
-        isMine={!!currentMoment?.isMine}
-        isDismissed={dismissedIds?.has(currentMoment?.id ?? '') ?? false}
-      />
+      {actionsVisible && canShowMore && (
+        <PhotoActionsSheet
+          visible={actionsVisible}
+          onAction={handleAction}
+          onClose={() => setActionsVisible(false)}
+          photoId={currentMoment?.id ?? ''}
+          currentVisibility={currentMoment?.visibility ?? 'shared'}
+          hasHd={isHd}
+          hasImage={!!getMomentImageUri(currentMoment)}
+          isMine={!!currentMoment?.isMine}
+          isDismissed={dismissedIds?.has(currentMoment?.id ?? '') ?? false}
+        />
+      )}
     </GestureHandlerRootView>
   );
 }
@@ -557,6 +634,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pillSpacer: {
+    width: 38,
+    height: 38,
   },
   counterPill: {
     flexDirection: 'row',

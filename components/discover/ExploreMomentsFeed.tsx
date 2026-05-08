@@ -85,16 +85,19 @@ export default function ExploreMomentsFeed() {
     }
 
     let cancelled = false;
-    getPostTagsForPosts(postIds)
-      .then((tags) => {
-        if (!cancelled) setTagsByPost(tags);
-      })
-      .catch(() => {
-        if (!cancelled) setTagsByPost({});
-      });
+    const task = setTimeout(() => {
+      getPostTagsForPosts(postIds)
+        .then((tags) => {
+          if (!cancelled) setTagsByPost(tags);
+        })
+        .catch(() => {
+          if (!cancelled) setTagsByPost({});
+        });
+    }, 350);
 
     return () => {
       cancelled = true;
+      clearTimeout(task);
     };
   }, [activePostIdsKey]);
 
@@ -219,7 +222,7 @@ export default function ExploreMomentsFeed() {
     return () => { cancelled = true; };
   }, [avatarUri]);
 
-  const headerContent = (
+  const headerContent = useMemo(() => (
     <View style={styles.headerPaper}>
       <PaperTexture />
       {/* Compose bar */}
@@ -304,7 +307,20 @@ export default function ExploreMomentsFeed() {
         })}
       </View>
     </View>
-  );
+  ), [
+    avatarFailed,
+    displayName,
+    handleAddStory,
+    handleCompose,
+    handlePhotoCompose,
+    handleProfilePress,
+    handleStoryPress,
+    mode,
+    resolvedAvatarUri,
+    showAvatarPhoto,
+    storyRefreshKey,
+    storyUploading,
+  ]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -338,7 +354,12 @@ export default function ExploreMomentsFeed() {
         onEndReached={() => {
           if (activeFeed.hasMore) activeFeed.loadMore();
         }}
-        onEndReachedThreshold={0.5}
+        onEndReachedThreshold={0.25}
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
+        updateCellsBatchingPeriod={80}
+        windowSize={5}
+        removeClippedSubviews
         refreshing={activeFeed.isRefreshing}
         onRefresh={activeFeed.refresh}
         contentContainerStyle={{ paddingBottom: 90 }}

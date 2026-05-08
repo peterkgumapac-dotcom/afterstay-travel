@@ -30,7 +30,14 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
     return (
       <View style={styles.singleWrap}>
         <View style={styles.polaroid}>
-          <Image source={{ uri: media[0]?.mediaUrl }} style={styles.singleImg} contentFit="cover" />
+          <Image
+            source={{ uri: media[0]?.mediaUrl }}
+            style={styles.singleImg}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            recyclingKey={media[0]?.id || media[0]?.mediaUrl}
+            transition={0}
+          />
         </View>
       </View>
     );
@@ -44,7 +51,14 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
             key={m.id || i}
             style={[styles.polaroid, styles.duoCard, { transform: [{ rotate: `${ROTATIONS[i]}deg` }] }]}
           >
-            <Image source={{ uri: m.mediaUrl }} style={styles.duoImg} contentFit="cover" />
+            <Image
+              source={{ uri: m.mediaUrl }}
+              style={styles.duoImg}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              recyclingKey={m.id || m.mediaUrl}
+              transition={0}
+            />
           </View>
         ))}
       </View>
@@ -55,7 +69,14 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
     return (
       <View style={styles.triptychWrap}>
         <View style={[styles.polaroid, styles.heroCard, { transform: [{ rotate: `${ROTATIONS[0]}deg` }] }]}>
-          <Image source={{ uri: visible[0]?.mediaUrl }} style={styles.heroImg} contentFit="cover" />
+          <Image
+            source={{ uri: visible[0]?.mediaUrl }}
+            style={styles.heroImg}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            recyclingKey={visible[0]?.id || visible[0]?.mediaUrl}
+            transition={0}
+          />
         </View>
         <View style={styles.triptychSide}>
           {visible.slice(1).map((m, i) => (
@@ -63,7 +84,14 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
               key={m.id || i}
               style={[styles.polaroid, styles.smallCard, { transform: [{ rotate: `${ROTATIONS[i + 1]}deg` }] }]}
             >
-              <Image source={{ uri: m.mediaUrl }} style={styles.smallImg} contentFit="cover" />
+              <Image
+                source={{ uri: m.mediaUrl }}
+                style={styles.smallImg}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={m.id || m.mediaUrl}
+                transition={0}
+              />
             </View>
           ))}
         </View>
@@ -79,7 +107,14 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
           key={m.id || i}
           style={[styles.polaroid, styles.gridCard, { transform: [{ rotate: `${ROTATIONS[i]}deg` }] }]}
         >
-          <Image source={{ uri: m.mediaUrl }} style={styles.gridImg} contentFit="cover" />
+          <Image
+            source={{ uri: m.mediaUrl }}
+            style={styles.gridImg}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            recyclingKey={m.id || m.mediaUrl}
+            transition={0}
+          />
           {i === maxVisible - 1 && overflow > 0 && (
             <View style={styles.overflowOverlay}>
               <Text style={styles.overflowText}>+{overflow}</Text>

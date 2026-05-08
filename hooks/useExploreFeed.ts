@@ -5,7 +5,7 @@ import type { FeedPost } from '@/lib/types';
 
 type FeedMode = 'recent' | 'trending' | 'saved';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 12;
 const REQUEST_TIMEOUT_MS = 12000;
 
 function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {

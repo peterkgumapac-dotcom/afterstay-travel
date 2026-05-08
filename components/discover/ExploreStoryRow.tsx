@@ -68,22 +68,32 @@ export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading 
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
     let cancelled = false;
+    const authTask = setTimeout(() => {
+      supabase.auth.getUser().then(({ data }) => {
+        if (!cancelled) setCurrentUserId(data.user?.id ?? null);
+      });
+    }, 250);
     setLoading(true);
     setFailedImages(new Set());
-    withTimeout(getStories())
-      .then((stories) => {
-        if (!cancelled) setGroups(groupByUser(stories));
-        if (!cancelled) setLoading(false);
-      }, (err) => {
-        if (!cancelled) setGroups([]);
-        if (__DEV__) {
-          console.log('[ExploreStoryRow] getStories skipped:', err instanceof Error ? err.message : err);
-        }
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
+    const storiesTask = setTimeout(() => {
+      withTimeout(getStories())
+        .then((stories) => {
+          if (!cancelled) setGroups(groupByUser(stories).slice(0, 10));
+          if (!cancelled) setLoading(false);
+        }, (err) => {
+          if (!cancelled) setGroups([]);
+          if (__DEV__) {
+            console.log('[ExploreStoryRow] getStories skipped:', err instanceof Error ? err.message : err);
+          }
+          if (!cancelled) setLoading(false);
+        });
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(authTask);
+      clearTimeout(storiesTask);
+    };
   }, [refreshKey]);
 
   const myGroup = groups.find((g) => g.userId === currentUserId);
@@ -110,10 +120,12 @@ export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading 
           <View style={[styles.ring, myGroup.hasUnviewed ? styles.ringActive : styles.ringViewed]}>
             <Image
               source={{ uri: myGroup.userAvatar ?? myGroup.previewUrl }}
-              style={styles.avatar}
-              contentFit="cover"
-              onError={() => setFailedImages((prev) => new Set(prev).add(myGroup.userId))}
-            />
+                style={styles.avatar}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={`story-${myGroup.userId}`}
+                onError={() => setFailedImages((prev) => new Set(prev).add(myGroup.userId))}
+              />
           </View>
         ) : (
           <View style={[styles.ring, styles.ringAdd]}>
@@ -145,6 +157,8 @@ export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading 
                 source={{ uri: group.userAvatar ?? group.previewUrl }}
                 style={styles.avatar}
                 contentFit="cover"
+                cachePolicy="memory-disk"
+                recyclingKey={`story-${group.userId}`}
                 onError={() => setFailedImages((prev) => new Set(prev).add(group.userId))}
               />
             ) : (

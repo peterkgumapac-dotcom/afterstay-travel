@@ -426,6 +426,7 @@ function MomentsScreen() {
               initialIndex={qtCarouselIndex}
               people={{}}
               onClose={() => setQtCarouselVisible(false)}
+              actionsEnabled={false}
             />
           </Modal>
         </View>
