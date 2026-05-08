@@ -4,12 +4,6 @@
 import { supabase } from './supabase';
 import { filterRenderableImageUrls, isRenderableRemoteImageUrl } from './imageUrl';
 
-const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place';
-const PUBLIC_PLACES_KEY =
-  process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ||
-  process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY ||
-  '';
-
 export interface PlaceSearchResult {
   place_id: string;
   name: string;
@@ -55,30 +49,8 @@ async function callProxy<T>(action: string, payload: Record<string, unknown>): P
 async function resolvePhotoUrl(photoRef: string, maxWidth = 800): Promise<string | null> {
   const result = await callProxy<{ url: string }>('photo', { photoReference: photoRef, maxWidth });
   if (isResolvedGooglePhotoUrl(result?.url)) return result.url;
-  if (!PUBLIC_PLACES_KEY) return null;
-  const params = new URLSearchParams({
-    maxwidth: String(maxWidth),
-    photo_reference: photoRef,
-    key: PUBLIC_PLACES_KEY,
-  });
-  const photoUrl = `${PLACES_BASE}/photo?${params.toString()}`;
-  try {
-    const res = await fetch(photoUrl, { redirect: 'follow' });
-    if (res.ok && isResolvedGooglePhotoUrl(res.url)) return res.url;
-  } catch (err) {
-    if (__DEV__) console.warn('[google-places] direct photo resolution failed:', err);
-  }
+  if (__DEV__ && photoRef) console.warn('[places-proxy] photo resolution returned no renderable URL');
   return null;
-}
-
-function googlePhotoApiUrl(photoRef: string, maxWidth = 800): string | null {
-  if (!PUBLIC_PLACES_KEY) return null;
-  const params = new URLSearchParams({
-    maxwidth: String(maxWidth),
-    photo_reference: photoRef,
-    key: PUBLIC_PLACES_KEY,
-  });
-  return `${PLACES_BASE}/photo?${params.toString()}`;
 }
 
 function isGooglePhotoApiUrl(url: string): boolean {
@@ -92,91 +64,6 @@ function isGooglePhotoApiUrl(url: string): boolean {
 
 function isResolvedGooglePhotoUrl(url: string | undefined | null): url is string {
   return isRenderableRemoteImageUrl(url) && !isGooglePhotoApiUrl(url);
-}
-
-async function directSearch(query: string, fields?: string): Promise<any | null> {
-  if (!PUBLIC_PLACES_KEY) return null;
-  try {
-    const params = new URLSearchParams({
-      input: query,
-      inputtype: 'textquery',
-      fields: fields || 'place_id,name,formatted_address,rating,user_ratings_total,photos,geometry',
-      key: PUBLIC_PLACES_KEY,
-    });
-    const res = await fetch(`${PLACES_BASE}/findplacefromtext/json?${params.toString()}`);
-    if (!res.ok) return null;
-    return res.json();
-  } catch (err) {
-    if (__DEV__) console.warn('[google-places] direct search failed:', err);
-    return null;
-  }
-}
-
-async function directPlaceLocation(placeId: string): Promise<any | null> {
-  if (!PUBLIC_PLACES_KEY) return null;
-  try {
-    const params = new URLSearchParams({
-      place_id: placeId,
-      fields: 'name,geometry',
-      key: PUBLIC_PLACES_KEY,
-    });
-    const res = await fetch(`${PLACES_BASE}/details/json?${params.toString()}`);
-    if (!res.ok) return null;
-    return res.json();
-  } catch (err) {
-    if (__DEV__) console.warn('[google-places] direct place location failed:', err);
-    return null;
-  }
-}
-
-async function directAutocomplete(
-  input: string,
-  locationBias?: { lat: number; lng: number },
-): Promise<any | null> {
-  if (!PUBLIC_PLACES_KEY) return null;
-  try {
-    const params = new URLSearchParams({
-      input,
-      key: PUBLIC_PLACES_KEY,
-    });
-    if (locationBias) {
-      params.set('location', `${locationBias.lat},${locationBias.lng}`);
-      params.set('radius', '50000');
-    }
-    const res = await fetch(`${PLACES_BASE}/autocomplete/json?${params.toString()}`);
-    if (!res.ok) return null;
-    return res.json();
-  } catch (err) {
-    if (__DEV__) console.warn('[google-places] direct autocomplete failed:', err);
-    return null;
-  }
-}
-
-async function directNearby(payload: {
-  lat: number;
-  lng: number;
-  radius?: number;
-  type?: string;
-  keyword?: string;
-  pagetoken?: string;
-}): Promise<any | null> {
-  if (!PUBLIC_PLACES_KEY) return null;
-  try {
-    const params = new URLSearchParams({
-      location: `${payload.lat},${payload.lng}`,
-      radius: String(payload.radius || 5000),
-      key: PUBLIC_PLACES_KEY,
-    });
-    if (payload.type) params.set('type', payload.type);
-    if (payload.keyword) params.set('keyword', payload.keyword);
-    if (payload.pagetoken) params.set('pagetoken', payload.pagetoken);
-    const res = await fetch(`${PLACES_BASE}/nearbysearch/json?${params.toString()}`);
-    if (!res.ok) return null;
-    return res.json();
-  } catch (err) {
-    if (__DEV__) console.warn('[google-places] direct nearby failed:', err);
-    return null;
-  }
 }
 
 // Pick the best exterior/place photo — avoid food close-ups and product shots.
@@ -203,8 +90,7 @@ export async function searchPlace(
   location?: string,
 ): Promise<PlaceSearchResult | null> {
   const fullQuery = location ? `${query} ${location}` : query;
-  const data = await callProxy<any>('search', { query: fullQuery })
-    ?? await directSearch(fullQuery);
+  const data = await callProxy<any>('search', { query: fullQuery });
   const candidate = data?.candidates?.[0];
   if (!candidate) return null;
 
@@ -242,8 +128,7 @@ export async function fetchDestinationPhotos(
     destination,
   ];
   for (const query of queries) {
-    const data = await callProxy<any>('search', { query, fields: 'photos' })
-      ?? await directSearch(query, 'photos');
+    const data = await callProxy<any>('search', { query, fields: 'photos' });
     const photos: any[] = data?.candidates?.[0]?.photos ?? [];
     const urls = await resolvePhotos(photos, count, 1200);
     for (const url of urls) {
@@ -307,10 +192,7 @@ export async function searchNearby(
     type,
     keyword,
   };
-  const proxyData = await callProxy<any>('nearby', payload);
-  const data = proxyData?.results?.length
-    ? proxyData
-    : await directNearby(payload) ?? proxyData;
+  const data = await callProxy<any>('nearby', payload);
   if (!data?.results) return { places: [] };
 
   const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => {
@@ -318,8 +200,7 @@ export async function searchNearby(
     const resolvedPhoto = isResolvedGooglePhotoUrl(place.resolved_photo_url)
       ? place.resolved_photo_url
       : (photoRef ? await resolvePhotoUrl(photoRef, 800) : null);
-    const directPhoto = photoRef ? googlePhotoApiUrl(photoRef, 800) : null;
-    const photoUrls = [resolvedPhoto, directPhoto].filter(Boolean) as string[];
+    const photoUrls = [resolvedPhoto].filter(Boolean) as string[];
     return {
       place_id: place.place_id,
       name: place.name,
@@ -347,10 +228,7 @@ export async function searchNearbyPage(
   pageToken: string,
 ): Promise<NearbySearchResult> {
   const payload = { pagetoken: pageToken, lat: 0, lng: 0 };
-  const proxyData = await callProxy<any>('nearby', payload);
-  const data = proxyData?.results?.length
-    ? proxyData
-    : await directNearby(payload) ?? proxyData;
+  const data = await callProxy<any>('nearby', payload);
   if (!data?.results) return { places: [] };
 
   const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => {
@@ -358,8 +236,7 @@ export async function searchNearbyPage(
     const resolvedPhoto = isResolvedGooglePhotoUrl(place.resolved_photo_url)
       ? place.resolved_photo_url
       : (photoRef ? await resolvePhotoUrl(photoRef, 800) : null);
-    const directPhoto = photoRef ? googlePhotoApiUrl(photoRef, 800) : null;
-    const photoUrls = [resolvedPhoto, directPhoto].filter(Boolean) as string[];
+    const photoUrls = [resolvedPhoto].filter(Boolean) as string[];
     return {
       place_id: place.place_id,
       name: place.name,
@@ -411,8 +288,7 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
 }
 
 export async function getPlaceLocation(placeId: string): Promise<{ name: string; lat: number; lng: number } | null> {
-  const data = await callProxy<any>('location', { placeId })
-    ?? await directPlaceLocation(placeId);
+  const data = await callProxy<any>('location', { placeId });
   const r = data?.result;
   if (!r?.geometry?.location) return null;
   return {
@@ -440,14 +316,21 @@ export async function placeAutocomplete(
       lat: locationBias?.lat,
       lng: locationBias?.lng,
     });
-    const data = proxyData?.predictions?.length
-      ? proxyData
-      : await directAutocomplete(input.trim(), locationBias) ?? proxyData;
-    return (data?.predictions ?? []).filter((p: any) => p?.place_id && p?.description).map((p: any) => ({
+    return (proxyData?.predictions ?? []).filter((p: any) => p?.place_id && p?.description).map((p: any) => ({
       placeId: p.place_id,
       description: p.description,
     }));
   } catch {
     return [];
   }
+}
+
+export async function reverseGeocodeLatLng(lat: number, lng: number): Promise<string | null> {
+  const data = await callProxy<any>('geocode', {
+    lat,
+    lng,
+    resultType: 'point_of_interest|establishment|locality',
+  });
+  const name = data?.results?.[0]?.formatted_address?.split(',')?.[0]?.trim();
+  return name || null;
 }

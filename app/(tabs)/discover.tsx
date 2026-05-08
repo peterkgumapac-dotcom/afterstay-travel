@@ -39,7 +39,6 @@ import { distanceFromPoint, formatDistance } from '@/lib/distance';
 import { mapNearbyToDiscoverPlace, mapSavedToDiscoverPlace } from '@/components/discover/shared';
 import { MS_PER_DAY } from '@/lib/utils';
 import DistanceToggle from '@/components/discover/DistanceToggle';
-const ExploreMap = React.lazy(() => import('@/components/discover/ExploreMap'));
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, searchNearbyPage, placeAutocomplete, getPlaceLocation, searchPlace, type NearbyPlace } from '@/lib/google-places';
 import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS } from '@/lib/category-config';
@@ -498,7 +497,6 @@ function DiscoverScreenInner() {
   const [savedLoading, setSavedLoading] = useState(false);
   const [placeCategoryChip, setPlaceCategoryChip] = useState<typeof PLACE_CATEGORY_CHIPS[number]>('Food');
   const [visibleCount, setVisibleCount] = useState(20);
-  const [showMapModal, setShowMapModal] = useState(false);
 
   // PlaceDetailSheet state
   const [detailPlaceId, setDetailPlaceId] = useState<string | null>(null);
@@ -2116,26 +2114,6 @@ function DiscoverScreenInner() {
           </View>
         )}
         </Suspense>
-      )}
-
-      {/* Full-screen map */}
-      {showMapModal && (
-      <Suspense fallback={null}>
-      <ExploreMap
-        visible={showMapModal}
-        places={filteredPlaces}
-        savedNames={saved}
-        recommendedNames={recommended}
-        travelMode={travelMode}
-        distanceOrigin={distanceOrigin === 'me' ? 'me' : 'hotel'}
-        userLocation={userLocation}
-        onClose={() => setShowMapModal(false)}
-        onTravelModeChange={handleTravelModeChange}
-        onAnchorChange={handleAnchorChange}
-        onSaveToggle={toggleSave}
-        getDistanceKm={getDistanceKm}
-      />
-      </Suspense>
       )}
 
       {showDetail && (

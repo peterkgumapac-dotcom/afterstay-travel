@@ -4,8 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { Camera, ChevronLeft, MapPin, Send, X } from 'lucide-react-native';
 import React, { useCallback, useRef, useState } from 'react';
-import { CONFIG } from '@/lib/config';
-import { placeAutocomplete } from '@/lib/google-places';
+import { placeAutocomplete, reverseGeocodeLatLng } from '@/lib/google-places';
 import {
   ActivityIndicator,
   Alert,
@@ -89,11 +88,7 @@ export default function ComposeMomentScreen() {
     const lat = withGps.exif.GPSLatitude as number;
     const lng = withGps.exif.GPSLongitude as number;
     try {
-      const res = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${CONFIG.GOOGLE_MAPS_KEY}&result_type=point_of_interest|establishment|locality`,
-      );
-      const json = await res.json();
-      const name = json.results?.[0]?.formatted_address?.split(',')[0];
+      const name = await reverseGeocodeLatLng(lat, lng);
       if (name) setLocationName(name);
     } catch {}
   }, [locationName]);

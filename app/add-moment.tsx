@@ -23,8 +23,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius, spacing } from '@/constants/theme';
-import { CONFIG } from '@/lib/config';
-import { placeAutocomplete } from '@/lib/google-places';
+import { placeAutocomplete, reverseGeocodeLatLng } from '@/lib/google-places';
 import { addMoment, addPersonalPhoto, getActiveTrip } from '@/lib/supabase';
 import { createExplorePost } from '@/lib/moments/exploreMomentsService';
 import { useAuth } from '@/lib/auth';
@@ -145,11 +144,7 @@ export default function AddMomentScreen() {
           const lat = firstWithGps.exif.GPSLatitude as number;
           const lng = firstWithGps.exif.GPSLongitude as number;
           try {
-            const res = await fetch(
-              `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${CONFIG.GOOGLE_MAPS_KEY}&result_type=point_of_interest|establishment|locality`,
-            );
-            const json = await res.json();
-            const name = json.results?.[0]?.formatted_address?.split(',')[0];
+            const name = await reverseGeocodeLatLng(lat, lng);
             if (name) setLocation(name);
           } catch {
             // Silently fail — user can still type location manually

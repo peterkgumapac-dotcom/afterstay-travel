@@ -3,7 +3,6 @@
 const _hotelCoords = { lat: 0, lng: 0 };
 
 export const CONFIG = {
-  GOOGLE_MAPS_KEY: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY || process.env.EXPO_PUBLIC_GOOGLE_PLACES_KEY || '',
   SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
   SUPABASE_KEY: process.env.EXPO_PUBLIC_SUPABASE_KEY || '',
   WEATHER_KEY: process.env.EXPO_PUBLIC_WEATHER_API_KEY || '',
@@ -26,7 +25,6 @@ export function setHotelCoords(lat: number, lng: number) {
 
 export const verifyConfig = (): boolean => {
   const missing: string[] = [];
-  if (!CONFIG.GOOGLE_MAPS_KEY) missing.push('GOOGLE_PLACES_KEY');
   if (!CONFIG.SUPABASE_URL) missing.push('SUPABASE_URL');
   if (!CONFIG.WEATHER_KEY) console.warn('[CONFIG] Optional: WEATHER_API_KEY not set');
   if (missing.length) {

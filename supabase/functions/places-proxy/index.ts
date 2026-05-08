@@ -8,6 +8,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place';
+const GEOCODE_BASE = 'https://maps.googleapis.com/maps/api/geocode';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -167,6 +168,18 @@ Deno.serve(async (req) => {
         // Google redirects to the actual image — return the final URL
         const res = await fetch(url, { redirect: 'follow' });
         return jsonResponse({ url: res.url });
+      }
+
+      case 'geocode': {
+        const { lat, lng, resultType } = payload;
+        const params = new URLSearchParams({
+          latlng: `${lat},${lng}`,
+          key: apiKey,
+        });
+        if (resultType) params.append('result_type', String(resultType));
+        const res = await fetch(`${GEOCODE_BASE}/json?${params}`);
+        const data = await res.json();
+        return jsonResponse(data);
       }
 
       default:
