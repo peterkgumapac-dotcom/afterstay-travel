@@ -243,6 +243,7 @@ export default function ConstellationHero({
   const styles = useMemo(() => getStyles(colors), [colors]);
 
   const spentFormatted = `\u20B1${Math.round(spent / 1000)}k`;
+  const hasDistance = miles > 0;
 
   return (
     <View style={styles.container}>
@@ -253,8 +254,8 @@ export default function ConstellationHero({
       <View style={styles.header}>
         <Text style={styles.eyebrow}>Lifetime · since 2024</Text>
         <View style={styles.milesRow}>
-          <Text style={styles.milesNum}>{miles > 0 ? miles.toLocaleString() : '0'}</Text>
-          <Text style={styles.milesLabel}>km traveled</Text>
+          <Text style={styles.milesNum}>{hasDistance ? miles.toLocaleString() : '--'}</Text>
+          <Text style={styles.milesLabel}>{hasDistance ? 'km traveled' : 'distance syncing'}</Text>
         </View>
       </View>
 

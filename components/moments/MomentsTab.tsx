@@ -7,20 +7,20 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   Pressable,
   ActivityIndicator,
   StyleSheet,
   Share,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Camera, Compass, Eye, EyeOff } from 'lucide-react-native';
+import { Camera, Eye, EyeOff } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { pushProfile } from '@/lib/profileNavigation';
 import { useTabBarVisibility } from '@/app/(tabs)/_layout';
-const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
-import { getMoments, getGroupMembers, getMomentFavorites, getCommentCounts, toggleFavorite, toggleMomentVisibility as toggleVisibility, setMomentVisibility, batchSetMomentVisibility, batchDeleteMoments, getDismissedMomentIds, dismissMoment, undismissMoment, batchDismissMoments, saveGroupPhotoToPrivate, publishMomentToExplore, unpublishMomentFromExplore } from '@/lib/supabase';
+import { CurationLightbox } from '@/components/curation/CurationLightbox';
+import { getMomentFavorites, getCommentCounts, toggleFavorite, toggleMomentVisibility as toggleVisibility, setMomentVisibility, batchSetMomentVisibility, batchDeleteMoments, getDismissedMomentIds, dismissMoment, undismissMoment, batchDismissMoments, saveGroupPhotoToPrivate, publishMomentToExplore, unpublishMomentFromExplore } from '@/lib/supabase';
 import CommentSheet from './CommentSheet';
 import {
   getMomentsPromise,
@@ -31,8 +31,9 @@ import {
 import { cachePhotoMeta, getCachedPhotosByTrip } from '@/lib/cache/sqliteCache';
 import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
-import type { Moment, GroupMember, MomentVisibility } from '@/lib/types';
+import type { Moment, GroupMember } from '@/lib/types';
 import { getMomentImageUri, hasMomentImage, type MomentDisplay, type PeopleMap } from './types';
+import type { PhotoAction } from './PhotoActionsSheet';
 import { PersonChips } from './PersonChips';
 import { ScopeChips } from './ScopeChips';
 import type { ScopeFilter } from './ScopeChips';
@@ -40,37 +41,31 @@ import { AlbumsGrid } from './AlbumsGrid';
 import { BentoLayout } from './BentoLayout';
 import { PhotoCarousel } from './PhotoCarousel';
 import { PhotoEditSheet } from './PhotoEditSheet';
-import { FilmEditor } from './FilmEditor';
-import { PhotoGridPicker } from './PhotoGridPicker';
 import { BatchActionBar, type BatchAction } from './BatchActionBar';
 import { PolaroidCollage } from './PolaroidCollage';
 
 const MOMENTS_LOAD_TIMEOUT_MS = 10000;
 
-function withTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(fallback), MOMENTS_LOAD_TIMEOUT_MS);
+function withLoadTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out`)), MOMENTS_LOAD_TIMEOUT_MS);
     promise
       .then((value) => {
         clearTimeout(timer);
         resolve(value);
-      }, () => {
+      })
+      .catch((error) => {
         clearTimeout(timer);
-        resolve(fallback);
+        reject(error);
       });
   });
 }
-import { CurationLightbox } from '@/components/curation/CurationLightbox';
-import { Modal, RefreshControl } from 'react-native';
-import type { PhotoAction } from './PhotoActionsSheet';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const PEOPLE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#7f3712', '#9a7d52'];
-
-type TabMode = 'trip' | 'public';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,14 +78,11 @@ interface MomentsTabProps {
 function buildPeopleMap(members: GroupMember[]): PeopleMap {
   const people: PeopleMap = {};
   members.forEach((m, i) => {
-    const initial = m.name.charAt(0).toUpperCase();
     const entry = {
       name: m.name,
       color: PEOPLE_COLORS[i % PEOPLE_COLORS.length],
       avatar: m.profilePhoto,
     };
-    people[initial] = entry;
-    people[m.name] = entry;
     if (m.userId) people[m.userId] = entry;
   });
   return people;
@@ -105,7 +97,7 @@ function buildMomentDisplays(
 ): MomentDisplay[] {
   return moments.map((m) => {
     const authorKey = m.takenBy ? m.takenBy.charAt(0).toUpperCase() : '';
-    const personEntry = m.userId ? people[m.userId] : people[authorKey];
+    const personEntry = m.userId ? people[m.userId] : undefined;
     const fav = m.id ? favorites[m.id] : undefined;
     return {
       ...m,
@@ -154,11 +146,12 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   const loadRef = useRef<((silent?: boolean, forceRefresh?: boolean) => Promise<void>) | null>(null);
   const [rawMoments, setRawMoments] = useState<Moment[]>([]);
+  const rawMomentsRef = useRef<Moment[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [tabMode, setTabMode] = useState<TabMode>('trip');
   const [activePerson, setActivePerson] = useState<string | null>(null);
   const [showContributors, setShowContributors] = useState(false);
   const [activeScope, setActiveScope] = useState<ScopeFilter>('all');
@@ -167,9 +160,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [commentMomentId, setCommentMomentId] = useState<string | null>(null);
 
   const [editMomentId, setEditMomentId] = useState<string | null>(null);
-  const [filmMoments, setFilmMoments] = useState<MomentDisplay[] | null>(null);
-  const [filmInitIdx, setFilmInitIdx] = useState(0);
-  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
   const [curationDay, setCurationDay] = useState<{ dateLabel: string; photos: { id: string; uri: string }[] } | null>(null);
   const [curatedDays, setCuratedDays] = useState<Set<string>>(new Set());
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
@@ -184,6 +174,10 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   // Per-user dismissals (hide/show group photos)
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [showHidden, setShowHidden] = useState(false);
+
+  useEffect(() => {
+    rawMomentsRef.current = rawMoments;
+  }, [rawMoments]);
 
   // Hide FAB when select mode is active
   const { setFabVisible } = useTabBarVisibility();
@@ -289,10 +283,10 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           } catch (err) { if (__DEV__) console.warn('[Moments] HD download failed:', err); }
         })();
       }
+    } else if (action === 'edit-photo') {
+      return;
     } else if (action === 'reel') {
-      if (!imageUrl) return;
-      setFilmMoments([moment]);
-      setFilmInitIdx(0);
+      return;
     } else if (action === 'archive') {
       handleToggleVisibility(moment.id);
     } else if (action === 'set-private') {
@@ -412,6 +406,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const load = useCallback(async (silent = false, forceRefresh = false) => {
     try {
       if (!silent) setLoading(true);
+      if (!silent || forceRefresh) setLoadError(null);
 
       // Try cache first for instant display
       if (tripId && silent) {
@@ -438,14 +433,21 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         }
       }
 
-      const [moments, groupMembers, favs] = await Promise.all([
-        withTimeout(getMomentsPromise(tripId ?? '', forceRefresh), [] as Moment[]),
-        withTimeout(getGroupMembersPromise(tripId ?? '', forceRefresh), [] as GroupMember[]),
-        withTimeout(getMomentFavorites(tripId), {} as MomentFavoriteMap),
+      const moments = await withLoadTimeout(getMomentsPromise(tripId ?? '', forceRefresh), 'Moments');
+      const [groupMembers, favs] = await Promise.all([
+        withLoadTimeout(getGroupMembersPromise(tripId ?? '', forceRefresh), 'Trip members').catch((error) => {
+          if (__DEV__) console.warn('[Moments] member load failed:', error);
+          return getGroupMembersCached(tripId) ?? [];
+        }),
+        withLoadTimeout(getMomentFavorites(tripId), 'Favorites').catch((error) => {
+          if (__DEV__) console.warn('[Moments] favorite load failed:', error);
+          return {} as MomentFavoriteMap;
+        }),
       ]);
       setRawMoments(moments);
       setMembers(groupMembers);
       setFavoriteMap(favs);
+      setLoadError(null);
 
       // Fetch comment counts + dismissals in parallel
       const momentIds = moments.map(m => m.id).filter(Boolean) as string[];
@@ -472,11 +474,19 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         ).catch(() => {});
       }
 
-      // Prefetch first 20 photos
-      moments.filter(hasMomentImage).slice(0, 20).forEach((m) => {
-        const { Image: ExpoImg } = require('expo-image');
-        ExpoImg.prefetch(getMomentImageUri(m)).catch(() => {});
-      });
+      const prefetch = () => {
+        moments.filter(hasMomentImage).slice(0, 8).forEach((m) => {
+          Image.prefetch(getMomentImageUri(m)).catch(() => {});
+        });
+      };
+      setTimeout(prefetch, 350);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load moments';
+      if (__DEV__) console.warn('[Moments] load failed:', error);
+      setLoadError(message);
+      if (rawMomentsRef.current.length === 0) {
+        setRawMoments([]);
+      }
     } finally {
       if (!silent) setLoading(false);
       setRefreshing(false);
@@ -644,175 +654,146 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
           </ScrollView>
         )}
 
-        {/* ---- Trip / Public underline tabs ---- */}
-        <View style={[s.tabRow, { borderBottomColor: colors.border }]}>
-          <Pressable
-            onPress={() => setTabMode('trip')}
-            style={[s.tab, tabMode === 'trip' && s.tabActive]}
-          >
-            <Text style={[s.tabLabel, { color: tabMode === 'trip' ? colors.text : colors.text3 }]}>Your trip</Text>
-            <Text style={[s.tabSub, { color: tabMode === 'trip' ? colors.accent : colors.text3 }]}>{allMoments.length}</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setTabMode('public')}
-            style={[s.tab, tabMode === 'public' && s.tabActive]}
-          >
-            <Text style={[s.tabLabel, { color: tabMode === 'public' ? colors.text : colors.text3 }]}>Explore</Text>
-          </Pressable>
+        {/* ---- Person filter ---- */}
+        <PersonChips
+          active={activePerson}
+          onChange={setActivePerson}
+          members={members}
+          counts={personCounts}
+          total={allMoments.length}
+        />
+
+        {/* ---- Scope filter + hidden toggle ---- */}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <ScopeChips
+              active={activeScope}
+              onChange={setActiveScope}
+              counts={scopeCounts}
+            />
+          </View>
+          {dismissedIds.size > 0 && (
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowHidden((v) => !v);
+              }}
+              hitSlop={10}
+              style={{ paddingHorizontal: 14, paddingVertical: 6 }}
+            >
+              {showHidden ? (
+                <Eye size={18} color={colors.accent} />
+              ) : (
+                <EyeOff size={18} color={colors.text3} />
+              )}
+            </Pressable>
+          )}
         </View>
 
-        {tabMode === 'public' ? (
-          <View style={{ flex: 1 }}>
-            <React.Suspense fallback={<View style={{ padding: 40, alignItems: 'center' }}><Text style={{ color: colors.text3 }}>Loading...</Text></View>}>
-              <ExploreMomentsFeed />
-            </React.Suspense>
+        {activeScope === 'album' ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
+            <AlbumsGrid
+              tripId={tripId}
+              totalMoments={allMoments.length}
+              privateMoments={scopeCounts.me}
+              onSwitchScope={setActiveScope}
+            />
+          </ScrollView>
+        ) : loadError && allMoments.length === 0 ? (
+          <View style={s.emptyWrap}>
+            <Text style={[s.emptyTitle, { color: colors.text }]}>Could not load moments</Text>
+            <Text style={[s.emptySub, { color: colors.text3 }]}>
+              {loadError}. Check your connection, then try again.
+            </Text>
+            <View style={s.emptyActions}>
+              <Pressable
+                style={[s.emptyActionBtn, { backgroundColor: colors.accent, borderColor: colors.accent }]}
+                onPress={() => { setRefreshing(true); load(false, true); }}
+              >
+                <Text style={[s.emptyActionText, { color: colors.ink }]}>Retry</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : filtered.length === 0 ? (
+          <View style={s.emptyWrap}>
+            <Text style={[s.emptyTitle, { color: colors.text }]}>No moments yet</Text>
+            <Text style={[s.emptySub, { color: colors.text3 }]}>
+              Add photos for this trip to build your private and group memory library.
+            </Text>
+            <View style={s.emptyActions}>
+              <Pressable
+                style={[s.emptyActionBtn, { backgroundColor: colors.accent, borderColor: colors.accent }]}
+                onPress={() => router.push({ pathname: '/add-moment', params: tripId ? { tripId } : {} } as never)}
+              >
+                <Camera size={15} color={colors.ink} strokeWidth={2} />
+                <Text style={[s.emptyActionText, { color: colors.ink }]}>Add photos</Text>
+              </Pressable>
+            </View>
           </View>
         ) : (
-          <>
-            {/* ---- Person filter ---- */}
-            <PersonChips
-              active={activePerson}
-              onChange={setActivePerson}
-              members={members}
-              counts={personCounts}
-              total={allMoments.length}
-            />
-
-            {/* ---- Scope filter + hidden toggle ---- */}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ flex: 1 }}>
-                <ScopeChips
-                  active={activeScope}
-                  onChange={setActiveScope}
-                  counts={scopeCounts}
-                />
-              </View>
-              {dismissedIds.size > 0 && (
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setShowHidden((v) => !v);
-                  }}
-                  hitSlop={10}
-                  style={{ paddingHorizontal: 14, paddingVertical: 6 }}
-                >
-                  {showHidden ? (
-                    <Eye size={18} color={colors.accent} />
-                  ) : (
-                    <EyeOff size={18} color={colors.text3} />
-                  )}
-                </Pressable>
-              )}
-            </View>
-
-            {activeScope === 'album' ? (
-              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
-                <AlbumsGrid
-                  tripId={tripId}
-                  totalMoments={allMoments.length}
-                  privateMoments={scopeCounts.me}
-                  onSwitchScope={setActiveScope}
-                />
-              </ScrollView>
-            ) : filtered.length === 0 ? (
-              <View style={s.emptyWrap}>
-                <Text style={[s.emptyTitle, { color: colors.text }]}>No moments yet</Text>
-                <Text style={[s.emptySub, { color: colors.text3 }]}>
-                  Add photos for this trip, or explore what other travelers are sharing.
-                </Text>
-                <View style={s.emptyActions}>
-                  <Pressable
-                    style={[s.emptyActionBtn, { backgroundColor: colors.accent, borderColor: colors.accent }]}
-                    onPress={() => router.push({ pathname: '/add-moment', params: tripId ? { tripId } : {} } as never)}
-                  >
-                    <Camera size={15} color={colors.ink} strokeWidth={2} />
-                    <Text style={[s.emptyActionText, { color: colors.ink }]}>Add photos</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[s.emptyActionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    onPress={() => setTabMode('public')}
-                  >
-                    <Compass size={15} color={colors.text} strokeWidth={2} />
-                    <Text style={[s.emptyActionText, { color: colors.text }]}>Explore</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ) : (
-              <ScrollView
-                key={`bento-${activeScope}-${activePerson ?? 'all'}`}
-                style={{ flex: 1 }}
-                contentContainerStyle={{ paddingBottom: 100 }}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={() => { setRefreshing(true); load(true, true); }}
-                    tintColor={colors.accentLt}
-                  />
-                }
-              >
-                <BentoLayout
-                  items={filtered}
-                  onOpen={(m) => {
-                    const idx = filtered.findIndex((f) => f.id === m.id);
-                    setCarouselIndex(idx >= 0 ? idx : 0);
-                    setCarouselVisible(true);
-                  }}
-                  selectedIds={selectedIds}
-                  onToggleSelect={(id) => {
-                    setSelectedIds((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(id)) next.delete(id);
-                      else next.add(id);
-                      return next;
-                    });
-                  }}
-                  selectMode={selectMode}
-                  onLongPress={(id) => {
-                    if (!selectMode) {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      setSelectMode(true);
-                      setSelectedIds(new Set([id]));
-                    }
-                  }}
-                  tripId={tripId}
-                />
-              </ScrollView>
-            )}
-
-            {/* Batch action bar (select mode) */}
-            {selectMode && selectedIds.size > 0 && (
-              <BatchActionBar
-                count={selectedIds.size}
-                onAction={handleBatchAction}
-                onCancel={() => { setSelectMode(false); setSelectedIds(new Set()); }}
-              />
-            )}
-
-            {/* Fullscreen Carousel */}
-            <Modal
-              visible={carouselVisible}
-              transparent
-              animationType="fade"
-              statusBarTranslucent
-              onRequestClose={() => setCarouselVisible(false)}
-            >
-              <PhotoCarousel
-                moments={filtered}
-                initialIndex={carouselIndex}
-                people={people}
-                onClose={() => setCarouselVisible(false)}
-                onFavorite={handleFavorite}
-                onComment={(momentId) => {
-                  setCarouselVisible(false);
-                  setTimeout(() => setCommentMomentId(momentId), 300);
-                }}
-                onAction={handlePhotoAction}
-                dismissedIds={dismissedIds}
-              />
-            </Modal>
-
-          </>
+          <BentoLayout
+            key={`bento-${activeScope}-${activePerson ?? 'all'}`}
+            items={filtered}
+            onOpen={(m) => {
+              const idx = filtered.findIndex((f) => f.id === m.id);
+              setCarouselIndex(idx >= 0 ? idx : 0);
+              setCarouselVisible(true);
+            }}
+            selectedIds={selectedIds}
+            onToggleSelect={(id) => {
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              });
+            }}
+            selectMode={selectMode}
+            onLongPress={(id) => {
+              if (!selectMode) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setSelectMode(true);
+                setSelectedIds(new Set([id]));
+              }
+            }}
+            tripId={tripId}
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); load(true, true); }}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          />
         )}
+
+        {/* Batch action bar (select mode) */}
+        {selectMode && selectedIds.size > 0 && (
+          <BatchActionBar
+            count={selectedIds.size}
+            onAction={handleBatchAction}
+            onCancel={() => { setSelectMode(false); setSelectedIds(new Set()); }}
+          />
+        )}
+
+        {/* Fullscreen Carousel */}
+        <Modal
+          visible={carouselVisible}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={() => setCarouselVisible(false)}
+        >
+          <PhotoCarousel
+            moments={filtered}
+            initialIndex={carouselIndex}
+            people={people}
+            onClose={() => setCarouselVisible(false)}
+            onFavorite={handleFavorite}
+            onComment={(momentId) => {
+              setCarouselVisible(false);
+              setTimeout(() => setCommentMomentId(momentId), 300);
+            }}
+            onAction={handlePhotoAction}
+            dismissedIds={dismissedIds}
+          />
+        </Modal>
       </View>
 
       {/* ---- Edit details sheet ---- */}
@@ -822,28 +803,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         onSave={handleEditSave}
         onClose={() => setEditMomentId(null)}
       />
-
-      {/* ---- Photo grid picker for Film ---- */}
-      <PhotoGridPicker
-        visible={showPhotoPicker}
-        moments={filtered.filter(hasMomentImage)}
-        onConfirm={(selected) => {
-          setShowPhotoPicker(false);
-          setFilmMoments(selected);
-          setFilmInitIdx(0);
-        }}
-        onClose={() => setShowPhotoPicker(false)}
-      />
-
-      {/* ---- Film editor ---- */}
-      {filmMoments && (
-        <FilmEditor
-          visible={filmMoments !== null}
-          moments={filmMoments}
-          initialIndex={filmInitIdx}
-          onClose={() => setFilmMoments(null)}
-        />
-      )}
 
       {/* ---- Polaroid collage ---- */}
       <PolaroidCollage
@@ -893,7 +852,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 // Styles — getStyles factory pattern per CLAUDE.md
 // ---------------------------------------------------------------------------
 
-const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
+const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
   StyleSheet.create({
     loadingContainer: {
       flex: 1,
@@ -984,56 +943,6 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     memberStatBarFill: {
       height: 3,
       borderRadius: 2,
-    },
-    // Underline tabs
-    tabRow: {
-      flexDirection: 'row',
-      paddingHorizontal: 18,
-      gap: 22,
-      borderBottomWidth: 1,
-      marginBottom: 12,
-    },
-    tab: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-      gap: 7,
-      paddingTop: 8,
-      paddingBottom: 10,
-      borderBottomWidth: 2,
-      borderBottomColor: 'transparent',
-      marginBottom: -1,
-    },
-    tabActive: {
-      borderBottomColor: colors.accent,
-    },
-    tabLabel: {
-      fontSize: 14,
-      fontWeight: '600',
-      letterSpacing: -0.15,
-    },
-    tabSub: {
-      fontSize: 10.5,
-      fontWeight: '600',
-      fontVariant: ['tabular-nums'],
-    },
-    // Public placeholder
-    publicPlaceholder: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingTop: 80,
-      paddingHorizontal: 40,
-    },
-    publicTitle: {
-      fontSize: 20,
-      fontWeight: '600',
-      letterSpacing: -0.3,
-      marginBottom: 8,
-    },
-    publicSub: {
-      fontSize: 13,
-      lineHeight: 20,
-      textAlign: 'center',
     },
     // Empty state
     emptyWrap: {

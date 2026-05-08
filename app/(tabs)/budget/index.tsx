@@ -17,16 +17,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Svg, { Polyline } from 'react-native-svg';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Car, Compass, Package, Pencil, QrCode, ShoppingBag, Users, UtensilsCrossed, Wallet, X } from 'lucide-react-native';
+import { Car, ChevronDown, ChevronUp, Compass, Package, QrCode, ShoppingBag, Users, UtensilsCrossed, Wallet, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
-import BudgetStatusBanner from '@/components/budget/BudgetStatusBanner';
 import SwipeableExpenseRow from '@/components/budget/SwipeableExpenseRow';
 import {
   addPaymentQr,
@@ -67,7 +65,6 @@ import { formatCurrency, formatDatePHT, safeParse, MS_PER_DAY } from '@/lib/util
 import type { Expense, ExpenseTarget, GroupMember, Trip, UnifiedExpenseHistoryItem, SavingsGoal, SavingsMilestone, DailyExpenseCategory } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
-type BudgetState = 'cruising' | 'low' | 'over';
 type DetailExpense = Expense & { source?: UnifiedExpenseHistoryItem['source']; sourceId?: string };
 type BudgetMode = 'budget' | 'group';
 type TabId = 'expenses' | 'savings' | 'settle' | 'fate';
@@ -139,6 +136,116 @@ function SummaryStrip({ summary, styles }: { summary: MoneySummary; styles: Retu
           </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+function BudgetHero({
+  eyebrow,
+  amount,
+  currency,
+  subtitle,
+  context,
+  note,
+  progressPct,
+  progressLeftLabel,
+  progressRightLabel,
+  onAdd,
+  onScan,
+  onSetLimit,
+  styles,
+}: {
+  eyebrow: string;
+  amount: number;
+  currency: string;
+  subtitle: string;
+  context: string;
+  note?: string;
+  progressPct?: number;
+  progressLeftLabel?: string;
+  progressRightLabel?: string;
+  onAdd: () => void;
+  onScan: () => void;
+  onSetLimit?: () => void;
+  styles: ReturnType<typeof getStyles>;
+}) {
+  const clampedProgress = progressPct == null ? null : Math.max(0, Math.min(100, progressPct));
+
+  return (
+    <View style={styles.travelHero}>
+      <View style={styles.travelHeroTop}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.eyebrow}>{eyebrow}</Text>
+          <Text style={styles.travelHeroAmount} numberOfLines={1} adjustsFontSizeToFit>
+            {formatCurrency(amount, currency)}
+          </Text>
+          <Text style={styles.travelHeroSub}>{subtitle}</Text>
+        </View>
+        <View style={styles.travelHeroPill}>
+          <Text style={styles.travelHeroPillText} numberOfLines={1}>{context}</Text>
+        </View>
+      </View>
+
+      {clampedProgress !== null && (
+        <View style={styles.travelHeroProgressBlock}>
+          <View style={styles.travelHeroProgressTrack}>
+            <View style={[styles.travelHeroProgressFill, { width: `${clampedProgress}%` }]} />
+          </View>
+          {(progressLeftLabel || progressRightLabel) && (
+            <View style={styles.travelHeroProgressLabels}>
+              <Text style={styles.travelHeroProgressText}>{progressLeftLabel}</Text>
+              <Text style={styles.travelHeroProgressText}>{progressRightLabel}</Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {note ? <Text style={styles.travelHeroNote}>{note}</Text> : null}
+
+      <View style={styles.travelHeroActions}>
+        <TouchableOpacity style={styles.travelHeroPrimaryAction} onPress={onAdd} activeOpacity={0.75}>
+          <Text style={styles.travelHeroPrimaryText}>+ Add</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.travelHeroSecondaryAction} onPress={onScan} activeOpacity={0.75}>
+          <Text style={styles.travelHeroSecondaryText}>Scan</Text>
+        </TouchableOpacity>
+        {onSetLimit && (
+          <TouchableOpacity style={styles.travelHeroLimitAction} onPress={onSetLimit} activeOpacity={0.75}>
+            <Text style={styles.travelHeroLimitText}>Set limit</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function CollapsibleBudgetSection({
+  title,
+  subtitle,
+  defaultOpen = false,
+  children,
+  styles,
+  colors,
+}: {
+  title: string;
+  subtitle?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+  styles: ReturnType<typeof getStyles>;
+  colors: ThemeColors;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <View style={styles.section}>
+      <TouchableOpacity style={styles.compactSectionHeader} onPress={() => setOpen(prev => !prev)} activeOpacity={0.75}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {subtitle ? <Text style={styles.compactSectionSub} numberOfLines={1}>{subtitle}</Text> : null}
+        </View>
+        {open ? <ChevronUp size={18} color={colors.text3} /> : <ChevronDown size={18} color={colors.text3} />}
+      </TouchableOpacity>
+      {open ? <View style={styles.compactSectionBody}>{children}</View> : null}
     </View>
   );
 }
@@ -292,14 +399,6 @@ function BudgetScreen() {
     setRefreshing(false);
   }, [isTestMode, mockData]);
 
-  const prevTestModeBudget = useRef(isTestMode);
-  useEffect(() => {
-    if (prevTestModeBudget.current && !isTestMode) {
-      load(true);
-    }
-    prevTestModeBudget.current = isTestMode;
-  }, [isTestMode]);
-
   // ── Data loading ──
   const load = useCallback(async (force = false) => {
     if (testModeRef.current) { setRefreshing(false); return; }
@@ -331,6 +430,14 @@ function BudgetScreen() {
       setBudgetLoading(false);
     }
   }, []);
+
+  const prevTestModeBudget = useRef(isTestMode);
+  useEffect(() => {
+    if (prevTestModeBudget.current && !isTestMode) {
+      load(true);
+    }
+    prevTestModeBudget.current = isTestMode;
+  }, [isTestMode, load]);
 
   useEffect(() => {
     didInitialBudgetLoad.current = true;
@@ -404,11 +511,10 @@ function BudgetScreen() {
   const total = trip?.budgetLimit ?? 0;
   const spent = expenseSummary.total;
   const remaining = total - spent;
-  const days = useMemo(() => trip ? Math.max(1, Math.ceil(
+  const days = trip ? Math.max(1, Math.ceil(
     (safeParse(trip.endDate).getTime() - safeParse(trip.startDate).getTime()) / MS_PER_DAY
-  ) + 1) : 1, [trip?.startDate, trip?.endDate]);
+  ) + 1) : 1;
   const perDay = total > 0 ? Math.round(total / days) : 0;
-  const bState: BudgetState = total <= 0 ? 'cruising' : remaining / total > 0.5 ? 'cruising' : remaining / total > 0.2 ? 'low' : 'over';
   const tripStart = trip ? safeParse(trip.startDate) : new Date();
   const tripEnd = trip ? safeParse(trip.endDate) : new Date();
   const todayDate = new Date();
@@ -671,6 +777,7 @@ function BudgetScreen() {
     const hasTravelExpenses = travelExpenses.length > 0;
     const hasNormalExpenses = standaloneExpenses.length > 0;
     const hasFilteredExpenses = filteredHistoryExpenses.length > 0;
+    const isTrueEmptyBudget = historyLoaded && historyExpenses.length === 0 && quickTrips.length === 0;
     const filterTitle = historyFilter === 'normal'
       ? 'Normal Expenses'
       : historyFilter === 'trip'
@@ -699,85 +806,113 @@ function BudgetScreen() {
             <Text style={styles.title}>Budget</Text>
             <Text style={styles.subtitle}>{hasTravelExpenses ? 'Trips and quick trips' : 'Travel spending'}</Text>
           </View>
-          <TouchableOpacity
-            style={styles.addExpBtn}
-            onPress={() => openTargetSheet('add')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.addExpBtnText}>+ Add Expense</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Tab row — same tabs for all states */}
-        <View style={styles.tabRow}>
-          {([
-            { id: 'expenses' as const, label: 'Expenses' },
-            { id: 'savings' as const, label: 'Savings' },
-            { id: 'settle' as const, label: 'Settle Up' },
-          ]).map(t => (
-            <TouchableOpacity
-              key={t.id}
-              onPress={() => setTab(t.id)}
-              style={[styles.tabBtn, tab === t.id && styles.tabBtnActive]}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>
-                {t.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {!isTrueEmptyBudget && (
+          <View style={styles.tabRow}>
+            {([
+              { id: 'expenses' as const, label: 'Expenses' },
+              { id: 'savings' as const, label: 'Savings' },
+              { id: 'settle' as const, label: 'Settle Up' },
+            ]).map(t => (
+              <TouchableOpacity
+                key={t.id}
+                onPress={() => setTab(t.id)}
+                style={[styles.tabBtn, tab === t.id && styles.tabBtnActive]}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.section}>
-            <View style={styles.moneyHero}>
-              <Text style={styles.eyebrow}>{filterTitle}</Text>
-              <Text style={styles.moneyHeroAmount}>{formatCurrency(historyTotal, historySummary.currency)}</Text>
-              <Text style={styles.moneyHeroSub}>
-                {hasFilteredExpenses
-                  ? `${filteredHistoryExpenses.length} recent expense${filteredHistoryExpenses.length !== 1 ? 's' : ''} · ${filterSubtitle}`
-                  : historyFilter === 'normal'
-                    ? 'Normal expenses stay here when you just need to log something.'
-                    : 'Plan a trip or create a quick trip to see travel spending here.'}
-              </Text>
-            </View>
-            <SummaryStrip summary={historySummary} styles={styles} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.expenseFilterRow}>
-              {filterChips.map((chip) => {
-                const active = historyFilter === chip.id;
-                return (
+          {isTrueEmptyBudget ? (
+            <View style={styles.trueEmptyWrap}>
+              <View style={styles.trueEmptyCard}>
+                <View style={styles.trueEmptyIcon}>
+                  <Wallet size={26} color={colors.accent} strokeWidth={1.8} />
+                </View>
+                <Text style={styles.trueEmptyTitle}>No travel spending yet</Text>
+                <Text style={styles.trueEmptySub}>
+                  Track expenses for trips, quick trips, or everyday travel.
+                </Text>
+                <View style={styles.trueEmptyActions}>
                   <TouchableOpacity
-                    key={chip.id}
-                    style={[styles.expenseFilterChip, active && styles.expenseFilterChipActive]}
-                    onPress={() => setHistoryFilter(chip.id)}
-                    activeOpacity={0.7}
+                    style={styles.trueEmptyPrimary}
+                    onPress={() => openTargetSheet('add')}
+                    activeOpacity={0.75}
                   >
-                    <Text style={[styles.expenseFilterLabel, active && styles.expenseFilterLabelActive]}>{chip.label}</Text>
-                    <Text style={[styles.expenseFilterMeta, active && styles.expenseFilterMetaActive]}>
-                      {chip.count} · {formatCurrency(chip.amount, historySummary.currency)}
-                    </Text>
+                    <Text style={styles.trueEmptyPrimaryText}>Add Expense</Text>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {/* ── SAVINGS TAB (no-trip) ── */}
-          {tab === 'savings' && (
-            <View style={{ gap: 16 }}>
-              <DailyTrackerCard
-                onAddExpense={() => setShowDailySheet(true)}
-                onScanReceipt={() => openTargetSheet('scan')}
-              />
-              <SavingsGoalCard
-                goal={savingsGoal}
-                onSetup={() => setShowSavingsSetup(true)}
-                onLogSavings={() => setShowSavingsEntry(true)}
-                onEdit={() => setShowSavingsSetup(true)}
-                onPlanTrip={() => router.push('/onboarding' as never)}
-              />
+                  <TouchableOpacity
+                    style={styles.trueEmptySecondary}
+                    onPress={() => openTargetSheet('scan')}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.trueEmptySecondaryText}>Scan Receipt</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-          )}
+          ) : (
+            <>
+              <View style={styles.section}>
+                <BudgetHero
+                  eyebrow="Travel Budget"
+                  amount={historyTotal}
+                  currency={historySummary.currency}
+                  subtitle={hasFilteredExpenses
+                    ? `${filteredHistoryExpenses.length} expense${filteredHistoryExpenses.length !== 1 ? 's' : ''} · ${filterSubtitle}`
+                    : historyFilter === 'normal'
+                      ? 'Normal expenses stay here when you just need to log something.'
+                      : 'Plan a trip or create a quick trip to see travel spending here.'}
+                  context={filterTitle}
+                  onAdd={() => openTargetSheet('add')}
+                  onScan={() => openTargetSheet('scan')}
+                  styles={styles}
+                />
+                <SummaryStrip summary={historySummary} styles={styles} />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.expenseFilterRow}>
+                  {filterChips.map((chip) => {
+                    const active = historyFilter === chip.id;
+                    return (
+                      <TouchableOpacity
+                        key={chip.id}
+                        style={[styles.expenseFilterChip, active && styles.expenseFilterChipActive]}
+                        onPress={() => setHistoryFilter(chip.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.expenseFilterLabel, active && styles.expenseFilterLabelActive]}>{chip.label}</Text>
+                        <Text style={[styles.expenseFilterMeta, active && styles.expenseFilterMetaActive]}>
+                          {chip.count} · {formatCurrency(chip.amount, historySummary.currency)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* ── SAVINGS TAB (no-trip) ── */}
+              {tab === 'savings' && (
+                <View style={{ gap: 16 }}>
+                  <DailyTrackerCard
+                    onAddExpense={() => setShowDailySheet(true)}
+                    onScanReceipt={() => openTargetSheet('scan')}
+                  />
+                  <SavingsGoalCard
+                    goal={savingsGoal}
+                    onSetup={() => setShowSavingsSetup(true)}
+                    onLogSavings={() => setShowSavingsEntry(true)}
+                    onEdit={() => setShowSavingsSetup(true)}
+                    onPlanTrip={() => router.push('/onboarding' as never)}
+                  />
+                </View>
+              )}
 
           {/* ── SETTLE UP TAB (no-trip) ── */}
           {tab === 'settle' && (
@@ -840,12 +975,18 @@ function BudgetScreen() {
 
           {/* ── EXPENSES TAB (no-trip) ── */}
           {tab === 'expenses' && (
-            <View style={{ paddingHorizontal: 16, paddingTop: hasTravelExpenses ? 0 : 8, paddingBottom: 16 }}>
+            <CollapsibleBudgetSection
+              title="Everyday spending"
+              subtitle="For non-trip purchases"
+              styles={styles}
+              colors={colors}
+            >
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
                 onScanReceipt={() => openTargetSheet('scan')}
+                embedded
               />
-            </View>
+            </CollapsibleBudgetSection>
           )}
           {tab === 'expenses' && hasFilteredExpenses && historyFilter !== 'normal' ? (
             <>
@@ -863,8 +1004,12 @@ function BudgetScreen() {
                   Shopping: '#d9a441', Accommodation: '#8a5a2b', Other: '#857d70',
                 };
                 if (sorted.length > 0) return (
-                  <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
-                    <Text style={styles.historyLabel}>BY CATEGORY</Text>
+                  <CollapsibleBudgetSection
+                    title="Where it went"
+                    subtitle={`${sorted[0][0]} leads · ${formatCurrency(sorted[0][1], historySummary.currency)}`}
+                    styles={styles}
+                    colors={colors}
+                  >
                     <View style={{ gap: 10 }}>
                       {sorted.map(([cat, amt]) => (
                         <View key={cat} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -872,44 +1017,14 @@ function BudgetScreen() {
                           <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bg2, overflow: 'hidden' }}>
                             <View style={{ height: 8, borderRadius: 4, width: `${(amt / maxVal) * 100}%`, backgroundColor: catColors[cat] ?? colors.accent }} />
                           </View>
-                          <Text style={{ width: 80, fontSize: 12, fontWeight: '600', color: colors.text, textAlign: 'right' }}>{formatCurrency(amt, 'PHP')}</Text>
+                          <Text style={{ width: 80, fontSize: 12, fontWeight: '600', color: colors.text, textAlign: 'right' }}>{formatCurrency(amt, historySummary.currency)}</Text>
                         </View>
                       ))}
                     </View>
-                  </View>
+                  </CollapsibleBudgetSection>
                 );
                 return null;
               })()}
-
-              {/* OCR prompt card */}
-              <TouchableOpacity
-                style={{
-                  marginHorizontal: 16,
-                  marginBottom: 20,
-                  padding: 16,
-                  backgroundColor: colors.accentBg,
-                  borderRadius: radius.md,
-                  borderWidth: 1,
-                  borderColor: colors.accentBorder,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 12,
-                }}
-                onPress={() => openTargetSheet('scan')}
-                activeOpacity={0.7}
-              >
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' }}>
-                  <QrCode size={20} color="#fff" strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
-                    Scan a receipt
-                  </Text>
-                  <Text style={{ fontSize: 11, color: colors.text2, marginTop: 2 }}>
-                    AI reads your receipts and logs expenses automatically
-                  </Text>
-                </View>
-              </TouchableOpacity>
 
               {/* Grouped purchases — per source with sub-groups by name/date */}
               <View style={styles.historyList}>
@@ -1131,8 +1246,12 @@ function BudgetScreen() {
           )}
 
           {/* User-scoped Payment QR codes (visible in all states) */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>AfterStay Pay</Text>
+          <CollapsibleBudgetSection
+            title="Payment QR"
+            subtitle={userQrs.length > 0 ? `${userQrs.length} saved code${userQrs.length !== 1 ? 's' : ''}` : 'Add GCash, Maya, bank QR'}
+            styles={styles}
+            colors={colors}
+          >
             {userQrs.map((qr) => (
               <TouchableOpacity
                 key={qr.id}
@@ -1177,8 +1296,10 @@ function BudgetScreen() {
                 {userQrs.length > 0 ? '+ Add another QR' : '+ Add payment QR'}
               </Text>
             </TouchableOpacity>
-          </View>
+          </CollapsibleBudgetSection>
 
+            </>
+          )}
           <View style={{ height: 100 }} />
         </ScrollView>
 
@@ -1367,13 +1488,6 @@ function BudgetScreen() {
           <Text style={styles.title}>Budget</Text>
           <Text style={styles.subtitle}>{trip?.destination ?? 'Trip'} · {formatDatePHT(trip?.startDate ?? '')} - {formatDatePHT(trip?.endDate ?? '')}</Text>
         </View>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => openTargetSheet('add')}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.addBtnText}>+ Add</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Mode pill — Budget / Group */}
@@ -1428,117 +1542,35 @@ function BudgetScreen() {
         {tab === 'expenses' && (
           <>
             <View style={styles.section}>
-              <View style={styles.moneyHero}>
-                <Text style={styles.eyebrow}>{total > 0 ? 'Trip Budget' : 'Trip Spending'}</Text>
-                <Text style={styles.moneyHeroAmount}>{formatCurrency(spent, trip?.costCurrency ?? 'PHP')}</Text>
-                <Text style={styles.moneyHeroSub}>
-                  {total > 0
-                    ? `${remaining < 0 ? 'Over by' : 'Left'} ${formatCurrency(Math.abs(remaining), trip?.costCurrency ?? 'PHP')} · ${formatCurrency(dailyAllowance, trip?.costCurrency ?? 'PHP')}/day left`
-                    : `${expenses.length} expense${expenses.length !== 1 ? 's' : ''} · ${formatCurrency(actualPerDay, trip?.costCurrency ?? 'PHP')}/day average`}
-                </Text>
-              </View>
+              <BudgetHero
+                eyebrow="Travel Budget"
+                amount={spent}
+                currency={trip?.costCurrency ?? 'PHP'}
+                subtitle={total > 0
+                  ? `${remaining < 0 ? 'Over by' : 'Left'} ${formatCurrency(Math.abs(remaining), trip?.costCurrency ?? 'PHP')} · ${formatCurrency(dailyAllowance, trip?.costCurrency ?? 'PHP')}/day left`
+                  : `${expenses.length} expense${expenses.length !== 1 ? 's' : ''} · ${formatCurrency(actualPerDay, trip?.costCurrency ?? 'PHP')}/day average`}
+                context={trip?.destination ?? trip?.name ?? 'Current trip'}
+                note={budgetInsights[0] ?? (total > 0 ? `${days} days · ${formatCurrency(perDay, trip?.costCurrency ?? 'PHP')}/day target` : undefined)}
+                progressPct={total > 0 ? (spent / total) * 100 : undefined}
+                progressLeftLabel={total > 0 ? `Spent ${formatCurrency(spent, trip?.costCurrency ?? 'PHP')}` : undefined}
+                progressRightLabel={total > 0 ? `${remaining < 0 ? 'Over' : 'Left'} ${formatCurrency(Math.abs(remaining), trip?.costCurrency ?? 'PHP')}` : undefined}
+                onAdd={() => openTargetSheet('add')}
+                onScan={() => openTargetSheet('scan')}
+                onSetLimit={total > 0 ? undefined : () => { setBudgetInput(''); setShowBudgetModal(true); }}
+                styles={styles}
+              />
               <SummaryStrip summary={{ ...activeTripSummary, currency: trip?.costCurrency ?? activeTripSummary.currency }} styles={styles} />
             </View>
 
-            {/* Status banner */}
-            {total > 0 && (
-              <View style={styles.section}>
-                <BudgetStatusBanner state={bState} spent={spent} total={total} />
-              </View>
-            )}
-
-            {/* Budget card */}
-            <View style={styles.section}>
-              <View style={styles.budgetCard}>
-                <View style={styles.budgetHeader}>
-                  <View>
-                    <Text style={styles.eyebrow}>{total > 0 ? `Trip budget · ${days} days` : 'Total spent'}</Text>
-                    {total > 0 ? (
-                      <>
-                        <View style={styles.budgetAmountRow}>
-                          <Text style={styles.budgetCurrency}>{'\u20B1'}</Text>
-                          <Text style={styles.budgetAmount}>{total.toLocaleString()}</Text>
-                          <TouchableOpacity onPress={() => { setBudgetInput(String(total)); setShowBudgetModal(true); }} hitSlop={16}>
-                            <Pencil size={13} color={colors.text3} strokeWidth={1.8} />
-                          </TouchableOpacity>
-                        </View>
-                        <Text style={styles.budgetPerDay}>{formatCurrency(perDay, 'PHP')}/day target</Text>
-                      </>
-                    ) : (
-                      <>
-                        <Text style={styles.trackAmount}>{formatCurrency(spent, trip?.costCurrency ?? 'PHP')}</Text>
-                        <Text style={styles.trackSub}>
-                          {expenses.length} expense{expenses.length !== 1 ? 's' : ''} · {days} days ·{' '}
-                          <Text style={{ color: colors.accent }} onPress={() => { setBudgetInput(''); setShowBudgetModal(true); }}>Set a limit</Text>
-                        </Text>
-                      </>
-                    )}
-                  </View>
-                </View>
-
-                {/* Progress bar — only with limit */}
-                {total > 0 && (
-                  <>
-                    <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${Math.min(100, (spent / total) * 100)}%` }]} />
-                    </View>
-                    <View style={styles.progressLabels}>
-                      <Text style={styles.progressText}>Spent <Text style={styles.progressBold}>{formatCurrency(spent, 'PHP')}</Text></Text>
-                      <Text style={styles.progressText}>{remaining < 0 ? 'Over' : 'Left'} <Text style={[styles.progressBold, { color: remaining < 0 ? colors.red : colors.accent }]}>{formatCurrency(Math.abs(remaining), 'PHP')}</Text></Text>
-                    </View>
-                    <View style={styles.budgetStatsRow}>
-                      <View style={styles.budgetStat}>
-                        <Text style={styles.budgetStatLabel}>Daily left</Text>
-                        <Text style={styles.budgetStatValue}>{formatCurrency(dailyAllowance, trip?.costCurrency ?? 'PHP')}</Text>
-                      </View>
-                      <View style={styles.budgetStat}>
-                        <Text style={styles.budgetStatLabel}>Avg/day</Text>
-                        <Text style={styles.budgetStatValue}>{formatCurrency(actualPerDay, trip?.costCurrency ?? 'PHP')}</Text>
-                      </View>
-                      <View style={styles.budgetStat}>
-                        <Text style={styles.budgetStatLabel}>Days left</Text>
-                        <Text style={styles.budgetStatValue}>{remainingTripDays}</Text>
-                      </View>
-                    </View>
-                  </>
-                )}
-
-                {/* Lodging one-liner */}
-                {trip?.accommodation && (
-                  <View style={styles.lodgingRow}>
-                    <View style={styles.lodgingCheck}>
-                      <Svg width={12} height={12} viewBox="0 0 24 24" fill="none"><Polyline points="20 6 9 17 4 12" stroke={colors.accent} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.lodgingTitle} numberOfLines={1}>Lodging · {trip.accommodation}</Text>
-                      <Text style={styles.lodgingSub}>Paid in full · {members.length} traveler{members.length !== 1 ? 's' : ''}</Text>
-                    </View>
-                    {trip.cost != null && <Text style={styles.lodgingAmount}>{formatCurrency(trip.cost, trip.costCurrency ?? 'PHP')}</Text>}
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {budgetInsights.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.insightCard}>
-                  <Text style={styles.eyebrow}>Smart Budget</Text>
-                  {budgetInsights.map((insight) => (
-                    <Text key={insight} style={styles.insightText}>{insight}</Text>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            <View style={styles.section}>
-              <DailyTrackerCard
-                onAddExpense={() => setShowDailySheet(true)}
-                onScanReceipt={() => openTargetSheet('scan')}
-              />
-            </View>
-
             {/* Payment QR shortcuts */}
-            <View style={styles.section}>
+            <CollapsibleBudgetSection
+              title="Payment QR"
+              subtitle={[paymentQrs.length, userQrs.length].reduce((sum, n) => sum + n, 0) > 0
+                ? `${paymentQrs.length + userQrs.length} saved code${paymentQrs.length + userQrs.length !== 1 ? 's' : ''}`
+                : 'Add GCash, Maya, bank QR'}
+              styles={styles}
+              colors={colors}
+            >
               <View style={styles.qrHeader}>
                 <Image source={require('@/assets/icon/afterstay-icon.png')} style={styles.qrBrandIcon} />
                 <View>
@@ -1602,7 +1634,7 @@ function BudgetScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
+            </CollapsibleBudgetSection>
 
             {/* Person filter — Group mode */}
             {mode === 'group' && members.length >= 2 && (
@@ -1643,13 +1675,12 @@ function BudgetScreen() {
 
             {/* Categories */}
             {spent > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Where it's going</Text>
-                {topCategory && (
-                  <Text style={[styles.categoryNudge, topCategory.pct >= 50 && { color: colors.red }]}>
-                    {topCategory.name} is {topCategory.pct}% of your spend{topCategory.pct >= 50 ? ' - worth a quick check.' : '.'}
-                  </Text>
-                )}
+              <CollapsibleBudgetSection
+                title="Where it went"
+                subtitle={topCategory ? `${topCategory.name} · ${topCategory.pct}% of spend` : `${expenses.length} expense${expenses.length !== 1 ? 's' : ''}`}
+                styles={styles}
+                colors={colors}
+              >
                 <View style={styles.catList}>
                   {CATEGORIES.map(cat => {
                     const amount = expenseSummary.byCategory[cat.matchKey] ?? 0;
@@ -1664,7 +1695,7 @@ function BudgetScreen() {
                         <View style={{ flex: 1 }}>
                           <View style={styles.catHeader}>
                             <Text style={styles.catName}>{cat.name}</Text>
-                            <Text style={styles.catAmount}>{formatCurrency(amount, 'PHP')}</Text>
+                            <Text style={styles.catAmount}>{formatCurrency(amount, trip?.costCurrency ?? 'PHP')}</Text>
                           </View>
                           <View style={styles.catBarTrack}>
                             <View style={[styles.catBarFill, { width: `${pct}%`, backgroundColor: color }]} />
@@ -1674,7 +1705,7 @@ function BudgetScreen() {
                     );
                   })}
                 </View>
-              </View>
+              </CollapsibleBudgetSection>
             )}
 
             {/* Spending by day */}
@@ -1767,6 +1798,19 @@ function BudgetScreen() {
                 })}
               </View>
             )}
+
+            <CollapsibleBudgetSection
+              title="Everyday spending"
+              subtitle="Separate from this trip"
+              styles={styles}
+              colors={colors}
+            >
+              <DailyTrackerCard
+                onAddExpense={() => setShowDailySheet(true)}
+                onScanReceipt={() => openTargetSheet('scan')}
+                embedded
+              />
+            </CollapsibleBudgetSection>
 
           </>
         )}
@@ -1961,20 +2005,39 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   tabTextActive: { color: c.text },
 
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
+  scrollContent: { paddingBottom: 120 },
   section: { paddingHorizontal: 16, paddingTop: 14, gap: 8 },
   nudgeCard: { alignItems: 'center', padding: 28, borderRadius: radius.md, borderWidth: 1, borderStyle: 'dashed' },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionTitle: { fontSize: 15, fontWeight: '600', color: c.text },
   seeAllText: { fontSize: 12, fontWeight: '600', color: c.accent },
   eyebrow: { fontSize: 10, fontWeight: '600', letterSpacing: 1.6, textTransform: 'uppercase', color: c.text3 },
-  moneyHero: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 18, padding: 16, gap: 4 },
-  moneyHeroAmount: { fontSize: 30, fontWeight: '600', color: c.text, letterSpacing: -0.5 },
-  moneyHeroSub: { fontSize: 12, color: c.text3, lineHeight: 17 },
-  summaryStrip: { flexDirection: 'row', gap: 8 },
-  summaryTile: { flex: 1, minHeight: 64, backgroundColor: c.card2, borderWidth: 1, borderColor: c.border, borderRadius: 14, padding: 10, justifyContent: 'center' },
-  summaryLabel: { fontSize: 10, fontWeight: '700', color: c.text3, textTransform: 'uppercase', letterSpacing: 0.8 },
-  summaryAmount: { fontSize: 14, fontWeight: '700', color: c.text, marginTop: 4, letterSpacing: -0.2 },
+  travelHero: { backgroundColor: c.card, borderWidth: 1, borderColor: c.accentBorder, borderRadius: 18, padding: 16, gap: 12 },
+  travelHeroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  travelHeroAmount: { fontSize: 32, fontWeight: '700', color: c.text, letterSpacing: -0.7, marginTop: 4 },
+  travelHeroSub: { fontSize: 12.5, color: c.text2, lineHeight: 18, marginTop: 3 },
+  travelHeroPill: { maxWidth: 132, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: c.accentBg, borderWidth: 1, borderColor: c.accentBorder },
+  travelHeroPillText: { fontSize: 10.5, fontWeight: '800', color: c.accent },
+  travelHeroProgressBlock: { gap: 6 },
+  travelHeroProgressTrack: { height: 6, borderRadius: 99, backgroundColor: c.card2, overflow: 'hidden' },
+  travelHeroProgressFill: { height: '100%', borderRadius: 99, backgroundColor: c.accent },
+  travelHeroProgressLabels: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+  travelHeroProgressText: { fontSize: 11, color: c.text3, fontWeight: '600' },
+  travelHeroNote: { fontSize: 12, color: c.text3, lineHeight: 17 },
+  travelHeroActions: { flexDirection: 'row', gap: 8 },
+  travelHeroPrimaryAction: { flex: 1, minHeight: 42, borderRadius: 13, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
+  travelHeroPrimaryText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  travelHeroSecondaryAction: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: c.border, backgroundColor: c.card2, alignItems: 'center', justifyContent: 'center' },
+  travelHeroSecondaryText: { fontSize: 13, fontWeight: '800', color: c.text },
+  travelHeroLimitAction: { minWidth: 82, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: c.accentBorder, backgroundColor: c.accentBg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  travelHeroLimitText: { fontSize: 12, fontWeight: '800', color: c.accent },
+  summaryStrip: { flexDirection: 'row', gap: 6 },
+  summaryTile: { flex: 1, minHeight: 46, backgroundColor: 'transparent', borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 9, justifyContent: 'center' },
+  summaryLabel: { fontSize: 9.5, fontWeight: '700', color: c.text3, textTransform: 'uppercase', letterSpacing: 0.6 },
+  summaryAmount: { fontSize: 12.5, fontWeight: '800', color: c.text, marginTop: 2, letterSpacing: -0.2 },
+  compactSectionHeader: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 15 },
+  compactSectionSub: { fontSize: 11, color: c.text3, marginTop: 2 },
+  compactSectionBody: { paddingTop: 8, gap: 8 },
   expenseFilterRow: { gap: 8, paddingRight: 16 },
   expenseFilterChip: { minWidth: 116, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: c.border, backgroundColor: c.card },
   expenseFilterChipActive: { borderColor: c.accentBorder, backgroundColor: c.accentBg },
@@ -2119,4 +2182,57 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   historyEmptySub: { fontSize: 13, color: c.text3, textAlign: 'center' },
   historyCtaBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, backgroundColor: c.accent, marginTop: 12 },
   historyCtaText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+  trueEmptyWrap: { flex: 1, paddingHorizontal: 20, paddingTop: 86 },
+  trueEmptyCard: {
+    alignItems: 'center',
+    paddingHorizontal: 22,
+    paddingVertical: 34,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.card,
+  },
+  trueEmptyIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: c.accentBorder,
+    backgroundColor: c.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  trueEmptyTitle: { fontSize: 18, fontWeight: '800', color: c.text, textAlign: 'center' },
+  trueEmptySub: {
+    fontSize: 13,
+    color: c.text3,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 8,
+    maxWidth: 260,
+  },
+  trueEmptyActions: { flexDirection: 'row', gap: 10, marginTop: 22 },
+  trueEmptyPrimary: {
+    minWidth: 132,
+    minHeight: 46,
+    borderRadius: 15,
+    backgroundColor: c.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  trueEmptyPrimaryText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+  trueEmptySecondary: {
+    minWidth: 118,
+    minHeight: 46,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.card2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  trueEmptySecondaryText: { fontSize: 13, fontWeight: '800', color: c.text },
 });

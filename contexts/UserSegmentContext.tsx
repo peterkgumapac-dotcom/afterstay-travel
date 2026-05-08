@@ -28,9 +28,19 @@ import { getMockDataForKey, parseMockKey, MOCK_LABELS, type MockSegmentData, typ
 
 const DEV_OVERRIDE_KEY = 'dev:segment-override';
 const DEV_ALLOWED_EMAIL = 'peterkgumapac@gmail.com';
+const INTERNAL_QA_TOOLS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true';
+
+function canUseLifecycleOverride(email?: string | null): boolean {
+  return INTERNAL_QA_TOOLS_ENABLED && email === DEV_ALLOWED_EMAIL;
+}
 
 /** Set a mock key override for testing. Pass null to clear. */
 export async function setSegmentOverride(key: MockKey | null): Promise<void> {
+  if (!INTERNAL_QA_TOOLS_ENABLED) {
+    await AsyncStorage.removeItem(DEV_OVERRIDE_KEY);
+    return;
+  }
+
   if (key) {
     await AsyncStorage.setItem(DEV_OVERRIDE_KEY, key);
   } else {
@@ -40,6 +50,11 @@ export async function setSegmentOverride(key: MockKey | null): Promise<void> {
 
 /** Read the current mock key override (null = no override). */
 export async function getSegmentOverride(): Promise<MockKey | null> {
+  if (!INTERNAL_QA_TOOLS_ENABLED) {
+    await AsyncStorage.removeItem(DEV_OVERRIDE_KEY);
+    return null;
+  }
+
   const val = await AsyncStorage.getItem(DEV_OVERRIDE_KEY);
   if (!val) return null;
   // Validate it's a known mock key
@@ -225,11 +240,13 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
 
       const realSegment = toSegment(result.status);
 
-      // Check for dev override (only for allowed email)
+      // Check for dev/internal QA override only. This must never leak into
+      // production runtime builds because mock trips replace real Home/Moments data.
       let segment = realSegment;
       let isTestMode = false;
       let mockKey: MockKey | null = null;
-      if (user.email === DEV_ALLOWED_EMAIL) {
+      const allowLifecycleOverride = canUseLifecycleOverride(user.email);
+      if (allowLifecycleOverride) {
         mockKey = await getSegmentOverride();
         if (mockKey) {
           const parsed = parseMockKey(mockKey);
@@ -285,7 +302,7 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
       // Update cache
       await Promise.all([
         resolvedProfile ? cacheSetForUser(userCacheKey(CK_PROFILE, userId), resolvedProfile, userId) : Promise.resolve(),
-        cacheSetForUser(userCacheKey(CK_SEGMENT, userId), segment, userId),
+        cacheSetForUser(userCacheKey(CK_SEGMENT, userId), realSegment, userId),
         result.activeTrip
           ? cacheSetForUser(userCacheKey(CK_ACTIVE, userId), result.activeTrip, userId)
           : cacheSetForUser(userCacheKey(CK_ACTIVE, userId), null, userId),

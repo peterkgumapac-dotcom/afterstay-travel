@@ -1,5 +1,15 @@
-import React, { useCallback } from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type ListRenderItemInfo,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { Image as RNImage } from 'react-native';
 import { Check } from 'lucide-react-native';
@@ -8,8 +18,12 @@ import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
 import { getMomentImageUri, type MomentDisplay } from './types';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GAP = 3;
+
+type BentoRow =
+  | { key: string; kind: 'hero'; items: [MomentDisplay, MomentDisplay, MomentDisplay] }
+  | { key: string; kind: 'pair'; items: [MomentDisplay, MomentDisplay] }
+  | { key: string; kind: 'single'; items: [MomentDisplay] };
 
 interface BentoLayoutProps {
   items: MomentDisplay[];
@@ -19,6 +33,44 @@ interface BentoLayoutProps {
   selectMode: boolean;
   onLongPress: (id: string) => void;
   tripId?: string;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+}
+
+function buildRows(items: MomentDisplay[]): BentoRow[] {
+  const rows: BentoRow[] = [];
+  let i = 0;
+
+  while (i < items.length) {
+    const remaining = items.length - i;
+    const pattern = Math.floor(i / 3) % 2;
+
+    if (remaining >= 3 && pattern === 0) {
+      rows.push({
+        key: `row-${items[i].id}`,
+        kind: 'hero',
+        items: [items[i], items[i + 1], items[i + 2]],
+      });
+      i += 3;
+    } else if (remaining >= 2) {
+      rows.push({
+        key: `row-${items[i].id}`,
+        kind: 'pair',
+        items: [items[i], items[i + 1]],
+      });
+      i += 2;
+    } else {
+      rows.push({
+        key: `row-${items[i].id}`,
+        kind: 'single',
+        items: [items[i]],
+      });
+      i += 1;
+    }
+  }
+
+  return rows;
 }
 
 export function BentoLayout({
@@ -29,8 +81,13 @@ export function BentoLayout({
   selectMode,
   onLongPress,
   tripId,
+  refreshing = false,
+  onRefresh,
+  contentContainerStyle,
 }: BentoLayoutProps) {
   const { colors } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const rows = useMemo(() => buildRows(items), [items]);
 
   const handlePress = useCallback(
     (item: MomentDisplay) => {
@@ -43,22 +100,16 @@ export function BentoLayout({
     [selectMode, onOpen, onToggleSelect],
   );
 
-  const rows: React.ReactElement[] = [];
-  let i = 0;
-
-  while (i < items.length) {
-    const remaining = items.length - i;
-    const pattern = Math.floor(i / 3) % 2; // alternate: big+2small, then 2 equal
-
-    if (remaining >= 3 && pattern === 0) {
-      const idx0 = i, idx1 = i + 1, idx2 = i + 2;
-      const m0 = items[idx0], m1 = items[idx1], m2 = items[idx2];
-      const bigW = (SCREEN_WIDTH - GAP * 3) * 0.6;
-      const smallW = (SCREEN_WIDTH - GAP * 3) * 0.4;
+  const renderRow = useCallback(
+    ({ item: row }: ListRenderItemInfo<BentoRow>) => {
+      if (row.kind === 'hero') {
+        const [m0, m1, m2] = row.items;
+        const bigW = (screenWidth - GAP * 3) * 0.6;
+        const smallW = (screenWidth - GAP * 3) * 0.4;
       const rowH = bigW;
 
-      rows.push(
-        <View key={`row-${idx0}`} style={styles.row}>
+        return (
+          <View style={styles.row}>
           <BentoCell
             moment={m0}
             width={bigW}
@@ -94,17 +145,17 @@ export function BentoLayout({
               tripId={tripId}
             />
           </View>
-        </View>,
-      );
-      i += 3;
-    } else if (remaining >= 2) {
-      const idx0 = i, idx1 = i + 1;
-      const m0 = items[idx0], m1 = items[idx1];
-      const w = (SCREEN_WIDTH - GAP * 3) / 2;
-      const h = w * 0.85;
+          </View>
+        );
+      }
 
-      rows.push(
-        <View key={`row-${idx0}`} style={styles.row}>
+      if (row.kind === 'pair') {
+        const [m0, m1] = row.items;
+        const w = (screenWidth - GAP * 3) / 2;
+        const h = w * 0.85;
+
+        return (
+          <View style={styles.row}>
           <BentoCell
             moment={m0}
             width={w}
@@ -127,16 +178,15 @@ export function BentoLayout({
             colors={colors}
             tripId={tripId}
           />
-        </View>,
-      );
-      i += 2;
-    } else {
-      const idx0 = i;
-      const m0 = items[idx0];
-      const w = SCREEN_WIDTH - GAP * 2;
+          </View>
+        );
+      }
 
-      rows.push(
-        <View key={`row-${idx0}`} style={{ marginBottom: GAP, paddingHorizontal: GAP }}>
+      const [m0] = row.items;
+      const w = screenWidth - GAP * 2;
+
+      return (
+        <View style={{ marginBottom: GAP, paddingHorizontal: GAP }}>
           <BentoCell
             moment={m0}
             width={w}
@@ -148,13 +198,27 @@ export function BentoLayout({
             colors={colors}
             tripId={tripId}
           />
-        </View>,
+        </View>
       );
-      i += 1;
-    }
-  }
+    },
+    [colors, handlePress, onLongPress, screenWidth, selectMode, selectedIds, tripId],
+  );
 
-  return <View style={styles.container}>{rows}</View>;
+  return (
+    <FlatList
+      data={rows}
+      keyExtractor={(row) => row.key}
+      renderItem={renderRow}
+      contentContainerStyle={[styles.container, contentContainerStyle]}
+      initialNumToRender={5}
+      maxToRenderPerBatch={5}
+      updateCellsBatchingPeriod={50}
+      windowSize={7}
+      removeClippedSubviews
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+    />
+  );
 }
 
 interface BentoCellProps {
@@ -181,7 +245,7 @@ function BentoCell({ moment, width, height, selected, selectMode, onPress, onLon
           cachePolicy="memory-disk"
           recyclingKey={moment.id}
           placeholder={moment.blurhash ? { blurhash: moment.blurhash } : undefined}
-          transition={200}
+          transition={80}
         />
       ) : (
         <View style={{ width: '100%', height: '100%', backgroundColor: colors.card }} />

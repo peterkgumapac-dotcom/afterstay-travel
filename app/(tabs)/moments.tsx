@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { ChevronDown, Zap } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MomentsTab } from '@/components/moments/MomentsTab';
@@ -16,6 +16,7 @@ import {
   getQuickTripsPromise,
   getQuickTripsCached,
 } from '@/hooks/useTrips';
+import { getMomentsPromise as getTabMomentsPromise } from '@/hooks/useTabMoments';
 import { getQuickTripPhotos } from '@/lib/quickTrips';
 import { formatDatePHT } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
@@ -60,14 +61,19 @@ function MomentsScreen() {
   const { activeTrip: segActiveTrip, pastTrips: segPastTrips, isTestMode } = useUserSegment();
   const [extraActiveTrip, setExtraActiveTrip] = useState<Trip | null>(null);
   const [extraPastTrips, setExtraPastTrips] = useState<Trip[]>([]);
-  const [loadingTrips, setLoadingTrips] = useState(!isTestMode);
-  const activeTrip = segActiveTrip ?? extraActiveTrip;
-  const pastTrips = segPastTrips.length > 0 ? segPastTrips : extraPastTrips;
+  const [loadingTrips, setLoadingTrips] = useState(true);
+  // Moments should show the signed-in user's real albums even when lifecycle QA
+  // mode is active. QA mock trips are useful for Home/Profile states, but they
+  // hide real media and make the tab look empty for accounts with moments.
+  const activeTrip = isTestMode ? extraActiveTrip : segActiveTrip ?? extraActiveTrip;
+  const pastTrips = isTestMode ? extraPastTrips : segPastTrips.length > 0 ? segPastTrips : extraPastTrips;
 
   const [quickTrips, setQuickTrips] = useState<QuickTrip[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | undefined>(undefined);
   const [selectedType, setSelectedType] = useState<'trip' | 'quick'>('trip');
+  const [tripMomentCounts, setTripMomentCounts] = useState<Record<string, number>>({});
   const [showPicker, setShowPicker] = useState(false);
+  const userPickedTripRef = useRef(false);
 
   // Quick trip photo state
   const [qtPhotos, setQtPhotos] = useState<QuickTripPhoto[]>([]);
@@ -86,24 +92,22 @@ function MomentsScreen() {
     setQuickTrips([]);
     setSelectedTripId(undefined);
     setSelectedType('trip');
+    setTripMomentCounts({});
     setShowPicker(false);
     setQtPhotos([]);
     setQtCarouselVisible(false);
     setQtCarouselIndex(0);
+    userPickedTripRef.current = false;
   }
 
   useEffect(() => {
     userIdRef.current = user?.id;
-    setLoadingTrips(!isTestMode);
-  }, [isTestMode, user?.id]);
+    setLoadingTrips(true);
+  }, [user?.id]);
 
   // Fetch trips + quick trips. Moments cannot rely only on UserSegmentContext here,
   // because brand-new accounts often hydrate trip state a beat later than the tab.
   useEffect(() => {
-    if (isTestMode) {
-      setLoadingTrips(false);
-      return;
-    }
     let cancelled = false;
     const requestUserId = user?.id;
     const isCurrentRequest = () => !cancelled && userIdRef.current === requestUserId;
@@ -112,14 +116,15 @@ function MomentsScreen() {
       const visible = all.filter((tr) => !tr.deletedAt && !tr.archivedAt);
       const active = visible.find((tr) => !tr.isDraft && (tr.status === 'Active' || tr.status === 'Planning')) ?? null;
       const completed = visible.filter((tr) => tr.status === 'Completed');
+      const preferred = completed[0] ?? active ?? visible[0];
       if (!isCurrentRequest()) return;
       setExtraActiveTrip(active);
       setExtraPastTrips(completed);
-      if (!segActiveTrip && active) {
-        setSelectedTripId((prev) => prev ?? active.id);
-        setSelectedType('trip');
-      } else if (completed.length > 0) {
-        setSelectedTripId((prev) => prev ?? completed[0].id);
+      if (preferred && !userPickedTripRef.current) {
+        setSelectedTripId((prev) => {
+          if (prev && visible.some((trip) => trip.id === prev)) return prev;
+          return preferred.id;
+        });
         setSelectedType('trip');
       }
     };
@@ -147,17 +152,55 @@ function MomentsScreen() {
       .then((trips) => { if (isCurrentRequest()) setQuickTrips(trips); });
 
     return () => { cancelled = true; };
-  }, [isTestMode, segActiveTrip, user?.id]);
+  }, [user?.id]);
+
+  const tripCandidates = useMemo(() => {
+    const map = new Map<string, Trip>();
+    [activeTrip, ...pastTrips].forEach((trip) => {
+      if (trip?.id && !trip.deletedAt && !trip.archivedAt) map.set(trip.id, trip);
+    });
+    return Array.from(map.values());
+  }, [activeTrip, pastTrips]);
 
   useEffect(() => {
-    if (activeTrip) {
-      setSelectedTripId(activeTrip.id);
-      setSelectedType('trip');
-    } else if (pastTrips.length > 0) {
-      setSelectedTripId((prev) => prev ?? pastTrips[0].id);
-      setSelectedType('trip');
+    if (userPickedTripRef.current || tripCandidates.length === 0) return;
+    setSelectedTripId((prev) => {
+      if (prev && tripCandidates.some((trip) => trip.id === prev)) return prev;
+      return tripCandidates[0].id;
+    });
+    setSelectedType('trip');
+  }, [tripCandidates]);
+
+  useEffect(() => {
+    if (tripCandidates.length === 0) {
+      setTripMomentCounts({});
+      return;
     }
-  }, [activeTrip, pastTrips]);
+    let cancelled = false;
+    Promise.all(
+      tripCandidates.map((trip) =>
+        getTabMomentsPromise(trip.id, true)
+          .then((moments) => [trip.id, moments.length] as const)
+          .catch(() => [trip.id, 0] as const),
+      ),
+    ).then((entries) => {
+      if (cancelled || userIdRef.current !== user?.id) return;
+      const counts = Object.fromEntries(entries);
+      setTripMomentCounts(counts);
+      if (userPickedTripRef.current || selectedType !== 'trip') return;
+      const bestWithMoments = [...tripCandidates]
+        .sort((a, b) => (counts[b.id] ?? 0) - (counts[a.id] ?? 0))
+        .find((trip) => (counts[trip.id] ?? 0) > 0);
+      if (bestWithMoments) {
+        setSelectedTripId((prev) => {
+          const prevCount = prev ? counts[prev] ?? 0 : 0;
+          return prevCount > 0 ? prev : bestWithMoments.id;
+        });
+        setSelectedType('trip');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [selectedType, tripCandidates, user?.id]);
 
   // Fetch photos when a quick trip is selected
   useEffect(() => {
@@ -192,7 +235,7 @@ function MomentsScreen() {
     ? (selectedTrip as QuickTrip | undefined)?.occurredAt ? formatDatePHT((selectedTrip as QuickTrip).occurredAt) : ''
     : selectedTrip ? `${formatDatePHT((selectedTrip as Trip).startDate)} – ${formatDatePHT((selectedTrip as Trip).endDate)}` : '';
 
-  const hasPicker = activeTrip === null && (pastTrips.length > 0 || quickTrips.length > 0);
+  const hasPicker = tripCandidates.length > 1 || quickTrips.length > 0;
   const waitingForTrips = loadingTrips && activeTrip === null && pastTrips.length === 0 && quickTrips.length === 0;
   const hasAny = activeTrip !== null || pastTrips.length > 0 || quickTrips.length > 0;
 
@@ -235,16 +278,17 @@ function MomentsScreen() {
           {showPicker && (
             <View style={styles.pickerDropdown}>
               {/* Regular trips */}
-              {pastTrips.length > 0 && (
+              {tripCandidates.length > 0 && (
                 <View style={styles.pickerSection}>
                   <Text style={styles.pickerSectionLabel}>TRIPS</Text>
                 </View>
               )}
-              {pastTrips.map((t) => (
+              {tripCandidates.map((t) => (
                 <TouchableOpacity
                   key={t.id}
                   style={[styles.pickerRow, t.id === selectedTripId && selectedType === 'trip' && styles.pickerRowActive]}
                   onPress={() => {
+                    userPickedTripRef.current = true;
                     setSelectedTripId(t.id);
                     setSelectedType('trip');
                     setShowPicker(false);
@@ -256,6 +300,7 @@ function MomentsScreen() {
                   </Text>
                   <Text style={styles.pickerRowDates}>
                     {formatDatePHT(t.startDate)} – {formatDatePHT(t.endDate)}
+                    {tripMomentCounts[t.id] ? ` · ${tripMomentCounts[t.id]} photo${tripMomentCounts[t.id] === 1 ? '' : 's'}` : ''}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -272,6 +317,7 @@ function MomentsScreen() {
                   key={qt.id}
                   style={[styles.pickerRow, qt.id === selectedTripId && selectedType === 'quick' && styles.pickerRowActive]}
                   onPress={() => {
+                    userPickedTripRef.current = true;
                     setSelectedTripId(qt.id);
                     setSelectedType('quick');
                     setShowPicker(false);
@@ -353,20 +399,19 @@ function MomentsScreen() {
               <Text style={styles.emptyText}>No photos in this quick trip</Text>
             </View>
           ) : (
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
-              <BentoLayout
-                items={qtMomentDisplays}
-                onOpen={(m) => {
-                  const idx = qtMomentDisplays.findIndex((d) => d.id === m.id);
-                  setQtCarouselIndex(idx >= 0 ? idx : 0);
-                  setQtCarouselVisible(true);
-                }}
-                selectedIds={new Set()}
-                onToggleSelect={() => {}}
-                selectMode={false}
-                onLongPress={() => {}}
-              />
-            </ScrollView>
+            <BentoLayout
+              items={qtMomentDisplays}
+              onOpen={(m) => {
+                const idx = qtMomentDisplays.findIndex((d) => d.id === m.id);
+                setQtCarouselIndex(idx >= 0 ? idx : 0);
+                setQtCarouselVisible(true);
+              }}
+              selectedIds={new Set()}
+              onToggleSelect={() => {}}
+              selectMode={false}
+              onLongPress={() => {}}
+              contentContainerStyle={{ paddingBottom: 40 }}
+            />
           )}
 
           <Modal

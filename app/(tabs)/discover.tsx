@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { StatusBar } from 'expo-status-bar';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -65,7 +66,6 @@ import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
 import DiscoverModeSwitch, { type DiscoverMode } from '@/components/discover/DiscoverModeSwitch';
-import { PAPER } from '@/components/feed/feedTheme';
 const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
 
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
@@ -425,7 +425,7 @@ export default function DiscoverScreenWrapper() {
 }
 
 function DiscoverScreenInner() {
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const { segment, isTestMode, mockData } = useUserSegment();
   const testModeRef = useRef(isTestMode);
@@ -1399,11 +1399,12 @@ function DiscoverScreenInner() {
   }), [CARD_HEIGHT]);
 
   return (
-    <SafeAreaView style={[styles.safe, discoverMode === 'explore_moments' && { backgroundColor: PAPER.ivory }]} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <StatusBar style={mode === 'light' ? 'dark' : 'light'} />
       {/* Top bar */}
       <View style={styles.topBar}>
         <View>
-          <Text style={[styles.title, discoverMode === 'explore_moments' && { color: PAPER.inkDark }]}>Discover</Text>
+          <Text style={styles.title}>Discover</Text>
           {canShowPlaceResults && effectiveOriginLabel && discoverMode !== 'explore_moments' ? <Text style={styles.subtitle}>{effectiveOriginLabel}</Text> : null}
         </View>
       </View>

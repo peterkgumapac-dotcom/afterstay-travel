@@ -373,11 +373,6 @@ export function useHomeScreen() {
           .then(({ getProfile }) => withTimeout(getProfile(currentUser.id), null as HomeProfileIdentity | null))
           .catch(() => null as HomeProfileIdentity | null)
         : Promise.resolve(null as HomeProfileIdentity | null);
-      if (currentUser) {
-        const identity = resolveAuthIdentity(null, currentUser);
-        setUserName(identity.name);
-        setUserAvatar(identity.avatarUrl);
-      }
       const fetchedTrip = await withTimeout(getHomeActiveTripPromise(force), null as Trip | null);
       const t = pickHomeLoadedTrip(fetchedTrip, segmentActiveTripRef.current, force);
       if (!isCurrentRequest()) return;
@@ -680,11 +675,6 @@ export function useHomeScreen() {
             .then(({ getProfile }) => withTimeout(getProfile(refreshUser.id), null as HomeProfileIdentity | null))
             .catch(() => null as HomeProfileIdentity | null)
           : Promise.resolve(null as HomeProfileIdentity | null);
-        if (refreshUser) {
-          const identity = resolveAuthIdentity(null, refreshUser);
-          setUserName(identity.name);
-          setUserAvatar(identity.avatarUrl);
-        }
 
         const [fs, mems, allExp, profile] = await Promise.all([
           withTimeout(getHomeFlightsPromise(activeTrip.id, true), [] as Flight[]),
