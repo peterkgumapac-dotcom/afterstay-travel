@@ -161,6 +161,8 @@ export interface NearbyPlace {
 export interface NearbySearchResult {
   places: NearbyPlace[];
   nextPageToken?: string;
+  status?: string;
+  errorMessage?: string;
 }
 
 export interface PlaceDetails {
@@ -194,7 +196,13 @@ export async function searchNearby(
     keyword,
   };
   const data = await callProxy<any>('nearby', payload);
-  if (!data?.results) return { places: [] };
+  if (!data) {
+    return { places: [], errorMessage: 'Places service is unavailable. Check your connection and try again.' };
+  }
+  if (data.status === 'ERROR' || data.error_message) {
+    return { places: [], status: data.status, errorMessage: data.error_message ?? 'Could not load places.' };
+  }
+  if (!data.results) return { places: [], status: data.status };
 
   const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => {
     const photoRef = pickBestPhotoRef(place.photos) ?? undefined;
@@ -221,7 +229,7 @@ export async function searchNearby(
     };
   }));
 
-  return { places, nextPageToken: data.next_page_token ?? undefined };
+  return { places, nextPageToken: data.next_page_token ?? undefined, status: data.status };
 }
 
 /** Fetch the next page of nearby results using a page token. */
@@ -230,7 +238,13 @@ export async function searchNearbyPage(
 ): Promise<NearbySearchResult> {
   const payload = { pagetoken: pageToken, lat: 0, lng: 0 };
   const data = await callProxy<any>('nearby', payload);
-  if (!data?.results) return { places: [] };
+  if (!data) {
+    return { places: [], errorMessage: 'Places service is unavailable. Check your connection and try again.' };
+  }
+  if (data.status === 'ERROR' || data.error_message) {
+    return { places: [], status: data.status, errorMessage: data.error_message ?? 'Could not load more places.' };
+  }
+  if (!data.results) return { places: [], status: data.status };
 
   const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => {
     const photoRef = pickBestPhotoRef(place.photos) ?? undefined;
@@ -257,7 +271,7 @@ export async function searchNearbyPage(
     };
   }));
 
-  return { places, nextPageToken: data.next_page_token ?? undefined };
+  return { places, nextPageToken: data.next_page_token ?? undefined, status: data.status };
 }
 
 export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | null> {

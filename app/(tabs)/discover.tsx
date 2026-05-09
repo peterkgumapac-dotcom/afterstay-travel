@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import * as Updates from 'expo-updates';
 import { StatusBar } from 'expo-status-bar';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -80,8 +81,25 @@ const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/Explor
 
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
 const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
+const DISCOVER_DIAGNOSTICS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
+
+type PlaceDistanceEntry = {
+  place: DiscoverPlace;
+  distanceKm: number;
+  blendedScore: number;
+};
+
+function logDiscoverDiagnostics(event: string, payload: Record<string, unknown>) {
+  if (!DISCOVER_DIAGNOSTICS_ENABLED) return;
+  console.info('[DiscoverDiagnostics]', event, {
+    updateId: Updates.updateId?.slice(0, 8) ?? null,
+    channel: Updates.channel ?? null,
+    runtimeVersion: Updates.runtimeVersion ?? null,
+    ...payload,
+  });
+}
 
 // ── Main screen ─────────────────────────────────────────────────────────
 
@@ -648,15 +666,25 @@ function DiscoverScreenInner() {
     setPlacesLoading(true);
     setPlacesError(null);
     try {
-      const { places: results, nextPageToken: token } = await searchNearby(type, keyword, effectiveCoords, radius ?? DEFAULT_SEARCH_RADIUS);
+      const { places: results, nextPageToken: token, errorMessage } = await searchNearby(type, keyword, effectiveCoords, radius ?? DEFAULT_SEARCH_RADIUS);
       setNextPageToken(token);
+      logDiscoverDiagnostics('searchPlaces', {
+        origin: effectiveDest,
+        coords: effectiveCoords,
+        category: placeCategoryChip,
+        keyword,
+        type,
+        radius: radius ?? DEFAULT_SEARCH_RADIUS,
+        rawCount: results.length,
+        errorMessage: errorMessage ?? null,
+      });
       if (results.length > 0) {
         const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords ?? undefined));
         placesCache.current[cacheKey] = mapped;
         setPlaces(mapped);
       } else {
         setPlaces([]);
-        setPlacesError('No results found nearby.');
+        setPlacesError(errorMessage ?? 'No results found nearby.');
       }
     } catch (err) {
       if (__DEV__) console.warn('[Discover] searchPlaces failed:', err);
@@ -666,7 +694,7 @@ function DiscoverScreenInner() {
       setPlacesLoading(false);
       setRefreshing(false);
     }
-  }, [canShowPlaceResults, effectiveCoords]);
+  }, [canShowPlaceResults, effectiveCoords, effectiveDest, placeCategoryChip]);
 
   // Load curated multi-category mix for the "All" chip
   const loadAllView = useCallback(async (skipCache = false) => {
@@ -682,6 +710,11 @@ function DiscoverScreenInner() {
     setPlacesError(null);
     try {
       const { places: results } = await searchMultiCategory(effectiveCoords);
+      logDiscoverDiagnostics('loadAllView', {
+        origin: effectiveDest,
+        coords: effectiveCoords,
+        rawCount: results.length,
+      });
       if (results.length > 0) {
         const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords));
         placesCache.current[cacheKey] = mapped;
@@ -699,7 +732,7 @@ function DiscoverScreenInner() {
       setPlacesLoading(false);
       setRefreshing(false);
     }
-  }, [canShowPlaceResults, effectiveCoords]);
+  }, [canShowPlaceResults, effectiveCoords, effectiveDest]);
 
   // Load places when category chip changes
   useEffect(() => {
@@ -986,37 +1019,76 @@ function DiscoverScreenInner() {
   );
 
 
+  const sortPlaceDistanceEntries = useCallback((entries: PlaceDistanceEntry[]) => entries.sort((a, b) => {
+    const openA = a.place.openNow ? 0 : 1;
+    const openB = b.place.openNow ? 0 : 1;
+    if (openA !== openB) return openA - openB;
+    if (filters.sortMode === 'distance') {
+      return a.distanceKm - b.distanceKm;
+    }
+    if (filters.sortMode === 'rating') {
+      return (b.place.r ?? 0) - (a.place.r ?? 0);
+    }
+    if (filters.sortMode === 'popular') {
+      return (b.place.totalRatings ?? 0) - (a.place.totalRatings ?? 0);
+    }
+    return b.blendedScore - a.blendedScore;
+  }), [filters.sortMode]);
+
+  const addDistanceToPlaces = useCallback((list: readonly DiscoverPlace[]) => list.map((p) => {
+    const distanceKm = getDistanceKm(p.lat, p.lng);
+    const qualityScore = (p.r ?? 0) * Math.log10(Math.max(p.totalRatings ?? 1, 1));
+    const blendedScore = qualityScore - (distanceKm * 0.3);
+    return { place: p, distanceKm, blendedScore };
+  }), [getDistanceKm]);
+
+  const allPlacesWithDistance = useMemo(
+    () => sortPlaceDistanceEntries(addDistanceToPlaces(places)),
+    [places, addDistanceToPlaces, sortPlaceDistanceEntries],
+  );
+
   // Pre-compute distances, filter nearby, sort by quality-weighted score.
   const placesWithDistance = useMemo(() => {
-    const withDist = filteredPlaces.map((p) => {
-      const distanceKm = getDistanceKm(p.lat, p.lng);
-      const qualityScore = (p.r ?? 0) * Math.log10(Math.max(p.totalRatings ?? 1, 1));
-      const blendedScore = qualityScore - (distanceKm * 0.3);
-      return { place: p, distanceKm, blendedScore };
-    });
+    const withDist = addDistanceToPlaces(filteredPlaces);
     const nearbyRadius = travelMode === 'car' ? 10 : 2;
     const filtered = filters.nearby && hasUsableOrigin
       ? withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= nearbyRadius)
       : withDist;
-    return filtered.sort((a, b) => {
-      const openA = a.place.openNow ? 0 : 1;
-      const openB = b.place.openNow ? 0 : 1;
-      if (openA !== openB) return openA - openB;
-      if (filters.sortMode === 'distance') {
-        return a.distanceKm - b.distanceKm;
-      }
-      if (filters.sortMode === 'rating') {
-        return (b.place.r ?? 0) - (a.place.r ?? 0);
-      }
-      if (filters.sortMode === 'popular') {
-        return (b.place.totalRatings ?? 0) - (a.place.totalRatings ?? 0);
-      }
-      return b.blendedScore - a.blendedScore;
-    });
-  }, [filteredPlaces, getDistanceKm, filters.nearby, filters.sortMode, hasUsableOrigin, travelMode]);
-  const visiblePlacesWithDistance = canShowPlaceResults ? placesWithDistance : [];
-  const displayPlaces = useMemo(() => placesWithDistance.map(({ place }) => place), [placesWithDistance]);
+    return sortPlaceDistanceEntries(filtered);
+  }, [filteredPlaces, addDistanceToPlaces, filters.nearby, hasUsableOrigin, travelMode, sortPlaceDistanceEntries]);
+
+  const canRelaxPlaceFilters = (
+    filters.nearby ||
+    filters.openNow ||
+    filters.minRating > 0 ||
+    filters.maxPrice < DEFAULT_FILTERS.maxPrice
+  ) && !filters.savedOnly && !filters.recommendedOnly && !filters.needsVotesOnly;
+  const minimumUsefulResults = Math.min(3, allPlacesWithDistance.length);
+  const filtersRelaxedForResults = canShowPlaceResults &&
+    canRelaxPlaceFilters &&
+    allPlacesWithDistance.length > 0 &&
+    placesWithDistance.length < minimumUsefulResults;
+  const visiblePlacesWithDistance = useMemo(
+    () => (canShowPlaceResults
+      ? (filtersRelaxedForResults ? allPlacesWithDistance : placesWithDistance)
+      : []),
+    [allPlacesWithDistance, canShowPlaceResults, filtersRelaxedForResults, placesWithDistance],
+  );
+  const displayPlaces = useMemo(() => visiblePlacesWithDistance.map(({ place }) => place), [visiblePlacesWithDistance]);
   const hasLoadedPlaceResults = canShowPlaceResults && !placesLoading && !placesError && visiblePlacesWithDistance.length > 0;
+
+  useEffect(() => {
+    logDiscoverDiagnostics('filterResults', {
+      origin: effectiveDest,
+      category: placeCategoryChip,
+      rawCount: places.length,
+      filteredCount: placesWithDistance.length,
+      visibleCount: visiblePlacesWithDistance.length,
+      relaxed: filtersRelaxedForResults,
+      activeFilterCount,
+      filters,
+    });
+  }, [activeFilterCount, effectiveDest, filters, filtersRelaxedForResults, placeCategoryChip, places.length, placesWithDistance.length, visiblePlacesWithDistance.length]);
 
   const toggleShowFilters = useCallback(() => setShowFilters((s) => !s), []);
 
@@ -1037,7 +1109,7 @@ function DiscoverScreenInner() {
   }, []);
 
   // FlatList renderItem for Places tab — stable ref prevents re-renders
-  const renderPlaceItem = useCallback(({ item }: { item: typeof placesWithDistance[0] }) => {
+  const renderPlaceItem = useCallback(({ item }: { item: PlaceDistanceEntry }) => {
     const p = item.place;
     return (
       <DiscoverPlaceCard
@@ -1324,6 +1396,14 @@ function DiscoverScreenInner() {
                 <Text style={styles.resultsCount}>
                   Recommended nearby · {visiblePlacesWithDistance.length} {visiblePlacesWithDistance.length === 1 ? 'place' : 'places'}
                 </Text>
+              ) : null}
+
+              {filtersRelaxedForResults ? (
+                <View style={styles.emptyPlaces}>
+                  <Text style={styles.emptyText}>
+                    Filters narrowed this too much. Showing all nearby instead.
+                  </Text>
+                </View>
               ) : null}
 
               {placesError && (
