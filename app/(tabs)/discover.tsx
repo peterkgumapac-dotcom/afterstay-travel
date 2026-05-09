@@ -314,28 +314,6 @@ function DiscoverScreenInner() {
     return 0;
   }, [distanceOrigin, userLocation, effectiveCoords]);
 
-  // Fetch GPS when user switches to "me"
-  const switchToMyLocation = useCallback(async () => {
-    // Always re-fetch GPS so distances stay fresh as user moves
-    try {
-      const Location = require('expo-location') as typeof import('expo-location');
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Location denied', 'Enable location permissions in Settings to use "From Me".');
-        setDistanceOrigin('hotel');
-        return;
-      }
-      // Use High accuracy for better distance comparison vs hotel
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.High });
-      const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-      setUserLocation(coords);
-      setDistanceOrigin('me');
-    } catch {
-      Alert.alert('Location unavailable', 'Could not get your location. Using hotel distance.');
-      setDistanceOrigin('hotel');
-    }
-  }, []);
-
   const handleTravelModeChange = useCallback((m: 'walk' | 'car') => {
     setTravelMode(m);
     cacheSet('discover:travelMode', m);
@@ -494,9 +472,19 @@ function DiscoverScreenInner() {
         return;
       }
       const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+      const geocoded = await Location.reverseGeocodeAsync({
+        latitude: coords.lat,
+        longitude: coords.lng,
+      }).catch(() => []);
+      const first = geocoded[0];
+      const readableLocation = [
+        first?.city || first?.district || first?.subregion,
+        first?.region,
+      ].filter(Boolean).join(', ');
       setUserLocation(coords);
-      applyExploreOrigin('Current location', coords, 'current_location');
+      applyExploreOrigin(readableLocation ? `Current location · ${readableLocation}` : 'Current location', coords, 'current_location');
       setDistanceOrigin('me');
+      setOriginRefinementText('Using device GPS. If this area looks wrong, tap Change and search a hotel, landmark, area, or exact pin.');
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] current location failed:', err);
       setOriginEditorOpen(true);
@@ -506,18 +494,12 @@ function DiscoverScreenInner() {
     }
   }, [applyExploreOrigin]);
 
-  // Restore cached anchor/travel mode (after switchToMyLocation is defined)
+  // Restore travel mode only. Current location must be chosen explicitly so
+  // stale simulator/device GPS never becomes the origin on launch.
   useEffect(() => {
     if (discoverMode !== 'plan') return;
-    cacheGet<'hotel' | 'me'>('discover:anchor').then((v) => {
-      if (v === 'me') {
-        switchToMyLocation();
-      } else if (v) {
-        setDistanceOrigin(v);
-      }
-    });
     cacheGet<'walk' | 'car'>('discover:travelMode').then((v) => { if (v) setTravelMode(v); });
-  }, [discoverMode, switchToMyLocation]);
+  }, [discoverMode]);
 
   // Dev test mode: apply mock trip data
   useEffect(() => {
