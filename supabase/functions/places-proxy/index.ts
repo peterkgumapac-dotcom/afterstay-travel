@@ -8,6 +8,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const PLACES_BASE = 'https://places.googleapis.com/v1';
+const LEGACY_PLACES_BASE = 'https://maps.googleapis.com/maps/api/place';
 const GEOCODE_BASE = 'https://maps.googleapis.com/maps/api/geocode';
 
 const PLACE_SUMMARY_FIELD_MASK = [
@@ -132,6 +133,72 @@ async function resolveNewPhotoUrl(apiKey: string, photoName: string | undefined,
   } catch {
     return null;
   }
+}
+
+async function legacyGet(path: string, params: Record<string, string | number | undefined>, apiKey: string) {
+  const qs = new URLSearchParams({ key: apiKey });
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') qs.set(key, String(value));
+  });
+  const res = await fetch(`${LEGACY_PLACES_BASE}/${path}/json?${qs.toString()}`);
+  return res.ok ? await res.json().catch(() => null) : null;
+}
+
+async function resolveLegacyPhotoUrl(apiKey: string, photoRef: string | undefined, maxWidth = 800): Promise<string | null> {
+  if (!photoRef) return null;
+  try {
+    const qs = new URLSearchParams({ key: apiKey, photoreference: photoRef, maxwidth: String(maxWidth) });
+    const res = await fetch(`${LEGACY_PLACES_BASE}/photo?${qs.toString()}`, { redirect: 'follow' });
+    return res.ok ? res.url : null;
+  } catch {
+    return null;
+  }
+}
+
+async function withResolvedLegacyPhoto(apiKey: string, place: any) {
+  const photos: any[] = place.photos ?? [];
+  const candidates = photos.slice(0, 5);
+  const landscape = candidates.find((p: any) => (p.width ?? 0) > (p.height ?? 0));
+  const best = landscape ?? photos[0];
+  return {
+    ...place,
+    resolved_photo_url: await resolveLegacyPhotoUrl(apiKey, best?.photo_reference, 800),
+  };
+}
+
+async function searchLegacyPlace(apiKey: string, query: string) {
+  const data = await legacyGet('textsearch', { query }, apiKey);
+  return data?.status === 'OK' ? (data.results ?? []) : [];
+}
+
+async function searchLegacyNearby(apiKey: string, lat: number, lng: number, radius: number, type?: string, keyword?: string, pagetoken?: string) {
+  const data = await legacyGet('nearbysearch', {
+    location: `${lat},${lng}`,
+    radius: radius || 5000,
+    type,
+    keyword,
+    pagetoken,
+  }, apiKey);
+  if (data?.status !== 'OK') return { results: [], next_page_token: null };
+  const results = await Promise.all((data.results ?? []).map((place: any) => withResolvedLegacyPhoto(apiKey, place)));
+  return { results, next_page_token: data.next_page_token ?? null };
+}
+
+async function getLegacyDetails(apiKey: string, placeId: string, fields?: string) {
+  const data = await legacyGet('details', {
+    place_id: placeId,
+    fields: fields || 'name,rating,user_ratings_total,formatted_phone_number,formatted_address,opening_hours,reviews,photos,website,url,price_level,geometry,type,vicinity,business_status',
+  }, apiKey);
+  return data?.status === 'OK' ? data.result : null;
+}
+
+async function getLegacyAutocomplete(apiKey: string, input: string, lat?: number, lng?: number) {
+  const data = await legacyGet('autocomplete', {
+    input,
+    location: lat && lng ? `${lat},${lng}` : undefined,
+    radius: lat && lng ? 5000 : undefined,
+  }, apiKey);
+  return data?.status === 'OK' ? (data.predictions ?? []) : [];
 }
 
 async function withResolvedPhoto(apiKey: string, place: any) {
@@ -323,6 +390,10 @@ Deno.serve(async (req) => {
 	        const data = await res.json();
 	        if (!res.ok) {
 	          if (isGoogleApiDisabled(data)) {
+	            const legacy = await searchLegacyPlace(apiKey, String(query ?? '').trim());
+	            if (legacy.length) {
+	              return jsonResponse({ status: 'OK', candidates: legacy.slice(0, 1) });
+	            }
 	            const fallback = await geocodeWithOsm(String(query ?? '').trim(), 1);
 	            return jsonResponse({
 	              status: fallback.length ? 'OK' : 'ZERO_RESULTS',
@@ -387,6 +458,22 @@ Deno.serve(async (req) => {
 	        const data = await res.json();
 	        if (!res.ok) {
 	          if (isGoogleApiDisabled(data)) {
+	            const legacy = await searchLegacyNearby(
+	              apiKey,
+	              Number(lat),
+	              Number(lng),
+	              Number(radius || 5000),
+	              type,
+	              keyword,
+	              pagetoken,
+	            );
+	            if (legacy.results.length) {
+	              return jsonResponse({
+	                results: legacy.results,
+	                next_page_token: legacy.next_page_token,
+	                status: 'OK',
+	              });
+	            }
 	            const fallback = await searchNearbyWithOsm(Number(lat), Number(lng), Number(radius || 5000), type, keyword);
 	            return jsonResponse({
 	              results: fallback,
@@ -435,6 +522,10 @@ Deno.serve(async (req) => {
 	        });
 	        const data = await res.json();
 	        if (!res.ok) {
+	          if (isGoogleApiDisabled(data)) {
+	            const legacy = await getLegacyDetails(apiKey, String(placeId ?? ''), typeof fields === 'string' ? fields : undefined);
+	            if (legacy) return jsonResponse({ status: 'OK', result: legacy });
+	          }
 	          return jsonResponse({ status: 'ERROR', error_message: data?.error?.message ?? 'Place details failed' });
 	        }
 	        return jsonResponse({
@@ -477,6 +568,18 @@ Deno.serve(async (req) => {
 	        });
 	        const data = await res.json();
 	        if (!res.ok) {
+	          if (isGoogleApiDisabled(data)) {
+	            const legacy = await getLegacyDetails(apiKey, String(placeId ?? ''), 'name,geometry');
+	            if (legacy?.geometry?.location) {
+	              return jsonResponse({
+	                status: 'OK',
+	                result: {
+	                  name: legacy.name ?? '',
+	                  geometry: { location: legacy.geometry.location },
+	                },
+	              });
+	            }
+	          }
 	          return jsonResponse({ status: 'ERROR', error_message: data?.error?.message ?? 'Place location failed' });
 	        }
 	        return jsonResponse({
@@ -514,6 +617,16 @@ Deno.serve(async (req) => {
 	        const data = await res.json();
 	        if (!res.ok) {
 	          if (isGoogleApiDisabled(data)) {
+	            const legacy = await getLegacyAutocomplete(apiKey, String(input ?? '').trim(), Number(lat), Number(lng));
+	            if (legacy.length) {
+	              return jsonResponse({
+	                status: 'OK',
+	                predictions: legacy.map((p: any) => ({
+	                  place_id: p.place_id,
+	                  description: p.description,
+	                })),
+	              });
+	            }
 	            const fallback = await geocodeWithOsm(String(input ?? '').trim(), 5);
 	            const predictions = fallback.map((item: any) => ({
 	              place_id: osmPlaceId(item),
@@ -542,7 +655,8 @@ Deno.serve(async (req) => {
 
 	      case 'photo': {
 	        const { photoReference, maxWidth } = payload;
-	        const url = await resolveNewPhotoUrl(apiKey, photoReference, maxWidth || 800);
+	        const url = await resolveNewPhotoUrl(apiKey, photoReference, maxWidth || 800)
+	          ?? await resolveLegacyPhotoUrl(apiKey, photoReference, maxWidth || 800);
 	        return jsonResponse({ url });
 	      }
 
