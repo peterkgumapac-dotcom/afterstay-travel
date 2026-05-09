@@ -1,13 +1,15 @@
 import { Image } from 'expo-image';
+import { Link, type Href } from 'expo-router';
 import { CheckCircle, MapPin, Newspaper, Users } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Dimensions, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { PAPER } from '@/components/feed/feedTheme';
 import MomentEngagementBar from '@/components/discover/MomentEngagementBar';
 import PostOptionsMenu from '@/components/discover/PostOptionsMenu';
 import PolaroidCollage from '@/components/discover/PolaroidCollage';
-import { mediumUrl, smallUrl } from '@/lib/imageUrl';
+import type { MomentDisplay } from '@/components/moments/types';
+import { smallUrl } from '@/lib/imageUrl';
 import { isOfficialAfterStayPost, isTravelPulsePost } from '@/lib/officialAccount';
 import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 import type { FeedPost, PostTag } from '@/lib/types';
@@ -23,11 +25,18 @@ interface ExploreMomentCardProps {
   onShare: () => void;
   onSave: () => Promise<void> | void;
   onProfilePress?: () => void;
-  onPhotoPress?: (index: number) => void;
   tags?: PostTag[];
   isOwner?: boolean;
   onDeleted?: () => void;
   onHidden?: () => void;
+}
+
+function PhotoZoomLink({ href, children }: { href: Href; children: React.ReactElement }) {
+  return (
+    <Link href={href} asChild>
+      <Link.AppleZoom>{children}</Link.AppleZoom>
+    </Link>
+  );
 }
 
 function PaperTexture() {
@@ -125,7 +134,6 @@ export default function ExploreMomentCard({
   onShare,
   onSave,
   onProfilePress,
-  onPhotoPress,
   tags,
   isOwner,
   onDeleted,
@@ -145,10 +153,6 @@ export default function ExploreMomentCard({
   const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string | undefined>();
   const [failedMedia, setFailedMedia] = useState<Set<string>>(() => new Set());
   const [resolvedMediaUrls, setResolvedMediaUrls] = useState<Record<string, string>>({});
-
-  // Full-screen photo viewer
-  const [viewerVisible, setViewerVisible] = useState(false);
-  const [viewerIndex, setViewerIndex] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,15 +210,35 @@ export default function ExploreMomentCard({
   }), [post.media, resolvedMediaUrls]);
 
   const resolvedPhotoUrl = resolvedMediaUrls.photo ?? post.photoUrl;
-  const allPhotos = hasMedia
+  const allPhotos = useMemo(() => (hasMedia
     ? mediaWithResolvedUrls.map((m) => m.resolvedUrl).filter(Boolean)
-    : resolvedPhotoUrl ? [resolvedPhotoUrl] : [];
+    : resolvedPhotoUrl ? [resolvedPhotoUrl] : []), [hasMedia, mediaWithResolvedUrls, resolvedPhotoUrl]);
 
-  const openViewer = useCallback((idx: number) => {
-    setViewerIndex(idx);
-    setViewerVisible(true);
-    onPhotoPress?.(idx);
-  }, [onPhotoPress]);
+  const viewerMoments = useMemo<MomentDisplay[]>(() => allPhotos.map((url, index) => ({
+    id: `${post.id}-media-${index}`,
+    caption: post.caption ?? '',
+    photo: url,
+    hdPhoto: url,
+    location: post.locationName,
+    date: post.createdAt,
+    tags: [],
+    visibility: 'public',
+    isPublic: post.isPublic,
+    isMine: isOwner,
+    takenBy: post.userName,
+    userId: post.userId,
+    authorAvatar: resolvedAvatarUrl,
+    place: post.locationName,
+  })), [allPhotos, isOwner, post.caption, post.createdAt, post.id, post.isPublic, post.locationName, post.userId, post.userName, resolvedAvatarUrl]);
+
+  const viewerHref = useCallback((index: number): Href => ({
+    pathname: '/photo-viewer',
+    params: {
+      moments: JSON.stringify(viewerMoments),
+      people: JSON.stringify({}),
+      initialIndex: String(Math.max(0, index)),
+    },
+  }), [viewerMoments]);
 
   const onCarouselSettle = useCallback((e: { nativeEvent: { contentOffset: { x: number } } }) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / (MEDIA_W - 32));
@@ -331,9 +355,11 @@ export default function ExploreMomentCard({
       {/* Media */}
       <View style={styles.mediaWrap}>
         {isCollage && hasMedia ? (
-          <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(0)}>
-            <PolaroidCollage media={collageMedia} />
-          </TouchableOpacity>
+          <PhotoZoomLink href={viewerHref(0)}>
+            <TouchableOpacity activeOpacity={0.9}>
+              <PolaroidCollage media={collageMedia} />
+            </TouchableOpacity>
+          </PhotoZoomLink>
         ) : isCarousel && hasMedia ? (
           <View>
             <FlatList
@@ -348,23 +374,25 @@ export default function ExploreMomentCard({
               windowSize={3}
               removeClippedSubviews
               renderItem={({ item, index }) => (
-                <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(index)}>
-                  {item.resolvedUrl && !failedMedia.has(item.renderKey) ? (
-                    <Image
-                      source={{ uri: smallUrl(item.resolvedUrl) ?? item.resolvedUrl }}
-                      style={styles.carouselImg}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                      recyclingKey={item.renderKey}
-                      transition={0}
-                      onError={() => setFailedMedia((prev) => new Set(prev).add(item.renderKey))}
-                    />
-                  ) : (
-                    <View style={[styles.carouselImg, styles.mediaFallback]}>
-                      <Text style={styles.mediaFallbackText}>Photo unavailable</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+                <PhotoZoomLink href={viewerHref(index)}>
+                  <TouchableOpacity activeOpacity={0.9}>
+                    {item.resolvedUrl && !failedMedia.has(item.renderKey) ? (
+                      <Image
+                        source={{ uri: smallUrl(item.resolvedUrl) ?? item.resolvedUrl }}
+                        style={styles.carouselImg}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        recyclingKey={item.renderKey}
+                        transition={0}
+                        onError={() => setFailedMedia((prev) => new Set(prev).add(item.renderKey))}
+                      />
+                    ) : (
+                      <View style={[styles.carouselImg, styles.mediaFallback]}>
+                        <Text style={styles.mediaFallbackText}>Photo unavailable</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </PhotoZoomLink>
               )}
             />
             {(post.media?.length ?? 0) > 1 && (
@@ -376,23 +404,25 @@ export default function ExploreMomentCard({
             )}
           </View>
         ) : resolvedPhotoUrl ? (
-          <TouchableOpacity activeOpacity={0.9} onPress={() => openViewer(0)}>
-            {!failedMedia.has('photo') ? (
-              <Image
-                source={{ uri: smallUrl(resolvedPhotoUrl) ?? resolvedPhotoUrl }}
-                style={styles.singleImg}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                recyclingKey={`single-${post.id}-${resolvedPhotoUrl}`}
-                transition={0}
-                onError={() => setFailedMedia((prev) => new Set(prev).add('photo'))}
-              />
-            ) : (
-              <View style={[styles.singleImg, styles.mediaFallback]}>
-                <Text style={styles.mediaFallbackText}>Photo unavailable</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <PhotoZoomLink href={viewerHref(0)}>
+            <TouchableOpacity activeOpacity={0.9}>
+              {!failedMedia.has('photo') ? (
+                <Image
+                  source={{ uri: smallUrl(resolvedPhotoUrl) ?? resolvedPhotoUrl }}
+                  style={styles.singleImg}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  recyclingKey={`single-${post.id}-${resolvedPhotoUrl}`}
+                  transition={0}
+                  onError={() => setFailedMedia((prev) => new Set(prev).add('photo'))}
+                />
+              ) : (
+                <View style={[styles.singleImg, styles.mediaFallback]}>
+                  <Text style={styles.mediaFallbackText}>Photo unavailable</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </PhotoZoomLink>
         ) : null}
       </View>
 
@@ -420,54 +450,6 @@ export default function ExploreMomentCard({
         onShare={onShare}
         onSave={onSave}
       />
-
-      {/* Full-screen photo viewer */}
-      <Modal
-        visible={viewerVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setViewerVisible(false)}
-      >
-        <View style={styles.viewerBg}>
-          <TouchableOpacity
-            style={styles.viewerClose}
-            onPress={() => setViewerVisible(false)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.viewerCloseText}>Close</Text>
-          </TouchableOpacity>
-
-          {allPhotos.length > 1 ? (
-            <FlatList
-              data={allPhotos}
-              keyExtractor={(_, i) => String(i)}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              initialScrollIndex={viewerIndex}
-              getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
-              renderItem={({ item }) => (
-                <Image
-                  source={{ uri: mediumUrl(item) ?? item }}
-                  style={styles.viewerImg}
-                  contentFit="contain"
-                  cachePolicy="memory-disk"
-                  recyclingKey={`viewer-${post.id}-${item}`}
-                />
-              )}
-            />
-          ) : allPhotos[0] ? (
-            <Image
-              source={{ uri: mediumUrl(allPhotos[0]) ?? allPhotos[0] }}
-              style={styles.viewerImg}
-              contentFit="contain"
-              cachePolicy="memory-disk"
-              recyclingKey={`viewer-${post.id}-${allPhotos[0]}`}
-            />
-          ) : null}
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -803,31 +785,5 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     backgroundColor: PAPER.inkDark,
-  },
-
-  // Photo viewer
-  viewerBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
-    justifyContent: 'center',
-  },
-  viewerClose: {
-    position: 'absolute',
-    top: 54,
-    right: 20,
-    zIndex: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  viewerCloseText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  viewerImg: {
-    width: SCREEN_W,
-    height: '100%',
   },
 });
