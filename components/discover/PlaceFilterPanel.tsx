@@ -5,7 +5,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 
 import { FilterRow, SegBtn } from '@/components/discover/DiscoverFilterControls';
-import { type FilterState, type TravelMode } from '@/lib/discoverScreenHelpers';
+import { type FilterState, type TravelMode } from '@/features/discover/lib/screenConfig';
 import type { getDiscoverStyles } from '@/components/discover/discoverScreenStyles';
 import { useTheme } from '@/constants/ThemeContext';
 

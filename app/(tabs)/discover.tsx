@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { Link, useLocalSearchParams } from 'expo-router';
 import * as Updates from 'expo-updates';
 import { StatusBar } from 'expo-status-bar';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -62,7 +63,7 @@ import {
   type FilterState,
   type TabId,
   type TravelMode,
-} from '@/lib/discoverScreenHelpers';
+} from '@/features/discover/lib/screenConfig';
 import {
   addPlace,
   getActiveTrip,
@@ -80,6 +81,12 @@ import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
 import DiscoverModeSwitch, { type DiscoverMode } from '@/components/discover/DiscoverModeSwitch';
 import { getDiscoverStyles } from '@/components/discover/discoverScreenStyles';
+import {
+  buildPlaceDistanceEntries,
+  getPlacesEmptyText,
+  getVisiblePlaceDistanceEntries,
+  type PlaceDistanceEntry,
+} from '@/features/discover/lib/placeRanking';
 const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
 
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
@@ -87,12 +94,6 @@ const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
 const DISCOVER_DIAGNOSTICS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
-
-type PlaceDistanceEntry = {
-  place: DiscoverPlace;
-  distanceKm: number;
-  blendedScore: number;
-};
 
 function logDiscoverDiagnostics(event: string, payload: Record<string, unknown>) {
   if (!DISCOVER_DIAGNOSTICS_ENABLED) return;
@@ -117,6 +118,11 @@ export default function DiscoverScreenWrapper() {
 function DiscoverScreenInner() {
   const { colors, mode } = useTheme();
   const styles = useMemo(() => getDiscoverStyles(colors), [colors]);
+  const params = useLocalSearchParams<{ mode?: string | string[] }>();
+  const routeMode = useMemo<DiscoverMode | null>(() => {
+    const rawMode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+    return rawMode === 'explore_moments' || rawMode === 'plan' ? rawMode : null;
+  }, [params.mode]);
   const { segment, isTestMode, mockData } = useUserSegment();
   const testModeRef = useRef(isTestMode);
   testModeRef.current = isTestMode;
@@ -125,6 +131,12 @@ function DiscoverScreenInner() {
   const [discoverMode, setDiscoverMode] = useState<DiscoverMode>('explore_moments');
   // Restore persisted mode
   useEffect(() => {
+    if (routeMode) {
+      setDiscoverMode(routeMode);
+      cacheSet(DISCOVER_MODE_CACHE_KEY, routeMode);
+      cacheSet(EXPLORE_MOMENTS_LAUNCH_KEY, true);
+      return;
+    }
     let mounted = true;
     Promise.all([
       cacheGet<string>(DISCOVER_MODE_CACHE_KEY, 0),
@@ -144,7 +156,7 @@ function DiscoverScreenInner() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [routeMode]);
   const handleModeChange = useCallback((m: DiscoverMode) => {
     setDiscoverMode(m);
     cacheSet(DISCOVER_MODE_CACHE_KEY, m);
@@ -1012,68 +1024,40 @@ function DiscoverScreenInner() {
   );
 
 
-  const sortPlaceDistanceEntries = useCallback((entries: PlaceDistanceEntry[]) => entries.sort((a, b) => {
-    const openA = a.place.openNow ? 0 : 1;
-    const openB = b.place.openNow ? 0 : 1;
-    if (openA !== openB) return openA - openB;
-    if (filters.sortMode === 'distance') {
-      return a.distanceKm - b.distanceKm;
-    }
-    if (filters.sortMode === 'rating') {
-      return (b.place.r ?? 0) - (a.place.r ?? 0);
-    }
-    if (filters.sortMode === 'popular') {
-      return (b.place.totalRatings ?? 0) - (a.place.totalRatings ?? 0);
-    }
-    return b.blendedScore - a.blendedScore;
-  }), [filters.sortMode]);
-
-  const addDistanceToPlaces = useCallback((list: readonly DiscoverPlace[]) => list.map((p) => {
-    const distanceKm = getDistanceKm(p.lat, p.lng);
-    const qualityScore = (p.r ?? 0) * Math.log10(Math.max(p.totalRatings ?? 1, 1));
-    const distancePenalty = travelMode === 'walk' ? 0.42 : 0.18;
-    const blendedScore = qualityScore - (distanceKm * distancePenalty);
-    return { place: p, distanceKm, blendedScore };
-  }), [getDistanceKm, travelMode]);
-
-  const keepInsideDiscoveryRadius = useCallback(
-    (entries: PlaceDistanceEntry[]) => entries.filter((entry) => (
-      !hasUsableOrigin ||
-      entry.distanceKm === 0 ||
-      entry.distanceKm <= (MAX_DISCOVER_RADIUS / 1000)
-    )),
-    [hasUsableOrigin],
-  );
-
   const allPlacesWithDistance = useMemo(
-    () => sortPlaceDistanceEntries(keepInsideDiscoveryRadius(addDistanceToPlaces(places))),
-    [places, addDistanceToPlaces, keepInsideDiscoveryRadius, sortPlaceDistanceEntries],
+    () => buildPlaceDistanceEntries({
+      places,
+      getDistanceKm,
+      hasUsableOrigin,
+      sortMode: filters.sortMode,
+      travelMode,
+    }),
+    [places, getDistanceKm, hasUsableOrigin, filters.sortMode, travelMode],
   );
 
   // Pre-compute distances, keep results inside the 10 km discovery envelope, then sort.
-  const placesWithDistance = useMemo(() => {
-    const withDist = addDistanceToPlaces(filteredPlaces);
-    return sortPlaceDistanceEntries(keepInsideDiscoveryRadius(withDist));
-  }, [filteredPlaces, addDistanceToPlaces, keepInsideDiscoveryRadius, sortPlaceDistanceEntries]);
-
-  const canRelaxPlaceFilters = (
-    filters.openNow ||
-    filters.minRating > 0 ||
-    (filters.minReviewCount ?? 0) > 0 ||
-    (filters.placeTypes?.length ?? 0) > 0 ||
-    (filters.vibes?.length ?? 0) > 0
-  ) && !filters.savedOnly && !filters.recommendedOnly && !filters.needsVotesOnly;
-  const minimumUsefulResults = Math.min(3, allPlacesWithDistance.length);
-  const filtersRelaxedForResults = canShowPlaceResults &&
-    canRelaxPlaceFilters &&
-    allPlacesWithDistance.length > 0 &&
-    placesWithDistance.length < minimumUsefulResults;
-  const visiblePlacesWithDistance = useMemo(
-    () => (canShowPlaceResults
-      ? (filtersRelaxedForResults ? allPlacesWithDistance : placesWithDistance)
-      : []),
-    [allPlacesWithDistance, canShowPlaceResults, filtersRelaxedForResults, placesWithDistance],
+  const placesWithDistance = useMemo(
+    () => buildPlaceDistanceEntries({
+      places: filteredPlaces,
+      getDistanceKm,
+      hasUsableOrigin,
+      sortMode: filters.sortMode,
+      travelMode,
+    }),
+    [filteredPlaces, getDistanceKm, hasUsableOrigin, filters.sortMode, travelMode],
   );
+
+  const visiblePlaceResults = useMemo(
+    () => getVisiblePlaceDistanceEntries({
+      allPlacesWithDistance,
+      canShowPlaceResults,
+      filters,
+      placesWithDistance,
+    }),
+    [allPlacesWithDistance, canShowPlaceResults, filters, placesWithDistance],
+  );
+  const visiblePlacesWithDistance = visiblePlaceResults.entries;
+  const filtersRelaxedForResults = visiblePlaceResults.relaxed;
   const displayPlaces = useMemo(() => visiblePlacesWithDistance.map(({ place }) => place), [visiblePlacesWithDistance]);
   const hasLoadedPlaceResults = canShowPlaceResults && !placesLoading && !placesError && visiblePlacesWithDistance.length > 0;
 
@@ -1092,17 +1076,10 @@ function DiscoverScreenInner() {
 
   const toggleShowFilters = useCallback(() => setShowFilters((s) => !s), []);
 
-  const placesEmptyText = useMemo(() => {
-    if (!hasUsableOrigin) return 'Set a precise location or use current location before searching.';
-    if (filters.openNow) return 'No open places found. Try All availability.';
-    if (filters.savedOnly) return 'No saved ideas match this view yet.';
-    if (filters.recommendedOnly) return 'No group recommendations match this view yet.';
-    if (filters.needsVotesOnly) return 'No places need votes right now.';
-    if ((filters.placeTypes?.length ?? 0) > 0 || (filters.vibes?.length ?? 0) > 0 || (filters.minReviewCount ?? 0) > 0 || filters.minRating > 0) {
-      return 'No places match those advanced filters. Try Clear filters.';
-    }
-    return 'No places found within 10 km.';
-  }, [filters.minRating, filters.minReviewCount, filters.needsVotesOnly, filters.openNow, filters.placeTypes, filters.recommendedOnly, filters.savedOnly, filters.vibes, hasUsableOrigin]);
+  const placesEmptyText = useMemo(
+    () => getPlacesEmptyText(filters, hasUsableOrigin),
+    [filters, hasUsableOrigin],
+  );
 
   const handleExplore = useCallback((placeId: string | undefined, name: string) => {
     setDetailPlaceId(placeId ?? null);
@@ -1158,9 +1135,13 @@ function DiscoverScreenInner() {
 
       {/* ═══════ EXPLORE MOMENTS MODE ═══════ */}
       {discoverMode === 'explore_moments' && (
-        <Suspense fallback={<MiniLoader />}>
-          <ExploreMomentsFeed />
-        </Suspense>
+        <Link.AppleZoomTarget>
+          <View collapsable={false}>
+            <Suspense fallback={<MiniLoader />}>
+              <ExploreMomentsFeed />
+            </Suspense>
+          </View>
+        </Link.AppleZoomTarget>
       )}
 
       {/* ═══════ PLAN MODE (existing Discover) ═══════ */}

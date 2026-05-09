@@ -25,7 +25,6 @@ export const PLACE_CATEGORY_CHIPS = [
 ] as const;
 
 export const PRIMARY_PLACE_CATEGORY_CHIPS = ['Food', 'Coffee', 'Activity'] as const satisfies readonly typeof PLACE_CATEGORY_CHIPS[number][];
-
 export const DEFAULT_FILTERS = DEFAULT_PLACE_FILTERS;
 
 const BROAD_ORIGIN_TERMS = new Set([
