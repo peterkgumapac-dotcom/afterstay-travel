@@ -46,6 +46,138 @@ async function callProxy<T>(action: string, payload: Record<string, unknown>): P
   }
 }
 
+function osmPlaceId(item: any): string {
+  return [
+    'osm',
+    item.osm_type ?? 'node',
+    item.osm_id ?? item.id ?? '0',
+    item.lat ?? item.center?.lat ?? 0,
+    item.lon ?? item.center?.lon ?? 0,
+    encodeURIComponent(item.display_name ?? item.tags?.name ?? ''),
+  ].join(':');
+}
+
+function parseOsmPlaceId(placeId: string) {
+  const parts = String(placeId).split(':');
+  if (parts[0] !== 'osm') return null;
+  const lat = Number(parts[3]);
+  const lng = Number(parts[4]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    name: decodeURIComponent(parts.slice(5).join(':')) || 'Selected place',
+    lat,
+    lng,
+  };
+}
+
+async function geocodeWithOsm(query: string, limit = 5): Promise<any[]> {
+  if (!query.trim()) return [];
+  const params = new URLSearchParams({
+    format: 'jsonv2',
+    limit: String(limit),
+    q: query.trim(),
+  });
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'AfterStay/1.3.0 places fallback',
+    },
+  });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => []);
+  return Array.isArray(data) ? data : [];
+}
+
+function osmSelectorFor(type: string | undefined, keyword: string | undefined): string {
+  const haystack = `${type ?? ''} ${keyword ?? ''}`.toLowerCase();
+  if (type === 'restaurant' || haystack.includes('food') || haystack.includes('dinner')) {
+    return '["amenity"~"restaurant|fast_food|food_court"]';
+  }
+  if (type === 'cafe' || haystack.includes('coffee')) return '["amenity"="cafe"]';
+  if (type === 'bar' || haystack.includes('nightlife')) return '["amenity"~"bar|pub|nightclub"]';
+  if (type === 'atm' || haystack.includes('atm')) return '["amenity"="atm"]';
+  if (type === 'store' || haystack.includes('shopping')) return '["shop"]';
+  if (type === 'spa' || haystack.includes('wellness') || haystack.includes('massage')) {
+    return '["shop"~"massage|beauty"]';
+  }
+  if (type === 'lodging' || haystack.includes('hotel') || haystack.includes('resort')) {
+    return '["tourism"~"hotel|resort|guest_house"]';
+  }
+  if (haystack.includes('beach')) return '["natural"="beach"]';
+  if (type === 'tourist_attraction' || haystack.includes('activity') || haystack.includes('tour') || haystack.includes('landmark')) {
+    return '["tourism"~"attraction|viewpoint|theme_park|information"]';
+  }
+  return '["name"]';
+}
+
+function toNearbyOsmPlace(item: any): NearbyPlace | null {
+  const tags = item.tags ?? {};
+  const lat = Number(item.lat ?? item.center?.lat);
+  const lng = Number(item.lon ?? item.center?.lon);
+  const name = tags.name ?? tags.brand;
+  if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const category = tags.amenity ?? tags.tourism ?? tags.shop ?? tags.natural ?? 'place';
+  const address = [
+    tags['addr:street'],
+    tags['addr:barangay'],
+    tags['addr:city'],
+    tags['addr:province'],
+  ].filter(Boolean).join(', ');
+  return {
+    place_id: osmPlaceId({ ...item, lat, lon: lng, display_name: name }),
+    name,
+    rating: 0,
+    total_ratings: 0,
+    address,
+    lat,
+    lng,
+    open_now: undefined,
+    photo_url: null,
+    photo_urls: [],
+    types: [category].filter(Boolean),
+  };
+}
+
+async function searchNearbyWithOsm(
+  coords: { lat: number; lng: number },
+  radius: number,
+  type?: string,
+  keyword?: string,
+): Promise<NearbyPlace[]> {
+  const safeRadius = Math.min(Math.max(Number(radius) || 5000, 500), 25000);
+  const selector = osmSelectorFor(type, keyword);
+  const query = `
+    [out:json][timeout:12];
+    (
+      node(around:${safeRadius},${coords.lat},${coords.lng})${selector};
+      way(around:${safeRadius},${coords.lat},${coords.lng})${selector};
+      relation(around:${safeRadius},${coords.lat},${coords.lng})${selector};
+    );
+    out center tags 40;
+  `;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'AfterStay/1.3.0 places fallback',
+    },
+    body: new URLSearchParams({ data: query }).toString(),
+  });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => ({}));
+  const seen = new Set<string>();
+  return (data.elements ?? [])
+    .map(toNearbyOsmPlace)
+    .filter((place: NearbyPlace | null): place is NearbyPlace => {
+      if (!place) return false;
+      const key = `${place.name}:${place.lat}:${place.lng}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 20);
+}
+
 async function resolvePhotoUrl(photoRef: string, maxWidth = 800): Promise<string | null> {
   const result = await callProxy<{ url: string }>('photo', { photoReference: photoRef, maxWidth });
   if (isResolvedGooglePhotoUrl(result?.url)) return result.url;
@@ -91,7 +223,22 @@ export async function searchPlace(
 ): Promise<PlaceSearchResult | null> {
   const fullQuery = location ? `${query} ${location}` : query;
   const data = await callProxy<any>('search', { query: fullQuery });
-  const candidate = data?.candidates?.[0];
+  let candidate = data?.candidates?.[0];
+  if (!candidate) {
+    const fallback = await geocodeWithOsm(fullQuery, 1);
+    const first = fallback[0];
+    if (first) {
+      candidate = {
+        place_id: osmPlaceId(first),
+        name: first.name ?? first.display_name?.split(',')?.[0] ?? query,
+        formatted_address: first.display_name ?? '',
+        rating: 0,
+        user_ratings_total: 0,
+        photos: [],
+        geometry: { location: { lat: Number(first.lat), lng: Number(first.lon) } },
+      };
+    }
+  }
   if (!candidate) return null;
 
   const bestRef = pickBestPhotoRef(candidate.photos);
@@ -197,12 +344,21 @@ export async function searchNearby(
   };
   const data = await callProxy<any>('nearby', payload);
   if (!data) {
-    return { places: [], errorMessage: 'Places service is unavailable. Check your connection and try again.' };
+    const fallback = await searchNearbyWithOsm(coords, radius, type, keyword).catch(() => []);
+    return fallback.length > 0
+      ? { places: fallback, status: 'OK' }
+      : { places: [], errorMessage: 'Places service is unavailable. Check your connection and try again.' };
   }
   if (data.status === 'ERROR' || data.error_message) {
-    return { places: [], status: data.status, errorMessage: data.error_message ?? 'Could not load places.' };
+    const fallback = await searchNearbyWithOsm(coords, radius, type, keyword).catch(() => []);
+    return fallback.length > 0
+      ? { places: fallback, status: 'OK' }
+      : { places: [], status: data.status, errorMessage: data.error_message ?? 'Could not load places.' };
   }
-  if (!data.results) return { places: [], status: data.status };
+  if (!data.results) {
+    const fallback = await searchNearbyWithOsm(coords, radius, type, keyword).catch(() => []);
+    return { places: fallback, status: fallback.length > 0 ? 'OK' : data.status };
+  }
 
   const places: NearbyPlace[] = await Promise.all((data.results as any[]).map(async (place: any) => {
     const photoRef = pickBestPhotoRef(place.photos) ?? undefined;
@@ -275,6 +431,18 @@ export async function searchNearbyPage(
 }
 
 export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | null> {
+  const osmLocation = parseOsmPlaceId(placeId);
+  if (osmLocation) {
+    return {
+      name: osmLocation.name,
+      rating: 0,
+      total_ratings: 0,
+      formatted_address: osmLocation.name,
+      photos: [],
+      url: `https://www.google.com/maps/search/?api=1&query=${osmLocation.lat},${osmLocation.lng}`,
+      coords: { lat: osmLocation.lat, lng: osmLocation.lng },
+    };
+  }
   const data = await callProxy<any>('details', { placeId });
   const r = data?.result;
   if (!r) return null;
@@ -306,6 +474,8 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
 }
 
 export async function getPlaceLocation(placeId: string): Promise<{ name: string; lat: number; lng: number } | null> {
+  const osmLocation = parseOsmPlaceId(placeId);
+  if (osmLocation) return osmLocation;
   const data = await callProxy<any>('location', { placeId });
   const r = data?.result;
   if (!r?.geometry?.location) return null;
@@ -334,12 +504,22 @@ export async function placeAutocomplete(
       lat: locationBias?.lat,
       lng: locationBias?.lng,
     });
-    return (proxyData?.predictions ?? []).filter((p: any) => p?.place_id && p?.description).map((p: any) => ({
+    const proxyResults = (proxyData?.predictions ?? []).filter((p: any) => p?.place_id && p?.description).map((p: any) => ({
       placeId: p.place_id,
       description: p.description,
     }));
+    if (proxyResults.length > 0) return proxyResults;
+    const fallback = await geocodeWithOsm(input.trim(), 5);
+    return fallback.map((item: any) => ({
+      placeId: osmPlaceId(item),
+      description: item.display_name ?? item.name ?? input.trim(),
+    }));
   } catch {
-    return [];
+    const fallback = await geocodeWithOsm(input.trim(), 5).catch(() => []);
+    return fallback.map((item: any) => ({
+      placeId: osmPlaceId(item),
+      description: item.display_name ?? item.name ?? input.trim(),
+    }));
   }
 }
 
