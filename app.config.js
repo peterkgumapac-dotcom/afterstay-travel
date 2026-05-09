@@ -7,6 +7,13 @@ export default ({ config }) => ({
     'expo-video',
     'expo-secure-store',
     [
+      'react-native-maps',
+      {
+        iosGoogleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? '',
+        androidGoogleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? '',
+      },
+    ],
+    [
       'expo-build-properties',
       {
         android: {
@@ -65,9 +72,6 @@ export default ({ config }) => ({
         'applinks:www.afterstay.travel',
       ]),
     ],
-    config: {
-      googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? '',
-    },
   },
   android: {
     ...config.android,
@@ -91,11 +95,5 @@ export default ({ config }) => ({
         category: ['BROWSABLE', 'DEFAULT'],
       },
     ],
-    config: {
-      ...config.android?.config,
-      googleMaps: {
-        apiKey: process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY ?? '',
-      },
-    },
   },
 });
