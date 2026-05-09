@@ -1957,7 +1957,39 @@ export async function getGroupMembers(tripId?: string): Promise<GroupMember[]> {
   const { data, error } = await supabase.from(T.groupMembers).select('*').eq('trip_id', id);
 
   if (error) throw new Error(`getGroupMembers: ${error.message}`);
-  return (data ?? []).map(mapMember);
+  const members = (data ?? []).map(mapMember);
+  const linkedUserIds = [...new Set(members.map((member) => member.userId).filter(Boolean))] as string[];
+  if (linkedUserIds.length === 0) return members;
+
+  const { data: profiles, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .in('id', linkedUserIds);
+
+  if (profileError) {
+    if (__DEV__) console.warn('[getGroupMembers] profile enrichment failed:', profileError.message);
+    return members;
+  }
+
+  const profileById = new Map(
+    (profiles ?? []).map((profile: Record<string, unknown>) => [
+      profile.id as string,
+      {
+        name: (profile.full_name as string) ?? undefined,
+        avatar: (profile.avatar_url as string) ?? undefined,
+      },
+    ]),
+  );
+
+  return members.map((member) => {
+    const profile = member.userId ? profileById.get(member.userId) : undefined;
+    if (!profile) return member;
+    return {
+      ...member,
+      name: member.name || profile.name || member.name,
+      profilePhoto: member.profilePhoto || profile.avatar,
+    };
+  });
 }
 
 export async function updateMemberPhoto(memberId: string, localUri: string): Promise<void> {
