@@ -164,7 +164,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [activePerson, setActivePerson] = useState<string | null>(null);
-  const [showContributors, setShowContributors] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [albumMode, setAlbumMode] = useState<AlbumMode>('timeline');
   const [activeScope, setActiveScope] = useState<ScopeFilter>('all');
@@ -636,7 +635,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
                   Haptics.selectionAsync();
                   setAlbumMode(mode.id);
                   if (mode.id !== 'timeline') setActiveScope('all');
-                  if (mode.id === 'people') setShowContributors(true);
                 }}
                 style={[s.modeChip, { borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.accent : colors.card }]}
               >
@@ -648,7 +646,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         </ScrollView>
 
         {/* ---- Expandable contributor row ---- */}
-        {(showContributors || albumMode === 'people') && members.length > 1 && (
+        {albumMode === 'people' && members.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingVertical: 8 }}>
             {members.map((m, i) => {
               const count = m.userId ? (personCounts[m.userId] ?? 0) : 0;
