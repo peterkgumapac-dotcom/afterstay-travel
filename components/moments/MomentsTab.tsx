@@ -31,6 +31,7 @@ import {
   getGroupMembersCached,
 } from '@/hooks/useTabMoments';
 import { cachePhotoMeta, getCachedPhotosByTrip } from '@/lib/cache/sqliteCache';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatDatePHT } from '@/lib/utils';
 import type { Moment, GroupMember } from '@/lib/types';
@@ -167,6 +168,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [albumMode, setAlbumMode] = useState<AlbumMode>('timeline');
   const [activeScope, setActiveScope] = useState<ScopeFilter>('all');
+  const [resolvedMemberPhotos, setResolvedMemberPhotos] = useState<Record<string, string>>({});
   const [favoriteMap, setFavoriteMap] = useState<MomentFavoriteMap>({});
   const [commentCountMap, setCommentCountMap] = useState<Record<string, number>>({});
   const [commentMomentId, setCommentMomentId] = useState<string | null>(null);
@@ -529,7 +531,38 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   // Build derived data
   const currentUserId = user?.id;
-  const people = useMemo(() => buildPeopleMap(members), [members]);
+  useEffect(() => {
+    let cancelled = false;
+    const entries = members.filter((member) => !!member.profilePhoto);
+    if (entries.length === 0) {
+      setResolvedMemberPhotos({});
+      return () => { cancelled = true; };
+    }
+
+    Promise.all(entries.map(async (member) => {
+      const resolved = await resolveRenderableStorageUrl(member.profilePhoto, 'avatars').catch(() => member.profilePhoto);
+      return [member.id, resolved ?? member.profilePhoto] as const;
+    })).then((pairs) => {
+      if (cancelled) return;
+      setResolvedMemberPhotos(pairs.reduce<Record<string, string>>((acc, [id, url]) => {
+        if (url) acc[id] = url;
+        return acc;
+      }, {}));
+    }).catch(() => {
+      if (!cancelled) setResolvedMemberPhotos({});
+    });
+
+    return () => { cancelled = true; };
+  }, [members]);
+
+  const displayMembers = useMemo(
+    () => members.map((member) => ({
+      ...member,
+      profilePhoto: resolvedMemberPhotos[member.id] ?? member.profilePhoto,
+    })),
+    [members, resolvedMemberPhotos],
+  );
+  const people = useMemo(() => buildPeopleMap(displayMembers), [displayMembers]);
   const allMoments = useMemo(
     () => buildMomentDisplays(rawMoments, people, currentUserId, favoriteMap, commentCountMap),
     [rawMoments, people, currentUserId, favoriteMap, commentCountMap],
@@ -646,9 +679,9 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         </ScrollView>
 
         {/* ---- Expandable contributor row ---- */}
-        {albumMode === 'people' && members.length > 1 && (
+        {albumMode === 'people' && displayMembers.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingVertical: 8 }}>
-            {members.map((m, i) => {
+            {displayMembers.map((m, i) => {
               const count = m.userId ? (personCounts[m.userId] ?? 0) : 0;
               return (
                 <Pressable
@@ -819,8 +852,13 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
             <Text style={[s.sheetSectionLabel, { color: colors.text3 }]}>People</Text>
             <PersonChips
               active={activePerson}
-              onChange={setActivePerson}
-              members={members}
+              onChange={(nextPerson) => {
+                setActivePerson(nextPerson);
+                setSelectMode(false);
+                setSelectedIds(new Set());
+                setFilterSheetVisible(false);
+              }}
+              members={displayMembers}
               counts={personCounts}
               total={allMoments.length}
             />
@@ -828,7 +866,14 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
             <Text style={[s.sheetSectionLabel, { color: colors.text3 }]}>Visibility</Text>
             <ScopeChips
               active={activeScope}
-              onChange={setActiveScope}
+              onChange={(nextScope) => {
+                setActiveScope(nextScope);
+                if (nextScope === 'favorites') setAlbumMode('favorites');
+                else if (albumMode === 'favorites') setAlbumMode('timeline');
+                setSelectMode(false);
+                setSelectedIds(new Set());
+                setFilterSheetVisible(false);
+              }}
               counts={scopeCounts}
             />
 
@@ -871,7 +916,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
                 }}
                 style={[s.sheetAction, { borderColor: colors.border, backgroundColor: colors.card2 }]}
               >
-                <Text style={[s.sheetActionText, { color: colors.text2 }]}>Curate highlights</Text>
+                <Text style={[s.sheetActionText, { color: colors.text2 }]}>Pick recap photos</Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -930,7 +975,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
         <CommentSheet
           visible={!!commentMomentId}
           momentId={commentMomentId}
-          members={members}
+          members={displayMembers}
           onClose={() => setCommentMomentId(null)}
           onCountChange={(mid, count) => {
             setCommentCountMap(prev => ({ ...prev, [mid]: count }));

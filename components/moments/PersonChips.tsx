@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   ScrollView,
@@ -96,6 +96,12 @@ const PersonChip = React.memo(function PersonChip({
   initial,
   colors,
 }: PersonChipProps) {
+  const [avatarFailed, setAvatarFailed] = useState(false);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatar]);
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -110,8 +116,8 @@ const PersonChip = React.memo(function PersonChip({
     >
       {initial && (
         <View style={[styles.avatar, { backgroundColor: color }]}>
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.avatarImage} />
+          {avatar && !avatarFailed ? (
+            <Image source={{ uri: avatar }} style={styles.avatarImage} onError={() => setAvatarFailed(true)} />
           ) : (
             <Text style={styles.avatarText}>{initial}</Text>
           )}
