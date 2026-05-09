@@ -117,6 +117,7 @@ export default function ReturningUserHome({
   const s = useMemo(() => getStyles(colors), [colors]);
   const hasDrafts = draftTrips.length > 0;
   const hasUpcoming = activeTrips.length > 0 || upcomingTrips.length > 0 || draftTrips.some((t) => t.status === 'Planning');
+  const lastPastTrip = pastTrips[0];
 
   // All trips combined for the album strip (active first, then upcoming, then past)
   const allRecentTrips = useMemo(() => {
@@ -255,6 +256,34 @@ export default function ReturningUserHome({
 
         {/* ── 2b. DAILY TRACKER ── */}
         {dailyTrackerSlot}
+
+        {/* ── 2c. ENDED TRIP RETENTION ── */}
+        {!hasUpcoming && lastPastTrip && (
+          <Animated.View entering={FadeInDown.delay(120).duration(400)} style={s.memoryNudge}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.memoryKicker}>Trip complete</Text>
+              <Text style={s.memoryTitle} numberOfLines={2}>
+                {lastPastTrip.destination ?? lastPastTrip.name} is ready to remember
+              </Text>
+              <Text style={s.memorySub}>
+                Add missing moments, view the recap, or find ideas for the next one.
+              </Text>
+            </View>
+            <View style={s.memoryActions}>
+              <TouchableOpacity style={s.memoryPrimary} onPress={() => onTripPress(lastPastTrip.id)} activeOpacity={0.76}>
+                <Text style={s.memoryPrimaryText}>View recap</Text>
+              </TouchableOpacity>
+              <View style={s.memorySecondaryRow}>
+                <TouchableOpacity style={s.memorySecondary} onPress={onAddMoment} activeOpacity={0.74}>
+                  <Text style={s.memorySecondaryText}>Add photos</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.memorySecondary} onPress={() => router.push('/(tabs)/discover')} activeOpacity={0.74}>
+                  <Text style={s.memorySecondaryText}>Explore</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Animated.View>
+        )}
 
         {/* ── 2c. PLANNING-ONLY HERO ── */}
         {allRecentTrips.length === 0 && quickTrips.length === 0 && draftTrips.length > 0 && (
@@ -771,6 +800,71 @@ const getStyles = (colors: ThemeColors) =>
     },
     actionBtnAccentText: {
       fontSize: 12, fontWeight: '600', color: colors.accent, textAlign: 'center', lineHeight: 16,
+    },
+    memoryNudge: {
+      marginBottom: 24,
+      padding: 16,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: 14,
+    },
+    memoryKicker: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: colors.text3,
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+      marginBottom: 4,
+    },
+    memoryTitle: {
+      fontSize: 20,
+      lineHeight: 24,
+      fontWeight: '800',
+      color: colors.text,
+      letterSpacing: -0.45,
+    },
+    memorySub: {
+      marginTop: 6,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '500',
+      color: colors.text3,
+    },
+    memoryActions: {
+      gap: 8,
+    },
+    memoryPrimary: {
+      minHeight: 44,
+      borderRadius: 14,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    memoryPrimaryText: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: '#fff',
+    },
+    memorySecondaryRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    memorySecondary: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card2,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    memorySecondaryText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: colors.text2,
     },
 
     // Section headers

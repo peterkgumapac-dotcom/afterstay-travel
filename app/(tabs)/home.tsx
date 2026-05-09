@@ -14,7 +14,8 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { Compass, MapPin } from 'lucide-react-native';
+import { BookOpen, Camera, Compass, ReceiptText, ScanLine, Users } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 
 import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
@@ -30,7 +31,6 @@ import { FlightCard } from '@/components/home/FlightCard';
 import { FlightProgressCard } from '@/components/home/FlightProgressCard';
 import { TripActiveCard } from '@/components/home/TripActiveCard';
 import { TripCompletedCard } from '@/components/home/TripCompletedCard';
-import EmptyState from '@/components/shared/EmptyState';
 import ReturningUserHome from '@/components/home/ReturningUserHome';
 import DailyTrackerStrip from '@/components/home/DailyTrackerStrip';
 import { TripReadinessCard } from '@/components/home/TripReadinessCard';
@@ -169,6 +169,232 @@ function CollapsibleSection({
   );
 }
 
+function HomePrimaryAction({
+  icon: Icon,
+  title,
+  subtitle,
+  onPress,
+  primary = false,
+}: {
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  primary?: boolean;
+}) {
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      style={[
+        onboardingStyles.actionCard,
+        { backgroundColor: primary ? colors.accent : colors.card, borderColor: primary ? colors.accent : colors.border },
+      ]}
+      onPress={onPress}
+      activeOpacity={0.76}
+    >
+      <View style={[onboardingStyles.actionIcon, { backgroundColor: primary ? 'rgba(255,255,255,0.18)' : colors.accentDim }]}>
+        <Icon size={18} color={primary ? colors.white : colors.accent} strokeWidth={2} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[onboardingStyles.actionTitle, { color: primary ? colors.white : colors.text }]}>{title}</Text>
+        <Text style={[onboardingStyles.actionSubtitle, { color: primary ? 'rgba(255,255,255,0.78)' : colors.text3 }]}>
+          {subtitle}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function ExploreRetentionRail({ title, subtitle, onPress }: { title: string; subtitle: string; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      style={[onboardingStyles.retentionRail, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.78}
+    >
+      <View style={[onboardingStyles.retentionIcon, { backgroundColor: colors.accentBg }]}>
+        <Compass size={18} color={colors.accent} strokeWidth={2} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[onboardingStyles.retentionKicker, { color: colors.text3 }]}>Explore Moments</Text>
+        <Text style={[onboardingStyles.retentionTitle, { color: colors.text }]}>{title}</Text>
+        <Text style={[onboardingStyles.retentionSubtitle, { color: colors.text3 }]}>{subtitle}</Text>
+      </View>
+      <Text style={[onboardingStyles.retentionArrow, { color: colors.accent }]}>View</Text>
+    </TouchableOpacity>
+  );
+}
+
+function HowAfterStayWorks() {
+  const { colors } = useTheme();
+  const steps = [
+    { icon: ScanLine, title: 'Scan', body: 'Import flights, hotels, dates, and booking details.' },
+    { icon: Users, title: 'Invite', body: 'Bring companions into the same trip plan.' },
+    { icon: ReceiptText, title: 'Budget', body: 'Track spend, scan receipts, and split costs.' },
+    { icon: Camera, title: 'Moments', body: 'Save personal and group memories as you travel.' },
+  ];
+  return (
+    <View style={[onboardingStyles.howCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[onboardingStyles.howKicker, { color: colors.text3 }]}>How AfterStay works</Text>
+      <Text style={[onboardingStyles.howTitle, { color: colors.text }]}>One trip, four simple layers</Text>
+      <View style={onboardingStyles.howGrid}>
+        {steps.map(({ icon: Icon, title, body }) => (
+          <View key={title} style={onboardingStyles.howItem}>
+            <View style={[onboardingStyles.howIcon, { backgroundColor: colors.accentDim }]}>
+              <Icon size={15} color={colors.accent} strokeWidth={2} />
+            </View>
+            <Text style={[onboardingStyles.howItemTitle, { color: colors.text }]}>{title}</Text>
+            <Text style={[onboardingStyles.howBody, { color: colors.text3 }]}>{body}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const onboardingStyles = StyleSheet.create({
+  firstTripScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 22,
+    paddingBottom: 120,
+    gap: 14,
+  },
+  welcomeBlock: {
+    paddingVertical: 10,
+  },
+  welcomeKicker: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  welcomeTitle: {
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: '700',
+    letterSpacing: -1.1,
+  },
+  welcomeBody: {
+    marginTop: 10,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  actionCard: {
+    minHeight: 82,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  actionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  actionSubtitle: {
+    marginTop: 3,
+    fontSize: 12.5,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  retentionRail: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  retentionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retentionKicker: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  retentionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  retentionSubtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+  retentionArrow: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  howCard: {
+    marginTop: 4,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  howKicker: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  howTitle: {
+    marginTop: 5,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+  howGrid: {
+    marginTop: 14,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  howItem: {
+    width: '47%',
+    minHeight: 118,
+  },
+  howIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  howItemTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  howBody: {
+    marginTop: 3,
+    fontSize: 11.5,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+});
+
 export default function HomeScreenWithBoundary() {
   return (
     <TabErrorBoundary name="Home">
@@ -263,14 +489,14 @@ function HomeScreen() {
 
   const handleVoteUpdated = useCallback((placeId: string, votes: Record<string, any>) => {
     setSavedPlaces((prev) => prev.map((p) => (p.id === placeId ? { ...p, voteByMember: votes } : p)));
-  }, []);
+  }, [setSavedPlaces]);
 
   // Realtime vote updates from other members
   useVoteSubscription(
     trip?.id ?? null,
     useCallback((placeId: string, voteByMember: Record<string, any>, vote: any) => {
       setSavedPlaces((prev) => prev.map((p) => (p.id === placeId ? { ...p, voteByMember, vote } : p)));
-    }, []),
+    }, [setSavedPlaces]),
   );
 
   // Hide tab bar during initial load
@@ -294,7 +520,7 @@ function HomeScreen() {
   // Date range label (hotelPhotos now comes from hook)
   const dateRange = useMemo(
     () => (trip ? `${formatDatePHT(trip.startDate)} \u2013 ${formatDatePHT(trip.endDate)}` : ''),
-    [trip?.startDate, trip?.endDate],
+    [trip],
   );
 
   // Countdown computation
@@ -306,7 +532,7 @@ function HomeScreen() {
 
   const countdown = useMemo(
     () => getTripDayMetrics(trip, clockNow),
-    [trip?.id, trip?.startDate, trip?.endDate, trip?.status, clockNow],
+    [trip, clockNow],
   );
   const totalNights = countdown.totalDays;
   const openTripOverview = useCallback(
@@ -502,7 +728,7 @@ function HomeScreen() {
       );
     }
 
-    // First-time user — welcoming empty state
+    // First-time user — welcome + retention path, not a dead empty page
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
         <ProfileRow
@@ -513,37 +739,44 @@ function HomeScreen() {
           onBellPress={() => setShowNotifications(true)}
         />
         <ScrollView
-          contentContainerStyle={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={onboardingStyles.firstTripScroll}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accentLt} />}
         >
-          <EmptyState
-            icon={Compass}
-            title="Your next adventure starts here"
-            subtitle="Plan a trip, track your budget, capture moments, and discover amazing places."
-            actionLabel="Plan a Trip"
-            onAction={() => router.push('/onboarding')}
-            secondaryLabel="Join a friend's trip"
-            onSecondary={() => router.push('/join-trip')}
+          <View style={onboardingStyles.welcomeBlock}>
+            <Text style={[onboardingStyles.welcomeKicker, { color: colors.text3 }]}>Welcome to AfterStay</Text>
+            <Text style={[onboardingStyles.welcomeTitle, { color: colors.text }]}>Start with a booking, or just explore.</Text>
+            <Text style={[onboardingStyles.welcomeBody, { color: colors.text2 }]}>
+              Scan a trip, join a companion, or browse real moments from other travelers while your next plan takes shape.
+            </Text>
+          </View>
+
+          <HomePrimaryAction
+            icon={BookOpen}
+            title="Plan a trip"
+            subtitle="Create your travel hub for flights, stays, budget, essentials, and memories."
+            primary
+            onPress={() => router.push('/onboarding')}
           />
-          <TouchableOpacity
-            style={{
-              marginTop: 20,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              paddingVertical: 12,
-              paddingHorizontal: 20,
-              backgroundColor: colors.card,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
+          <HomePrimaryAction
+            icon={Users}
+            title="Join a friend's trip"
+            subtitle="Enter an invite code and see the shared plan without duplicate setup."
+            onPress={() => router.push('/join-trip')}
+          />
+          <HomePrimaryAction
+            icon={Camera}
+            title="Capture a quick trip"
+            subtitle="Save a day out, meal, or spontaneous memory without full planning."
+            onPress={() => router.push('/quick-trip-create?allowNoPhotos=1' as never)}
+          />
+
+          <ExploreRetentionRail
+            title="See what travelers are sharing"
+            subtitle="Get ideas from public moments before you create your first trip."
             onPress={() => router.push('/(tabs)/discover')}
-            activeOpacity={0.7}
-          >
-            <MapPin size={16} color={colors.accent} strokeWidth={2} />
-            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>Discover places to visit</Text>
-          </TouchableOpacity>
+          />
+          <HowAfterStayWorks />
           {__DEV__ && debugInfo.length > 0 && (
             <Text style={{ marginTop: 12, color: colors.text3, fontSize: 10, fontFamily: 'monospace' }}>
               {debugInfo}

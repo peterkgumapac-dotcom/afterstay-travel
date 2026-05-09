@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import { Camera, Eye, EyeOff } from 'lucide-react-native';
+import { Camera, Filter, Eye, EyeOff, X } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { pushProfile } from '@/lib/profileNavigation';
@@ -76,6 +76,15 @@ const PEOPLE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#7f3712', '#9a7d52'];
 interface MomentsTabProps {
   tripId?: string;
 }
+
+type AlbumMode = 'timeline' | 'people' | 'places' | 'favorites';
+
+const ALBUM_MODES: { id: AlbumMode; label: string }[] = [
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'people', label: 'People' },
+  { id: 'places', label: 'Places' },
+  { id: 'favorites', label: 'Favorites' },
+];
 
 function buildPeopleMap(members: GroupMember[]): PeopleMap {
   const people: PeopleMap = {};
@@ -156,6 +165,8 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   const [activePerson, setActivePerson] = useState<string | null>(null);
   const [showContributors, setShowContributors] = useState(false);
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [albumMode, setAlbumMode] = useState<AlbumMode>('timeline');
   const [activeScope, setActiveScope] = useState<ScopeFilter>('all');
   const [favoriteMap, setFavoriteMap] = useState<MomentFavoriteMap>({});
   const [commentCountMap, setCommentCountMap] = useState<Record<string, number>>({});
@@ -163,8 +174,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 
   const [editMomentId, setEditMomentId] = useState<string | null>(null);
   const [curationDay, setCurationDay] = useState<{ dateLabel: string; photos: { id: string; uri: string }[] } | null>(null);
-  const [curatedDays, setCuratedDays] = useState<Set<string>>(new Set());
-  const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
 
   // Bento grid selection + carousel state
   const [selectMode, setSelectMode] = useState(false);
@@ -401,17 +410,9 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   }, [rawMoments]);
 
   const handleCurationComplete = useCallback((favorites: string[]) => {
-    setFavoritedIds((prev) => new Set([...prev, ...favorites]));
-    if (curationDay) {
-      const dayKey = curationDay.dateLabel === 'All Days' ? 'all' : curationDay.dateLabel;
-      setCuratedDays((prev) => {
-        const next = new Set(prev);
-        next.add(dayKey);
-        return next;
-      });
-    }
+    void favorites;
     setCurationDay(null);
-  }, [curationDay]);
+  }, []);
 
   // Fetch moments + group members + favorites
   const load = useCallback(async (silent = false, forceRefresh = false) => {
@@ -554,19 +555,36 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
     return counts;
   }, [allMoments]);
 
+  const favoriteCount = useMemo(
+    () => allMoments.filter((m) => (m.favoriteCount ?? 0) > 0 || m.isFavorited).length,
+    [allMoments],
+  );
+  const modeCounts = useMemo<Record<AlbumMode, number>>(() => ({
+    timeline: allMoments.length,
+    people: contributorCount,
+    places: uniquePlaces,
+    favorites: favoriteCount,
+  }), [allMoments.length, contributorCount, favoriteCount, uniquePlaces]);
+  const activeFiltersCount = (activePerson ? 1 : 0) + (activeScope !== 'all' ? 1 : 0) + (showHidden ? 1 : 0);
+
   const filtered = useMemo(() => {
     let result = allMoments;
-    if (activePerson) result = result.filter((m) => m.userId === activePerson);
-    if (activeScope === 'group') result = result.filter((m) => m.visibility === 'shared' || m.visibility === 'public');
-    else if (activeScope === 'me') result = result.filter((m) => m.visibility === 'private');
-    else if (activeScope === 'album') result = result.filter((m) => m.visibility === 'album');
-    else if (activeScope === 'favorites') result = result.filter((m) => (m.favoriteCount ?? 0) > 0 || m.isFavorited);
+    if (albumMode === 'places') result = result.filter((m) => !!(m.place ?? m.location));
+    if (albumMode === 'favorites') {
+      result = result.filter((m) => (m.favoriteCount ?? 0) > 0 || m.isFavorited);
+    } else {
+      if (activePerson) result = result.filter((m) => m.userId === activePerson);
+      if (activeScope === 'group') result = result.filter((m) => m.visibility === 'shared' || m.visibility === 'public');
+      else if (activeScope === 'me') result = result.filter((m) => m.visibility === 'private');
+      else if (activeScope === 'album') result = result.filter((m) => m.visibility === 'album');
+      else if (activeScope === 'favorites') result = result.filter((m) => (m.favoriteCount ?? 0) > 0 || m.isFavorited);
+    }
     // Per-user dismissals — hide unless toggle is on
     if (!showHidden && dismissedIds.size > 0) {
       result = result.filter((m) => !dismissedIds.has(m.id));
     }
     return result;
-  }, [allMoments, activePerson, activeScope, showHidden, dismissedIds]);
+  }, [allMoments, activePerson, activeScope, albumMode, showHidden, dismissedIds]);
 
   if (loading) {
     return (
@@ -588,45 +606,49 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={[s.subtitle, { color: colors.text3 }]}>
-                {dayCount} days · {uniquePlaces} places
+                {dayCount} days · {uniquePlaces} places · {contributorCount || 1} contributor{(contributorCount || 1) === 1 ? '' : 's'}
               </Text>
-              {members.length > 1 && (
-                <Pressable
-                  onPress={() => setShowContributors(!showContributors)}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                  hitSlop={8}
-                >
-                  {/* Stacked mini avatars */}
-                  <View style={{ flexDirection: 'row', marginLeft: 2 }}>
-                    {members.slice(0, 3).map((m, i) => (
-                      <View key={m.id} style={{
-                        width: 18, height: 18, borderRadius: 9,
-                        marginLeft: i > 0 ? -6 : 0,
-                        borderWidth: 1.5, borderColor: colors.canvas,
-                        backgroundColor: PEOPLE_COLORS[i % PEOPLE_COLORS.length],
-                        overflow: 'hidden', zIndex: 3 - i,
-                      }}>
-                        {m.profilePhoto ? (
-                          <Image source={{ uri: m.profilePhoto }} style={{ width: '100%', height: '100%' }} />
-                        ) : (
-                          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                            <Text style={{ fontSize: 8, fontWeight: '700', color: '#fff' }}>{m.name.charAt(0)}</Text>
-                          </View>
-                        )}
-                      </View>
-                    ))}
-                  </View>
-                  <Text style={[s.subtitle, { color: colors.accent }]}>
-                    {contributorCount}
-                  </Text>
-                </Pressable>
-              )}
             </View>
           </View>
+          <Pressable
+            style={[s.filterButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+            onPress={() => setFilterSheetVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Filter and manage moments"
+          >
+            <Filter size={15} color={colors.text2} strokeWidth={2} />
+            <Text style={[s.filterButtonText, { color: colors.text2 }]}>Filter</Text>
+            {activeFiltersCount > 0 ? (
+              <View style={[s.filterCount, { backgroundColor: colors.accent }]}>
+                <Text style={s.filterCountText}>{activeFiltersCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
         </View>
 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.modeRow}>
+          {ALBUM_MODES.map((mode) => {
+            const active = albumMode === mode.id;
+            return (
+              <Pressable
+                key={mode.id}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setAlbumMode(mode.id);
+                  if (mode.id !== 'timeline') setActiveScope('all');
+                  if (mode.id === 'people') setShowContributors(true);
+                }}
+                style={[s.modeChip, { borderColor: active ? colors.accent : colors.border, backgroundColor: active ? colors.accent : colors.card }]}
+              >
+                <Text style={[s.modeLabel, { color: active ? colors.onBlack : colors.text2 }]}>{mode.label}</Text>
+                <Text style={[s.modeCount, { color: active ? colors.onBlack : colors.text3 }]}>{modeCounts[mode.id]}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
         {/* ---- Expandable contributor row ---- */}
-        {showContributors && members.length > 1 && (
+        {(showContributors || albumMode === 'people') && members.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingVertical: 8 }}>
             {members.map((m, i) => {
               const count = m.userId ? (personCounts[m.userId] ?? 0) : 0;
@@ -665,42 +687,6 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
             })}
           </ScrollView>
         )}
-
-        {/* ---- Person filter ---- */}
-        <PersonChips
-          active={activePerson}
-          onChange={setActivePerson}
-          members={members}
-          counts={personCounts}
-          total={allMoments.length}
-        />
-
-        {/* ---- Scope filter + hidden toggle ---- */}
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flex: 1 }}>
-            <ScopeChips
-              active={activeScope}
-              onChange={setActiveScope}
-              counts={scopeCounts}
-            />
-          </View>
-          {dismissedIds.size > 0 && (
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowHidden((v) => !v);
-              }}
-              hitSlop={10}
-              style={{ paddingHorizontal: 14, paddingVertical: 6 }}
-            >
-              {showHidden ? (
-                <Eye size={18} color={colors.accent} />
-              ) : (
-                <EyeOff size={18} color={colors.text3} />
-              )}
-            </Pressable>
-          )}
-        </View>
 
         {activeScope === 'album' ? (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
@@ -806,6 +792,103 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
             dismissedIds={dismissedIds}
           />
         </Modal>
+
+        <Modal
+          visible={filterSheetVisible}
+          transparent
+          animationType="slide"
+          statusBarTranslucent
+          onRequestClose={() => setFilterSheetVisible(false)}
+        >
+          <Pressable style={s.sheetBackdrop} onPress={() => setFilterSheetVisible(false)} />
+          <View style={[s.filterSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={s.sheetHandle} />
+            <View style={s.sheetHeader}>
+              <View>
+                <Text style={[s.sheetKicker, { color: colors.text3 }]}>Moments controls</Text>
+                <Text style={[s.sheetTitle, { color: colors.text }]}>Filter and manage</Text>
+              </View>
+              <Pressable
+                style={[s.sheetClose, { backgroundColor: colors.card2 }]}
+                onPress={() => setFilterSheetVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close filters"
+              >
+                <X size={17} color={colors.text2} />
+              </Pressable>
+            </View>
+
+            <Text style={[s.sheetSectionLabel, { color: colors.text3 }]}>People</Text>
+            <PersonChips
+              active={activePerson}
+              onChange={setActivePerson}
+              members={members}
+              counts={personCounts}
+              total={allMoments.length}
+            />
+
+            <Text style={[s.sheetSectionLabel, { color: colors.text3 }]}>Visibility</Text>
+            <ScopeChips
+              active={activeScope}
+              onChange={setActiveScope}
+              counts={scopeCounts}
+            />
+
+            <View style={s.sheetActionRow}>
+              {dismissedIds.size > 0 && (
+                <Pressable
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowHidden((v) => !v);
+                  }}
+                  style={[s.sheetAction, { borderColor: colors.border, backgroundColor: showHidden ? colors.accentBg : colors.card2 }]}
+                >
+                  {showHidden ? (
+                    <Eye size={17} color={colors.accent} />
+                  ) : (
+                    <EyeOff size={17} color={colors.text3} />
+                  )}
+                  <Text style={[s.sheetActionText, { color: showHidden ? colors.accent : colors.text2 }]}>
+                    {showHidden ? 'Showing hidden' : 'Hidden off'}
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSelectMode((v) => !v);
+                  setSelectedIds(new Set());
+                  setFilterSheetVisible(false);
+                }}
+                style={[s.sheetAction, { borderColor: colors.border, backgroundColor: selectMode ? colors.accentBg : colors.card2 }]}
+              >
+                <Text style={[s.sheetActionText, { color: selectMode ? colors.accent : colors.text2 }]}>
+                  {selectMode ? 'Exit manage' : 'Manage photos'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  handleCurationLongPress('all');
+                  setFilterSheetVisible(false);
+                }}
+                style={[s.sheetAction, { borderColor: colors.border, backgroundColor: colors.card2 }]}
+              >
+                <Text style={[s.sheetActionText, { color: colors.text2 }]}>Curate highlights</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setActivePerson(null);
+                  setActiveScope('all');
+                  setShowHidden(false);
+                  setAlbumMode('timeline');
+                }}
+                style={[s.sheetAction, { borderColor: colors.border, backgroundColor: colors.card2 }]}
+              >
+                <Text style={[s.sheetActionText, { color: colors.text2 }]}>Reset</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </View>
 
       {/* ---- Edit details sheet ---- */}
@@ -864,7 +947,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
 // Styles — getStyles factory pattern per CLAUDE.md
 // ---------------------------------------------------------------------------
 
-const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
+const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
   StyleSheet.create({
     loadingContainer: {
       flex: 1,
@@ -901,6 +984,142 @@ const getStyles = (_colors: ReturnType<typeof useTheme>['colors']) =>
       fontSize: 11.5,
       fontWeight: '500',
       marginTop: 2,
+    },
+    filterButton: {
+      minHeight: 38,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+    filterButtonText: {
+      fontSize: 12,
+      fontWeight: '800',
+    },
+    filterCount: {
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 5,
+    },
+    filterCountText: {
+      color: '#fff',
+      fontSize: 10,
+      fontWeight: '800',
+      fontVariant: ['tabular-nums'],
+    },
+    modeRow: {
+      paddingHorizontal: 16,
+      paddingBottom: 12,
+      gap: 7,
+      flexDirection: 'row',
+    },
+    modeChip: {
+      minHeight: 38,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingHorizontal: 13,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+    modeLabel: {
+      fontSize: 12,
+      fontWeight: '800',
+    },
+    modeCount: {
+      fontSize: 10,
+      fontWeight: '800',
+      opacity: 0.78,
+      fontVariant: ['tabular-nums'],
+    },
+    sheetBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.36)',
+    },
+    filterSheet: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      borderWidth: 1,
+      paddingTop: 10,
+      paddingBottom: 30,
+      shadowColor: '#000',
+      shadowOpacity: 0.24,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: -8 },
+      elevation: 20,
+    },
+    sheetHandle: {
+      alignSelf: 'center',
+      width: 44,
+      height: 4,
+      borderRadius: 99,
+      backgroundColor: colors.border,
+      marginBottom: 14,
+    },
+    sheetHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 18,
+      marginBottom: 14,
+    },
+    sheetKicker: {
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1.5,
+      textTransform: 'uppercase',
+      marginBottom: 3,
+    },
+    sheetTitle: {
+      fontSize: 21,
+      fontWeight: '800',
+      letterSpacing: -0.5,
+    },
+    sheetClose: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sheetSectionLabel: {
+      paddingHorizontal: 18,
+      paddingTop: 8,
+      paddingBottom: 8,
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+    },
+    sheetActionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      paddingHorizontal: 18,
+      paddingTop: 6,
+    },
+    sheetAction: {
+      minHeight: 42,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+      paddingHorizontal: 13,
+      borderRadius: 14,
+      borderWidth: 1,
+    },
+    sheetActionText: {
+      fontSize: 12,
+      fontWeight: '800',
     },
     // Member stats
     memberStatsRow: {
