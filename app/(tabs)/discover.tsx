@@ -362,7 +362,12 @@ function DiscoverScreenInner() {
     setPlacesError(null);
     setPlacesLoading(true);
     try {
-      if (isBroadOriginQuery(cleaned)) {
+      const isBroadQuery = isBroadOriginQuery(cleaned);
+      const best = placeId
+        ? { placeId, description: cleaned }
+        : (await placeAutocomplete(cleaned))[0];
+
+      if (isBroadQuery && !best) {
         setExploreCoords(null);
         setExploreDest('');
         setManualOriginKind('none');
@@ -370,9 +375,6 @@ function DiscoverScreenInner() {
         setOriginRefinementText(originRefinementCopy(cleaned));
         return;
       }
-      const best = placeId
-        ? { placeId, description: cleaned }
-        : (await placeAutocomplete(cleaned))[0];
       let loc = best ? await getPlaceLocation(best.placeId) : null;
       if (!loc) {
         const fallback = await searchPlace(best?.description ?? cleaned);
@@ -1130,6 +1132,9 @@ function DiscoverScreenInner() {
                 placeholderTextColor={colors.text3}
                 style={styles.searchInput}
                 returnKeyType="search"
+                autoCorrect={false}
+                spellCheck={false}
+                autoCapitalize="words"
               />
             </View>
             {exploreFocused && exploreQuery.trim().length >= 2 && (
@@ -1196,6 +1201,9 @@ function DiscoverScreenInner() {
                 placeholderTextColor={colors.text3}
                 style={styles.searchInput}
                 returnKeyType="search"
+                autoCorrect={false}
+                spellCheck={false}
+                autoCapitalize="none"
               />
             </View>
             <View style={styles.primaryFilterRow}>
