@@ -9,6 +9,7 @@ import {
   Image,
   Keyboard,
   Linking,
+  Modal,
   RefreshControl,
   ScrollView,
   Text,
@@ -40,7 +41,7 @@ import { mapNearbyToDiscoverPlace, mapSavedToDiscoverPlace } from '@/components/
 import { MS_PER_DAY } from '@/lib/utils';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { searchNearby, searchNearbyPage, placeAutocomplete, getPlaceLocation, searchPlace, type NearbyPlace } from '@/lib/google-places';
-import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS } from '@/lib/category-config';
+import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS } from '@/lib/category-config';
 import { searchMultiCategory } from '@/lib/multi-category-search';
 import {
   applyPlaceFilters,
@@ -52,8 +53,10 @@ import {
   PRIMARY_PLACE_CATEGORY_CHIPS,
   destinationToLabel,
   isBroadOriginQuery,
+  isVagueOriginQuery,
   originRefinementCopy,
   resolveCategory,
+  vagueOriginCopy,
   type DiscoverOriginKind,
   type DistanceOrigin,
   type FilterState,
@@ -333,19 +336,15 @@ function DiscoverScreenInner() {
     }
   }, []);
 
-  const handleAnchorChange = useCallback((a: 'hotel' | 'me') => {
-    if (a === 'me') {
-      switchToMyLocation();
-    } else {
-      setDistanceOrigin('hotel');
-    }
-    cacheSet('discover:anchor', a);
-  }, [switchToMyLocation]);
-
   const handleTravelModeChange = useCallback((m: 'walk' | 'car') => {
     setTravelMode(m);
     cacheSet('discover:travelMode', m);
   }, []);
+
+  const clearPlaceFilters = useCallback(() => {
+    setFilters({ ...DEFAULT_FILTERS });
+    handleTravelModeChange('walk');
+  }, [handleTravelModeChange]);
 
   const applyExploreOrigin = useCallback((
     label: string,
@@ -380,6 +379,14 @@ function DiscoverScreenInner() {
     setPlacesError(null);
     setPlacesLoading(true);
     try {
+      if (isVagueOriginQuery(cleaned)) {
+        setExploreCoords(null);
+        setExploreDest('');
+        setManualOriginKind('none');
+        setPlaces([]);
+        setOriginRefinementText(vagueOriginCopy(cleaned));
+        return;
+      }
       const isBroadQuery = isBroadOriginQuery(cleaned);
       const best = placeId
         ? { placeId, description: cleaned }
@@ -446,6 +453,9 @@ function DiscoverScreenInner() {
       } else {
         const shortLabel = best?.description.split(',')[0] ?? cleaned;
         applyExploreOrigin(shortLabel, { lat: loc.lat, lng: loc.lng }, 'selected_place');
+        if (isBroadQuery) {
+          setOriginRefinementText(`${shortLabel} is broad. For sharper results, change this to a hotel, station, landmark, neighborhood, or exact pin.`);
+        }
       }
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] choose destination failed:', err);
@@ -655,7 +665,8 @@ function DiscoverScreenInner() {
       return;
     }
 
-    const cacheKey = `${type ?? ''}_${keyword ?? ''}_${effectiveCoords.lat}_${effectiveCoords.lng}`;
+    const searchRadius = Math.min(radius ?? DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS);
+    const cacheKey = `${type ?? ''}_${keyword ?? ''}_${effectiveCoords.lat}_${effectiveCoords.lng}_${searchRadius}`;
 
     // Use cache if available and not forced refresh
     if (!skipCache && placesCache.current[cacheKey]) {
@@ -666,7 +677,7 @@ function DiscoverScreenInner() {
     setPlacesLoading(true);
     setPlacesError(null);
     try {
-      const { places: results, nextPageToken: token, errorMessage } = await searchNearby(type, keyword, effectiveCoords, radius ?? DEFAULT_SEARCH_RADIUS);
+      const { places: results, nextPageToken: token, errorMessage } = await searchNearby(type, keyword, effectiveCoords, searchRadius);
       setNextPageToken(token);
       logDiscoverDiagnostics('searchPlaces', {
         origin: effectiveDest,
@@ -674,7 +685,7 @@ function DiscoverScreenInner() {
         category: placeCategoryChip,
         keyword,
         type,
-        radius: radius ?? DEFAULT_SEARCH_RADIUS,
+        radius: searchRadius,
         rawCount: results.length,
         errorMessage: errorMessage ?? null,
       });
@@ -1038,30 +1049,37 @@ function DiscoverScreenInner() {
   const addDistanceToPlaces = useCallback((list: readonly DiscoverPlace[]) => list.map((p) => {
     const distanceKm = getDistanceKm(p.lat, p.lng);
     const qualityScore = (p.r ?? 0) * Math.log10(Math.max(p.totalRatings ?? 1, 1));
-    const blendedScore = qualityScore - (distanceKm * 0.3);
+    const distancePenalty = travelMode === 'walk' ? 0.42 : 0.18;
+    const blendedScore = qualityScore - (distanceKm * distancePenalty);
     return { place: p, distanceKm, blendedScore };
-  }), [getDistanceKm]);
+  }), [getDistanceKm, travelMode]);
 
-  const allPlacesWithDistance = useMemo(
-    () => sortPlaceDistanceEntries(addDistanceToPlaces(places)),
-    [places, addDistanceToPlaces, sortPlaceDistanceEntries],
+  const keepInsideDiscoveryRadius = useCallback(
+    (entries: PlaceDistanceEntry[]) => entries.filter((entry) => (
+      !hasUsableOrigin ||
+      entry.distanceKm === 0 ||
+      entry.distanceKm <= (MAX_DISCOVER_RADIUS / 1000)
+    )),
+    [hasUsableOrigin],
   );
 
-  // Pre-compute distances, filter nearby, sort by quality-weighted score.
+  const allPlacesWithDistance = useMemo(
+    () => sortPlaceDistanceEntries(keepInsideDiscoveryRadius(addDistanceToPlaces(places))),
+    [places, addDistanceToPlaces, keepInsideDiscoveryRadius, sortPlaceDistanceEntries],
+  );
+
+  // Pre-compute distances, keep results inside the 10 km discovery envelope, then sort.
   const placesWithDistance = useMemo(() => {
     const withDist = addDistanceToPlaces(filteredPlaces);
-    const nearbyRadius = travelMode === 'car' ? 10 : 2;
-    const filtered = filters.nearby && hasUsableOrigin
-      ? withDist.filter((p) => p.distanceKm > 0 && p.distanceKm <= nearbyRadius)
-      : withDist;
-    return sortPlaceDistanceEntries(filtered);
-  }, [filteredPlaces, addDistanceToPlaces, filters.nearby, hasUsableOrigin, travelMode, sortPlaceDistanceEntries]);
+    return sortPlaceDistanceEntries(keepInsideDiscoveryRadius(withDist));
+  }, [filteredPlaces, addDistanceToPlaces, keepInsideDiscoveryRadius, sortPlaceDistanceEntries]);
 
   const canRelaxPlaceFilters = (
-    filters.nearby ||
     filters.openNow ||
     filters.minRating > 0 ||
-    filters.maxPrice < DEFAULT_FILTERS.maxPrice
+    (filters.minReviewCount ?? 0) > 0 ||
+    (filters.placeTypes?.length ?? 0) > 0 ||
+    (filters.vibes?.length ?? 0) > 0
   ) && !filters.savedOnly && !filters.recommendedOnly && !filters.needsVotesOnly;
   const minimumUsefulResults = Math.min(3, allPlacesWithDistance.length);
   const filtersRelaxedForResults = canShowPlaceResults &&
@@ -1094,13 +1112,15 @@ function DiscoverScreenInner() {
 
   const placesEmptyText = useMemo(() => {
     if (!hasUsableOrigin) return 'Set a precise location or use current location before searching.';
-    if (filters.nearby) return 'No walkable places found. Try Any distance.';
     if (filters.openNow) return 'No open places found. Try All availability.';
     if (filters.savedOnly) return 'No saved ideas match this view yet.';
     if (filters.recommendedOnly) return 'No group recommendations match this view yet.';
     if (filters.needsVotesOnly) return 'No places need votes right now.';
-    return 'No places match these filters.';
-  }, [filters.nearby, filters.needsVotesOnly, filters.openNow, filters.recommendedOnly, filters.savedOnly, hasUsableOrigin]);
+    if ((filters.placeTypes?.length ?? 0) > 0 || (filters.vibes?.length ?? 0) > 0 || (filters.minReviewCount ?? 0) > 0 || filters.minRating > 0) {
+      return 'No places match those advanced filters. Try Clear filters.';
+    }
+    return 'No places found within 10 km.';
+  }, [filters.minRating, filters.minReviewCount, filters.needsVotesOnly, filters.openNow, filters.placeTypes, filters.recommendedOnly, filters.savedOnly, filters.vibes, hasUsableOrigin]);
 
   const handleExplore = useCallback((placeId: string | undefined, name: string) => {
     setDetailPlaceId(placeId ?? null);
@@ -1264,6 +1284,11 @@ function DiscoverScreenInner() {
                 <Text style={styles.originChangeText}>Change</Text>
               </TouchableOpacity>
             </View>
+            {originRefinementText ? (
+              <Text style={[styles.precisionHint, { color: colors.accent }]}>
+                {originRefinementText}
+              </Text>
+            ) : null}
             <View style={styles.precisionInputBox}>
               <Search size={17} color={colors.text3} strokeWidth={1.8} />
               <TextInput
@@ -1317,19 +1342,38 @@ function DiscoverScreenInner() {
                 ) : null}
               </TouchableOpacity>
             </View>
-            {showFilters ? (
-              <PlaceFilterPanel
-                colors={colors}
-                styles={styles}
-                filters={filters}
-                distanceOrigin={distanceOrigin}
-                travelMode={travelMode}
-                onFiltersChange={setFilters}
-                onAnchorChange={handleAnchorChange}
-                onTravelModeChange={handleTravelModeChange}
-                onClose={() => setShowFilters(false)}
-              />
-            ) : null}
+            <Modal
+              visible={showFilters}
+              transparent
+              animationType="slide"
+              statusBarTranslucent
+              onRequestClose={() => setShowFilters(false)}
+            >
+              <View style={styles.filterModalOverlay}>
+                <TouchableOpacity
+                  style={styles.filterModalBackdrop}
+                  activeOpacity={1}
+                  onPress={() => setShowFilters(false)}
+                />
+                <View style={styles.filterSheetWrap}>
+                  <View style={styles.filterSheetHandle} />
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <PlaceFilterPanel
+                      colors={colors}
+                      styles={styles}
+                      filters={filters}
+                      travelMode={travelMode}
+                      resultCount={visiblePlacesWithDistance.length}
+                      canUseGroupFilters={votableMemberCount >= 2}
+                      onFiltersChange={setFilters}
+                      onTravelModeChange={handleTravelModeChange}
+                      onClear={clearPlaceFilters}
+                      onClose={() => setShowFilters(false)}
+                    />
+                  </ScrollView>
+                </View>
+              </View>
+            </Modal>
           </>
         )}
       </View>

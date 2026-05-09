@@ -22,11 +22,12 @@ export const CATEGORY_SEARCH_MAP: Record<string, { type?: string; keyword?: stri
 };
 
 export const CATEGORY_RADIUS_MAP: Record<string, number> = {
-  beach: 25000, food: 5000, activity: 15000, nightlife: 5000,
+  beach: 10000, food: 10000, activity: 10000, nightlife: 10000,
   photo: 10000, wellness: 5000, coffee: 5000, atm: 2000,
-  shopping: 5000, landmark: 15000,
+  shopping: 5000, landmark: 10000,
   hotel: 5000,
-  'date night': 5000, 'rainy day': 5000, 'worth the drive': 25000, 'budget friendly': 5000,
+  'date night': 5000, 'rainy day': 5000, 'worth the drive': 10000, 'budget friendly': 5000,
 };
 
-export const DEFAULT_SEARCH_RADIUS = 5000;
+export const MAX_DISCOVER_RADIUS = 10000;
+export const DEFAULT_SEARCH_RADIUS = 10000;

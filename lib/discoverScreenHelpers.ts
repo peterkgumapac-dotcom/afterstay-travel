@@ -47,6 +47,35 @@ const BROAD_ORIGIN_TERMS = new Set([
   'caticlan',
 ]);
 
+const VAGUE_ORIGIN_TERMS = new Set([
+  'activity',
+  'activities',
+  'bar',
+  'bars',
+  'beach',
+  'best food',
+  'cafe',
+  'cafes',
+  'coffee',
+  'coffee shop',
+  'coffee shops',
+  'food',
+  'good food',
+  'hotel',
+  'hotels',
+  'landmark',
+  'nice place',
+  'nightlife',
+  'place',
+  'places',
+  'restaurant',
+  'restaurants',
+  'shopping',
+  'things to do',
+  'tour',
+  'tours',
+]);
+
 export function destinationToLabel(value: unknown): string {
   if (typeof value === 'string') return value;
   if (!value || typeof value !== 'object') return '';
@@ -86,7 +115,19 @@ export function isBroadOriginQuery(input: string): boolean {
   return BROAD_ORIGIN_TERMS.has(normalized) || BROAD_ORIGIN_TERMS.has(firstSegment);
 }
 
+export function isVagueOriginQuery(input: string): boolean {
+  const normalized = input.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!normalized) return false;
+  if (VAGUE_ORIGIN_TERMS.has(normalized)) return true;
+  return normalized.length < 4 && !/\d/.test(normalized);
+}
+
 export function originRefinementCopy(input: string): string {
   const trimmed = input.trim();
   return `${trimmed || 'That place'} is too broad. Search a hotel, address, station, landmark, neighborhood, or exact pin.`;
+}
+
+export function vagueOriginCopy(input: string): string {
+  const trimmed = input.trim();
+  return `"${trimmed || 'That'}" sounds like what to find, not where to search. Pick an area first, like a hotel, station, landmark, neighborhood, or exact pin.`;
 }

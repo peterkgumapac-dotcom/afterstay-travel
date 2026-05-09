@@ -800,6 +800,31 @@ export const getDiscoverStyles = (colors: ThemeColors) =>
 
 
     // Filter panel
+    filterModalOverlay: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0, 0, 0, 0.42)',
+    },
+    filterModalBackdrop: {
+      flex: 1,
+    },
+    filterSheetWrap: {
+      maxHeight: '82%',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      backgroundColor: colors.bg,
+      paddingHorizontal: 14,
+      paddingTop: 10,
+      paddingBottom: 24,
+    },
+    filterSheetHandle: {
+      alignSelf: 'center',
+      width: 42,
+      height: 5,
+      borderRadius: 999,
+      backgroundColor: colors.border2,
+      marginBottom: 10,
+    },
     filterPanel: {
       marginTop: 2,
       padding: 14,

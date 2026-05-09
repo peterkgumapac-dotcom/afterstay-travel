@@ -42,6 +42,9 @@ export type PlaceFilterState = {
   recommendedOnly?: boolean;
   needsVotesOnly?: boolean;
   sortMode?: PlaceSortMode;
+  placeTypes?: string[];
+  vibes?: string[];
+  minReviewCount?: number;
 };
 
 export const DEFAULT_PLACE_FILTERS: PlaceFilterState = {
@@ -54,6 +57,9 @@ export const DEFAULT_PLACE_FILTERS: PlaceFilterState = {
   recommendedOnly: false,
   needsVotesOnly: false,
   sortMode: 'best',
+  placeTypes: [],
+  vibes: [],
+  minReviewCount: 0,
 };
 
 type DestinationLike = {
@@ -145,13 +151,49 @@ export function countActivePlaceFilters(f: PlaceFilterState): number {
     (f.destinationScope !== DEFAULT_PLACE_FILTERS.destinationScope ? 1 : 0) +
     (f.minRating > 0 ? 1 : 0) +
     (f.openNow ? 1 : 0) +
-    (f.nearby ? 1 : 0) +
-    (f.maxPrice < DEFAULT_PLACE_FILTERS.maxPrice ? 1 : 0) +
     (f.savedOnly ? 1 : 0) +
     (f.recommendedOnly ? 1 : 0) +
     (f.needsVotesOnly ? 1 : 0) +
-    (f.sortMode && f.sortMode !== DEFAULT_PLACE_FILTERS.sortMode ? 1 : 0)
+    (f.sortMode && f.sortMode !== DEFAULT_PLACE_FILTERS.sortMode ? 1 : 0) +
+    ((f.placeTypes?.length ?? 0) > 0 ? 1 : 0) +
+    ((f.vibes?.length ?? 0) > 0 ? 1 : 0) +
+    ((f.minReviewCount ?? 0) > 0 ? 1 : 0)
   );
+}
+
+function matchesAnyType(place: DiscoverPlace, selectedTypes: readonly string[]): boolean {
+  if (selectedTypes.length === 0) return true;
+  const primaryType = (place.t ?? '').toLowerCase();
+  const allTypes = new Set([primaryType, ...(place.types ?? []).map((type) => type.toLowerCase())]);
+  return selectedTypes.some((selected) => allTypes.has(selected));
+}
+
+function matchesAnyVibe(place: DiscoverPlace, selectedVibes: readonly string[]): boolean {
+  if (selectedVibes.length === 0) return true;
+  const primaryType = (place.t ?? '').toLowerCase();
+  const types = new Set([primaryType, ...(place.types ?? []).map((type) => type.toLowerCase())]);
+  const rating = place.r ?? 0;
+  const reviews = place.totalRatings ?? 0;
+  const price = place.price ?? 0;
+
+  return selectedVibes.some((vibe) => {
+    switch (vibe) {
+      case 'scenic':
+        return types.has('tourist_attraction') || types.has('natural_feature') || types.has('park') || /beach|view|island|sunset/i.test(place.n);
+      case 'hidden_gem':
+        return rating >= 4.4 && reviews > 0 && reviews <= 250;
+      case 'budget':
+        return price <= 1 || /market|street|cheap|free/i.test(place.n);
+      case 'family':
+        return types.has('park') || types.has('tourist_attraction') || types.has('restaurant') || /family|kids|beach/i.test(place.n);
+      case 'date_night':
+        return types.has('restaurant') || types.has('bar') || /romantic|sunset|wine|dinner/i.test(place.n);
+      case 'rainy_day':
+        return types.has('cafe') || types.has('museum') || types.has('shopping_mall') || /indoor|museum|mall|cafe|spa/i.test(place.n);
+      default:
+        return true;
+    }
+  });
 }
 
 export function applyPlaceFilters(
@@ -178,6 +220,9 @@ export function applyPlaceFilters(
       if (!voteCount || memberCount < 2 || voteCount >= memberCount) return false;
     }
     if (f.minRating && p.r < f.minRating) return false;
+    if ((f.minReviewCount ?? 0) > 0 && (p.totalRatings ?? 0) < (f.minReviewCount ?? 0)) return false;
+    if (!matchesAnyType(p, f.placeTypes ?? [])) return false;
+    if (!matchesAnyVibe(p, f.vibes ?? [])) return false;
     if (f.openNow && !p.openNow) return false;
     if (f.maxPrice < DEFAULT_PLACE_FILTERS.maxPrice && p.price > f.maxPrice) return false;
     return true;
