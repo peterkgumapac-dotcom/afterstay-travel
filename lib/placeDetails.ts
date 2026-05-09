@@ -39,6 +39,7 @@ export const fetchPlaceDetails = async (placeId: string): Promise<PlaceDetails |
     openingHours: proxied.opening_hours?.weekday_text,
     isOpenNow: proxied.opening_hours?.open_now,
     photos: proxied.photos,
+    coords: proxied.coords,
     reviews: (proxied.reviews ?? []).map((rv): Review => ({
       authorName: rv.author_name,
       rating: rv.rating,

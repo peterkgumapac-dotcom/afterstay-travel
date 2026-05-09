@@ -176,6 +176,7 @@ export interface PlaceDetails {
   url?: string;
   price_level?: number;
   editorial_summary?: string;
+  coords?: { lat: number; lng: number };
 }
 
 export async function searchNearby(
@@ -284,6 +285,9 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceDetails | n
     url: r.url,
     price_level: r.price_level,
     editorial_summary: r.editorial_summary?.overview,
+    coords: typeof r.geometry?.location?.lat === 'number' && typeof r.geometry?.location?.lng === 'number'
+      ? { lat: r.geometry.location.lat, lng: r.geometry.location.lng }
+      : undefined,
   };
 }
 

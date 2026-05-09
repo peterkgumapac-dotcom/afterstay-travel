@@ -399,6 +399,27 @@ Deno.serve(async (req) => {
 
 	      case 'details': {
 	        const { placeId, fields } = payload;
+	        const osmLocation = parseOsmPlaceId(String(placeId ?? ''));
+	        if (osmLocation) {
+	          return jsonResponse({
+	            status: 'OK',
+	            result: {
+	              place_id: placeId,
+	              name: osmLocation.name,
+	              formatted_address: osmLocation.name,
+	              rating: 0,
+	              user_ratings_total: 0,
+	              photos: [],
+	              geometry: {
+	                location: {
+	                  lat: osmLocation.lat,
+	                  lng: osmLocation.lng,
+	                },
+	              },
+	              url: `https://www.google.com/maps/search/?api=1&query=${osmLocation.lat},${osmLocation.lng}`,
+	            },
+	          });
+	        }
 	        const f = fields || PLACE_DETAIL_FIELD_MASK;
 	        const url = `${PLACES_BASE}/places/${placeId}`;
 	        const res = await fetch(url, {
