@@ -148,7 +148,15 @@ async function withResolvedPhoto(apiKey: string, place: any) {
 
 function isGoogleApiDisabled(data: any): boolean {
   const message = String(data?.error?.message ?? data?.error_message ?? '').toLowerCase();
-  return message.includes('disabled') || message.includes('legacy api') || message.includes('not been used');
+  return (
+    message.includes('disabled') ||
+    message.includes('legacy api') ||
+    message.includes('not been used') ||
+    message.includes('blocked') ||
+    message.includes('forbidden') ||
+    message.includes('permission denied') ||
+    message.includes('not authorized')
+  );
 }
 
 function osmPlaceId(item: any): string {
