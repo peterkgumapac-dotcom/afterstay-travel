@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { BookOpen, Camera, Compass, ReceiptText, ScanLine, Users } from 'lucide-react-native';
+import { BookOpen, Camera, ReceiptText, ScanLine, Users } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 
 import GroupVotingSheet from '@/components/discover/GroupVotingSheet';
@@ -33,6 +33,7 @@ import { TripActiveCard } from '@/components/home/TripActiveCard';
 import { TripCompletedCard } from '@/components/home/TripCompletedCard';
 import ReturningUserHome from '@/components/home/ReturningUserHome';
 import DailyTrackerStrip from '@/components/home/DailyTrackerStrip';
+import { ExploreMemoriesCard } from '@/components/home/ExploreMemoriesCard';
 import { TripReadinessCard } from '@/components/home/TripReadinessCard';
 import { QuickAccessGrid } from '@/components/home/QuickAccessGrid';
 import { DailyTrackerSheet } from '@/components/budget/DailyTrackerSheet';
@@ -205,27 +206,6 @@ function HomePrimaryAction({
   );
 }
 
-function ExploreRetentionRail({ title, subtitle, onPress }: { title: string; subtitle: string; onPress: () => void }) {
-  const { colors } = useTheme();
-  return (
-    <TouchableOpacity
-      style={[onboardingStyles.retentionRail, { backgroundColor: colors.card, borderColor: colors.border }]}
-      onPress={onPress}
-      activeOpacity={0.78}
-    >
-      <View style={[onboardingStyles.retentionIcon, { backgroundColor: colors.accentBg }]}>
-        <Compass size={18} color={colors.accent} strokeWidth={2} />
-      </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={[onboardingStyles.retentionKicker, { color: colors.text3 }]}>Explore Moments</Text>
-        <Text style={[onboardingStyles.retentionTitle, { color: colors.text }]}>{title}</Text>
-        <Text style={[onboardingStyles.retentionSubtitle, { color: colors.text3 }]}>{subtitle}</Text>
-      </View>
-      <Text style={[onboardingStyles.retentionArrow, { color: colors.accent }]}>View</Text>
-    </TouchableOpacity>
-  );
-}
-
 function HowAfterStayWorks() {
   const { colors } = useTheme();
   const steps = [
@@ -308,44 +288,6 @@ const onboardingStyles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 17,
     fontWeight: '500',
-  },
-  retentionRail: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-  },
-  retentionIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  retentionKicker: {
-    fontSize: 9.5,
-    fontWeight: '800',
-    letterSpacing: 1.3,
-    textTransform: 'uppercase',
-    marginBottom: 3,
-  },
-  retentionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  retentionSubtitle: {
-    marginTop: 3,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
-  retentionArrow: {
-    fontSize: 12,
-    fontWeight: '800',
   },
   howCard: {
     marginTop: 4,
@@ -700,6 +642,12 @@ function HomeScreen() {
                 }}
               />
             }
+            exploreMemoriesSlot={
+              <ExploreMemoriesCard
+                variant={pastTrips[0] ? 'afterTrip' : 'inspiration'}
+                tripId={pastTrips[0]?.id}
+              />
+            }
           />
           <NotificationsSheet
             visible={showNotifications}
@@ -771,11 +719,7 @@ function HomeScreen() {
             onPress={() => router.push('/quick-trip-create?allowNoPhotos=1' as never)}
           />
 
-          <ExploreRetentionRail
-            title="See what travelers are sharing"
-            subtitle="Get ideas from public moments before you create your first trip."
-            onPress={() => router.push('/(tabs)/discover')}
-          />
+          <ExploreMemoriesCard />
           <HowAfterStayWorks />
           {__DEV__ && debugInfo.length > 0 && (
             <Text style={{ marginTop: 12, color: colors.text3, fontSize: 10, fontFamily: 'monospace' }}>
@@ -931,6 +875,10 @@ function HomeScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {trip && phase === 'completed' ? (
+          <ExploreMemoriesCard variant="afterTrip" tripId={trip.id} />
+        ) : null}
 
         {/* Smart nudges moved to bell icon → NotificationsSheet */}
 

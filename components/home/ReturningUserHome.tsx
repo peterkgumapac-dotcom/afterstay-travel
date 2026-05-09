@@ -85,6 +85,8 @@ interface ReturningUserHomeProps {
   isStale?: boolean;
   /** Daily tracker strip rendered from home.tsx */
   dailyTrackerSlot?: React.ReactNode;
+  /** Retention preview for users without a live/upcoming trip command mode. */
+  exploreMemoriesSlot?: React.ReactNode;
 }
 
 export default function ReturningUserHome({
@@ -111,6 +113,7 @@ export default function ReturningUserHome({
   onRefresh,
   isStale = false,
   dailyTrackerSlot,
+  exploreMemoriesSlot,
 }: ReturningUserHomeProps) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -284,6 +287,8 @@ export default function ReturningUserHome({
             </View>
           </Animated.View>
         )}
+
+        {!hasUpcoming && exploreMemoriesSlot}
 
         {/* ── 2c. PLANNING-ONLY HERO ── */}
         {allRecentTrips.length === 0 && quickTrips.length === 0 && draftTrips.length > 0 && (
