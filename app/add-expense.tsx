@@ -33,10 +33,11 @@ import {
   getGroupMembers,
   getUserPaymentQrs,
   notifyExpenseAdded,
+  updateDailyExpense,
   updateExpense,
 } from '@/lib/supabase';
 import type { UserPaymentQr } from '@/lib/supabase';
-import { addQuickTripExpense, addQuickTripExpenseSplits, deleteQuickTripExpense, getQuickTripCompanions } from '@/lib/quickTrips';
+import { addQuickTripExpense, addQuickTripExpenseSplits, deleteQuickTripExpense, getQuickTripCompanions, replaceQuickTripExpenseSplits, updateQuickTripExpense } from '@/lib/quickTrips';
 import type { QuickTripCompanion } from '@/lib/quickTripTypes';
 import { useAuth } from '@/lib/auth';
 import type { DailyExpenseCategory, Expense, GroupMember } from '@/lib/types';
@@ -414,7 +415,56 @@ export default function AddExpenseScreen() {
         photo: photoUri || undefined,
       };
       if (isEditing) {
-        await updateExpense(params.editId!, expenseData);
+        if (expenseType === 'daily-tracker') {
+          await updateDailyExpense(params.editId!, {
+            description: description.trim(),
+            amount: n,
+            currency,
+            dailyCategory: mapToDailyCategory(category),
+            date: expenseDate,
+            notes: combinedNotes,
+            photo: photoUri || undefined,
+            placeName: placeName.trim() || undefined,
+          });
+        } else if (expenseType === 'quick-trip' && params.quickTripId) {
+          if (companionsLoading) {
+            Alert.alert('Still loading people', 'Give us a moment to load this Quick Trip before saving the split.');
+            return;
+          }
+          const paidByCompanion = companions.find((c) => c.displayName === paidBy);
+          const splitTypeForQuickTrip = splitAmountsFromReceipt || splitType !== 'Equal' ? 'custom' : 'even';
+          await updateQuickTripExpense({
+            id: params.editId!,
+            quickTripId: params.quickTripId,
+            amount: n,
+            currency,
+            description: description.trim(),
+            paidByCompanionId: paidByCompanion?.id,
+            splitType: companions.length > 1 ? splitTypeForQuickTrip : 'record_only',
+            occurredAt: expenseDate,
+            receiptPhotoUrl: photoUri || undefined,
+          });
+          if (companions.length > 1) {
+            const splits = splitAmountsFromReceipt
+              ? companions
+                  .filter((c) => (splitAmountsFromReceipt[c.id] ?? splitAmountsFromReceipt[c.displayName] ?? 0) > 0)
+                  .map((c) => ({ companionId: c.id, amountOwed: splitAmountsFromReceipt[c.id] ?? splitAmountsFromReceipt[c.displayName] ?? 0 }))
+              : (() => {
+                  const selected = companions.filter((c) => splitAssignments[c.id]?.selected);
+                  const people = selected.length > 0 ? selected : companions;
+                  return people.map((c) => {
+                    const custom = Number(splitAssignments[c.id]?.amount);
+                    return {
+                      companionId: c.id,
+                      amountOwed: splitType === 'Custom' && custom > 0 ? custom : n / people.length,
+                    };
+                  });
+                })();
+            await replaceQuickTripExpenseSplits(params.editId!, splits);
+          }
+        } else {
+          await updateExpense(params.editId!, expenseData);
+        }
       } else if (expenseType === 'daily-tracker') {
         await addDailyExpense({
           description: description.trim(),

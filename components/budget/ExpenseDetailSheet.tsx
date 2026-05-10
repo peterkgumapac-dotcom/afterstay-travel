@@ -74,7 +74,7 @@ export function ExpenseDetailSheet({ visible, expense, currency = 'PHP', onClose
   if (!expense) return null;
 
   const settledCount = splits.filter(s => s.settled).length;
-  const canEdit = expense.source !== 'quick-trip';
+  const canEdit = expense.source !== 'daily';
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

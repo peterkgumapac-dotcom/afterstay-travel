@@ -4792,12 +4792,32 @@ export async function deleteDailyExpense(expenseId: string): Promise<void> {
 
 export async function updateDailyExpense(
   expenseId: string,
-  input: { description?: string; amount?: number; dailyCategory?: DailyExpenseCategory },
+  input: {
+    description?: string;
+    amount?: number;
+    currency?: string;
+    date?: string;
+    dailyCategory?: DailyExpenseCategory;
+    notes?: string;
+    photo?: string;
+    placeName?: string;
+  },
 ): Promise<void> {
   const updates: Record<string, unknown> = {};
   if (input.description != null) updates.title = input.description;
   if (input.amount != null) updates.amount = input.amount;
+  if (input.currency != null) updates.currency = input.currency;
+  if (input.date != null) updates.expense_date = input.date;
   if (input.dailyCategory != null) updates.daily_category = input.dailyCategory;
+  if (input.dailyCategory === 'Bills') updates.category = 'Other';
+  if (input.dailyCategory === 'Entertainment') updates.category = 'Activity';
+  if (input.dailyCategory === 'Groceries') updates.category = 'Shopping';
+  if (input.notes != null) updates.notes = input.notes;
+  if (input.placeName != null) updates.place_name = input.placeName;
+  if (input.photo !== undefined) {
+    const receiptUpload = await uploadExpenseReceiptPhoto(input.photo);
+    updates.photo_url = receiptUpload.publicUrl ?? null;
+  }
   const { error } = await supabase.from(T.expenses).update(updates).eq('id', expenseId);
   if (error) throw new Error(`updateDailyExpense: ${error.message}`);
 }

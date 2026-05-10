@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { ChevronDown, ChevronRight, ChevronUp, Plus, Settings2, Trash2, X } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, ChevronUp, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatCurrency, formatDatePHT } from '@/lib/utils';
@@ -29,10 +29,11 @@ const CURRENCIES = ['PHP', 'USD', 'EUR', 'JPY', 'GBP', 'SGD', 'THB', 'KRW', 'VND
 interface DailyTrackerCardProps {
   onAddExpense: () => void;
   onScanReceipt: () => void;
+  onEditExpense?: (expense: DailyExpense) => void;
   embedded?: boolean;
 }
 
-export function DailyTrackerCard({ onAddExpense, onScanReceipt, embedded = false }: DailyTrackerCardProps) {
+export function DailyTrackerCard({ onAddExpense, onScanReceipt, onEditExpense, embedded = false }: DailyTrackerCardProps) {
   const { colors } = useTheme();
   const s = useMemo(() => getStyles(colors), [colors]);
 
@@ -189,10 +190,10 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt, embedded = false
           <View style={s.actions}>
             <TouchableOpacity style={s.addBtn} onPress={onAddExpense} activeOpacity={0.7}>
               <Plus size={15} color={colors.bg} strokeWidth={2.5} />
-              <Text style={s.addText}>Add</Text>
+              <Text style={s.addText}>Add expense</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.scanBtn} onPress={onScanReceipt} activeOpacity={0.7}>
-              <Text style={s.scanText}>Scan</Text>
+              <Text style={s.scanText}>Scan receipt</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -323,6 +324,11 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt, embedded = false
                         <Text style={s.expCat}>{e.dailyCategory}</Text>
                       </View>
                       <Text style={s.expAmt}>{formatCurrency(e.amount, e.currency)}</Text>
+                      {onEditExpense && (
+                        <TouchableOpacity onPress={() => onEditExpense(e)} hitSlop={10} style={{ padding: 4 }}>
+                          <Pencil size={13} color={colors.accent} strokeWidth={1.6} />
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity onPress={() => handleDelete(e.id, e.description)} hitSlop={10} style={{ padding: 4 }}>
                         <Trash2 size={13} color={colors.text3} strokeWidth={1.5} />
                       </TouchableOpacity>
@@ -337,10 +343,10 @@ export function DailyTrackerCard({ onAddExpense, onScanReceipt, embedded = false
           <View style={s.actions}>
             <TouchableOpacity style={s.addBtn} onPress={onAddExpense} activeOpacity={0.7}>
               <Plus size={15} color={colors.bg} strokeWidth={2.5} />
-              <Text style={s.addText}>Add</Text>
+              <Text style={s.addText}>Add expense</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.scanBtn} onPress={onScanReceipt} activeOpacity={0.7}>
-              <Text style={s.scanText}>Scan</Text>
+              <Text style={s.scanText}>Scan receipt</Text>
             </TouchableOpacity>
           </View>
         </>

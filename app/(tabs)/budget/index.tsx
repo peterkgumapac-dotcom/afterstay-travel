@@ -62,7 +62,7 @@ import {
   addDailyExpense,
 } from '@/lib/supabase';
 import { formatCurrency, formatDatePHT, safeParse, MS_PER_DAY } from '@/lib/utils';
-import type { Expense, ExpenseTarget, GroupMember, Trip, UnifiedExpenseHistoryItem, SavingsGoal, SavingsMilestone, DailyExpenseCategory } from '@/lib/types';
+import type { DailyExpense, DailyExpenseCategory, Expense, ExpenseTarget, GroupMember, SavingsGoal, SavingsMilestone, Trip, UnifiedExpenseHistoryItem } from '@/lib/types';
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 type DetailExpense = Expense & { source?: UnifiedExpenseHistoryItem['source']; sourceId?: string };
@@ -204,10 +204,10 @@ function BudgetHero({
 
       <View style={styles.travelHeroActions}>
         <TouchableOpacity style={styles.travelHeroPrimaryAction} onPress={onAdd} activeOpacity={0.75}>
-          <Text style={styles.travelHeroPrimaryText}>+ Add</Text>
+          <Text style={styles.travelHeroPrimaryText}>Add expense</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.travelHeroSecondaryAction} onPress={onScan} activeOpacity={0.75}>
-          <Text style={styles.travelHeroSecondaryText}>Scan</Text>
+          <Text style={styles.travelHeroSecondaryText}>Scan receipt</Text>
         </TouchableOpacity>
         {onSetLimit && (
           <TouchableOpacity style={styles.travelHeroLimitAction} onPress={onSetLimit} activeOpacity={0.75}>
@@ -614,6 +614,44 @@ function BudgetScreen() {
     });
   }, [router]);
 
+  const handleEditDailyExpense = useCallback((e: DailyExpense) => {
+    router.push({
+      pathname: '/add-expense',
+      params: {
+        editId: e.id,
+        target: 'daily-tracker',
+        description: e.description,
+        amount: String(e.amount),
+        currency: e.currency,
+        category: e.category,
+        date: e.date,
+        placeName: e.placeName ?? '',
+        notes: e.notes ?? '',
+        photoUri: e.photo ?? '',
+      },
+    });
+  }, [router]);
+
+  const handleEditHistoryExpense = useCallback((e: UnifiedExpenseHistoryItem) => {
+    router.push({
+      pathname: '/add-expense',
+      params: {
+        editId: e.id,
+        target: e.source === 'quick-trip' ? 'quick-trip' : e.source === 'trip' ? 'trip' : 'standalone',
+        ...(e.source === 'quick-trip' && e.sourceId ? { quickTripId: e.sourceId } : {}),
+        ...(e.source === 'trip' && e.sourceId ? { tripId: e.sourceId } : {}),
+        description: e.description,
+        amount: String(e.amount),
+        currency: e.currency,
+        category: e.category,
+        date: e.date,
+        paidBy: e.paidBy ?? '',
+        placeName: e.placeName ?? '',
+        notes: e.notes ?? '',
+      },
+    });
+  }, [router]);
+
   const handleModeChange = useCallback((m: BudgetMode) => {
     setMode(m);
   }, []);
@@ -861,55 +899,58 @@ function BudgetScreen() {
             </View>
           ) : (
             <>
-              <View style={styles.section}>
-                <BudgetHero
-                  eyebrow="Travel Budget"
-                  amount={historyTotal}
-                  currency={historySummary.currency}
-                  subtitle={hasFilteredExpenses
-                    ? `${filteredHistoryExpenses.length} expense${filteredHistoryExpenses.length !== 1 ? 's' : ''} · ${filterSubtitle}`
-                    : historyFilter === 'normal'
-                      ? 'Normal expenses stay here when you just need to log something.'
-                      : 'Plan a trip or create a quick trip to see travel spending here.'}
-                  context={filterTitle}
-                  onAdd={() => openTargetSheet('add')}
-                  onScan={() => openTargetSheet('scan')}
-                  styles={styles}
-                />
-                <SummaryStrip summary={historySummary} styles={styles} />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.expenseFilterRow}>
-                  {filterChips.map((chip) => {
-                    const active = historyFilter === chip.id;
-                    return (
-                      <TouchableOpacity
-                        key={chip.id}
-                        style={[styles.expenseFilterChip, active && styles.expenseFilterChipActive]}
-                        onPress={() => setHistoryFilter(chip.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.expenseFilterLabel, active && styles.expenseFilterLabelActive]}>{chip.label}</Text>
-                        <Text style={[styles.expenseFilterMeta, active && styles.expenseFilterMetaActive]}>
-                          {chip.count} · {formatCurrency(chip.amount, historySummary.currency)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
+              {tab === 'expenses' && (
+                <View style={styles.section}>
+                  <BudgetHero
+                    eyebrow="Travel Budget"
+                    amount={historyTotal}
+                    currency={historySummary.currency}
+                    subtitle={hasFilteredExpenses
+                      ? `${filteredHistoryExpenses.length} expense${filteredHistoryExpenses.length !== 1 ? 's' : ''} · ${filterSubtitle}`
+                      : historyFilter === 'normal'
+                        ? 'Normal expenses stay here when you just need to log something.'
+                        : 'Plan a trip or create a quick trip to see travel spending here.'}
+                    context={filterTitle}
+                    onAdd={() => openTargetSheet('add')}
+                    onScan={() => openTargetSheet('scan')}
+                    styles={styles}
+                  />
+                  <SummaryStrip summary={historySummary} styles={styles} />
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.expenseFilterRow}>
+                    {filterChips.map((chip) => {
+                      const active = historyFilter === chip.id;
+                      return (
+                        <TouchableOpacity
+                          key={chip.id}
+                          style={[styles.expenseFilterChip, active && styles.expenseFilterChipActive]}
+                          onPress={() => setHistoryFilter(chip.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.expenseFilterLabel, active && styles.expenseFilterLabelActive]}>{chip.label}</Text>
+                          <Text style={[styles.expenseFilterMeta, active && styles.expenseFilterMetaActive]}>
+                            {chip.count} · {formatCurrency(chip.amount, historySummary.currency)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
 
               {/* ── SAVINGS TAB (no-trip) ── */}
               {tab === 'savings' && (
                 <View style={{ gap: 16 }}>
-                  <DailyTrackerCard
-                    onAddExpense={() => setShowDailySheet(true)}
-                    onScanReceipt={() => openTargetSheet('scan')}
-                  />
                   <SavingsGoalCard
                     goal={savingsGoal}
                     onSetup={() => setShowSavingsSetup(true)}
                     onLogSavings={() => setShowSavingsEntry(true)}
                     onEdit={() => setShowSavingsSetup(true)}
                     onPlanTrip={() => router.push('/onboarding' as never)}
+                  />
+                  <DailyTrackerCard
+                    onAddExpense={() => setShowDailySheet(true)}
+                    onScanReceipt={() => openTargetSheet('scan')}
+                    onEditExpense={handleEditDailyExpense}
                   />
                 </View>
               )}
@@ -919,7 +960,7 @@ function BudgetScreen() {
             <View style={{ gap: 16 }}>
               {noTripSettleExpenses.length > 0 ? (
                 <>
-                  <Text style={styles.historyLabel}>WHO OWES WHAT</Text>
+                  <Text style={styles.historyLabel}>WHO OWES WHO</Text>
                   {noTripSettleExpenses
                     .slice(0, 20)
                     .map((e) => {
@@ -984,6 +1025,7 @@ function BudgetScreen() {
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
                 onScanReceipt={() => openTargetSheet('scan')}
+                onEditExpense={handleEditDailyExpense}
                 embedded
               />
             </CollapsibleBudgetSection>
@@ -1099,17 +1141,7 @@ function BudgetScreen() {
                               <SwipeableExpenseRow
                                 key={e.id}
                                 colors={colors}
-                                onEdit={() => router.push({
-                                  pathname: '/add-expense',
-                                  params: {
-                                    editId: e.id,
-                                    description: e.description,
-                                    amount: String(e.amount),
-                                    currency: e.currency,
-                                    category: e.category,
-                                    date: e.date,
-                                  },
-                                })}
+                                onEdit={() => handleEditHistoryExpense(e)}
                                 onDelete={() => handleDeleteHistoryExpense(e)}
                               >
                                 <TouchableOpacity
@@ -1202,17 +1234,7 @@ function BudgetScreen() {
                   <SwipeableExpenseRow
                     key={e.id}
                     colors={colors}
-                    onEdit={() => router.push({
-                      pathname: '/add-expense',
-                      params: {
-                        editId: e.id,
-                        description: e.description,
-                        amount: String(e.amount),
-                        currency: e.currency,
-                        category: e.category,
-                        date: e.date,
-                      },
-                    })}
+                    onEdit={() => handleEditHistoryExpense(e)}
                     onDelete={() => handleDeleteHistoryExpense(e)}
                   >
                     <TouchableOpacity
@@ -1808,6 +1830,7 @@ function BudgetScreen() {
               <DailyTrackerCard
                 onAddExpense={() => setShowDailySheet(true)}
                 onScanReceipt={() => openTargetSheet('scan')}
+                onEditExpense={handleEditDailyExpense}
                 embedded
               />
             </CollapsibleBudgetSection>
@@ -1818,16 +1841,17 @@ function BudgetScreen() {
         {/* ── SAVINGS TAB ── */}
         {tab === 'savings' && (
           <View style={{ gap: 16 }}>
-            <DailyTrackerCard
-              onAddExpense={() => setShowDailySheet(true)}
-              onScanReceipt={() => openTargetSheet('scan')}
-            />
             <SavingsGoalCard
               goal={savingsGoal}
               onSetup={() => setShowSavingsSetup(true)}
               onLogSavings={() => setShowSavingsEntry(true)}
               onEdit={() => setShowSavingsSetup(true)}
               onPlanTrip={() => router.push('/onboarding' as never)}
+            />
+            <DailyTrackerCard
+              onAddExpense={() => setShowDailySheet(true)}
+              onScanReceipt={() => openTargetSheet('scan')}
+              onEditExpense={handleEditDailyExpense}
             />
           </View>
         )}
@@ -1898,7 +1922,13 @@ function BudgetScreen() {
         expense={detailExpense}
         currency={trip?.costCurrency ?? 'PHP'}
         onClose={() => setDetailExpense(null)}
-        onEdit={(e) => handleEditExpense(e)}
+        onEdit={(e) => {
+          if (e.source) {
+            handleEditHistoryExpense(e as UnifiedExpenseHistoryItem);
+          } else {
+            handleEditExpense(e);
+          }
+        }}
         onDelete={() => {
           if (!detailExpense) return;
           if (detailExpense.source) {

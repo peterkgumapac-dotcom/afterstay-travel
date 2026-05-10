@@ -281,6 +281,48 @@ export async function addQuickTripExpense(input: {
   return data.id as string;
 }
 
+/** Update a quick-trip expense and refresh denormalized total. */
+export async function updateQuickTripExpense(input: {
+  id: string;
+  quickTripId: string;
+  amount?: number;
+  currency?: string;
+  description?: string;
+  paidByCompanionId?: string;
+  splitType?: 'even' | 'custom' | 'record_only';
+  occurredAt?: string;
+  receiptPhotoUrl?: string;
+}): Promise<void> {
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (input.amount != null) updates.amount = input.amount;
+  if (input.currency != null) updates.currency = input.currency;
+  if (input.description != null) updates.description = input.description;
+  if (input.paidByCompanionId !== undefined) updates.paid_by_companion_id = input.paidByCompanionId || null;
+  if (input.splitType != null) updates.split_type = input.splitType;
+  if (input.occurredAt != null) updates.occurred_at = input.occurredAt;
+  if (input.receiptPhotoUrl !== undefined) {
+    const receiptUpload = await uploadExpenseReceiptPhoto(input.receiptPhotoUrl);
+    updates.receipt_photo_url = receiptUpload.publicUrl ?? null;
+  }
+
+  const { error } = await supabase.from('quick_trip_expenses').update(updates).eq('id', input.id);
+  if (error) throw new Error(`Failed to update quick trip expense: ${error.message}`);
+  await refreshQuickTripTotal(input.quickTripId);
+}
+
+/** Replace split rows for a quick-trip expense after editing amount/people. */
+export async function replaceQuickTripExpenseSplits(
+  quickTripExpenseId: string,
+  splits: { companionId: string; amountOwed: number }[],
+): Promise<QuickTripExpenseSplit[]> {
+  const { error: deleteError } = await supabase
+    .from('quick_trip_expense_splits')
+    .delete()
+    .eq('quick_trip_expense_id', quickTripExpenseId);
+  if (deleteError) throw new Error(`Failed to replace quick trip splits: ${deleteError.message}`);
+  return addQuickTripExpenseSplits(quickTripExpenseId, splits);
+}
+
 /** Add split rows for a quick-trip expense. */
 export async function addQuickTripExpenseSplits(
   quickTripExpenseId: string,
