@@ -26,6 +26,7 @@ import {
   DiscoverPlaceCard,
   type DiscoverPlace,
 } from '@/components/discover/DiscoverPlaceCard';
+import DiscoverOriginStatus from '@/components/discover/DiscoverOriginStatus';
 import { TopPicksByCategorySection, TopPicksSection } from '@/components/discover/DiscoverTopPicks';
 import DiscoverTabSwitcher from '@/components/discover/DiscoverTabSwitcher';
 import PlaceFilterPanel from '@/components/discover/PlaceFilterPanel';
@@ -305,6 +306,19 @@ function DiscoverScreenInner() {
     setFilters({ ...DEFAULT_FILTERS });
     handleTravelModeChange('walk');
   }, [handleTravelModeChange]);
+
+  const resetExploreOrigin = useCallback(() => {
+    Haptics.selectionAsync();
+    setOriginEditorOpen(true);
+    setExploreCoords(null);
+    setExploreDest('');
+    setExploreQuery('');
+    setExploreResults([]);
+    setManualOriginKind('none');
+    setPlaces([]);
+    setPlacesError(null);
+    setShowFilters(false);
+  }, []);
 
   const handlePrimaryCategoryChange = useCallback((chip: typeof PLACE_CATEGORY_CHIPS[number]) => {
     Haptics.selectionAsync();
@@ -1068,30 +1082,12 @@ function DiscoverScreenInner() {
           </View>
         ) : (
           <>
-            <View style={styles.originStatusStrip}>
-              <MapPin size={16} color={colors.accent} strokeWidth={2} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.originStatusLabel}>Searching near</Text>
-                <Text style={styles.originStatusValue} numberOfLines={1}>{effectiveOriginLabel}</Text>
-              </View>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setOriginEditorOpen(true);
-                  setExploreCoords(null);
-                  setExploreDest('');
-                  setExploreQuery('');
-                  setExploreResults([]);
-                  setManualOriginKind('none');
-                  setPlaces([]);
-                  setPlacesError(null);
-                  setShowFilters(false);
-                }}
-              >
-                <Text style={styles.originChangeText}>Change</Text>
-              </TouchableOpacity>
-            </View>
+            <DiscoverOriginStatus
+              colors={colors}
+              label={effectiveOriginLabel}
+              styles={styles}
+              onChange={resetExploreOrigin}
+            />
             {originRefinementText ? (
               <Text style={[styles.precisionHint, { color: colors.accent }]}>
                 {originRefinementText}
