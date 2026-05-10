@@ -1135,13 +1135,11 @@ function DiscoverScreenInner() {
 
       {/* ═══════ EXPLORE MOMENTS MODE ═══════ */}
       {discoverMode === 'explore_moments' && (
-        <Link.AppleZoomTarget>
-          <View collapsable={false}>
-            <Suspense fallback={<MiniLoader />}>
-              <ExploreMomentsFeed />
-            </Suspense>
-          </View>
-        </Link.AppleZoomTarget>
+        <View collapsable={false}>
+          <Suspense fallback={<MiniLoader />}>
+            <ExploreMomentsFeed />
+          </Suspense>
+        </View>
       )}
 
       {/* ═══════ PLAN MODE (existing Discover) ═══════ */}

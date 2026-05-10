@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { Link, type Href } from 'expo-router';
 import { CheckCircle, MapPin, Newspaper, Users } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { PAPER } from '@/components/feed/feedTheme';
 import MomentEngagementBar from '@/components/discover/MomentEngagementBar';
@@ -32,6 +32,14 @@ interface ExploreMomentCardProps {
 }
 
 function PhotoZoomLink({ href, children }: { href: Href; children: React.ReactElement }) {
+  if (Platform.OS !== 'ios') {
+    return (
+      <Link href={href} asChild>
+        {children}
+      </Link>
+    );
+  }
+
   return (
     <Link href={href} asChild>
       <Link.AppleZoom>{children}</Link.AppleZoom>
@@ -291,7 +299,7 @@ export default function ExploreMomentCard({
             <Text style={styles.userName}>{post.userName ?? 'Traveler'}</Text>
             {isOfficial ? (
               <View style={styles.verifiedMark} accessibilityLabel="Verified AfterStay account">
-                <CheckCircle size={14} color="#fff" fill={PAPER.stamp} strokeWidth={2.4} />
+                <CheckCircle size={15} color="#fff" fill="#1877F2" strokeWidth={2.7} />
               </View>
             ) : null}
           </View>
