@@ -28,6 +28,7 @@ import {
 } from '@/components/discover/DiscoverPlaceCard';
 import DiscoverOriginPicker from '@/components/discover/DiscoverOriginPicker';
 import DiscoverOriginStatus from '@/components/discover/DiscoverOriginStatus';
+import DiscoverPlaceSearchInput from '@/components/discover/DiscoverPlaceSearchInput';
 import { TopPicksByCategorySection, TopPicksSection } from '@/components/discover/DiscoverTopPicks';
 import DiscoverTabSwitcher from '@/components/discover/DiscoverTabSwitcher';
 import PlaceFilterPanel from '@/components/discover/PlaceFilterPanel';
@@ -1055,20 +1056,12 @@ function DiscoverScreenInner() {
                 {originRefinementText}
               </Text>
             ) : null}
-            <View style={styles.precisionInputBox}>
-              <Search size={17} color={colors.text3} strokeWidth={1.8} />
-              <TextInput
-                value={q}
-                onChangeText={setQ}
-                placeholder="Search food, coffee, things to do..."
-                placeholderTextColor={colors.text3}
-                style={styles.searchInput}
-                returnKeyType="search"
-                autoCorrect={false}
-                spellCheck={false}
-                autoCapitalize="none"
-              />
-            </View>
+            <DiscoverPlaceSearchInput
+              colors={colors}
+              query={q}
+              styles={styles}
+              onChangeQuery={setQ}
+            />
             <PrimaryPlaceFilterRow
               activeCategory={placeCategoryChip}
               activeFilterCount={activeFilterCount}
