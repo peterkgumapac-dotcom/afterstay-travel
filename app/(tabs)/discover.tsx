@@ -40,7 +40,7 @@ import { distanceFromPoint, formatDistance } from '@/lib/distance';
 import { mapNearbyToDiscoverPlace, mapSavedToDiscoverPlace } from '@/components/discover/shared';
 import { MS_PER_DAY } from '@/lib/utils';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { searchNearby, searchNearbyPage, placeAutocomplete, getPlaceLocation, searchPlace, type NearbyPlace } from '@/lib/google-places';
+import { searchNearby, searchNearbyPage, placeAutocomplete, type NearbyPlace } from '@/lib/google-places';
 import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS } from '@/lib/category-config';
 import { searchMultiCategory } from '@/lib/multi-category-search';
 import {
@@ -52,11 +52,7 @@ import {
   PLACE_CATEGORY_CHIPS,
   PRIMARY_PLACE_CATEGORY_CHIPS,
   destinationToLabel,
-  isBroadOriginQuery,
-  isVagueOriginQuery,
-  originRefinementCopy,
   resolveCategory,
-  vagueOriginCopy,
   type DiscoverOriginKind,
   type DistanceOrigin,
   type FilterState,
@@ -88,6 +84,10 @@ import {
   type PlaceDistanceEntry,
 } from '@/features/discover/lib/placeRanking';
 import { logDiscoverDiagnostics } from '@/features/discover/lib/diagnostics';
+import {
+  resolveCurrentLocationOrigin,
+  resolveExploreOriginInput,
+} from '@/features/discover/lib/originResolver';
 
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
 const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
@@ -358,84 +358,17 @@ function DiscoverScreenInner() {
     setPlacesError(null);
     setPlacesLoading(true);
     try {
-      if (isVagueOriginQuery(cleaned)) {
+      const resolved = await resolveExploreOriginInput(cleaned, placeId);
+      if (resolved.status === 'needs_refinement') {
         setExploreCoords(null);
         setExploreDest('');
         setManualOriginKind('none');
         setPlaces([]);
-        setOriginRefinementText(vagueOriginCopy(cleaned));
+        setOriginRefinementText(resolved.message);
         return;
       }
-      const isBroadQuery = isBroadOriginQuery(cleaned);
-      const best = placeId
-        ? { placeId, description: cleaned }
-        : (await placeAutocomplete(cleaned))[0];
-
-      if (isBroadQuery && !best) {
-        setExploreCoords(null);
-        setExploreDest('');
-        setManualOriginKind('none');
-        setPlaces([]);
-        setOriginRefinementText(originRefinementCopy(cleaned));
-        return;
-      }
-      let loc = best ? await getPlaceLocation(best.placeId) : null;
-      if (!loc) {
-        const fallback = await searchPlace(best?.description ?? cleaned);
-        if (fallback && fallback.lat != null && fallback.lng != null) {
-          loc = { name: fallback.name, lat: fallback.lat, lng: fallback.lng };
-        }
-      }
-      if (!loc) {
-        const Location = require('expo-location') as typeof import('expo-location');
-        const geocoded = await Location.geocodeAsync(best?.description ?? cleaned).catch(() => []);
-        const first = geocoded[0];
-        if (first) {
-          loc = {
-            name: best?.description.split(',')[0] ?? cleaned,
-            lat: first.latitude,
-            lng: first.longitude,
-          };
-        }
-      }
-      if (!loc) {
-        const params = new URLSearchParams({
-          format: 'json',
-          limit: '1',
-          q: best?.description ?? cleaned,
-        });
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-          headers: {
-            Accept: 'application/json',
-            'User-Agent': 'AfterStay/1.3.0',
-          },
-        }).catch(() => null);
-        const data = res?.ok ? await res.json().catch(() => []) : [];
-        const first = Array.isArray(data) ? data[0] : null;
-        const lat = Number(first?.lat);
-        const lng = Number(first?.lon);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
-          loc = {
-            name: best?.description.split(',')[0] ?? cleaned,
-            lat,
-            lng,
-          };
-        }
-      }
-      if (!loc) {
-        setExploreCoords(null);
-        setExploreDest('');
-        setManualOriginKind('none');
-        setPlaces([]);
-        setOriginRefinementText('Could not find that exact place. Search a hotel, address, station, landmark, neighborhood, or exact pin.');
-        return;
-      } else {
-        const shortLabel = best?.description.split(',')[0] ?? cleaned;
-        applyExploreOrigin(shortLabel, { lat: loc.lat, lng: loc.lng }, 'selected_place');
-        if (isBroadQuery) {
-          setOriginRefinementText(`${shortLabel} is broad. For sharper results, change this to a hotel, station, landmark, neighborhood, or exact pin.`);
-        }
-      }
+      applyExploreOrigin(resolved.label, resolved.coords, 'selected_place');
+      if (resolved.refinementText) setOriginRefinementText(resolved.refinementText);
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] choose destination failed:', err);
       setExploreCoords(null);
@@ -453,39 +386,16 @@ function DiscoverScreenInner() {
     setPlacesError(null);
     setPlacesLoading(true);
     try {
-      const Location = require('expo-location') as typeof import('expo-location');
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
+      const resolved = await resolveCurrentLocationOrigin();
+      if (resolved.status === 'needs_refinement') {
         setOriginEditorOpen(true);
-        setOriginRefinementText('Enable location permission or search an exact place to find recommendations.');
+        setOriginRefinementText(resolved.message);
         return;
       }
-      const loc = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
-      ]) ?? await Location.getLastKnownPositionAsync({
-        maxAge: 10 * 60 * 1000,
-        requiredAccuracy: 5000,
-      });
-      if (!loc) {
-        setOriginEditorOpen(true);
-        setOriginRefinementText('Current location is unavailable. Search an exact place instead.');
-        return;
-      }
-      const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-      const geocoded = await Location.reverseGeocodeAsync({
-        latitude: coords.lat,
-        longitude: coords.lng,
-      }).catch(() => []);
-      const first = geocoded[0];
-      const readableLocation = [
-        first?.city || first?.district || first?.subregion,
-        first?.region,
-      ].filter(Boolean).join(', ');
-      setUserLocation(coords);
-      applyExploreOrigin(readableLocation ? `Current location · ${readableLocation}` : 'Current location', coords, 'current_location');
+      setUserLocation(resolved.coords);
+      applyExploreOrigin(resolved.label, resolved.coords, 'current_location');
       setDistanceOrigin('me');
-      setOriginRefinementText('Using device GPS. If this area looks wrong, tap Change and search a hotel, landmark, area, or exact pin.');
+      setOriginRefinementText(resolved.refinementText ?? '');
     } catch (err) {
       if (__DEV__) console.warn('[DiscoverScreen] current location failed:', err);
       setOriginEditorOpen(true);
