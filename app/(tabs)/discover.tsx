@@ -87,6 +87,7 @@ import {
 import {
   getCachedTravelMode,
   getInitialDiscoverMode,
+  parseDiscoverRouteMode,
   rememberDiscoverMode,
   rememberTravelMode,
 } from '@/features/discover/lib/modePersistence';
@@ -114,10 +115,7 @@ function DiscoverScreenInner() {
   const { colors, mode } = useTheme();
   const styles = useMemo(() => getDiscoverStyles(colors), [colors]);
   const params = useLocalSearchParams<{ mode?: string | string[] }>();
-  const routeMode = useMemo<DiscoverMode | null>(() => {
-    const rawMode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
-    return rawMode === 'explore_moments' || rawMode === 'plan' ? rawMode : null;
-  }, [params.mode]);
+  const routeMode = useMemo(() => parseDiscoverRouteMode(params.mode), [params.mode]);
   const { segment, isTestMode, mockData } = useUserSegment();
   const testModeRef = useRef(isTestMode);
   testModeRef.current = isTestMode;

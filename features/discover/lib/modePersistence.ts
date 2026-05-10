@@ -6,6 +6,11 @@ const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
 const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
 const DISCOVER_TRAVEL_MODE_CACHE_KEY = 'discover:travelMode';
 
+export function parseDiscoverRouteMode(mode?: string | string[]): DiscoverMode | null {
+  const rawMode = Array.isArray(mode) ? mode[0] : mode;
+  return rawMode === 'explore_moments' || rawMode === 'plan' ? rawMode : null;
+}
+
 export async function getInitialDiscoverMode(routeMode: DiscoverMode | null): Promise<DiscoverMode> {
   if (routeMode) {
     rememberDiscoverMode(routeMode);
