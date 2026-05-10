@@ -22,6 +22,7 @@ const FADE_DURATION = 2000; // 2s cross-fade
 interface HomeMomentsPreviewProps {
   moments: Moment[];
   members: GroupMember[];
+  paused?: boolean;
   onViewAll?: () => void;
 }
 
@@ -30,10 +31,12 @@ function SlideshowImage({
   photos,
   offset = 0,
   style,
+  paused = false,
 }: {
   photos: string[];
   offset?: number;
   style: any;
+  paused?: boolean;
 }) {
   const safeLen = Math.max(photos.length, 1);
   const [idxA, setIdxA] = useState(offset % safeLen);
@@ -50,7 +53,7 @@ function SlideshowImage({
   }, []);
 
   useEffect(() => {
-    if (photos.length <= 1) return;
+    if (paused || photos.length <= 1) return;
     const interval = setInterval(() => {
       if (!appActive.current) return;
       if (showingA) {
@@ -73,7 +76,7 @@ function SlideshowImage({
       setShowingA((s) => !s);
     }, SLIDE_INTERVAL);
     return () => clearInterval(interval);
-  }, [photos.length, showingA, idxA, idxB, opacityA, opacityB]);
+  }, [paused, photos.length, showingA, idxA, idxB, opacityA, opacityB]);
 
   const styleA = useAnimatedStyle(() => ({ opacity: opacityA.value }));
   const styleB = useAnimatedStyle(() => ({ opacity: opacityB.value }));
@@ -95,6 +98,7 @@ function SlideshowImage({
 export function HomeMomentsPreview({
   moments,
   members,
+  paused = false,
   onViewAll,
 }: HomeMomentsPreviewProps) {
   const { colors } = useTheme();
@@ -139,7 +143,7 @@ export function HomeMomentsPreview({
       <View style={styles.wrapper}>
         <Animated.View entering={FadeInDown.duration(300)}>
           <TouchableOpacity style={styles.singleCard} activeOpacity={0.85} onPress={onViewAll}>
-            <SlideshowImage photos={allPhotos} style={styles.singleImage} />
+            <SlideshowImage photos={allPhotos} paused={paused} style={styles.singleImage} />
           </TouchableOpacity>
         </Animated.View>
         <SeeAll count={moments.length} onPress={onViewAll} colors={colors} />
@@ -153,7 +157,7 @@ export function HomeMomentsPreview({
         <Animated.View entering={FadeInDown.duration(300)} style={styles.row}>
           {displayPhotos.map((m, i) => (
             <TouchableOpacity key={m.id} style={styles.halfCard} activeOpacity={0.85} onPress={onViewAll}>
-              <SlideshowImage photos={allPhotos} offset={i * Math.floor(allPhotos.length / 2)} style={styles.fillImage} />
+              <SlideshowImage photos={allPhotos} offset={i * Math.floor(allPhotos.length / 2)} paused={paused} style={styles.fillImage} />
             </TouchableOpacity>
           ))}
         </Animated.View>
@@ -173,7 +177,7 @@ export function HomeMomentsPreview({
       <Animated.View entering={FadeInDown.duration(300)} style={styles.collage}>
         {/* Left — big photo, cycles through all moments */}
         <TouchableOpacity style={styles.collageBig} activeOpacity={0.85} onPress={onViewAll}>
-          <SlideshowImage photos={allPhotos} offset={0} style={styles.fillImage} />
+          <SlideshowImage photos={allPhotos} offset={0} paused={paused} style={styles.fillImage} />
         </TouchableOpacity>
 
         {/* Right — stacked, each cycles with different offset */}
@@ -188,7 +192,7 @@ export function HomeMomentsPreview({
                 style={styles.collageSideCard}
               >
                 <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={0.85} onPress={onViewAll}>
-                  <SlideshowImage photos={allPhotos} offset={photoOffset} style={styles.fillImage} />
+                  <SlideshowImage photos={allPhotos} offset={photoOffset} paused={paused} style={styles.fillImage} />
                   {isLast && (
                     <View style={styles.overflowBadge}>
                       <Text style={styles.overflowText}>+{overflowNum}</Text>

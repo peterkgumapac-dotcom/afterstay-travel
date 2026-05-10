@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   type SharedValue,
+  cancelAnimation,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -68,6 +69,7 @@ interface FlightProgressCardProps {
   etaLabel?: string;
   departIso?: string;
   arriveIso?: string;
+  paused?: boolean;
 }
 
 export function FlightProgressCard({
@@ -80,6 +82,7 @@ export function FlightProgressCard({
   etaLabel = '8:40 PM',
   departIso,
   arriveIso,
+  paused = false,
 }: FlightProgressCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -88,9 +91,10 @@ export function FlightProgressCard({
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
+    if (paused) return;
     const t = setInterval(() => setNow(Date.now()), 60_000); // update every minute
     return () => clearInterval(t);
-  }, []);
+  }, [paused]);
 
   const realProgress = (() => {
     if (!departIso || !arriveIso) return null;
@@ -124,6 +128,7 @@ export function FlightProgressCard({
 
   /* ── Progress drift — use real time if available, otherwise simulate ── */
   useEffect(() => {
+    if (paused) return;
     if (!playing) return;
     if (realProgress !== null) {
       setProgress(realProgress);
@@ -133,10 +138,15 @@ export function FlightProgressCard({
       setProgress((p) => Math.min(1, p + 0.008));
     }, 900);
     return () => clearInterval(id);
-  }, [playing, realProgress]);
+  }, [paused, playing, realProgress]);
 
   /* ── Pulsing dot animation (1.6s ease-in-out infinite) ── */
   useEffect(() => {
+    if (paused) {
+      cancelAnimation(pulseScale);
+      cancelAnimation(pulseOpacity);
+      return;
+    }
     pulseScale.value = withRepeat(
       withSequence(
         withTiming(1.8, { duration: 800, easing: Easing.inOut(Easing.ease) }),
@@ -151,10 +161,15 @@ export function FlightProgressCard({
       ),
       -1,
     );
-  }, [pulseScale, pulseOpacity]);
+  }, [paused, pulseScale, pulseOpacity]);
 
   /* ── Destination pulse ring (2s ease-out infinite) ── */
   useEffect(() => {
+    if (paused) {
+      cancelAnimation(ringRadius);
+      cancelAnimation(ringOpacity);
+      return;
+    }
     ringRadius.value = withRepeat(
       withSequence(
         withTiming(14, { duration: 2000, easing: Easing.out(Easing.ease) }),
@@ -169,7 +184,7 @@ export function FlightProgressCard({
       ),
       -1,
     );
-  }, [ringRadius, ringOpacity]);
+  }, [paused, ringRadius, ringOpacity]);
 
   /* ── Animated props ── */
   const completedArcProps = useAnimatedProps(() => ({

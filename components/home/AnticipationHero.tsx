@@ -58,6 +58,7 @@ interface Props {
   bookingRef?: string;
   members?: GroupMember[];
   resolveDestinationFallback?: boolean;
+  paused?: boolean;
   onViewTrip?: () => void;
 }
 
@@ -71,6 +72,7 @@ export const AnticipationHero: React.FC<Props> = ({
   bookingRef,
   members = [],
   resolveDestinationFallback = true,
+  paused = false,
   onViewTrip,
 }) => {
   const { colors } = useTheme();
@@ -92,6 +94,10 @@ export const AnticipationHero: React.FC<Props> = ({
   const kenBurnsScale = useSharedValue(1);
 
   useEffect(() => {
+    if (paused) {
+      cancelAnimation(kenBurnsScale);
+      return;
+    }
     kenBurnsScale.value = withRepeat(
       withSequence(
         withTiming(1.08, { duration: 8000, easing: Easing.inOut(Easing.ease) }),
@@ -100,7 +106,7 @@ export const AnticipationHero: React.FC<Props> = ({
       -1,
     );
     return () => cancelAnimation(kenBurnsScale);
-  }, [kenBurnsScale]);
+  }, [kenBurnsScale, paused]);
 
   const kenBurnsStyle = useAnimatedStyle(() => ({
     transform: [{ scale: kenBurnsScale.value }],
@@ -189,7 +195,7 @@ export const AnticipationHero: React.FC<Props> = ({
 
   // Photo cross-fade
   useEffect(() => {
-    if (heroPhotos.length <= 1) return;
+    if (paused || heroPhotos.length <= 1) return;
     let timeout: ReturnType<typeof setTimeout>;
     const interval = setInterval(() => {
       fadeAnim.value = withTiming(1, {
@@ -203,7 +209,7 @@ export const AnticipationHero: React.FC<Props> = ({
       }, 900);
     }, SLIDE_DURATION);
     return () => { clearInterval(interval); clearTimeout(timeout); };
-  }, [heroPhotos.length, fadeAnim]);
+  }, [heroPhotos.length, fadeAnim, paused]);
 
   const fadeStyle = useAnimatedStyle(() => ({
     opacity: fadeAnim.value,

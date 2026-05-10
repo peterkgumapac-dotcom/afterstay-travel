@@ -11,6 +11,7 @@ interface Props {
   dayNumber?: number;
   totalDays: number;
   dateLabel?: string;
+  paused?: boolean;
   onBoard?: () => void;
 }
 
@@ -20,6 +21,7 @@ export function CountdownCard({
   dayNumber,
   totalDays,
   dateLabel,
+  paused = false,
   onBoard,
 }: Props) {
   const { colors } = useTheme();
@@ -27,10 +29,10 @@ export function CountdownCard({
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (status !== 'upcoming') return;
+    if (paused || status !== 'upcoming') return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [status]);
+  }, [paused, status]);
 
   if (status === 'completed') return null;
 

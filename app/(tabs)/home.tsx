@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
@@ -350,6 +351,7 @@ const HomeScreenMemo = React.memo(HomeScreen);
 function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const isFocused = useIsFocused();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const h = useHomeScreen();
   const {
@@ -468,9 +470,10 @@ function HomeScreen() {
   // Countdown computation
   const [clockNow, setClockNow] = useState(Date.now());
   useEffect(() => {
+    if (!isFocused) return;
     const timer = setInterval(() => setClockNow(Date.now()), 60_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isFocused]);
 
   const countdown = useMemo(
     () => getTripDayMetrics(trip, clockNow),
@@ -765,6 +768,7 @@ function HomeScreen() {
           bookingRef={trip.bookingRef ? `Agoda #${trip.bookingRef}` : undefined}
           members={members}
           resolveDestinationFallback={false}
+          paused={!isFocused}
           onViewTrip={() => openTripOverview()}
         />
 
@@ -798,6 +802,7 @@ function HomeScreen() {
                     etaLabel={phaseFlight?.arriveTime ? formatTimePHT(phaseFlight.arriveTime) : undefined}
                     departIso={phaseFlight?.departTime}
                     arriveIso={phaseFlight?.arriveTime}
+                    paused={!isFocused}
                   />
                 );
               })()
@@ -862,6 +867,7 @@ function HomeScreen() {
                 dateLabel={
                   phaseFlight?.departTime ? formatDatePHT(phaseFlight.departTime) : formatDatePHT(trip.startDate)
                 }
+                paused={!isFocused}
                 onBoard={boardFlight}
               />
             ) : null}
@@ -957,6 +963,7 @@ function HomeScreen() {
         <HomeMomentsPreview
           moments={moments}
           members={members}
+          paused={!isFocused}
           onViewAll={() => router.push('/moments-slideshow' as never)}
         />
 

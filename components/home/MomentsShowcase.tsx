@@ -25,6 +25,7 @@ const HOLD_DURATION = 4000;
 
 interface MomentsShowcaseProps {
   moments: Moment[];
+  paused?: boolean;
   onPress?: () => void;
 }
 
@@ -38,7 +39,7 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function MomentsShowcaseInner({ moments, onPress }: MomentsShowcaseProps) {
+function MomentsShowcaseInner({ moments, paused: pausedProp = false, onPress }: MomentsShowcaseProps) {
   const { colors } = useTheme();
 
   // Randomize order on mount
@@ -77,7 +78,7 @@ function MomentsShowcaseInner({ moments, onPress }: MomentsShowcaseProps) {
 
   // Calendar page flip
   const doFlip = useCallback(() => {
-    if (paused.current || count <= 1) return;
+    if (paused.current || pausedProp || count <= 1) return;
 
     const next = pickRandom(currentIdx);
     setNextIdx(next);
@@ -101,15 +102,15 @@ function MomentsShowcaseInner({ moments, onPress }: MomentsShowcaseProps) {
 
       revealScale.value = withTiming(1, { duration: 280 });
     }, FLIP_DURATION + 50);
-  }, [currentIdx, count, pickRandom]);
+  }, [currentIdx, count, pausedProp, pickRandom]);
 
   useEffect(() => {
-    if (count <= 1) return;
+    if (pausedProp || count <= 1) return;
     timer.current = setInterval(doFlip, HOLD_DURATION);
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [doFlip, count]);
+  }, [doFlip, pausedProp, count]);
 
   // ── Top-hinge calendar page flip ──
   // The "page" is the top half that flips forward.
