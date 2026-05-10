@@ -8,7 +8,6 @@ import {
   Alert,
   FlatList,
   Keyboard,
-  Linking,
   Modal,
   RefreshControl,
   ScrollView,
@@ -18,9 +17,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, CalendarDays, ChevronDown, ChevronRight, Filter, MapPin, Navigation, Search, Sparkles, ThumbsUp, Users, Vote } from 'lucide-react-native';
+import { Bookmark, ChevronDown, ChevronRight, Filter, MapPin, Navigation, Search, ThumbsUp, Users } from 'lucide-react-native';
 
-import EmptyState from '@/components/shared/EmptyState';
 import { SwipeToDelete } from '@/components/shared/SwipeToDelete';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 
@@ -31,16 +29,11 @@ import {
 import { TopPicksByCategorySection, TopPicksSection } from '@/components/discover/DiscoverTopPicks';
 import PlaceFilterPanel from '@/components/discover/PlaceFilterPanel';
 import MiniLoader from '@/components/loader/MiniLoader';
-const PlaceDetailSheet = React.lazy(() => import('@/components/discover/PlaceDetailSheet'));
-const AIConcierge = React.lazy(() => import('@/components/discover/AIConcierge'));
-const StaysTab = React.lazy(() => import('@/components/discover/StaysTab'));
 import { useTheme } from '@/constants/ThemeContext';
-import type { ItineraryDay, PlannerScope, PlannerPace } from '@/lib/anthropic';
-import { distanceFromPoint, formatDistance } from '@/lib/distance';
+import { distanceFromPoint } from '@/lib/distance';
 import { mapNearbyToDiscoverPlace, mapSavedToDiscoverPlace } from '@/components/discover/shared';
-import { MS_PER_DAY } from '@/lib/utils';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { searchNearbyPage, placeAutocomplete, type NearbyPlace } from '@/lib/google-places';
+import { searchNearbyPage, placeAutocomplete } from '@/lib/google-places';
 import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS } from '@/lib/category-config';
 import {
   applyPlaceFilters,
@@ -69,7 +62,6 @@ import {
   notifyGroupOfRecommendation,
 } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
-const GroupVotingSheet = React.lazy(() => import('@/components/discover/GroupVotingSheet'));
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
@@ -97,7 +89,10 @@ import {
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
 const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
 
-type ThemeColors = ReturnType<typeof useTheme>['colors'];
+const PlaceDetailSheet = React.lazy(() => import('@/components/discover/PlaceDetailSheet'));
+const AIConcierge = React.lazy(() => import('@/components/discover/AIConcierge'));
+const StaysTab = React.lazy(() => import('@/components/discover/StaysTab'));
+const GroupVotingSheet = React.lazy(() => import('@/components/discover/GroupVotingSheet'));
 
 // ── Main screen ─────────────────────────────────────────────────────────
 
@@ -204,9 +199,6 @@ function DiscoverScreenInner() {
   const placesCache = useRef<Record<string, readonly DiscoverPlace[]>>({});
 
   const [tripDest, setTripDest] = useState('');
-  const [tripStartDate, setTripStartDate] = useState<string | undefined>();
-  const [tripEndDate, setTripEndDate] = useState<string | undefined>();
-  const [tripDays, setTripDays] = useState<number | undefined>();
   const [tripHotel, setTripHotel] = useState('');
   const [tripGroupSize, setTripGroupSize] = useState(0);
   const [tripMembers, setTripMembers] = useState<GroupMember[]>([]);
@@ -226,9 +218,6 @@ function DiscoverScreenInner() {
     setTripId(null);
     setTripCoords(null);
     setTripDest('');
-    setTripStartDate(undefined);
-    setTripEndDate(undefined);
-    setTripDays(undefined);
     setTripHotel('');
     setTripGroupSize(0);
     setTripMembers([]);
@@ -423,8 +412,6 @@ function DiscoverScreenInner() {
     if (mockData.trip) {
       setTripId(mockData.trip.id);
       setTripDest(destinationToLabel(mockData.trip.destination));
-      setTripStartDate(mockData.trip.startDate);
-      setTripEndDate(mockData.trip.endDate);
       setTripHotel(mockData.trip.accommodation ?? '');
       const lat = mockData.trip.hotelLat ?? mockData.trip.latitude;
       const lng = mockData.trip.hotelLng ?? mockData.trip.longitude;
@@ -468,8 +455,6 @@ function DiscoverScreenInner() {
         if (!cancelled && trip) {
           setTripId(trip.id);
           setTripDest(destinationToLabel(trip.destination));
-          setTripStartDate(trip.startDate);
-          setTripEndDate(trip.endDate);
           setTripHotel(trip.accommodation ?? '');
           // Prefer hotel coords (active trip), fall back to general lat/lng (past trip)
           const lat = trip.hotelLat ?? trip.latitude;
@@ -490,10 +475,6 @@ function DiscoverScreenInner() {
           if (trip.transport === 'car' || trip.transport === 'bus') {
             const cached = await cacheGet<'walk' | 'car'>('discover:travelMode');
             if (!cached) setTravelMode('car');
-          }
-          if (trip.startDate && trip.endDate) {
-            const ms = new Date(trip.endDate + 'T00:00:00+08:00').getTime() - new Date(trip.startDate + 'T00:00:00+08:00').getTime();
-            setTripDays(Math.max(1, Math.ceil(ms / MS_PER_DAY) + 1));
           }
         }
       } catch (e) {
