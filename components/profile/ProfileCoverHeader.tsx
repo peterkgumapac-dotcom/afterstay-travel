@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import { Check, ChevronDown, Image as ImageIcon, MessageCircle, Pencil, Plus, Send, Sparkles } from 'lucide-react-native';
+import { Check, CheckCircle, ChevronDown, Image as ImageIcon, MessageCircle, Pencil, Plus, Send, Sparkles } from 'lucide-react-native';
 import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, Animated, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -290,7 +290,7 @@ export default function ProfileCoverHeader({
           ) : null}
           {isOfficialAfterStay ? (
             <View style={s.officialVerified} accessibilityLabel="Verified official AfterStay account">
-              <Check size={11} color={colors.canvas} strokeWidth={3} />
+              <CheckCircle size={20} color="#fff" fill="#1877F2" strokeWidth={2.8} />
             </View>
           ) : isCompanion ? (
             <View style={s.verifiedDot}>
@@ -301,8 +301,8 @@ export default function ProfileCoverHeader({
         {handle ? <Text style={s.handle}>@{handle}</Text> : null}
         {isOfficialAfterStay ? (
           <View style={s.officialPill}>
-            <Sparkles size={12} color={colors.accent} strokeWidth={2.2} />
-            <Text style={s.officialPillText}>Verified travel pulse by AfterStay</Text>
+            <CheckCircle size={14} color="#fff" fill="#1877F2" strokeWidth={2.7} />
+            <Text style={s.officialPillText}>Official AfterStay account</Text>
           </View>
         ) : null}
         {bio ? (
@@ -495,14 +495,17 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     justifyContent: 'center',
   },
   officialVerified: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.accent,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.88)',
+    shadowColor: '#1877F2',
+    shadowOpacity: 0.22,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   creatorPill: {
     flexShrink: 0,
@@ -558,17 +561,17 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) => StyleSheet.
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     marginTop: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.accentBorder,
-    backgroundColor: colors.accentBg,
-    paddingHorizontal: 9,
+    borderColor: 'rgba(24, 119, 242, 0.20)',
+    backgroundColor: 'rgba(24, 119, 242, 0.08)',
+    paddingHorizontal: 8,
     paddingVertical: 4,
   },
   officialPillText: {
-    color: colors.accent,
+    color: '#1877F2',
     fontSize: 10,
     fontWeight: '900',
   },
