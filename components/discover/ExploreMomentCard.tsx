@@ -335,7 +335,7 @@ export default function ExploreMomentCard({
             <Text style={styles.userName}>{authorName}</Text>
             {isPlatformPost ? (
               <View style={styles.verifiedMark} accessibilityLabel="Verified AfterStay account">
-                <CheckCircle size={15} color="#fff" fill="#1877F2" strokeWidth={2.7} />
+                <CheckCircle size={17} color="#fff" fill="#1877F2" strokeWidth={2.8} />
               </View>
             ) : null}
           </View>
@@ -671,11 +671,17 @@ const styles = StyleSheet.create({
     color: PAPER.inkDark,
   },
   verifiedMark: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 19,
+    height: 19,
+    borderRadius: 9.5,
+    backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#1877F2',
+    shadowOpacity: 0.22,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   timeAgo: {
     fontSize: 11,
