@@ -1,4 +1,4 @@
-import { cacheGet, cacheSet } from './cache';
+import { cacheGet, cacheGetForUser, cacheSet, cacheSetForUser } from './cache';
 import { supabase } from './supabase';
 
 export type OnboardingPath = 'plan' | 'upload' | 'invited';
@@ -33,6 +33,14 @@ function keyFor(base: string, userId?: string): string {
   return userId ? `${base}:${userId}` : base;
 }
 
+function getScoped<T>(key: string, userId: string | undefined, ttlMs = 0): Promise<T | undefined> {
+  return userId ? cacheGetForUser<T>(key, userId, ttlMs) : cacheGet<T>(key, ttlMs);
+}
+
+function setScoped<T>(key: string, value: T, userId: string | undefined): Promise<void> {
+  return userId ? cacheSetForUser(key, value, userId) : cacheSet(key, value);
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -61,7 +69,7 @@ export function isOnboardingIncomplete(progress?: OnboardingProgress | null): bo
 
 export async function getOnboardingProgress(userId?: string): Promise<OnboardingProgress | undefined> {
   const cacheKey = keyFor(PROGRESS_KEY, userId);
-  const cached = normalizeProgress(await cacheGet<unknown>(cacheKey, 0));
+  const cached = normalizeProgress(await getScoped<unknown>(cacheKey, userId, 0));
 
   if (userId) {
     try {
@@ -73,12 +81,12 @@ export async function getOnboardingProgress(userId?: string): Promise<Onboarding
       if (!error && data) {
         const remote = normalizeProgress((data as Record<string, unknown>).onboarding_state);
         if (remote) {
-          await cacheSet(cacheKey, remote);
+          await setScoped(cacheKey, remote, userId);
           return remote;
         }
         if ((data as Record<string, unknown>).onboarded_at) {
           const complete = makeCompletionProgress('complete');
-          await cacheSet(cacheKey, complete);
+          await setScoped(cacheKey, complete, userId);
           return complete;
         }
       }
@@ -95,7 +103,7 @@ export async function setOnboardingProgress(
   userId?: string,
 ): Promise<OnboardingProgress> {
   const cacheKey = keyFor(PROGRESS_KEY, userId);
-  const current = normalizeProgress(await cacheGet<unknown>(cacheKey, 0));
+  const current = normalizeProgress(await getScoped<unknown>(cacheKey, userId, 0));
   const hasPath = Object.prototype.hasOwnProperty.call(patch, 'path');
   const hasTripId = Object.prototype.hasOwnProperty.call(patch, 'tripId');
   const hasMeta = Object.prototype.hasOwnProperty.call(patch, 'meta');
@@ -109,7 +117,7 @@ export async function setOnboardingProgress(
     completedAt: patch.completedAt ?? current?.completedAt,
   };
 
-  await cacheSet(cacheKey, next);
+  await setScoped(cacheKey, next, userId);
   if (userId) await syncProgressToProfile(userId, next);
   return next;
 }
@@ -117,24 +125,24 @@ export async function setOnboardingProgress(
 export async function completeOnboarding(userId?: string, skipped = false): Promise<void> {
   const complete = makeCompletionProgress(skipped ? 'skipped' : 'complete');
   await Promise.all([
-    cacheSet(keyFor(COMPLETE_KEY, userId), true),
-    cacheSet(keyFor(PROGRESS_KEY, userId), complete),
-    cacheSet(keyFor(SCAN_REVIEW_KEY, userId), null),
+    setScoped(keyFor(COMPLETE_KEY, userId), true, userId),
+    setScoped(keyFor(PROGRESS_KEY, userId), complete, userId),
+    setScoped(keyFor(SCAN_REVIEW_KEY, userId), null, userId),
   ]);
   if (userId) await syncProgressToProfile(userId, complete, true);
 }
 
 export async function saveOnboardingScanReview(scan: unknown, userId?: string): Promise<void> {
-  await cacheSet(keyFor(SCAN_REVIEW_KEY, userId), scan);
+  await setScoped(keyFor(SCAN_REVIEW_KEY, userId), scan, userId);
 }
 
 export async function getOnboardingScanReview<T = unknown>(userId?: string): Promise<T | undefined> {
-  const value = await cacheGet<T | null>(keyFor(SCAN_REVIEW_KEY, userId), 0);
+  const value = await getScoped<T | null>(keyFor(SCAN_REVIEW_KEY, userId), userId, 0);
   return value ?? undefined;
 }
 
 export async function clearOnboardingScanReview(userId?: string): Promise<void> {
-  await cacheSet(keyFor(SCAN_REVIEW_KEY, userId), null);
+  await setScoped(keyFor(SCAN_REVIEW_KEY, userId), null, userId);
 }
 
 function makeCompletionProgress(status: 'complete' | 'skipped'): OnboardingProgress {

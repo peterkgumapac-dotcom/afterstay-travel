@@ -44,6 +44,7 @@ import { spacing, radius } from '@/constants/theme';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { clearAccountRuntimeState } from '@/lib/accountRuntime';
+import { cacheSetForUser } from '@/lib/cache';
 import { canUseInternalQaTools } from '@/lib/internalQa';
 import { useUserSegment, setSegmentOverride, getSegmentOverride } from '@/contexts/UserSegmentContext';
 import { MOCK_LABELS, MOCK_DESCRIPTIONS, type MockKey } from '@/lib/mockData';
@@ -1678,11 +1679,11 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
   };
 
   const handleResetOnboarding = async () => {
-    const { cacheSet: cs } = await import('@/lib/cache');
-    await Promise.all([
-      cs(user?.id ? `onboarding_complete:${user.id}` : 'onboarding_complete', false),
-      cs('onboarding_complete', false),
-    ]);
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'You need to be signed in to reset onboarding.');
+      return;
+    }
+    await cacheSetForUser(`onboarding_complete:${user.id}`, false, user.id);
     Alert.alert('Onboarding Reset', 'Next cold start will show the welcome flow.');
   };
 

@@ -44,7 +44,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
-import { cacheSet } from '@/lib/cache';
+import { cacheSetForUser } from '@/lib/cache';
 import { compressImage } from '@/lib/compressImage';
 import {
   addFlight,
@@ -511,8 +511,10 @@ function PlanFlow({
           when: when || undefined,
           travelers,
         });
-        await cacheSet('draft:trip_id', draftId);
-        await cacheSet(user?.id ? `onboarding_complete:${user.id}` : 'onboarding_complete', true);
+        if (user?.id) {
+          await cacheSetForUser('draft:trip_id', draftId, user.id);
+          await cacheSetForUser(`onboarding_complete:${user.id}`, true, user.id);
+        }
         await setOnboardingProgress(
           {
             stage: 'planning_draft',
@@ -1574,8 +1576,10 @@ export default function OnboardingScreen() {
     async (payload: any) => {
       try {
         // Clear old cache before setting up new trip
-        await cacheSet('trip:active', null);
-        await cacheSet('trip:phase:override', null);
+        if (user?.id) {
+          await cacheSetForUser('trip:active', null, user.id);
+          await cacheSetForUser('trip:phase:override', null, user.id);
+        }
 
         if (payload.kind === 'plan') {
           const { startDate, endDate } = planDatesFromWhen(payload.when);
