@@ -126,6 +126,18 @@ function computeInsights(expenses: Expense[], members: GroupMember[], balances: 
   return insights.slice(0, 3);
 }
 
+function resolveExpensePayerMemberId(expense: Expense, members: GroupMember[]): string | undefined {
+  const paidBy = expense.paidBy?.trim();
+  if (!paidBy) return undefined;
+
+  const byId = members.find((member) => member.id === paidBy);
+  if (byId) return byId.id;
+
+  const normalized = paidBy.toLowerCase();
+  const byName = members.filter((member) => member.name.trim().toLowerCase() === normalized);
+  return byName.length === 1 ? byName[0].id : undefined;
+}
+
 // ── Props ───────────────────────────────────────────────────────────
 
 interface GroupBalanceCardProps {
@@ -199,8 +211,7 @@ export function GroupBalanceCard({ trip, expenses, members, onBalancesChange }: 
       // Find expenses paid by the creditor
       const creditorExpenseIds = new Set(
         expenses.filter((e) => {
-          const payer = members.find((m) => m.name === e.paidBy);
-          return payer && payer.id === edge.to;
+          return resolveExpensePayerMemberId(e, members) === edge.to;
         }).map((e) => e.id),
       );
       const toSettle = relevant.filter((sp) => creditorExpenseIds.has(sp.expenseId));

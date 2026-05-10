@@ -1788,6 +1788,18 @@ export interface MemberBalance {
   unsettled: number;
 }
 
+function resolveExpensePayerMemberId(expense: Expense, members: GroupMember[]): string | undefined {
+  const paidBy = expense.paidBy?.trim();
+  if (!paidBy) return undefined;
+
+  const byId = members.find((member) => member.id === paidBy);
+  if (byId) return byId.id;
+
+  const normalized = paidBy.toLowerCase();
+  const byName = members.filter((member) => member.name.trim().toLowerCase() === normalized);
+  return byName.length === 1 ? byName[0].id : undefined;
+}
+
 export async function getTripBalances(
   tripId: string,
   expenses: Expense[],
@@ -1810,9 +1822,9 @@ export async function getTripBalances(
 
   // Sum what each member paid
   for (const e of expenses) {
-    const payer = members.find((m) => m.name === e.paidBy);
-    if (payer) {
-      const b = balances.get(payer.id);
+    const payerId = resolveExpensePayerMemberId(e, members);
+    if (payerId) {
+      const b = balances.get(payerId);
       if (b) b.totalPaid += e.amount;
     }
   }
