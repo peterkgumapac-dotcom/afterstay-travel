@@ -26,6 +26,7 @@ import {
   DiscoverPlaceCard,
   type DiscoverPlace,
 } from '@/components/discover/DiscoverPlaceCard';
+import DiscoverOriginPicker from '@/components/discover/DiscoverOriginPicker';
 import DiscoverOriginStatus from '@/components/discover/DiscoverOriginStatus';
 import { TopPicksByCategorySection, TopPicksSection } from '@/components/discover/DiscoverTopPicks';
 import DiscoverTabSwitcher from '@/components/discover/DiscoverTabSwitcher';
@@ -382,6 +383,24 @@ function DiscoverScreenInner() {
       setPlacesLoading(false);
     }
   }, [applyExploreOrigin]);
+
+  const handleExploreInputBlur = useCallback(() => {
+    setTimeout(() => setExploreFocused(false), 120);
+  }, []);
+
+  const handleExploreQueryChange = useCallback((text: string) => {
+    setExploreQuery(text);
+    setOriginRefinementText('');
+    if (exploreTimer.current) clearTimeout(exploreTimer.current);
+    if (text.trim().length < 2) {
+      setExploreResults([]);
+      return;
+    }
+    exploreTimer.current = setTimeout(async () => {
+      const results = await placeAutocomplete(text);
+      setExploreResults(results);
+    }, 300);
+  }, []);
 
   const useCurrentLocationForExplore = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1009,77 +1028,20 @@ function DiscoverScreenInner() {
       <View style={styles.precisionOriginWrap}>
         <Text style={styles.precisionTitle}>Find Places & Food</Text>
         {!canShowPlaceResults ? (
-          <View style={styles.precisionPanel}>
-            <View style={styles.originChoiceRow}>
-              <View style={[styles.originChoiceBtn, styles.originChoiceBtnActive]}>
-                <MapPin size={16} color={colors.black} strokeWidth={2.2} />
-                <Text style={[styles.originChoiceText, styles.originChoiceTextActive]}>Set precise location</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.originChoiceBtn}
-                activeOpacity={0.75}
-                onPress={useCurrentLocationForExplore}
-              >
-                <Navigation size={15} color={colors.accent} strokeWidth={2} />
-                <Text style={styles.originChoiceText}>Current location</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.precisionInputBox}>
-              <Search size={17} color={colors.text3} strokeWidth={1.8} />
-              <TextInput
-                ref={exploreInputRef}
-                value={exploreQuery}
-                onFocus={() => setExploreFocused(true)}
-                onBlur={() => setTimeout(() => setExploreFocused(false), 120)}
-                onChangeText={(text) => {
-                  setExploreQuery(text);
-                  setOriginRefinementText('');
-                  if (exploreTimer.current) clearTimeout(exploreTimer.current);
-                  if (text.trim().length < 2) { setExploreResults([]); return; }
-                  exploreTimer.current = setTimeout(async () => {
-                    const results = await placeAutocomplete(text);
-                    setExploreResults(results);
-                  }, 300);
-                }}
-                onSubmitEditing={() => chooseExploreDestination(exploreQuery)}
-                placeholder="Accommodation, address, landmark, Airbnb, or exact pin"
-                placeholderTextColor={colors.text3}
-                style={styles.searchInput}
-                returnKeyType="search"
-                autoCorrect={false}
-                spellCheck={false}
-                autoCapitalize="words"
-              />
-            </View>
-            {exploreFocused && exploreQuery.trim().length >= 2 && (
-              <View style={styles.destDropdown}>
-                <TouchableOpacity
-                  style={styles.destRow}
-                  onPressIn={() => chooseExploreDestination(exploreQuery)}
-                  activeOpacity={0.7}
-                >
-                  <Search size={14} color={colors.accent} strokeWidth={2} />
-                  <Text style={[styles.destRowText, { color: colors.text }]} numberOfLines={1}>
-                    Use "{exploreQuery.trim()}" as search origin
-                  </Text>
-                </TouchableOpacity>
-                {exploreResults.slice(0, 5).map((r) => (
-                  <TouchableOpacity
-                    key={r.placeId}
-                    style={styles.destRow}
-                    onPressIn={() => chooseExploreDestination(r.description, r.placeId)}
-                    activeOpacity={0.7}
-                  >
-                    <MapPin size={14} color={colors.text3} />
-                    <Text style={styles.destRowText} numberOfLines={1}>{r.description}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-            <Text style={[styles.precisionHint, originRefinementText && { color: colors.danger }]}>
-              {originRefinementText || 'For accurate recommendations, choose an exact place or use current GPS.'}
-            </Text>
-          </View>
+          <DiscoverOriginPicker
+            colors={colors}
+            focused={exploreFocused}
+            inputRef={exploreInputRef}
+            query={exploreQuery}
+            refinementText={originRefinementText}
+            results={exploreResults}
+            styles={styles}
+            onBlur={handleExploreInputBlur}
+            onChangeQuery={handleExploreQueryChange}
+            onChooseDestination={chooseExploreDestination}
+            onFocus={() => setExploreFocused(true)}
+            onUseCurrentLocation={useCurrentLocationForExplore}
+          />
         ) : (
           <>
             <DiscoverOriginStatus
