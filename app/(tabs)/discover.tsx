@@ -32,7 +32,6 @@ import MiniLoader from '@/components/loader/MiniLoader';
 import { useTheme } from '@/constants/ThemeContext';
 import { distanceFromPoint } from '@/lib/distance';
 import { mapSavedToDiscoverPlace } from '@/components/discover/shared';
-import { cacheGet, cacheSet } from '@/lib/cache';
 import { placeAutocomplete } from '@/lib/google-places';
 import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS } from '@/lib/category-config';
 import {
@@ -87,8 +86,10 @@ import {
   runDiscoverPlaceSearch,
 } from '@/features/discover/lib/placeSearch';
 import {
+  getCachedTravelMode,
   getInitialDiscoverMode,
   rememberDiscoverMode,
+  rememberTravelMode,
 } from '@/features/discover/lib/modePersistence';
 
 const PlaceDetailSheet = React.lazy(() => import('@/components/discover/PlaceDetailSheet'));
@@ -295,7 +296,7 @@ function DiscoverScreenInner() {
 
   const handleTravelModeChange = useCallback((m: 'walk' | 'car') => {
     setTravelMode(m);
-    cacheSet('discover:travelMode', m);
+    rememberTravelMode(m);
   }, []);
 
   const clearPlaceFilters = useCallback(() => {
@@ -387,7 +388,7 @@ function DiscoverScreenInner() {
   // stale simulator/device GPS never becomes the origin on launch.
   useEffect(() => {
     if (discoverMode !== 'plan') return;
-    cacheGet<'walk' | 'car'>('discover:travelMode').then((v) => { if (v) setTravelMode(v); });
+    getCachedTravelMode().then((v) => { if (v) setTravelMode(v); });
   }, [discoverMode]);
 
   // Dev test mode: apply mock trip data
@@ -457,7 +458,7 @@ function DiscoverScreenInner() {
           setTripMembers(members);
           // Default travel mode based on transport (car/bus → car, else walk)
           if (trip.transport === 'car' || trip.transport === 'bus') {
-            const cached = await cacheGet<'walk' | 'car'>('discover:travelMode');
+            const cached = await getCachedTravelMode();
             if (!cached) setTravelMode('car');
           }
         }
