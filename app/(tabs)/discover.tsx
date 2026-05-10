@@ -81,13 +81,13 @@ import { useVoteSubscription } from '@/hooks/useVoteSubscription';
 import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
 import DiscoverModeSwitch, { type DiscoverMode } from '@/components/discover/DiscoverModeSwitch';
 import { getDiscoverStyles } from '@/components/discover/discoverScreenStyles';
+import ExploreMomentsFeed from '@/components/discover/ExploreMomentsFeed';
 import {
   buildPlaceDistanceEntries,
   getPlacesEmptyText,
   getVisiblePlaceDistanceEntries,
   type PlaceDistanceEntry,
 } from '@/features/discover/lib/placeRanking';
-const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
 
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
 const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
@@ -1136,9 +1136,7 @@ function DiscoverScreenInner() {
       {/* ═══════ EXPLORE MOMENTS MODE ═══════ */}
       {discoverMode === 'explore_moments' && (
         <View style={styles.exploreMomentsPane} collapsable={false}>
-          <Suspense fallback={<MiniLoader />}>
-            <ExploreMomentsFeed />
-          </Suspense>
+          <ExploreMomentsFeed />
         </View>
       )}
 
