@@ -12,6 +12,10 @@ export const getDiscoverStyles = (colors: ThemeColors) =>
     scroll: {
       flex: 1,
     },
+    exploreMomentsPane: {
+      flex: 1,
+      minHeight: 1,
+    },
     scrollContent: {
       paddingBottom: 100,
     },

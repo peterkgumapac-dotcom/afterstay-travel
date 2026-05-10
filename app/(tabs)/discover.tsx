@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { Link, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import * as Updates from 'expo-updates';
 import { StatusBar } from 'expo-status-bar';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1135,7 +1135,7 @@ function DiscoverScreenInner() {
 
       {/* ═══════ EXPLORE MOMENTS MODE ═══════ */}
       {discoverMode === 'explore_moments' && (
-        <View collapsable={false}>
+        <View style={styles.exploreMomentsPane} collapsable={false}>
           <Suspense fallback={<MiniLoader />}>
             <ExploreMomentsFeed />
           </Suspense>
