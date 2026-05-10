@@ -15,7 +15,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
-  Bookmark,
   Calendar,
   Camera,
   ChevronRight,
@@ -99,7 +98,6 @@ export default function ReturningUserHome({
   upcomingTrips = [],
   activeTrips = [],
   quickTrips,
-  savedPlaces = [],
   onPlanTrip,
   onTripPress,
   onDraftTripPress,
@@ -267,7 +265,7 @@ export default function ReturningUserHome({
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={s.memoryKicker}>Last trip</Text>
               <Text style={s.memoryTitle} numberOfLines={2}>
-                {lastPastTrip.destination ?? lastPastTrip.name} is ready to remember
+                Your last trip is ready to remember
               </Text>
               <Text style={s.memorySub}>
                 Add missing photos, view your recap, or explore ideas for the next one.
@@ -705,32 +703,6 @@ export default function ReturningUserHome({
           </Animated.View>
         )}
 
-
-        {/* ── 6. IDEAS FOR YOUR NEXT TRIP ── */}
-        {savedPlaces.length >= 2 && (
-          <Animated.View entering={FadeInDown.delay(240).duration(400)}>
-            <View style={s.sectionHeader}>
-              <Text style={s.sectionKicker}>IDEAS FOR YOUR NEXT TRIP</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.savedScroll}>
-              {savedPlaces.slice(0, 8).map((p) => (
-                <View key={p.id} style={s.savedCard}>
-                  <View style={s.savedCatRow}>
-                    <Bookmark size={12} color={colors.accent} />
-                    <View style={s.savedCatPill}>
-                      <Text style={s.savedCatText}>{p.category}</Text>
-                    </View>
-                  </View>
-                  <Text style={s.savedName} numberOfLines={1}>{p.name}</Text>
-                  <Text style={s.savedLocation} numberOfLines={1}>
-                    {pastTrips[0]?.destination ?? ''}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-          </Animated.View>
-        )}
-
         {/* ── 7. NO UPCOMING TRIPS CTA ── */}
         {!hasUpcoming && allRecentTrips.length === 0 && quickTrips.length === 0 && (
           <Animated.View entering={FadeInDown.delay(280).duration(400)} style={s.ctaCard}>
@@ -1047,21 +1019,6 @@ const getStyles = (colors: ThemeColors) =>
       alignItems: 'center' as const, justifyContent: 'center' as const,
       marginLeft: 4,
     },
-
-    // Saved places
-    savedScroll: { marginHorizontal: -spacing.lg, paddingHorizontal: spacing.lg, marginBottom: 24 },
-    savedCard: {
-      width: 160, paddingVertical: 14, paddingHorizontal: 14,
-      backgroundColor: colors.card, borderRadius: 14,
-      borderWidth: 1, borderColor: colors.border, marginRight: 10,
-    },
-    savedCatRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-    savedCatPill: {
-      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.card2,
-    },
-    savedCatText: { fontSize: 10, fontWeight: '600', color: colors.text3 },
-    savedName: { fontSize: 13, fontWeight: '600', color: colors.text, marginBottom: 2 },
-    savedLocation: { fontSize: 11, color: colors.text3 },
 
     // No upcoming CTA
     ctaCard: {

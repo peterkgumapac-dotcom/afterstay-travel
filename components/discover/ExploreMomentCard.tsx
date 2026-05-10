@@ -17,6 +17,7 @@ import type { FeedPost, PostTag } from '@/lib/types';
 const SCREEN_W = Dimensions.get('window').width;
 const CARD_PAD = 16;
 const MEDIA_W = SCREEN_W - CARD_PAD * 2;
+const AFTERSTAY_AUTHOR_NAME = 'AfterStay';
 
 interface ExploreMomentCardProps {
   post: FeedPost;
@@ -152,6 +153,10 @@ export default function ExploreMomentCard({
   const isCollage = post.type === 'collage' || post.layoutType === 'polaroid_stack';
   const isOfficial = isOfficialAfterStayPost(post);
   const isTravelPulse = isTravelPulsePost(post);
+  const isPlatformPost = isOfficial || isTravelPulse;
+  const authorName = isTravelPulse ? AFTERSTAY_AUTHOR_NAME : post.userName ?? 'Traveler';
+  const authorAvatarUrl = isTravelPulse ? undefined : post.userAvatar;
+  const effectiveProfilePress = isTravelPulse ? undefined : onProfilePress;
   const postBadge = getPostBadge(post);
   const travelNote = getTravelNote(post);
   const pulseItems = isTravelPulse ? getTravelPulseItems(post) : [];
@@ -166,16 +171,16 @@ export default function ExploreMomentCard({
     let cancelled = false;
     setAvatarFailed(false);
     setResolvedAvatarUrl(undefined);
-    if (!post.userAvatar) return () => { cancelled = true; };
-    resolveRenderableStorageUrl(post.userAvatar, 'avatars')
+    if (!authorAvatarUrl) return () => { cancelled = true; };
+    resolveRenderableStorageUrl(authorAvatarUrl, 'avatars')
       .then((url) => {
         if (!cancelled) setResolvedAvatarUrl(url);
       })
       .catch(() => {
-        if (!cancelled) setResolvedAvatarUrl(post.userAvatar);
+        if (!cancelled) setResolvedAvatarUrl(authorAvatarUrl);
       });
     return () => { cancelled = true; };
-  }, [post.userAvatar]);
+  }, [authorAvatarUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -233,11 +238,11 @@ export default function ExploreMomentCard({
     visibility: 'public',
     isPublic: post.isPublic,
     isMine: isOwner,
-    takenBy: post.userName,
+    takenBy: authorName,
     userId: post.userId,
     authorAvatar: resolvedAvatarUrl,
     place: post.locationName,
-  })), [allPhotos, isOwner, post.caption, post.createdAt, post.id, post.isPublic, post.locationName, post.userId, post.userName, resolvedAvatarUrl]);
+  })), [allPhotos, authorName, isOwner, post.caption, post.createdAt, post.id, post.isPublic, post.locationName, post.userId, resolvedAvatarUrl]);
 
   const viewerHref = useCallback((index: number): Href => ({
     pathname: '/photo-viewer',
@@ -259,9 +264,9 @@ export default function ExploreMomentCard({
   })), [mediaWithResolvedUrls]);
 
   return (
-    <View style={[styles.card, isOfficial && styles.officialCard, isTravelPulse && styles.pulseCard]}>
+    <View style={[styles.card, isPlatformPost && styles.officialCard, isTravelPulse && styles.pulseCard]}>
       <PaperTexture />
-      {isOfficial ? (
+      {isPlatformPost ? (
         <View style={styles.officialRail}>
           <View style={styles.officialRailIcon}>
             <Newspaper size={11} color={PAPER.stamp} strokeWidth={2.2} />
@@ -276,9 +281,9 @@ export default function ExploreMomentCard({
       {/* Header: avatar + name + time */}
       <TouchableOpacity
         style={styles.header}
-        onPress={onProfilePress}
-        activeOpacity={onProfilePress ? 0.7 : 1}
-        disabled={!onProfilePress}
+        onPress={effectiveProfilePress}
+        activeOpacity={effectiveProfilePress ? 0.7 : 1}
+        disabled={!effectiveProfilePress}
       >
         {resolvedAvatarUrl && !avatarFailed ? (
           <Image
@@ -290,14 +295,14 @@ export default function ExploreMomentCard({
         ) : (
           <View style={[styles.avatar, styles.avatarPlaceholder]}>
             <Text style={styles.avatarLetter}>
-              {(post.userName ?? 'T')[0].toUpperCase()}
+              {authorName[0].toUpperCase()}
             </Text>
           </View>
         )}
         <View style={styles.headerText}>
           <View style={styles.nameLine}>
-            <Text style={styles.userName}>{post.userName ?? 'Traveler'}</Text>
-            {isOfficial ? (
+            <Text style={styles.userName}>{authorName}</Text>
+            {isPlatformPost ? (
               <View style={styles.verifiedMark} accessibilityLabel="Verified AfterStay account">
                 <CheckCircle size={15} color="#fff" fill="#1877F2" strokeWidth={2.7} />
               </View>
