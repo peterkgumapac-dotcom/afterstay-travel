@@ -269,6 +269,12 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
   }, []);
 
   const handlePhotoAction = useCallback((action: PhotoAction, moment: MomentDisplay) => {
+    const ownerOnlyActions: PhotoAction[] = ['archive', 'set-private', 'set-album', 'set-shared', 'set-public', 'edit', 'delete'];
+    if (ownerOnlyActions.includes(action) && !moment.isMine) {
+      Alert.alert('Read only', 'Only the uploader can change this photo.');
+      return;
+    }
+
     const imageUrl = getMomentImageUri(moment);
     if (action === 'share') {
       Share.share({

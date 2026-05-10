@@ -494,7 +494,7 @@ export function MomentLightbox({
                     onPress={() => { onToggleVisibility(current.id); setMenuVisible(false); }}
                   />
                 )}
-                {onDelete && <MenuAction icon={Trash2} label="Delete" onPress={handleDelete} danger />}
+                {onDelete && current.isMine && <MenuAction icon={Trash2} label="Delete" onPress={handleDelete} danger />}
               </View>
 
               <Pressable onPress={() => setMenuVisible(false)} style={styles.menuCancel}>
