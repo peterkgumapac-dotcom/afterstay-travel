@@ -27,6 +27,7 @@ import {
   type DiscoverPlace,
 } from '@/components/discover/DiscoverPlaceCard';
 import { TopPicksByCategorySection, TopPicksSection } from '@/components/discover/DiscoverTopPicks';
+import DiscoverTabSwitcher from '@/components/discover/DiscoverTabSwitcher';
 import PlaceFilterPanel from '@/components/discover/PlaceFilterPanel';
 import MiniLoader from '@/components/loader/MiniLoader';
 import { useTheme } from '@/constants/ThemeContext';
@@ -43,8 +44,6 @@ import {
   PLACE_CATEGORY_CHIPS,
   PRIMARY_PLACE_CATEGORY_CHIPS,
   destinationToLabel,
-  getDiscoverTabLabel,
-  getDiscoverTabs,
   getPrimaryPlaceCategoryLabel,
   type DiscoverOriginKind,
   type DistanceOrigin,
@@ -1182,29 +1181,14 @@ function DiscoverScreenInner() {
       </View>
 
       {/* Segmented control */}
-      <View style={styles.segWrapper}>
-        <View style={styles.seg}>
-          {getDiscoverTabs(!!tripId).map((id) => {
-            const label = getDiscoverTabLabel(id, {
-              hasTrip: !!tripId,
-              savedCount: saved.size,
-              wishlistCount: wishlistItems.length,
-            });
-            return (
-              <TouchableOpacity
-                key={id}
-                style={[styles.segBtn, tab === id && styles.segBtnActive]}
-                onPress={() => setTab(id)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.segText, tab === id && styles.segTextActive]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
+      <DiscoverTabSwitcher
+        activeTab={tab}
+        hasTrip={!!tripId}
+        savedCount={saved.size}
+        wishlistCount={wishlistItems.length}
+        styles={styles}
+        onTabChange={setTab}
+      />
 
       {/* ═══════ PLACES TAB (FlatList for virtualization) ═══════ */}
       {tab === 'places' && (
