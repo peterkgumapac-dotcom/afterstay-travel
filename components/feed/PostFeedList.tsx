@@ -15,12 +15,12 @@ import type { FeedPost, FeedPostComment } from '@/lib/types';
 // ── Profile fetcher for feed posts ──────────────────────────────
 type ProfileMap = Record<string, { name: string; avatar?: string }>;
 
-export function useProfilesForPosts(posts: FeedPost[]): ProfileMap {
+export function useProfilesForPosts(posts: FeedPost[], extraUserIds: string[] = []): ProfileMap {
   const [profiles, setProfiles] = useState<ProfileMap>({});
   const [checkedIds, setCheckedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    const userIds = [...new Set(posts.map(p => p.userId).filter(Boolean))];
+    const userIds = [...new Set([...posts.map(p => p.userId), ...extraUserIds].filter(Boolean))];
     const missing = userIds.filter(id => !profiles[id] && !checkedIds.has(id));
     if (missing.length === 0) return;
 
@@ -49,7 +49,7 @@ export function useProfilesForPosts(posts: FeedPost[]): ProfileMap {
           return next;
         });
       });
-  }, [posts, profiles, checkedIds]);
+  }, [posts, extraUserIds, profiles, checkedIds]);
 
   return profiles;
 }

@@ -18,6 +18,8 @@ import { useProfilesForPosts } from '@/components/feed/PostFeedList';
 import { useExploreFeed } from '@/hooks/useExploreFeed';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useAuth } from '@/lib/auth';
+import { CONFIG } from '@/lib/config';
+import { isTravelPulsePost } from '@/lib/officialAccount';
 import { pushProfile } from '@/lib/profileNavigation';
 import { togglePostLike } from '@/lib/supabase';
 import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
@@ -65,7 +67,16 @@ export default function ExploreMomentsFeed() {
   const activeFeed = mode === 'saved' ? savedFeed : mode === 'trending' ? trendingFeed : recentFeed;
   const refreshActiveFeed = activeFeed.refresh;
   const updateActivePost = activeFeed.updateLocal;
-  const profiles = useProfilesForPosts(activeFeed.posts);
+  const officialAfterStayUserId = CONFIG.OFFICIAL_AFTERSTAY_USER_ID;
+  const activeFeedHasTravelPulse = useMemo(
+    () => activeFeed.posts.some((post) => isTravelPulsePost(post)),
+    [activeFeed.posts],
+  );
+  const extraProfileIds = useMemo(
+    () => (activeFeedHasTravelPulse && officialAfterStayUserId ? [officialAfterStayUserId] : []),
+    [activeFeedHasTravelPulse, officialAfterStayUserId],
+  );
+  const profiles = useProfilesForPosts(activeFeed.posts, extraProfileIds);
   const activePostIdsKey = useMemo(() => activeFeed.posts.map((post) => post.id).join('|'), [activeFeed.posts]);
   const [tagsByPost, setTagsByPost] = useState<Record<string, PostTag[]>>({});
 
@@ -181,12 +192,17 @@ export default function ExploreMomentsFeed() {
   }, [user, router]);
 
   const renderItem = useCallback(({ item }: { item: FeedPost }) => {
+    const isTravelPulse = isTravelPulsePost(item);
+    const authorUserId = isTravelPulse && officialAfterStayUserId ? officialAfterStayUserId : item.userId;
+    const authorProfile = authorUserId ? profiles[authorUserId] : undefined;
     const enriched: FeedPost = {
       ...item,
-      userName: profiles[item.userId]?.name ?? item.userName,
-      userAvatar: profiles[item.userId]?.avatar ?? item.userAvatar,
+      userName: isTravelPulse ? authorProfile?.name ?? 'AfterStay' : authorProfile?.name ?? item.userName,
+      userAvatar: authorProfile?.avatar ?? item.userAvatar,
     };
-    const canOpenProfile = canOpenProfileIdentity(enriched, user?.id);
+    const canOpenProfile = isTravelPulse
+      ? Boolean(officialAfterStayUserId)
+      : canOpenProfileIdentity(enriched, user?.id);
     return (
       <ExploreMomentCard
         post={enriched}
@@ -194,14 +210,14 @@ export default function ExploreMomentsFeed() {
         onComment={() => setCommentPostId(item.id)}
         onShare={() => { sharePost(item.id).catch(() => {}); }}
         onSave={async () => { await toggleSave(item.id); }}
-        onProfilePress={canOpenProfile ? () => pushProfile(router, item.userId, user?.id) : undefined}
+        onProfilePress={canOpenProfile ? () => pushProfile(router, authorUserId, user?.id) : undefined}
         tags={tagsByPost[item.id]}
         isOwner={item.userId === user?.id}
         onDeleted={() => refreshActiveFeed()}
         onHidden={() => refreshActiveFeed()}
       />
     );
-  }, [profiles, router, user, tagsByPost, refreshActiveFeed]);
+  }, [officialAfterStayUserId, profiles, router, user, tagsByPost, refreshActiveFeed]);
 
   const avatarUri = profile?.avatarUrl;
   const displayName = profile?.fullName?.split(' ')[0] ?? 'traveler';

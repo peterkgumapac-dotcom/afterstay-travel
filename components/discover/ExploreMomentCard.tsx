@@ -155,8 +155,8 @@ export default function ExploreMomentCard({
   const isTravelPulse = isTravelPulsePost(post);
   const isPlatformPost = isOfficial || isTravelPulse;
   const authorName = isTravelPulse ? AFTERSTAY_AUTHOR_NAME : post.userName ?? 'Traveler';
-  const authorAvatarUrl = isTravelPulse ? undefined : post.userAvatar;
-  const effectiveProfilePress = isTravelPulse ? undefined : onProfilePress;
+  const authorAvatarUrl = post.userAvatar;
+  const effectiveProfilePress = onProfilePress;
   const postBadge = getPostBadge(post);
   const travelNote = getTravelNote(post);
   const pulseItems = isTravelPulse ? getTravelPulseItems(post) : [];
