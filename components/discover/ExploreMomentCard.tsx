@@ -17,7 +17,7 @@ import type { FeedPost, PostTag } from '@/lib/types';
 const SCREEN_W = Dimensions.get('window').width;
 const CARD_PAD = 16;
 const MEDIA_W = SCREEN_W - CARD_PAD * 2;
-const AFTERSTAY_AUTHOR_NAME = 'AfterStay';
+const AFTERSTAY_AUTHOR_NAME = 'AfterStay Travel';
 
 interface ExploreMomentCardProps {
   post: FeedPost;
@@ -267,15 +267,20 @@ export default function ExploreMomentCard({
     <View style={[styles.card, isPlatformPost && styles.officialCard, isTravelPulse && styles.pulseCard]}>
       <PaperTexture />
       {isPlatformPost ? (
-        <View style={styles.officialRail}>
+        <TouchableOpacity
+          style={styles.officialRail}
+          onPress={effectiveProfilePress}
+          activeOpacity={effectiveProfilePress ? 0.74 : 1}
+          disabled={!effectiveProfilePress}
+        >
           <View style={styles.officialRailIcon}>
             <Newspaper size={11} color={PAPER.stamp} strokeWidth={2.2} />
           </View>
           <Text style={styles.officialRailText}>
-            {isTravelPulse ? 'Travel Pulse briefing' : 'Official AfterStay'}
+            {isTravelPulse ? 'Travel Pulse' : 'Official AfterStay'}
           </Text>
           {lastChecked ? <Text style={styles.officialRailTime}>Checked {lastChecked}</Text> : null}
-        </View>
+        </TouchableOpacity>
       ) : null}
 
       {/* Header: avatar + name + time */}
@@ -308,7 +313,9 @@ export default function ExploreMomentCard({
               </View>
             ) : null}
           </View>
-          <Text style={styles.timeAgo}>{timeSince(post.createdAt)}</Text>
+          <Text style={styles.timeAgo}>
+            {isTravelPulse ? `Official travel app · ${timeSince(post.createdAt)}` : timeSince(post.createdAt)}
+          </Text>
         </View>
         {isOwner && (
           <PostOptionsMenu postId={post.id} onDeleted={onDeleted} onHidden={onHidden} />
@@ -323,8 +330,8 @@ export default function ExploreMomentCard({
 
       {/* Caption — above media */}
       {post.caption && (!travelNote || travelNote.value !== post.caption) ? (
-        <View style={styles.captionWrap}>
-          <Text style={styles.caption}>
+        <View style={[styles.captionWrap, isTravelPulse && styles.pulseCaptionWrap]}>
+          <Text style={[styles.caption, isTravelPulse && styles.pulseCaption]} numberOfLines={isTravelPulse ? 4 : undefined}>
             {post.caption}
           </Text>
         </View>
@@ -334,14 +341,18 @@ export default function ExploreMomentCard({
         <View style={styles.pulseItems}>
           {pulseItems.map((item, index) => (
             <View key={`${item.title ?? 'pulse'}-${index}`} style={styles.pulseItem}>
-              <Text style={styles.pulseItemKicker}>Signal {index + 1}</Text>
-              {item.title ? <Text style={styles.pulseItemTitle}>{item.title}</Text> : null}
-              {item.summary ? <Text style={styles.pulseItemSummary}>{item.summary}</Text> : null}
-              {item.sourceName || item.publishedAt ? (
-                <Text style={styles.pulseItemSource} numberOfLines={1}>
-                  {[item.sourceName, item.publishedAt].filter(Boolean).join(' · ')}
-                </Text>
-              ) : null}
+              <View style={styles.pulseSignalBadge}>
+                <Text style={styles.pulseSignalNumber}>{index + 1}</Text>
+              </View>
+              <View style={styles.pulseSignalText}>
+                {item.title ? <Text style={styles.pulseItemTitle} numberOfLines={2}>{item.title}</Text> : null}
+                {item.summary ? <Text style={styles.pulseItemSummary} numberOfLines={3}>{item.summary}</Text> : null}
+                {item.sourceName || item.publishedAt ? (
+                  <Text style={styles.pulseItemSource} numberOfLines={1}>
+                    {[item.sourceName, item.publishedAt].filter(Boolean).join(' · ')}
+                  </Text>
+                ) : null}
+              </View>
             </View>
           ))}
         </View>
@@ -541,7 +552,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fffaf0',
   },
   officialRail: {
-    minHeight: 38,
+    minHeight: 36,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -565,9 +576,9 @@ const styles = StyleSheet.create({
   officialRailText: {
     flex: 1,
     color: PAPER.stamp,
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '900',
-    letterSpacing: 0.35,
+    letterSpacing: 0.7,
     textTransform: 'uppercase',
   },
   officialRailTime: {
@@ -581,7 +592,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 9,
     gap: 10,
   },
   avatar: {
@@ -608,8 +619,8 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   userName: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 14.5,
+    fontWeight: '800',
     color: PAPER.inkDark,
   },
   verifiedMark: {
@@ -650,42 +661,63 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingBottom: 8,
   },
+  pulseCaptionWrap: {
+    paddingBottom: 6,
+  },
   caption: {
     fontSize: 14,
     color: PAPER.inkDark,
     lineHeight: 20,
   },
+  pulseCaption: {
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: PAPER.inkMid,
+  },
   pulseItems: {
     marginHorizontal: 14,
-    marginBottom: 10,
-    gap: 8,
+    marginBottom: 8,
+    gap: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(157, 112, 55, 0.20)',
   },
   pulseItem: {
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(157, 112, 55, 0.24)',
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    padding: 10,
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(157, 112, 55, 0.18)',
   },
-  pulseItemKicker: {
+  pulseSignalBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(157, 112, 55, 0.12)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(157, 112, 55, 0.28)',
+  },
+  pulseSignalNumber: {
     color: PAPER.stamp,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginBottom: 3,
+  },
+  pulseSignalText: {
+    flex: 1,
+    minWidth: 0,
   },
   pulseItemTitle: {
     color: PAPER.inkDark,
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '800',
-    lineHeight: 17,
+    lineHeight: 18,
   },
   pulseItemSummary: {
     color: PAPER.inkMid,
-    fontSize: 12,
+    fontSize: 12.2,
     lineHeight: 17,
-    marginTop: 3,
+    marginTop: 2,
   },
   pulseItemSource: {
     color: PAPER.inkLight,
