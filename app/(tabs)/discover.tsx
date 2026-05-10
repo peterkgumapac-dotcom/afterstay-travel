@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import * as Updates from 'expo-updates';
 import { StatusBar } from 'expo-status-bar';
@@ -7,7 +8,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Keyboard,
   Linking,
   Modal,
@@ -91,7 +91,7 @@ import {
 
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
 const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
-const DISCOVER_DIAGNOSTICS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true';
+const DISCOVER_DIAGNOSTICS_ENABLED = __DEV__;
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
@@ -1563,7 +1563,7 @@ function DiscoverScreenInner() {
                       activeOpacity={0.7}
                     >
                       {item.photoUrl ? (
-                        <Image source={{ uri: item.photoUrl }} style={styles.wishlistThumb} />
+                        <ExpoImage source={{ uri: item.photoUrl }} style={styles.wishlistThumb} contentFit="cover" cachePolicy="memory-disk" />
                       ) : (
                         <View style={[styles.wishlistThumb, styles.wishlistThumbFallback]}>
                           <MapPin size={18} color={colors.text3} />
@@ -1638,7 +1638,7 @@ function DiscoverScreenInner() {
                                 onPress={() => { setVotingPlace(p); setShowVotingSheet(true); }}
                               >
                                 {p.photoUrl ? (
-                                  <Image source={{ uri: p.photoUrl }} style={styles.votingThumb} />
+                                  <ExpoImage source={{ uri: p.photoUrl }} style={styles.votingThumb} contentFit="cover" cachePolicy="memory-disk" />
                                 ) : (
                                   <View style={[styles.votingThumb, { backgroundColor: colors.bg3, justifyContent: 'center', alignItems: 'center' }]}>
                                     <ThumbsUp size={14} color={colors.text3} />
@@ -1670,7 +1670,7 @@ function DiscoverScreenInner() {
                                 onPress={() => { setVotingPlace(p); setShowVotingSheet(true); }}
                               >
                                 {p.photoUrl ? (
-                                  <Image source={{ uri: p.photoUrl }} style={styles.votingThumb} />
+                                  <ExpoImage source={{ uri: p.photoUrl }} style={styles.votingThumb} contentFit="cover" cachePolicy="memory-disk" />
                                 ) : (
                                   <View style={[styles.votingThumb, { backgroundColor: colors.bg3, justifyContent: 'center', alignItems: 'center' }]}>
                                     <ThumbsUp size={14} color={colors.text3} />

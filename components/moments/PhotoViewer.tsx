@@ -123,24 +123,25 @@ export function PhotoViewer({
           />
         </Pressable>
 
-        {/* Visibility toggle: Group (shared) vs Just Me (private) */}
-        <Pressable
-          onPress={() => {
-            Haptics.selectionAsync();
-            if (current && onAction) onAction('archive', current);
-          }}
-          style={[
-            styles.bottomBtn,
-            current?.visibility === 'shared' && styles.bottomBtnActive,
-          ]}
-          accessibilityLabel={current?.visibility === 'shared' ? 'Shared with group' : 'Private'}
-        >
-          {current?.visibility === 'shared' ? (
-            <Users size={20} color="#d8ab7a" strokeWidth={2} />
-          ) : (
-            <Lock size={20} color="#fff" strokeWidth={2} />
-          )}
-        </Pressable>
+        {current?.isMine ? (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              if (current && onAction) onAction('archive', current);
+            }}
+            style={[
+              styles.bottomBtn,
+              current?.visibility === 'shared' && styles.bottomBtnActive,
+            ]}
+            accessibilityLabel={current?.visibility === 'shared' ? 'Shared with group' : 'Private'}
+          >
+            {current?.visibility === 'shared' ? (
+              <Users size={20} color="#d8ab7a" strokeWidth={2} />
+            ) : (
+              <Lock size={20} color="#fff" strokeWidth={2} />
+            )}
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={() => {

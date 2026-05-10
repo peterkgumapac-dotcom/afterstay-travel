@@ -10,7 +10,7 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useAuth } from '@/lib/auth';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { writeWidgetSnapshots, refreshAllWidgets } from '@/widgets/refresh';
-import { cacheGet, cacheSet } from '@/lib/cache';
+import { cacheGet, cacheGetForUser, cacheSet, cacheSetForUser } from '@/lib/cache';
 import {
   getDailyTrackerEnabled,
   getDailyExpenseSummary,
@@ -310,7 +310,8 @@ export function useHomeScreen() {
     setTotalSpent(0);
     setTodaySpent(0);
     setTodayCount(0);
-    cacheSet('trip:active', null).catch(() => {});
+    const currentUserId = userRef.current?.id;
+    if (currentUserId) cacheSetForUser('trip:active', null, currentUserId).catch(() => {});
   }, []);
 
   const resetHomeSurface = useCallback(() => {
@@ -378,7 +379,7 @@ export function useHomeScreen() {
       if (!isCurrentRequest()) return;
       if (t) {
         setTrip(t);
-        await cacheSet('trip:active', t);
+        if (requestUserId) await cacheSetForUser('trip:active', t, requestUserId);
         if (t.hotelLat && t.hotelLng) setHotelCoords(t.hotelLat, t.hotelLng);
       } else {
         clearActiveTripSurface();
@@ -391,12 +392,12 @@ export function useHomeScreen() {
         ]);
         if (!isCurrentRequest()) return;
         setFlights(fs); setMembers(mems);
-        await cacheSet(`flights:${t.id}`, fs);
+        if (requestUserId) await cacheSetForUser(`flights:${t.id}`, fs, requestUserId);
 
-        const cachedTid = await cacheGet<string>('trip:phase:tripId', 0);
-        if (cachedTid && cachedTid !== t.id) await cacheSet('trip:phase:override', null);
-        await cacheSet('trip:phase:tripId', t.id);
-        const manualPhase = await cacheGet<TripPhase | null>('trip:phase:override', 0);
+        const cachedTid = requestUserId ? await cacheGetForUser<string>('trip:phase:tripId', requestUserId, 0) : undefined;
+        if (requestUserId && cachedTid && cachedTid !== t.id) await cacheSetForUser('trip:phase:override', null, requestUserId);
+        if (requestUserId) await cacheSetForUser('trip:phase:tripId', t.id, requestUserId);
+        const manualPhase = requestUserId ? await cacheGetForUser<TripPhase | null>('trip:phase:override', requestUserId, 0) : null;
         setHasPhaseOverride(!!manualPhase);
         setPhaseRaw(computeTripPhase({
           trip: t,
@@ -543,7 +544,9 @@ export function useHomeScreen() {
     (async () => {
       const memoryTrip = getHomeActiveTripCached();
       const persistedTrip = memoryTrip === undefined
-        ? await cacheGet<Trip | null>('trip:active', HOME_PERSISTED_SEED_TTL_MS)
+        ? user?.id
+          ? await cacheGetForUser<Trip | null>('trip:active', user.id, HOME_PERSISTED_SEED_TTL_MS)
+          : undefined
         : undefined;
       const contextTrip = segmentActiveTrip ?? null;
       const ct = pickHomeSeedTrip(memoryTrip, persistedTrip, contextTrip);
@@ -565,7 +568,7 @@ export function useHomeScreen() {
       if (id) {
         const cf =
           getHomeFlightsCached(id) ??
-          (await cacheGet<Flight[]>(`flights:${id}`, HOME_PERSISTED_SEED_TTL_MS));
+          (user?.id ? await cacheGetForUser<Flight[]>(`flights:${id}`, user.id, HOME_PERSISTED_SEED_TTL_MS) : undefined);
         if (!cancelled && cf) setFlights(cf);
         const cm = getHomeMomentsCached(id); if (cm) setMoments(cm);
         const cmem = getHomeMembersCached(id); if (cmem) setMembers(cmem);
@@ -690,7 +693,7 @@ export function useHomeScreen() {
         ]);
         setFlights(fs);
         setMembers(mems);
-        await cacheSet(`flights:${activeTrip.id}`, fs);
+        if (refreshUser?.id) await cacheSetForUser(`flights:${activeTrip.id}`, fs, refreshUser.id);
 
         if (refreshUser) {
           const identity = resolveAuthIdentity(profile, refreshUser);
@@ -698,7 +701,7 @@ export function useHomeScreen() {
           setUserAvatar(identity.avatarUrl);
         }
 
-        const manualPhase = await cacheGet<TripPhase | null>('trip:phase:override', 0);
+        const manualPhase = refreshUser?.id ? await cacheGetForUser<TripPhase | null>('trip:phase:override', refreshUser.id, 0) : null;
         setHasPhaseOverride(!!manualPhase);
         setPhaseRaw(computeTripPhase({
           trip: activeTrip,
@@ -772,7 +775,10 @@ export function useHomeScreen() {
 
   const recomputeCurrentPhase = useCallback(async () => {
     if (testModeRef.current || !_rawTrip || !isFocused || AppState.currentState !== 'active') return;
-    const manualPhase = await cacheGet<TripPhase | null>('trip:phase:override', 0);
+    const currentUserId = userRef.current?.id;
+    const manualPhase = currentUserId
+      ? await cacheGetForUser<TripPhase | null>('trip:phase:override', currentUserId, 0)
+      : null;
     setHasPhaseOverride(!!manualPhase);
     setPhaseRaw(computeTripPhase({
       trip: _rawTrip,
@@ -784,13 +790,15 @@ export function useHomeScreen() {
   }, [_rawTrip, flights, isFocused, members, user?.id]);
 
   const setManualPhaseOverride = useCallback(async (nextPhase: TripPhase) => {
-    await cacheSet('trip:phase:override', nextPhase);
+    const currentUserId = userRef.current?.id;
+    if (currentUserId) await cacheSetForUser('trip:phase:override', nextPhase, currentUserId);
     setHasPhaseOverride(true);
     setPhaseRaw(nextPhase);
   }, []);
 
   const clearManualPhaseOverride = useCallback(async () => {
-    await cacheSet('trip:phase:override', null);
+    const currentUserId = userRef.current?.id;
+    if (currentUserId) await cacheSetForUser('trip:phase:override', null, currentUserId);
     setHasPhaseOverride(false);
     if (testModeRef.current || !_rawTrip) return;
     setPhaseRaw(computeTripPhase({

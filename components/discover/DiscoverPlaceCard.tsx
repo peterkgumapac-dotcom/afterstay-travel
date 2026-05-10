@@ -37,7 +37,7 @@ export interface DiscoverPlace {
   d: string;
   dn: number;
   price: number;
-  openNow: boolean;
+  openNow?: boolean;
   img: string;
   imgCandidates?: string[];
   placeId?: string;
@@ -171,15 +171,15 @@ export const DiscoverPlaceCard = React.memo(function DiscoverPlaceCard({
         {/* Category + open/closed */}
         <View style={styles.tagRow}>
           <Text style={styles.category}>{friendlyCategory(place.t).toUpperCase()}</Text>
-          {place.openNow ? (
+          {place.openNow === true ? (
             <View style={styles.openBadge}>
               <Text style={styles.openText}>OPEN</Text>
             </View>
-          ) : (
+          ) : place.openNow === false ? (
             <View style={styles.closedBadge}>
               <Text style={styles.closedText}>CLOSED</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
         {/* Name */}

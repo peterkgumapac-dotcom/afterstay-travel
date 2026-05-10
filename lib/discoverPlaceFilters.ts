@@ -223,7 +223,7 @@ export function applyPlaceFilters(
     if ((f.minReviewCount ?? 0) > 0 && (p.totalRatings ?? 0) < (f.minReviewCount ?? 0)) return false;
     if (!matchesAnyType(p, f.placeTypes ?? [])) return false;
     if (!matchesAnyVibe(p, f.vibes ?? [])) return false;
-    if (f.openNow && !p.openNow) return false;
+    if (f.openNow && p.openNow === false) return false;
     if (f.maxPrice < DEFAULT_PLACE_FILTERS.maxPrice && p.price > f.maxPrice) return false;
     return true;
   });

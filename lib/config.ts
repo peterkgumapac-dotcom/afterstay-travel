@@ -26,8 +26,8 @@ export function setHotelCoords(lat: number, lng: number) {
 export const verifyConfig = (): boolean => {
   const missing: string[] = [];
   if (!CONFIG.SUPABASE_URL) missing.push('SUPABASE_URL');
-  if (!CONFIG.WEATHER_KEY) console.warn('[CONFIG] Optional: WEATHER_API_KEY not set');
-  if (missing.length) {
+  if (__DEV__ && !CONFIG.WEATHER_KEY) console.warn('[CONFIG] Optional: WEATHER_API_KEY not set');
+  if (__DEV__ && missing.length) {
     console.error('[CONFIG] Missing env vars:', missing.join(', '));
     console.error('[CONFIG] Make sure they start with EXPO_PUBLIC_ in .env');
   }

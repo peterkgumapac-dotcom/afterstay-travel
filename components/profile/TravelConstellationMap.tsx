@@ -42,39 +42,6 @@ export interface ConstellationData {
   spent: string;
 }
 
-// ---------- Preset data ----------
-
-export const AARON_DATA: ConstellationData = {
-  destinations: [
-    { code: 'TYO', flag: '\u{1F1EF}\u{1F1F5}', x: 320, y: 37.5 },
-    { code: 'ICN', flag: '\u{1F1F0}\u{1F1F7}', x: 228.8, y: 32 },
-    { code: 'HKG', flag: '\u{1F1ED}\u{1F1F0}', x: 137.5, y: 76.9 },
-    { code: 'BKK', flag: '\u{1F1F9}\u{1F1ED}', x: 40, y: 102.1 },
-    { code: 'DAD', flag: '\u{1F1FB}\u{1F1F3}', x: 95, y: 95.3 },
-    { code: 'SIN', flag: '\u{1F1F8}\u{1F1EC}', x: 63.7, y: 138.6 },
-    { code: 'DPS', flag: '\u{1F1EE}\u{1F1E9}', x: 145, y: 168 },
-    { code: 'MPH', flag: '\u{1F1F5}\u{1F1ED}', x: 212.1, y: 131.7 },
-  ],
-  totalKm: 15698,
-  since: '2024',
-  trips: 13,
-  places: 8,
-  nights: 75,
-  spent: '\u20B1348k',
-};
-
-export const PETER_DATA: ConstellationData = {
-  destinations: [
-    { code: 'MPH', flag: '\u{1F1F5}\u{1F1ED}', x: 212.1, y: 131.7 },
-  ],
-  totalKm: 582,
-  since: '2026',
-  trips: 1,
-  places: 1,
-  nights: 7,
-  spent: '\u20B136k',
-};
-
 // ---------- Constants ----------
 
 const HOME = { x: 186.1, y: 99.7 };

@@ -23,7 +23,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 
 import AddTripSheet from '@/components/summary/AddTripSheet';
 import ShareTravelStats from '@/components/profile/ShareTravelStats';
-import { PETER_DATA, AARON_DATA } from '@/components/profile/TravelConstellationMap';
+import type { ConstellationData } from '@/components/profile/TravelConstellationMap';
 import EmptyState from '@/components/shared/EmptyState';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 import { OverviewTab } from '@/components/trip/OverviewTab';
@@ -100,6 +100,13 @@ type TabKey = (typeof TAB_KEYS)[number];
 const MEMBER_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b', '#7e9f5b'];
 
 // mapFlightToDisplay imported from tripConstants (safe null guards)
+
+function formatTravelStatsSpent(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return '₱0';
+  if (amount >= 1_000_000) return `₱${Math.round(amount / 100_000) / 10}m`;
+  if (amount >= 1_000) return `₱${Math.round(amount / 1_000)}k`;
+  return `₱${Math.round(amount)}`;
+}
 
 interface PackingGroup {
   [category: string]: { t: string; by: string; d: boolean; id: string }[];
@@ -660,6 +667,21 @@ function TripScreen() {
   const totalNights = (lifetimeStats?.totalNights ?? pastTripsDisplay.reduce((s, t) => s + t.nights, 0)) + activeTripNights;
   const totalMiles = lifetimeStats?.totalMiles ?? 0;
   const countriesCount = lifetimeStats?.totalCountries ?? Math.max(1, new Set([...pastTripsDisplay.map((t) => t.flag), activeTripCountry].filter(Boolean)).size);
+  const shareStatsData = useMemo<ConstellationData>(() => {
+    const datedTrips = [...pastTripsData, ...(trip ? [trip] : [])]
+      .map((t) => safeParse(t.startDate)?.getFullYear())
+      .filter((year): year is number => Number.isFinite(year));
+    const since = datedTrips.length > 0 ? String(Math.min(...datedTrips)) : String(new Date().getFullYear());
+    return {
+      destinations: [],
+      totalKm: totalMiles,
+      since,
+      trips: totalTrips,
+      places: countriesCount,
+      nights: totalNights,
+      spent: formatTravelStatsSpent(totalSpent),
+    };
+  }, [countriesCount, pastTripsData, totalMiles, totalNights, totalSpent, totalTrips, trip]);
 
   const highlightsForStrip = useMemo(() => {
     if (highlightsData.length > 0) {
@@ -1520,7 +1542,7 @@ function TripScreen() {
       {/* Share Travel Stats sheet */}
       <ShareTravelStats
         visible={shareStatsVisible}
-        data={pastTripsData.length > 0 ? AARON_DATA : PETER_DATA}
+        data={shareStatsData}
         displayName={profileName ?? 'My'}
         handle={profileHandle}
         avatarUrl={profileAvatar}

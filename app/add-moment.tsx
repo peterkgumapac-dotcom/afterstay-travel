@@ -327,8 +327,7 @@ export default function AddMomentScreen() {
             }
             const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
             errors.push(reason);
-            // eslint-disable-next-line no-console
-            console.error('[add-moment] upload failed:', reason);
+            if (__DEV__) console.error('[add-moment] upload failed:', reason);
           }
         }
         if (errors.length > 0) lastErrors = errors;
@@ -354,8 +353,7 @@ export default function AddMomentScreen() {
             } catch (error) {
               const reason = error instanceof Error ? error.message : String(error);
               lastErrors = [`Saved to the trip album, but public sharing failed: ${reason}`];
-              // eslint-disable-next-line no-console
-              console.error('[add-moment] public mirror failed:', reason);
+              if (__DEV__) console.error('[add-moment] public mirror failed:', reason);
             }
           }
         }

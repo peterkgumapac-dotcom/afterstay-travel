@@ -23,6 +23,11 @@ export default function PhotoViewerRoute() {
   const [editMoment, setEditMoment] = useState<MomentDisplay | null>(null);
 
   const handleEditSave = useCallback(async (id: string, updates: { caption?: string; location?: string }) => {
+    const target = moments.find((m) => m.id === id);
+    if (!target?.isMine) {
+      Alert.alert('Read only', 'Only the uploader can edit this photo.');
+      return;
+    }
     try {
       const { error } = await supabase.from('moments').update({
         caption: updates.caption ?? null,
@@ -35,7 +40,7 @@ export default function PhotoViewerRoute() {
     } catch (e: unknown) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Could not update photo details');
     }
-  }, []);
+  }, [moments]);
 
   const handleAction = useCallback(async (action: PhotoAction, moment: MomentDisplay) => {
     switch (action) {
@@ -97,6 +102,10 @@ export default function PhotoViewerRoute() {
       }
 
       case 'archive': {
+        if (!moment.isMine) {
+          Alert.alert('Read only', 'Only the uploader can change photo visibility.');
+          break;
+        }
         try {
           const newVis = await toggleMomentVisibility(moment.id);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -108,6 +117,10 @@ export default function PhotoViewerRoute() {
       }
 
       case 'delete': {
+        if (!moment.isMine) {
+          Alert.alert('Read only', 'Only the uploader can delete this photo.');
+          break;
+        }
         Alert.alert('Delete Photo', 'This cannot be undone.', [
           {
             text: 'Delete',
