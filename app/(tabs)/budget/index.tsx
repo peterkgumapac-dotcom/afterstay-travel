@@ -123,6 +123,17 @@ function summarizeMoneyByPeriod(items: { amount: number; currency?: string; date
 }
 
 function SummaryStrip({ summary, styles }: { summary: MoneySummary; styles: ReturnType<typeof getStyles> }) {
+  const hasPulse = summary.today > 0 || summary.week > 0 || summary.month > 0;
+
+  if (!hasPulse) {
+    return (
+      <View style={styles.summaryQuietRow}>
+        <Text style={styles.summaryQuietTitle}>No spending logged today</Text>
+        <Text style={styles.summaryQuietMeta}>Today, week, and month are clear.</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.summaryStrip}>
       {[
@@ -205,16 +216,77 @@ function BudgetHero({
 
       <View style={styles.travelHeroActions}>
         <TouchableOpacity style={styles.travelHeroPrimaryAction} onPress={onAdd} activeOpacity={0.75}>
-          <Text style={styles.travelHeroPrimaryText}>Add expense</Text>
+          <Text style={styles.travelHeroPrimaryText}>+ Add</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.travelHeroSecondaryAction} onPress={onScan} activeOpacity={0.75}>
-          <Text style={styles.travelHeroSecondaryText}>Scan receipt</Text>
+          <Text style={styles.travelHeroSecondaryText}>Scan</Text>
         </TouchableOpacity>
         {onSetLimit && (
           <TouchableOpacity style={styles.travelHeroLimitAction} onPress={onSetLimit} activeOpacity={0.75}>
             <Text style={styles.travelHeroLimitText}>Set limit</Text>
           </TouchableOpacity>
         )}
+      </View>
+    </View>
+  );
+}
+
+function RecentHistoryPreview({
+  items,
+  currency,
+  onPressItem,
+  onEditItem,
+  onDeleteItem,
+  styles,
+  colors,
+}: {
+  items: UnifiedExpenseHistoryItem[];
+  currency: string;
+  onPressItem: (item: UnifiedExpenseHistoryItem) => void;
+  onEditItem: (item: UnifiedExpenseHistoryItem) => void;
+  onDeleteItem: (item: UnifiedExpenseHistoryItem) => void;
+  styles: ReturnType<typeof getStyles>;
+  colors: ThemeColors;
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <View style={styles.recentPreviewCard}>
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.historyLabel}>Recent expenses</Text>
+          <Text style={styles.recentPreviewSub}>Swipe a row to edit or delete.</Text>
+        </View>
+        <Text style={styles.seeAllText}>{items.length > 3 ? `All ${items.length}` : 'History'}</Text>
+      </View>
+      <View style={{ gap: 6 }}>
+        {items.slice(0, 3).map((item) => (
+          <SwipeableExpenseRow
+            key={item.id}
+            colors={colors}
+            onEdit={() => onEditItem(item)}
+            onDelete={() => onDeleteItem(item)}
+          >
+            <TouchableOpacity
+              style={styles.recentPreviewRow}
+              onPress={() => onPressItem(item)}
+              activeOpacity={0.72}
+            >
+              <View style={styles.recentPreviewAvatar}>
+                <Text style={styles.recentPreviewAvatarText}>
+                  {(item.paidBy || item.description || '?').trim().charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.historyDesc} numberOfLines={1}>{item.description || 'Expense'}</Text>
+                <Text style={styles.historyMeta} numberOfLines={1}>
+                  {[item.category, item.sourceLabel, formatDatePHT(item.date)].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              <Text style={styles.historyAmount}>{formatCurrency(item.amount, item.currency || currency)}</Text>
+            </TouchableOpacity>
+          </SwipeableExpenseRow>
+        ))}
       </View>
     </View>
   );
@@ -848,10 +920,10 @@ function BudgetScreen() {
           ? 'Quick-trip spending only'
           : 'Travel spending across trips and quick trips';
     const filterChips: { id: ExpenseHistoryFilter; label: string; amount: number; count: number }[] = [
-      { id: 'travel', label: 'All Travel', amount: tripTotal + quickTotal, count: travelExpenses.length },
+      { id: 'travel', label: 'All', amount: tripTotal + quickTotal, count: travelExpenses.length },
       { id: 'trip', label: 'Trips', amount: tripTotal, count: tripExpenses.length },
       { id: 'quick-trip', label: 'Quick Trips', amount: quickTotal, count: quickTripExpenses.length },
-      { id: 'normal', label: 'Normal', amount: standaloneTotal, count: standaloneExpenses.length },
+      { id: 'normal', label: 'Daily', amount: standaloneTotal, count: standaloneExpenses.length },
     ];
 
     return (
@@ -951,6 +1023,28 @@ function BudgetScreen() {
                       );
                     })}
                   </ScrollView>
+                  <RecentHistoryPreview
+                    items={filteredHistoryExpenses}
+                    currency={historySummary.currency}
+                    colors={colors}
+                    styles={styles}
+                    onPressItem={(e) => setDetailExpense({
+                      id: e.id,
+                      description: e.description,
+                      amount: e.amount,
+                      currency: e.currency,
+                      category: e.category as Expense['category'],
+                      date: e.date,
+                      paidBy: e.paidBy,
+                      placeName: e.placeName,
+                      splitType: e.splitType as Expense['splitType'],
+                      notes: e.notes,
+                      source: e.source,
+                      sourceId: e.sourceId,
+                    })}
+                    onEditItem={handleEditHistoryExpense}
+                    onDeleteItem={handleDeleteHistoryExpense}
+                  />
                 </View>
               )}
 
@@ -2079,6 +2173,9 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   travelHeroLimitAction: { minWidth: 82, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: c.accentBorder, backgroundColor: c.accentBg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
   travelHeroLimitText: { fontSize: 12, fontWeight: '800', color: c.accent },
   summaryStrip: { flexDirection: 'row', gap: 6 },
+  summaryQuietRow: { minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, paddingVertical: 10, paddingHorizontal: 12, justifyContent: 'center' },
+  summaryQuietTitle: { fontSize: 13, fontWeight: '800', color: c.text },
+  summaryQuietMeta: { fontSize: 11, fontWeight: '600', color: c.text3, marginTop: 3 },
   summaryTile: { flex: 1, minHeight: 46, backgroundColor: 'transparent', borderWidth: 1, borderColor: c.border, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 9, justifyContent: 'center' },
   summaryLabel: { fontSize: 9.5, fontWeight: '700', color: c.text3, textTransform: 'uppercase', letterSpacing: 0.6 },
   summaryAmount: { fontSize: 12.5, fontWeight: '800', color: c.text, marginTop: 2, letterSpacing: -0.2 },
@@ -2092,6 +2189,11 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   expenseFilterLabelActive: { color: c.accent },
   expenseFilterMeta: { fontSize: 10, fontWeight: '600', color: c.text3, marginTop: 3 },
   expenseFilterMetaActive: { color: c.text2 },
+  recentPreviewCard: { marginTop: 12, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, gap: 8 },
+  recentPreviewSub: { fontSize: 11, color: c.text3, marginTop: 2 },
+  recentPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 12, backgroundColor: c.card2 },
+  recentPreviewAvatar: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: c.accentBg, borderWidth: 1, borderColor: c.accentBorder },
+  recentPreviewAvatarText: { fontSize: 12, fontWeight: '800', color: c.accent },
 
   // Budget card
   budgetCard: { backgroundColor: c.card, borderWidth: 1, borderColor: c.border, borderRadius: 22, padding: 18 },
