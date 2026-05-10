@@ -40,9 +40,8 @@ import { distanceFromPoint, formatDistance } from '@/lib/distance';
 import { mapNearbyToDiscoverPlace, mapSavedToDiscoverPlace } from '@/components/discover/shared';
 import { MS_PER_DAY } from '@/lib/utils';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { searchNearby, searchNearbyPage, placeAutocomplete, type NearbyPlace } from '@/lib/google-places';
+import { searchNearbyPage, placeAutocomplete, type NearbyPlace } from '@/lib/google-places';
 import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS } from '@/lib/category-config';
-import { searchMultiCategory } from '@/lib/multi-category-search';
 import {
   applyPlaceFilters,
   countActivePlaceFilters,
@@ -88,6 +87,12 @@ import {
   resolveCurrentLocationOrigin,
   resolveExploreOriginInput,
 } from '@/features/discover/lib/originResolver';
+import {
+  buildDiscoverAllCacheKey,
+  buildDiscoverSearchCacheKey,
+  runDiscoverAllSearch,
+  runDiscoverPlaceSearch,
+} from '@/features/discover/lib/placeSearch';
 
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
 const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
@@ -559,7 +564,7 @@ function DiscoverScreenInner() {
     }
 
     const searchRadius = Math.min(radius ?? DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS);
-    const cacheKey = `${type ?? ''}_${keyword ?? ''}_${effectiveCoords.lat}_${effectiveCoords.lng}_${searchRadius}`;
+    const cacheKey = buildDiscoverSearchCacheKey(effectiveCoords, keyword, type, searchRadius);
 
     // Use cache if available and not forced refresh
     if (!skipCache && placesCache.current[cacheKey]) {
@@ -570,8 +575,8 @@ function DiscoverScreenInner() {
     setPlacesLoading(true);
     setPlacesError(null);
     try {
-      const { places: results, nextPageToken: token, errorMessage } = await searchNearby(type, keyword, effectiveCoords, searchRadius);
-      setNextPageToken(token);
+      const result = await runDiscoverPlaceSearch(effectiveCoords, keyword, type, searchRadius);
+      setNextPageToken(result.nextPageToken);
       logDiscoverDiagnostics('searchPlaces', {
         origin: effectiveDest,
         coords: effectiveCoords,
@@ -579,16 +584,15 @@ function DiscoverScreenInner() {
         keyword,
         type,
         radius: searchRadius,
-        rawCount: results.length,
-        errorMessage: errorMessage ?? null,
+        rawCount: result.rawCount,
+        errorMessage: result.errorMessage ?? null,
       });
-      if (results.length > 0) {
-        const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords ?? undefined));
-        placesCache.current[cacheKey] = mapped;
-        setPlaces(mapped);
+      if (result.places.length > 0) {
+        placesCache.current[result.cacheKey] = result.places;
+        setPlaces(result.places);
       } else {
         setPlaces([]);
-        setPlacesError(errorMessage ?? 'No results found nearby.');
+        setPlacesError(result.errorMessage ?? 'No results found nearby.');
       }
     } catch (err) {
       if (__DEV__) console.warn('[Discover] searchPlaces failed:', err);
@@ -604,7 +608,7 @@ function DiscoverScreenInner() {
   const loadAllView = useCallback(async (skipCache = false) => {
     if (!canShowPlaceResults || !effectiveCoords) { setPlaces([]); return; }
 
-    const cacheKey = `all_multi_${effectiveCoords.lat}_${effectiveCoords.lng}`;
+    const cacheKey = buildDiscoverAllCacheKey(effectiveCoords);
     if (!skipCache && placesCache.current[cacheKey]) {
       setPlaces(placesCache.current[cacheKey]);
       return;
@@ -613,16 +617,15 @@ function DiscoverScreenInner() {
     setPlacesLoading(true);
     setPlacesError(null);
     try {
-      const { places: results } = await searchMultiCategory(effectiveCoords);
+      const result = await runDiscoverAllSearch(effectiveCoords);
       logDiscoverDiagnostics('loadAllView', {
         origin: effectiveDest,
         coords: effectiveCoords,
-        rawCount: results.length,
+        rawCount: result.rawCount,
       });
-      if (results.length > 0) {
-        const mapped = results.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords));
-        placesCache.current[cacheKey] = mapped;
-        setPlaces(mapped);
+      if (result.places.length > 0) {
+        placesCache.current[result.cacheKey] = result.places;
+        setPlaces(result.places);
       } else {
         setPlaces([]);
         setPlacesError('No results found nearby.');
