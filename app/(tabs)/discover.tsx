@@ -1,7 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
-import * as Updates from 'expo-updates';
 import { StatusBar } from 'expo-status-bar';
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -88,22 +87,12 @@ import {
   getVisiblePlaceDistanceEntries,
   type PlaceDistanceEntry,
 } from '@/features/discover/lib/placeRanking';
+import { logDiscoverDiagnostics } from '@/features/discover/lib/diagnostics';
 
 const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
 const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
-const DISCOVER_DIAGNOSTICS_ENABLED = __DEV__;
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
-
-function logDiscoverDiagnostics(event: string, payload: Record<string, unknown>) {
-  if (!DISCOVER_DIAGNOSTICS_ENABLED) return;
-  console.info('[DiscoverDiagnostics]', event, {
-    updateId: Updates.updateId?.slice(0, 8) ?? null,
-    channel: Updates.channel ?? null,
-    runtimeVersion: Updates.runtimeVersion ?? null,
-    ...payload,
-  });
-}
 
 // ── Main screen ─────────────────────────────────────────────────────────
 
