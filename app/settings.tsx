@@ -43,6 +43,8 @@ import {
 import { spacing, radius } from '@/constants/theme';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
+import { clearAccountRuntimeState } from '@/lib/accountRuntime';
+import { canUseInternalQaTools } from '@/lib/internalQa';
 import { useUserSegment, setSegmentOverride, getSegmentOverride } from '@/contexts/UserSegmentContext';
 import { MOCK_LABELS, MOCK_DESCRIPTIONS, type MockKey } from '@/lib/mockData';
 import {
@@ -113,9 +115,6 @@ interface ProfileState {
 }
 
 const STORAGE_PROFILE = 'settings_profile';
-const INTERNAL_QA_TESTER_EMAIL = process.env.EXPO_PUBLIC_INTERNAL_QA_TESTER_EMAIL?.trim().toLowerCase() ?? '';
-const INTERNAL_QA_TOOLS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true';
-
 const DEFAULT_PROFILE: ProfileState = { name: 'Traveler', avatarUri: '', handle: '', phone: '', socials: {} };
 
 function storageProfileKey(userId?: string | null): string {
@@ -123,7 +122,7 @@ function storageProfileKey(userId?: string | null): string {
 }
 
 function canShowInternalQaTools(email?: string | null): boolean {
-  return INTERNAL_QA_TOOLS_ENABLED && Boolean(INTERNAL_QA_TESTER_EMAIL) && email?.toLowerCase() === INTERNAL_QA_TESTER_EMAIL;
+  return canUseInternalQaTools(email);
 }
 
 function shortUpdateId(): string | null {
@@ -1674,8 +1673,8 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
   };
 
   const handleClearCache = async () => {
-    await AsyncStorage.clear();
-    Alert.alert('Cache Cleared', 'All AsyncStorage data has been wiped. Restart the app.');
+    await clearAccountRuntimeState();
+    Alert.alert('Runtime cache cleared', 'Trip, tab, widget, query, and local account caches were reset.');
   };
 
   const handleResetOnboarding = async () => {
@@ -1914,8 +1913,8 @@ function DevSegmentSection({ colors }: { colors: ThemeColorsLocal }) {
         </TouchableOpacity>
         <TouchableOpacity onPress={handleClearCache} activeOpacity={0.7}
           style={{ paddingVertical: 10 }}>
-          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>Clear All Cache</Text>
-          <Text style={{ fontSize: 11, color: colors.text3 }}>Wipe AsyncStorage (requires restart)</Text>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.danger }}>Clear Runtime Cache</Text>
+          <Text style={{ fontSize: 11, color: colors.text3 }}>Reset trip, tab, widget, and query caches</Text>
         </TouchableOpacity>
       </View>
 

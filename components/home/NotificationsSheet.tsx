@@ -21,6 +21,7 @@ import { formatCurrency } from '@/lib/utils';
 import { useNotifications, type AppNotification } from '@/hooks/useNotifications';
 import { shouldNotify, getLocalNotificationPrefs } from '@/lib/notificationPrefs';
 import { useAuth } from '@/lib/auth';
+import { canUseInternalQaTools } from '@/lib/internalQa';
 import type { NotificationPrefs } from '@/lib/notificationPrefs';
 import type { Place, GroupMember } from '@/lib/types';
 
@@ -385,8 +386,7 @@ export default function NotificationsSheet({
           </View>
 
           <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
-            {process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true' &&
-              user?.email?.toLowerCase() === process.env.EXPO_PUBLIC_INTERNAL_QA_TESTER_EMAIL?.trim().toLowerCase() && (
+            {canUseInternalQaTools(user?.email) && (
               <TouchableOpacity
                 style={{ backgroundColor: colors.accent, padding: 12, borderRadius: 10, marginBottom: 12, alignItems: 'center' }}
                 onPress={async () => {

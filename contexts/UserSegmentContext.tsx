@@ -18,6 +18,7 @@ import {
   deriveUserStatus,
   type UserStatus,
 } from '@/lib/userStatus';
+import { canUseInternalQaTools, isInternalQaBuildEnabled } from '@/lib/internalQa';
 import { getLifetimeStats, getProfile, type Profile } from '@/lib/supabase';
 import type { LifetimeStats, Trip, UserSegment } from '@/lib/types';
 import { getMockDataForKey, parseMockKey, MOCK_LABELS, type MockSegmentData, type MockKey } from '@/lib/mockData';
@@ -27,16 +28,14 @@ import { getMockDataForKey, parseMockKey, MOCK_LABELS, type MockSegmentData, typ
 // ── Dev override (test mode) ─────────────────────────────────────────
 
 const DEV_OVERRIDE_KEY = 'dev:segment-override';
-const DEV_ALLOWED_EMAIL = 'peterkgumapac@gmail.com';
-const INTERNAL_QA_TOOLS_ENABLED = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_INTERNAL_QA === 'true';
 
 function canUseLifecycleOverride(email?: string | null): boolean {
-  return INTERNAL_QA_TOOLS_ENABLED && email === DEV_ALLOWED_EMAIL;
+  return canUseInternalQaTools(email);
 }
 
 /** Set a mock key override for testing. Pass null to clear. */
 export async function setSegmentOverride(key: MockKey | null): Promise<void> {
-  if (!INTERNAL_QA_TOOLS_ENABLED) {
+  if (!isInternalQaBuildEnabled()) {
     await AsyncStorage.removeItem(DEV_OVERRIDE_KEY);
     return;
   }
@@ -50,7 +49,7 @@ export async function setSegmentOverride(key: MockKey | null): Promise<void> {
 
 /** Read the current mock key override (null = no override). */
 export async function getSegmentOverride(): Promise<MockKey | null> {
-  if (!INTERNAL_QA_TOOLS_ENABLED) {
+  if (!isInternalQaBuildEnabled()) {
     await AsyncStorage.removeItem(DEV_OVERRIDE_KEY);
     return null;
   }

@@ -73,7 +73,7 @@ import type {
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY ?? '';
 
-if (!SUPABASE_KEY) {
+if (__DEV__ && !SUPABASE_KEY) {
   // eslint-disable-next-line no-console
   console.warn('Supabase key missing. Set EXPO_PUBLIC_SUPABASE_KEY in .env.');
 }
