@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EyeOff, MapPin, RefreshCw, Star } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -290,7 +290,7 @@ export function TopPicksSection({ destination, hotelName }: TopPicksSectionProps
       {/* Hero — always shows a visual */}
       <TouchableOpacity style={s.heroCard} activeOpacity={0.8} onPress={() => openMaps(hero)}>
         {hero.photoUrl ? (
-          <Image source={{ uri: hero.photoUrl }} style={s.heroImage} resizeMode="cover" />
+          <Image source={{ uri: hero.photoUrl }} style={s.heroImage} contentFit="cover" cachePolicy="memory-disk" transition={160} />
         ) : (
           <View style={[s.heroImage, s.heroFallback]}>
             <MapPin size={32} color="rgba(216,171,122,0.5)" strokeWidth={1.5} />

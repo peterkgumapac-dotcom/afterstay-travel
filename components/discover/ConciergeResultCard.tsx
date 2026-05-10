@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import {
   Alert,
-  Image,
   Linking,
   Platform,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Clock, Navigation, Plus } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -79,6 +79,9 @@ export default function ConciergeResultCard({
         <Image
           source={{ uri: place.photoUrl ?? FALLBACK_IMG }}
           style={s.photo}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          transition={160}
         />
         {place.openNow != null && (
           <View style={[s.openBadge, { backgroundColor: place.openNow ? '#2d6a4f' : '#6b3030' }]}>
