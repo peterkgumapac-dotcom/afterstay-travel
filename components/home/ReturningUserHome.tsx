@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import {
@@ -121,6 +121,7 @@ export default function ReturningUserHome({
   const hasDrafts = draftTrips.length > 0;
   const hasUpcoming = activeTrips.length > 0 || upcomingTrips.length > 0 || draftTrips.some((t) => t.status === 'Planning');
   const lastPastTrip = pastTrips[0];
+  const [lastTripIdeasOpen, setLastTripIdeasOpen] = useState(false);
 
   // All trips combined for the album strip (active first, then upcoming, then past)
   const allRecentTrips = useMemo(() => {
@@ -260,35 +261,76 @@ export default function ReturningUserHome({
         {/* ── 2b. DAILY TRACKER ── */}
         {dailyTrackerSlot}
 
-        {/* ── 2c. ENDED TRIP RETENTION ── */}
+        {/* ── 2c. LAST TRIP RETENTION ── */}
         {!hasUpcoming && lastPastTrip && (
           <Animated.View entering={FadeInDown.delay(120).duration(400)} style={s.memoryNudge}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={s.memoryKicker}>Trip complete</Text>
+              <Text style={s.memoryKicker}>Last trip</Text>
               <Text style={s.memoryTitle} numberOfLines={2}>
                 {lastPastTrip.destination ?? lastPastTrip.name} is ready to remember
               </Text>
               <Text style={s.memorySub}>
-                Add missing moments, view the recap, or find ideas for the next one.
+                Add missing photos, view your recap, or explore ideas for the next one.
               </Text>
             </View>
             <View style={s.memoryActions}>
-              <TouchableOpacity style={s.memoryPrimary} onPress={() => onTripPress(lastPastTrip.id)} activeOpacity={0.76}>
+              <TouchableOpacity
+                style={s.memoryPrimary}
+                onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: lastPastTrip.id } } as never)}
+                activeOpacity={0.76}
+              >
                 <Text style={s.memoryPrimaryText}>View recap</Text>
               </TouchableOpacity>
               <View style={s.memorySecondaryRow}>
                 <TouchableOpacity style={s.memorySecondary} onPress={onAddMoment} activeOpacity={0.74}>
                   <Text style={s.memorySecondaryText}>Add photos</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.memorySecondary} onPress={() => router.push('/(tabs)/discover')} activeOpacity={0.74}>
-                  <Text style={s.memorySecondaryText}>Explore</Text>
+                <TouchableOpacity
+                  style={s.memorySecondary}
+                  onPress={() => router.push({ pathname: '/(tabs)/discover', params: { mode: 'explore_moments' } } as never)}
+                  activeOpacity={0.74}
+                >
+                  <Text style={s.memorySecondaryText}>Open Explore</Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={s.memoryIdeasToggle}
+                onPress={() => setLastTripIdeasOpen((open) => !open)}
+                activeOpacity={0.72}
+              >
+                <Text style={s.memoryIdeasText}>Get ideas for next time</Text>
+                <ChevronRight
+                  size={14}
+                  color={colors.accent}
+                  strokeWidth={2.2}
+                  style={lastTripIdeasOpen ? s.memoryIdeasIconOpen : undefined}
+                />
+              </TouchableOpacity>
+              {lastTripIdeasOpen && (
+                <View style={s.memoryIdeasRow}>
+                  <TouchableOpacity
+                    style={s.memoryIdeaPill}
+                    onPress={() => router.push({ pathname: '/(tabs)/discover', params: { mode: 'explore_moments' } } as never)}
+                    activeOpacity={0.74}
+                  >
+                    <Compass size={14} color={colors.accent} strokeWidth={2} />
+                    <Text style={s.memoryIdeaPillText}>Explore memories</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={s.memoryIdeaPill}
+                    onPress={() => router.push({ pathname: '/(tabs)/discover', params: { mode: 'plan' } } as never)}
+                    activeOpacity={0.74}
+                  >
+                    <TreePalm size={14} color={colors.accent} strokeWidth={2} />
+                    <Text style={s.memoryIdeaPillText}>Browse places</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </Animated.View>
         )}
 
-        {!hasUpcoming && exploreMemoriesSlot}
+        {!hasUpcoming && !lastPastTrip && exploreMemoriesSlot}
 
         {/* ── 2c. PLANNING-ONLY HERO ── */}
         {allRecentTrips.length === 0 && quickTrips.length === 0 && draftTrips.length > 0 && (
@@ -664,11 +706,11 @@ export default function ReturningUserHome({
         )}
 
 
-        {/* ── 6. SAVED FOR NEXT TIME ── */}
-        {savedPlaces.length > 0 && (
+        {/* ── 6. IDEAS FOR YOUR NEXT TRIP ── */}
+        {savedPlaces.length >= 2 && (
           <Animated.View entering={FadeInDown.delay(240).duration(400)}>
             <View style={s.sectionHeader}>
-              <Text style={s.sectionKicker}>SAVED FOR NEXT TIME</Text>
+              <Text style={s.sectionKicker}>IDEAS FOR YOUR NEXT TRIP</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.savedScroll}>
               {savedPlaces.slice(0, 8).map((p) => (
@@ -870,6 +912,45 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 12,
       fontWeight: '800',
       color: colors.text2,
+    },
+    memoryIdeasToggle: {
+      minHeight: 36,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 6,
+    },
+    memoryIdeasText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: colors.accent,
+    },
+    memoryIdeasIconOpen: {
+      transform: [{ rotate: '90deg' }],
+    },
+    memoryIdeasRow: {
+      flexDirection: 'row',
+      gap: 8,
+      paddingTop: 2,
+    },
+    memoryIdeaPill: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: 13,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
+      backgroundColor: colors.accentBg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 6,
+      paddingHorizontal: 8,
+    },
+    memoryIdeaPillText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: colors.accent,
     },
 
     // Section headers

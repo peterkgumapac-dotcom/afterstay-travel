@@ -643,10 +643,7 @@ function HomeScreen() {
               />
             }
             exploreMemoriesSlot={
-              <ExploreMemoriesCard
-                variant={pastTrips[0] ? 'afterTrip' : 'inspiration'}
-                tripId={pastTrips[0]?.id}
-              />
+              <ExploreMemoriesCard variant="inspiration" />
             }
           />
           <NotificationsSheet
@@ -875,10 +872,6 @@ function HomeScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
-
-        {trip && phase === 'completed' ? (
-          <ExploreMemoriesCard variant="afterTrip" tripId={trip.id} />
-        ) : null}
 
         {/* Smart nudges moved to bell icon → NotificationsSheet */}
 

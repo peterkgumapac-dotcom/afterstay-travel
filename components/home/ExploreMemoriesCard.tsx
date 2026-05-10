@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
-import { Bookmark, Camera, ChevronDown, Compass, Images, MapPin, Plus } from 'lucide-react-native';
+import { Bookmark, Camera, ChevronDown, Compass, MapPin, Plus } from 'lucide-react-native';
 import { StyleSheet, Text, View, Pressable, TouchableOpacity } from 'react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
@@ -18,7 +18,7 @@ type PreviewMoment = {
   photoUrl?: string;
 };
 
-type ExploreCardVariant = 'inspiration' | 'afterTrip' | 'nearby';
+type ExploreCardVariant = 'inspiration' | 'nearby';
 type ShortcutItem = {
   key: string;
   label: string;
@@ -62,13 +62,6 @@ export function ExploreMemoriesCard({
   const [moments, setMoments] = useState<PreviewMoment[]>([]);
   const [expanded, setExpanded] = useState(false);
   const copy = useMemo(() => {
-    if (variant === 'afterTrip') {
-      return {
-        kicker: 'After Trip',
-        title: 'Keep the trip alive',
-        subtitle: 'Relive your memories, add missing photos, or get ideas for the next one.',
-      };
-    }
     if (variant === 'nearby') {
       return {
         kicker: 'Near You',
@@ -84,30 +77,6 @@ export function ExploreMemoriesCard({
   }, [variant]);
 
   const shortcuts = useMemo<ShortcutItem[]>(() => {
-    if (variant === 'afterTrip') {
-      return [
-        {
-          key: 'recap',
-          label: 'View Recap',
-          icon: Images,
-          onPress: () => {
-            if (tripId) router.push({ pathname: '/trip-recap', params: { tripId } } as never);
-          },
-        },
-        {
-          key: 'photos',
-          label: 'Add Photos',
-          icon: Camera,
-          onPress: () => router.push({ pathname: '/add-moment', params: tripId ? { tripId } : undefined } as never),
-        },
-        {
-          key: 'explore',
-          label: 'Explore',
-          icon: Compass,
-          onPress: () => router.push({ pathname: '/(tabs)/discover', params: { mode: 'explore_moments' } } as never),
-        },
-      ];
-    }
     if (variant === 'nearby') {
       return [
         {
