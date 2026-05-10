@@ -17,7 +17,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, ChevronDown, ChevronRight, Filter, MapPin, Navigation, Search, ThumbsUp, Users } from 'lucide-react-native';
+import { Bookmark, ChevronDown, ChevronRight, MapPin, Navigation, Search, ThumbsUp, Users } from 'lucide-react-native';
 
 import { SwipeToDelete } from '@/components/shared/SwipeToDelete';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
@@ -29,6 +29,7 @@ import {
 import { TopPicksByCategorySection, TopPicksSection } from '@/components/discover/DiscoverTopPicks';
 import DiscoverTabSwitcher from '@/components/discover/DiscoverTabSwitcher';
 import PlaceFilterPanel from '@/components/discover/PlaceFilterPanel';
+import PrimaryPlaceFilterRow from '@/components/discover/PrimaryPlaceFilterRow';
 import MiniLoader from '@/components/loader/MiniLoader';
 import { useTheme } from '@/constants/ThemeContext';
 import { distanceFromPoint } from '@/lib/distance';
@@ -42,9 +43,7 @@ import {
 import {
   DEFAULT_FILTERS,
   PLACE_CATEGORY_CHIPS,
-  PRIMARY_PLACE_CATEGORY_CHIPS,
   destinationToLabel,
-  getPrimaryPlaceCategoryLabel,
   type DiscoverOriginKind,
   type DistanceOrigin,
   type FilterState,
@@ -306,6 +305,13 @@ function DiscoverScreenInner() {
     setFilters({ ...DEFAULT_FILTERS });
     handleTravelModeChange('walk');
   }, [handleTravelModeChange]);
+
+  const handlePrimaryCategoryChange = useCallback((chip: typeof PLACE_CATEGORY_CHIPS[number]) => {
+    Haptics.selectionAsync();
+    setPlaceCategoryChip(chip);
+    setQ('');
+    setVisibleCount(20);
+  }, []);
 
   const applyExploreOrigin = useCallback((
     label: string,
@@ -1105,45 +1111,14 @@ function DiscoverScreenInner() {
                 autoCapitalize="none"
               />
             </View>
-            <View style={styles.primaryFilterRow}>
-              {PRIMARY_PLACE_CATEGORY_CHIPS.map((chip) => {
-                const active = placeCategoryChip === chip;
-                const label = getPrimaryPlaceCategoryLabel(chip);
-                return (
-                  <TouchableOpacity
-                    key={chip}
-                    style={[styles.primaryFilterChip, active && styles.primaryFilterChipActive]}
-                    activeOpacity={0.72}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setPlaceCategoryChip(chip);
-                      setQ('');
-                      setVisibleCount(20);
-                    }}
-                  >
-                    <Text style={[styles.primaryFilterText, active && styles.primaryFilterTextActive]}>{label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-              <TouchableOpacity
-                onPress={toggleShowFilters}
-                style={[
-                  styles.moreFiltersBtn,
-                  activeFilterCount > 0 && { borderColor: colors.accent, backgroundColor: colors.accentBg },
-                ]}
-                activeOpacity={0.72}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={activeFilterCount > 0 ? `More filters, ${activeFilterCount} active` : 'More filters'}
-              >
-                <Filter size={17} color={activeFilterCount > 0 ? colors.accent : colors.text2} strokeWidth={2.2} />
-                {activeFilterCount > 0 ? (
-                  <View style={styles.filterCountBadge}>
-                    <Text style={styles.filterCountText}>{activeFilterCount}</Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            </View>
+            <PrimaryPlaceFilterRow
+              activeCategory={placeCategoryChip}
+              activeFilterCount={activeFilterCount}
+              colors={colors}
+              styles={styles}
+              onCategoryChange={handlePrimaryCategoryChange}
+              onShowFilters={toggleShowFilters}
+            />
             <Modal
               visible={showFilters}
               transparent
