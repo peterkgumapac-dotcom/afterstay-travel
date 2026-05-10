@@ -16,6 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatCurrency } from '@/lib/utils';
 import { useNotifications, type AppNotification } from '@/hooks/useNotifications';
@@ -31,7 +32,7 @@ type ThemeColors = ReturnType<typeof useTheme>['colors'];
 
 interface LocalNotification {
   id: string;
-  icon: React.ComponentType<any>;
+  icon: LucideIcon;
   iconColor: string;
   iconBg: string;
   title: string;
@@ -44,7 +45,7 @@ interface LocalNotification {
 
 interface DBNotification {
   id: string;
-  icon: React.ComponentType<any>;
+  icon: LucideIcon;
   iconColor: string;
   iconBg: string;
   title: string;
@@ -172,7 +173,7 @@ function filterLocalAlertsByPrefs(
 // ── Icon + color mapping for DB notifications ───────────────────────
 
 interface NotifStyle {
-  icon: React.ComponentType<any>;
+  icon: LucideIcon;
   colorKey: 'accent' | 'danger' | 'warn' | 'coral' | 'gold' | 'text2';
 }
 

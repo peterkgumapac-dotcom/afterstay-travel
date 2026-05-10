@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import { useTheme } from '@/constants/ThemeContext';
 import { formatCurrency } from '@/lib/utils';
 import type { Place, GroupMember } from '@/lib/types';
@@ -31,7 +32,7 @@ interface SmartNudgesProps {
 
 interface Nudge {
   id: string;
-  icon: React.ComponentType<any>;
+  icon: LucideIcon;
   iconColor: string;
   text: string;
   action?: string;

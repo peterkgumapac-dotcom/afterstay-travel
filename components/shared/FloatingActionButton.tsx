@@ -8,13 +8,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Plus, Camera, Receipt, Plane, Package, Zap,
 } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import { getActiveTrip } from '@/lib/supabase';
 
 interface FabAction {
   id: string;
-  icon: React.ComponentType<any>;
+  icon: LucideIcon;
   label: string;
   onPress: () => void;
 }

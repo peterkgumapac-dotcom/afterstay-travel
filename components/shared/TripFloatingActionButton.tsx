@@ -8,12 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Plus, Users, UserPlus, Camera, Package, Plane,
 } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 
 interface FabAction {
   id: string;
-  icon: React.ComponentType<any>;
+  icon: LucideIcon;
   label: string;
   color: string;
   onPress: () => void;
