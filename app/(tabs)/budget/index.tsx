@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Image,
+  InteractionManager,
   Modal,
   Pressable,
   RefreshControl,
@@ -342,14 +343,19 @@ function BudgetScreen() {
 
   // Load savings goal on mount
   useEffect(() => {
-    getActiveSavingsGoal().then(setSavingsGoal).catch(() => {});
+    const task = InteractionManager.runAfterInteractions(() => {
+      getActiveSavingsGoal().then(setSavingsGoal).catch(() => {});
+    });
+    return () => task.cancel();
   }, [user?.id]);
 
   // Load user-scoped QR codes (always, regardless of trip)
   useEffect(() => {
-    if (user?.id) {
+    if (!user?.id) return;
+    const task = InteractionManager.runAfterInteractions(() => {
       getUserPaymentQrs(user.id).then(setUserQrs).catch(() => {});
-    }
+    });
+    return () => task.cancel();
   }, [user?.id]);
 
   const handleCreateGoal = async (input: { title: string; targetAmount: number; targetCurrency: string; targetDate?: string; destination?: string }) => {
@@ -463,7 +469,10 @@ function BudgetScreen() {
   // ── Payment QRs (Supabase-synced) ──
   useEffect(() => {
     if (!trip?.id) return;
-    getPaymentQrs(trip.id).then(setPaymentQrs).catch(() => {});
+    const task = InteractionManager.runAfterInteractions(() => {
+      getPaymentQrs(trip.id).then(setPaymentQrs).catch(() => {});
+    });
+    return () => task.cancel();
   }, [trip?.id]);
 
   const pickPaymentQr = useCallback(async () => {
@@ -703,13 +712,21 @@ function BudgetScreen() {
 
   useEffect(() => {
     if (!budgetLoading && !trip && !historyLoaded) {
-      loadHistory();
+      const task = InteractionManager.runAfterInteractions(() => {
+        loadHistory();
+      });
+      return () => task.cancel();
     }
+    return undefined;
   }, [budgetLoading, historyLoaded, loadHistory, trip]);
 
   useFocusEffect(
     useCallback(() => {
-      if (!budgetLoading && !trip) loadHistory();
+      if (budgetLoading || trip) return undefined;
+      const task = InteractionManager.runAfterInteractions(() => {
+        loadHistory();
+      });
+      return () => task.cancel();
     }, [budgetLoading, loadHistory, trip]),
   );
 
