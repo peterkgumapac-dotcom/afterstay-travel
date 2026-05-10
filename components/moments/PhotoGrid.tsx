@@ -51,7 +51,7 @@ interface PhotoGridProps {
   onAction?: (action: PhotoAction, moment: MomentDisplay) => void;
   emptyTitle?: string;
   emptySubtitle?: string;
-  ListFooterComponent?: React.ComponentType<any> | React.ReactElement | null;
+  ListFooterComponent?: React.ComponentType<Record<string, never>> | React.ReactElement | null;
 }
 
 interface EmptyStateProps {
