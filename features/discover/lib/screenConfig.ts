@@ -27,6 +27,30 @@ export const PLACE_CATEGORY_CHIPS = [
 export const PRIMARY_PLACE_CATEGORY_CHIPS = ['Food', 'Coffee', 'Activity'] as const satisfies readonly typeof PLACE_CATEGORY_CHIPS[number][];
 export const DEFAULT_FILTERS = DEFAULT_PLACE_FILTERS;
 
+export function getDiscoverTabs(hasTrip: boolean): TabId[] {
+  return hasTrip ? ['places', 'stays', 'concierge', 'saved'] : ['places', 'stays', 'saved'];
+}
+
+export function getDiscoverTabLabel(
+  tab: TabId,
+  {
+    hasTrip,
+    savedCount,
+    wishlistCount,
+  }: {
+    hasTrip: boolean;
+    savedCount: number;
+    wishlistCount: number;
+  },
+): string {
+  if (tab === 'places') return 'Places';
+  if (tab === 'stays') return 'Stays';
+  if (tab === 'concierge') return '\u2728 AI';
+  return hasTrip
+    ? `Saved${savedCount ? ` \u00B7 ${savedCount}` : ''}`
+    : `Saved Ideas${wishlistCount ? ` \u00B7 ${wishlistCount}` : ''}`;
+}
+
 const BROAD_ORIGIN_TERMS = new Set([
   'japan',
   'philippines',

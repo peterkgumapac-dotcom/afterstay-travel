@@ -43,6 +43,8 @@ import {
   PLACE_CATEGORY_CHIPS,
   PRIMARY_PLACE_CATEGORY_CHIPS,
   destinationToLabel,
+  getDiscoverTabLabel,
+  getDiscoverTabs,
   type DiscoverOriginKind,
   type DistanceOrigin,
   type FilterState,
@@ -1181,12 +1183,12 @@ function DiscoverScreenInner() {
       {/* Segmented control */}
       <View style={styles.segWrapper}>
         <View style={styles.seg}>
-          {(['places', 'stays', ...(tripId ? ['concierge' as const] : []), 'saved'] as TabId[]).map((id) => {
-            const label =
-              id === 'places' ? 'Places'
-              : id === 'stays' ? 'Stays'
-              : id === 'concierge' ? '\u2728 AI'
-              : tripId ? `Saved${saved.size ? ` \u00B7 ${saved.size}` : ''}` : `Saved Ideas${wishlistItems.length ? ` \u00B7 ${wishlistItems.length}` : ''}`;
+          {getDiscoverTabs(!!tripId).map((id) => {
+            const label = getDiscoverTabLabel(id, {
+              hasTrip: !!tripId,
+              savedCount: saved.size,
+              wishlistCount: wishlistItems.length,
+            });
             return (
               <TouchableOpacity
                 key={id}
