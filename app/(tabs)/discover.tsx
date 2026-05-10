@@ -26,12 +26,12 @@ import {
   DiscoverPlaceCard,
   type DiscoverPlace,
 } from '@/components/discover/DiscoverPlaceCard';
+import DiscoverFilterSheet from '@/components/discover/DiscoverFilterSheet';
 import DiscoverOriginPicker from '@/components/discover/DiscoverOriginPicker';
 import DiscoverOriginStatus from '@/components/discover/DiscoverOriginStatus';
 import DiscoverPlaceSearchInput from '@/components/discover/DiscoverPlaceSearchInput';
 import { TopPicksByCategorySection, TopPicksSection } from '@/components/discover/DiscoverTopPicks';
 import DiscoverTabSwitcher from '@/components/discover/DiscoverTabSwitcher';
-import PlaceFilterPanel from '@/components/discover/PlaceFilterPanel';
 import PrimaryPlaceFilterRow from '@/components/discover/PrimaryPlaceFilterRow';
 import MiniLoader from '@/components/loader/MiniLoader';
 import { useTheme } from '@/constants/ThemeContext';
@@ -1070,38 +1070,19 @@ function DiscoverScreenInner() {
               onCategoryChange={handlePrimaryCategoryChange}
               onShowFilters={toggleShowFilters}
             />
-            <Modal
+            <DiscoverFilterSheet
+              canUseGroupFilters={votableMemberCount >= 2}
+              colors={colors}
+              filters={filters}
+              resultCount={visiblePlacesWithDistance.length}
+              styles={styles}
+              travelMode={travelMode}
               visible={showFilters}
-              transparent
-              animationType="slide"
-              statusBarTranslucent
-              onRequestClose={() => setShowFilters(false)}
-            >
-              <View style={styles.filterModalOverlay}>
-                <TouchableOpacity
-                  style={styles.filterModalBackdrop}
-                  activeOpacity={1}
-                  onPress={() => setShowFilters(false)}
-                />
-                <View style={styles.filterSheetWrap}>
-                  <View style={styles.filterSheetHandle} />
-                  <ScrollView showsVerticalScrollIndicator={false}>
-                    <PlaceFilterPanel
-                      colors={colors}
-                      styles={styles}
-                      filters={filters}
-                      travelMode={travelMode}
-                      resultCount={visiblePlacesWithDistance.length}
-                      canUseGroupFilters={votableMemberCount >= 2}
-                      onFiltersChange={setFilters}
-                      onTravelModeChange={handleTravelModeChange}
-                      onClear={clearPlaceFilters}
-                      onClose={() => setShowFilters(false)}
-                    />
-                  </ScrollView>
-                </View>
-              </View>
-            </Modal>
+              onClear={clearPlaceFilters}
+              onClose={() => setShowFilters(false)}
+              onFiltersChange={setFilters}
+              onTravelModeChange={handleTravelModeChange}
+            />
           </>
         )}
       </View>
