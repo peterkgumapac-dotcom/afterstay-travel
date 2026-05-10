@@ -86,9 +86,10 @@ import {
   runDiscoverMoreSearch,
   runDiscoverPlaceSearch,
 } from '@/features/discover/lib/placeSearch';
-
-const DISCOVER_MODE_CACHE_KEY = 'discover_mode';
-const EXPLORE_MOMENTS_LAUNCH_KEY = 'discover_mode_explore_launch_seen_v1';
+import {
+  getInitialDiscoverMode,
+  rememberDiscoverMode,
+} from '@/features/discover/lib/modePersistence';
 
 const PlaceDetailSheet = React.lazy(() => import('@/components/discover/PlaceDetailSheet'));
 const AIConcierge = React.lazy(() => import('@/components/discover/AIConcierge'));
@@ -121,27 +122,10 @@ function DiscoverScreenInner() {
   const [discoverMode, setDiscoverMode] = useState<DiscoverMode>('explore_moments');
   // Restore persisted mode
   useEffect(() => {
-    if (routeMode) {
-      setDiscoverMode(routeMode);
-      cacheSet(DISCOVER_MODE_CACHE_KEY, routeMode);
-      cacheSet(EXPLORE_MOMENTS_LAUNCH_KEY, true);
-      return;
-    }
     let mounted = true;
-    Promise.all([
-      cacheGet<string>(DISCOVER_MODE_CACHE_KEY, 0),
-      cacheGet<boolean>(EXPLORE_MOMENTS_LAUNCH_KEY, 0),
-    ]).then(([v, hasSeenExploreLaunch]) => {
+    getInitialDiscoverMode(routeMode).then((mode) => {
       if (!mounted) return;
-      if (!hasSeenExploreLaunch) {
-        setDiscoverMode('explore_moments');
-        cacheSet(DISCOVER_MODE_CACHE_KEY, 'explore_moments');
-        cacheSet(EXPLORE_MOMENTS_LAUNCH_KEY, true);
-        return;
-      }
-      if (v === 'explore_moments' || v === 'plan') {
-        setDiscoverMode(v as DiscoverMode);
-      }
+      setDiscoverMode(mode);
     });
     return () => {
       mounted = false;
@@ -149,8 +133,7 @@ function DiscoverScreenInner() {
   }, [routeMode]);
   const handleModeChange = useCallback((m: DiscoverMode) => {
     setDiscoverMode(m);
-    cacheSet(DISCOVER_MODE_CACHE_KEY, m);
-    cacheSet(EXPLORE_MOMENTS_LAUNCH_KEY, true);
+    rememberDiscoverMode(m);
   }, []);
 
   const [tab, setTab] = useState<TabId>('places');
