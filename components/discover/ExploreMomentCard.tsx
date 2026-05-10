@@ -136,6 +136,20 @@ function getTravelPulseItems(post: FeedPost): TravelPulseItem[] {
     }));
 }
 
+function uniqueTexts(values: (string | undefined)[], limit: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 export default function ExploreMomentCard({
   post,
   onLike,
@@ -161,6 +175,18 @@ export default function ExploreMomentCard({
   const travelNote = getTravelNote(post);
   const pulseItems = isTravelPulse ? getTravelPulseItems(post) : [];
   const lastChecked = textMeta(post.metadata?.lastChecked);
+  const pulseHeadline = isTravelPulse
+    ? textMeta(post.metadata?.headline) ??
+      textMeta(post.metadata?.title) ??
+      (post.locationName ? `Travel Pulse for ${post.locationName}` : 'Travel Pulse')
+    : undefined;
+  const pulseTakeaway = isTravelPulse
+    ? textMeta(post.metadata?.takeaway) ?? textMeta(post.metadata?.summary) ?? textMeta(post.caption)
+    : undefined;
+  const pulseSignals = pulseItems.slice(0, 3);
+  const pulseSourceSummary = isTravelPulse
+    ? uniqueTexts(pulseItems.map((item) => item.sourceName), 3).join(' · ')
+    : '';
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string | undefined>();
@@ -322,39 +348,60 @@ export default function ExploreMomentCard({
         )}
       </TouchableOpacity>
 
-      {postBadge ? (
+      {postBadge && !isTravelPulse ? (
         <View style={[styles.badgePill, isTravelPulse && styles.pulseBadge]}>
           <Text style={[styles.badgeText, isTravelPulse && styles.pulseBadgeText]}>{postBadge}</Text>
         </View>
       ) : null}
 
+      {isTravelPulse ? (
+        <View style={styles.pulseBriefing}>
+          <View style={styles.pulseBriefingTop}>
+            <View style={styles.pulseBadge}>
+              <Text style={styles.pulseBadgeText}>Official briefing</Text>
+            </View>
+            {lastChecked ? <Text style={styles.pulseChecked}>Checked {lastChecked}</Text> : null}
+          </View>
+          {pulseHeadline ? (
+            <Text style={styles.pulseHeadline} numberOfLines={2}>
+              {pulseHeadline}
+            </Text>
+          ) : null}
+          {pulseTakeaway ? (
+            <Text style={styles.pulseTakeaway} numberOfLines={3}>
+              {pulseTakeaway}
+            </Text>
+          ) : null}
+          {pulseSignals.length > 0 ? (
+            <View style={styles.pulseSignalList}>
+              <Text style={styles.pulseSectionLabel}>What to know</Text>
+              {pulseSignals.map((item, index) => (
+                <View key={`${item.title ?? 'pulse'}-${index}`} style={styles.pulseSignalRow}>
+                  <View style={styles.pulseSignalDot}>
+                    <Text style={styles.pulseSignalNumber}>{index + 1}</Text>
+                  </View>
+                  <View style={styles.pulseSignalText}>
+                    {item.title ? <Text style={styles.pulseItemTitle} numberOfLines={2}>{item.title}</Text> : null}
+                    {item.summary ? <Text style={styles.pulseItemSummary} numberOfLines={2}>{item.summary}</Text> : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {pulseSourceSummary ? (
+            <Text style={styles.pulseSources} numberOfLines={1}>
+              Sources: {pulseSourceSummary}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* Caption — above media */}
-      {post.caption && (!travelNote || travelNote.value !== post.caption) ? (
+      {!isTravelPulse && post.caption && (!travelNote || travelNote.value !== post.caption) ? (
         <View style={[styles.captionWrap, isTravelPulse && styles.pulseCaptionWrap]}>
           <Text style={[styles.caption, isTravelPulse && styles.pulseCaption]} numberOfLines={isTravelPulse ? 4 : undefined}>
             {post.caption}
           </Text>
-        </View>
-      ) : null}
-
-      {isTravelPulse && pulseItems.length > 0 ? (
-        <View style={styles.pulseItems}>
-          {pulseItems.map((item, index) => (
-            <View key={`${item.title ?? 'pulse'}-${index}`} style={styles.pulseItem}>
-              <View style={styles.pulseSignalBadge}>
-                <Text style={styles.pulseSignalNumber}>{index + 1}</Text>
-              </View>
-              <View style={styles.pulseSignalText}>
-                {item.title ? <Text style={styles.pulseItemTitle} numberOfLines={2}>{item.title}</Text> : null}
-                {item.summary ? <Text style={styles.pulseItemSummary} numberOfLines={3}>{item.summary}</Text> : null}
-                {item.sourceName || item.publishedAt ? (
-                  <Text style={styles.pulseItemSource} numberOfLines={1}>
-                    {[item.sourceName, item.publishedAt].filter(Boolean).join(' · ')}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-          ))}
         </View>
       ) : null}
 
@@ -650,10 +697,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   pulseBadge: {
+    borderRadius: 999,
     backgroundColor: '#2a1d0d',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
   pulseBadgeText: {
     color: '#f7dfb5',
+    fontSize: 10.5,
+    fontWeight: '900',
+    letterSpacing: 0.45,
+    textTransform: 'uppercase',
   },
 
   // Caption — above media
@@ -674,24 +728,64 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: PAPER.inkMid,
   },
-  pulseItems: {
+  pulseBriefing: {
     marginHorizontal: 14,
-    marginBottom: 8,
-    gap: 0,
+    marginBottom: 10,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(157, 112, 55, 0.22)',
+    backgroundColor: 'rgba(255, 253, 247, 0.72)',
+    padding: 12,
+  },
+  pulseBriefingTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 9,
+  },
+  pulseChecked: {
+    flexShrink: 1,
+    color: PAPER.inkLight,
+    fontSize: 10.5,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  pulseHeadline: {
+    color: PAPER.inkDark,
+    fontSize: 17,
+    fontWeight: '900',
+    lineHeight: 22,
+    marginBottom: 5,
+  },
+  pulseTakeaway: {
+    color: PAPER.inkMid,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  pulseSignalList: {
+    marginTop: 12,
+    paddingTop: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(157, 112, 55, 0.20)',
+    gap: 8,
   },
-  pulseItem: {
+  pulseSectionLabel: {
+    color: PAPER.stamp,
+    fontSize: 10.5,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  pulseSignalRow: {
     flexDirection: 'row',
-    gap: 10,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(157, 112, 55, 0.18)',
+    alignItems: 'flex-start',
+    gap: 9,
   },
-  pulseSignalBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  pulseSignalDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(157, 112, 55, 0.12)',
@@ -719,11 +813,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 2,
   },
-  pulseItemSource: {
+  pulseSources: {
     color: PAPER.inkLight,
     fontSize: 10.5,
     fontWeight: '700',
-    marginTop: 5,
+    marginTop: 10,
   },
 
   // Location — above media
