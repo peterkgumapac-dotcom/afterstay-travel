@@ -43,7 +43,6 @@ import {
   PLACE_CATEGORY_CHIPS,
   PRIMARY_PLACE_CATEGORY_CHIPS,
   destinationToLabel,
-  resolveCategory,
   type DiscoverOriginKind,
   type DistanceOrigin,
   type FilterState,
@@ -63,7 +62,7 @@ import {
 import { useAuth } from '@/lib/auth';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
-import type { GroupMember, Place, PlaceCategory, PlaceVote } from '@/lib/types';
+import type { GroupMember, Place, PlaceVote } from '@/lib/types';
 import DiscoverModeSwitch, { type DiscoverMode } from '@/components/discover/DiscoverModeSwitch';
 import { getDiscoverStyles } from '@/components/discover/discoverScreenStyles';
 import ExploreMomentsFeed from '@/components/discover/ExploreMomentsFeed';
@@ -91,6 +90,10 @@ import {
   rememberDiscoverMode,
   rememberTravelMode,
 } from '@/features/discover/lib/modePersistence';
+import {
+  buildTripPlaceInput,
+  buildWishlistPlaceInput,
+} from '@/features/discover/lib/placePersistence';
 
 const PlaceDetailSheet = React.lazy(() => import('@/components/discover/PlaceDetailSheet'));
 const AIConcierge = React.lazy(() => import('@/components/discover/AIConcierge'));
@@ -654,17 +657,7 @@ function DiscoverScreenInner() {
 
   const savePlaceToWishlist = useCallback(async (placeData: DiscoverPlace) => {
     const { addToWishlist, getWishlist } = await import('@/lib/supabase');
-    await addToWishlist({
-      name: placeData.n,
-      category: placeData.types ? resolveCategory(placeData.types) : undefined,
-      googlePlaceId: placeData.placeId,
-      photoUrl: placeData.img,
-      rating: placeData.r,
-      totalRatings: placeData.totalRatings,
-      latitude: placeData.lat,
-      longitude: placeData.lng,
-      destination: effectiveDest || undefined,
-    });
+    await addToWishlist(buildWishlistPlaceInput(placeData, effectiveDest));
     setWishlistItems(await getWishlist());
   }, [effectiveDest]);
 
@@ -702,21 +695,12 @@ function DiscoverScreenInner() {
         const placeData = places.find((p) => p.n === name);
         if (placeData) {
           try {
-            await addPlace({
+            await addPlace(buildTripPlaceInput({
               tripId,
-              name: placeData.n,
-              category: (placeData.types ? resolveCategory(placeData.types) : 'Do') as PlaceCategory,
-              distance: placeData.d,
-              rating: placeData.r,
               source: 'Manual',
               vote: 'Pending' as PlaceVote,
-              photoUrl: placeData.img,
-              googlePlaceId: placeData.placeId,
-              latitude: placeData.lat,
-              longitude: placeData.lng,
-              totalRatings: placeData.totalRatings,
-              saved: true,
-            });
+              placeData,
+            }));
           } catch {
             Alert.alert('Error', 'Something went wrong. Please try again.');
             setSaved((s) => { const next = new Set(s); next.delete(name); return next; });
@@ -792,21 +776,12 @@ function DiscoverScreenInner() {
       const placeData = places.find((p) => p.n === name);
       if (placeData) {
         try {
-          await addPlace({
+          await addPlace(buildTripPlaceInput({
             tripId,
-            name: placeData.n,
-            category: (placeData.types ? resolveCategory(placeData.types) : 'Do') as PlaceCategory,
-            distance: placeData.d,
-            rating: placeData.r,
             source: 'Suggested',
             vote: '\uD83D\uDC4D Yes' as PlaceVote,
-            photoUrl: placeData.img,
-            googlePlaceId: placeData.placeId,
-            latitude: placeData.lat,
-            longitude: placeData.lng,
-            totalRatings: placeData.totalRatings,
-            saved: true,
-          });
+            placeData,
+          }));
         } catch {
           Alert.alert('Error', 'Something went wrong. Please try again.');
           setRecommended((s) => {
