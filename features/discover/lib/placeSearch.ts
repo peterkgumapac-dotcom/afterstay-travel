@@ -1,6 +1,6 @@
 import { mapNearbyToDiscoverPlace } from '@/components/discover/shared';
 import { DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS } from '@/lib/category-config';
-import { searchNearby } from '@/lib/google-places';
+import { searchNearby, searchNearbyPage } from '@/lib/google-places';
 import { searchMultiCategory } from '@/lib/multi-category-search';
 import type { DiscoverPlace } from '@/components/discover/DiscoverPlaceCard';
 
@@ -54,5 +54,17 @@ export async function runDiscoverAllSearch(coords: Coords): Promise<DiscoverPlac
     cacheKey,
     places: results.map((p) => mapNearbyToDiscoverPlace(p, coords)),
     rawCount: results.length,
+  };
+}
+
+export async function runDiscoverMoreSearch(
+  pageToken: string,
+  coords?: Coords,
+): Promise<Pick<DiscoverPlaceSearchResult, 'places' | 'nextPageToken' | 'rawCount'>> {
+  const { places: results, nextPageToken } = await searchNearbyPage(pageToken);
+  return {
+    places: results.map((p) => mapNearbyToDiscoverPlace(p, coords)),
+    rawCount: results.length,
+    nextPageToken,
   };
 }

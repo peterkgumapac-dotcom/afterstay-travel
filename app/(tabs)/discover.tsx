@@ -31,9 +31,9 @@ import PlaceFilterPanel from '@/components/discover/PlaceFilterPanel';
 import MiniLoader from '@/components/loader/MiniLoader';
 import { useTheme } from '@/constants/ThemeContext';
 import { distanceFromPoint } from '@/lib/distance';
-import { mapNearbyToDiscoverPlace, mapSavedToDiscoverPlace } from '@/components/discover/shared';
+import { mapSavedToDiscoverPlace } from '@/components/discover/shared';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { searchNearbyPage, placeAutocomplete } from '@/lib/google-places';
+import { placeAutocomplete } from '@/lib/google-places';
 import { CATEGORY_SEARCH_MAP, CATEGORY_RADIUS_MAP, DEFAULT_SEARCH_RADIUS, MAX_DISCOVER_RADIUS } from '@/lib/category-config';
 import {
   applyPlaceFilters,
@@ -83,6 +83,7 @@ import {
   buildDiscoverAllCacheKey,
   buildDiscoverSearchCacheKey,
   runDiscoverAllSearch,
+  runDiscoverMoreSearch,
   runDiscoverPlaceSearch,
 } from '@/features/discover/lib/placeSearch';
 
@@ -1333,12 +1334,11 @@ function DiscoverScreenInner() {
                     try {
                       // Google requires ~2s before page token is valid
                       await new Promise((r) => setTimeout(r, 2000));
-                      const { places: more, nextPageToken: token } = await searchNearbyPage(nextPageToken);
-                      setNextPageToken(token);
-                      if (more.length > 0) {
-                        const mapped = more.map((p) => mapNearbyToDiscoverPlace(p, effectiveCoords ?? undefined));
-                        setPlaces((prev) => [...prev, ...mapped]);
-                        setVisibleCount((c) => c + more.length);
+                      const result = await runDiscoverMoreSearch(nextPageToken, effectiveCoords ?? undefined);
+                      setNextPageToken(result.nextPageToken);
+                      if (result.places.length > 0) {
+                        setPlaces((prev) => [...prev, ...result.places]);
+                        setVisibleCount((c) => c + result.rawCount);
                       }
                     } catch (err) {
                       if (__DEV__) console.warn('[Discover] load more failed:', err);
