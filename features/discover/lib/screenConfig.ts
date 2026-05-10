@@ -27,6 +27,10 @@ export const PLACE_CATEGORY_CHIPS = [
 export const PRIMARY_PLACE_CATEGORY_CHIPS = ['Food', 'Coffee', 'Activity'] as const satisfies readonly typeof PLACE_CATEGORY_CHIPS[number][];
 export const DEFAULT_FILTERS = DEFAULT_PLACE_FILTERS;
 
+export function getPrimaryPlaceCategoryLabel(chip: typeof PRIMARY_PLACE_CATEGORY_CHIPS[number]): string {
+  return chip === 'Activity' ? 'Things to do' : chip;
+}
+
 export function getDiscoverTabs(hasTrip: boolean): TabId[] {
   return hasTrip ? ['places', 'stays', 'concierge', 'saved'] : ['places', 'stays', 'saved'];
 }

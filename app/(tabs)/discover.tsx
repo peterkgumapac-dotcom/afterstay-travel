@@ -45,6 +45,7 @@ import {
   destinationToLabel,
   getDiscoverTabLabel,
   getDiscoverTabs,
+  getPrimaryPlaceCategoryLabel,
   type DiscoverOriginKind,
   type DistanceOrigin,
   type FilterState,
@@ -1108,7 +1109,7 @@ function DiscoverScreenInner() {
             <View style={styles.primaryFilterRow}>
               {PRIMARY_PLACE_CATEGORY_CHIPS.map((chip) => {
                 const active = placeCategoryChip === chip;
-                const label = chip === 'Activity' ? 'Things to do' : chip;
+                const label = getPrimaryPlaceCategoryLabel(chip);
                 return (
                   <TouchableOpacity
                     key={chip}
