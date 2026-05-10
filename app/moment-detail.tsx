@@ -87,12 +87,6 @@ export default function MomentDetailScreen() {
         contentFit="contain"
         transition={200}
         cachePolicy="memory-disk"
-        onLoad={() => {
-          if (__DEV__) console.log('✅ [MomentDetail] Image loaded:', moment.photo?.slice(0, 60));
-        }}
-        onError={(e) => {
-          if (__DEV__) console.log('❌ [MomentDetail] Image error:', e, 'URI:', moment.photo?.slice(0, 60));
-        }}
       />
 
       {/* Info overlay */}

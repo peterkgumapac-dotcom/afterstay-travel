@@ -83,9 +83,6 @@ export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading 
           if (!cancelled) setLoading(false);
         }, (err) => {
           if (!cancelled) setGroups([]);
-          if (__DEV__) {
-            console.log('[ExploreStoryRow] getStories skipped:', err instanceof Error ? err.message : err);
-          }
           if (!cancelled) setLoading(false);
         });
     }, 450);

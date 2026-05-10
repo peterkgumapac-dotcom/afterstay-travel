@@ -364,12 +364,6 @@ function SmoothViewer({ moments, initialIndex, onClose, onDelete, colors, insets
         contentFit="contain"
         transition={200}
         cachePolicy="memory-disk"
-        onLoad={() => {
-          if (__DEV__) console.log('✅ [SmoothViewer] Image loaded:', item.photo?.slice(0, 60));
-        }}
-        onError={(e) => {
-          if (__DEV__) console.log('❌ [SmoothViewer] Image error:', e, 'URI:', item.photo?.slice(0, 60));
-        }}
       />
     </View>
   ), []);

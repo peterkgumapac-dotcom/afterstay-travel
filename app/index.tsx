@@ -43,7 +43,6 @@ export default function Index() {
       try {
         const progress = await getOnboardingProgress(session.user.id);
         if (progress && isOnboardingIncomplete(progress)) {
-          if (__DEV__) console.log('[Index] resuming onboarding:', progress.stage);
           if (progress.stage === 'planning_draft') routeHome(setTarget);
           else setTarget('onboarding');
           return;
@@ -63,16 +62,6 @@ export default function Index() {
           getProfile(session.user.id).catch(() => null),
         ]);
         const hasExistingProfileState = profileImpliesExistingAccount(profile);
-        if (__DEV__)
-          console.log(
-            '[Index] derived status:',
-            result.status,
-            '| trips:',
-            result.completedTrips.length + result.planningTrips.length + (result.activeTrip ? 1 : 0),
-            '| profileExisting:',
-            hasExistingProfileState,
-          );
-
         if (result.uncertain || result.error) {
           if (__DEV__) console.warn('[Index] trip status uncertain — avoiding new-user redirect:', result.error);
           const cachedFlag = await cacheGetForUser<boolean>(`onboarding_complete:${session.user.id}`, session.user.id);
