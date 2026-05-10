@@ -77,6 +77,7 @@ import {
 import { logDiscoverDiagnostics } from '@/features/discover/lib/diagnostics';
 import {
   resolveCurrentLocationOrigin,
+  resolveEffectiveOrigin,
   resolveExploreOriginInput,
 } from '@/features/discover/lib/originResolver';
 import {
@@ -269,20 +270,19 @@ function DiscoverScreenInner() {
 
 
   // Effective coords: active trip unless the user explicitly chooses GPS/exact place.
-  const hasManualOrigin = manualOriginKind !== 'none' && !!exploreCoords;
-  const effectiveCoords = hasManualOrigin ? exploreCoords : tripCoords ?? exploreCoords;
-  const effectiveDest = hasManualOrigin ? exploreDest : tripDest || exploreDest;
-  const effectiveOriginLabel = hasManualOrigin
-    ? exploreDest
-    : tripCoords
-      ? (tripHotel || tripDest || 'Trip location')
-      : exploreDest;
-  const effectiveOriginKind: DiscoverOriginKind = hasManualOrigin
-    ? manualOriginKind
-    : tripCoords
-    ? 'trip'
-    : 'none';
-  const hasUsableOrigin = !!effectiveCoords;
+  const effectiveOrigin = resolveEffectiveOrigin({
+    exploreCoords,
+    exploreDest,
+    manualOriginKind,
+    tripCoords,
+    tripDest,
+    tripHotel,
+  });
+  const effectiveCoords = effectiveOrigin.coords;
+  const effectiveDest = effectiveOrigin.destination;
+  const effectiveOriginLabel = effectiveOrigin.label;
+  const effectiveOriginKind = effectiveOrigin.kind;
+  const hasUsableOrigin = effectiveOrigin.hasUsableOrigin;
   const canShowPlaceResults = hasUsableOrigin && !originEditorOpen;
 
   // Compute distance from the selected origin (hotel or current location)

@@ -1,5 +1,6 @@
 import { getPlaceLocation, placeAutocomplete, searchPlace } from '@/lib/google-places';
 import {
+  type DiscoverOriginKind,
   isBroadOriginQuery,
   isVagueOriginQuery,
   originRefinementCopy,
@@ -14,6 +15,44 @@ type ResolvedOrigin =
 
 const ORIGIN_NOT_FOUND_COPY =
   'Could not find that exact place. Search a hotel, address, station, landmark, neighborhood, or exact pin.';
+
+export function resolveEffectiveOrigin({
+  exploreCoords,
+  exploreDest,
+  manualOriginKind,
+  tripCoords,
+  tripDest,
+  tripHotel,
+}: {
+  exploreCoords: Coords | null;
+  exploreDest: string;
+  manualOriginKind: DiscoverOriginKind;
+  tripCoords: Coords | null;
+  tripDest: string;
+  tripHotel: string;
+}) {
+  const hasManualOrigin = manualOriginKind !== 'none' && !!exploreCoords;
+  const coords = hasManualOrigin ? exploreCoords : tripCoords ?? exploreCoords;
+  const destination = hasManualOrigin ? exploreDest : tripDest || exploreDest;
+  const label = hasManualOrigin
+    ? exploreDest
+    : tripCoords
+      ? (tripHotel || tripDest || 'Trip location')
+      : exploreDest;
+  const kind: DiscoverOriginKind = hasManualOrigin
+    ? manualOriginKind
+    : tripCoords
+    ? 'trip'
+    : 'none';
+
+  return {
+    coords,
+    destination,
+    label,
+    kind,
+    hasUsableOrigin: !!coords,
+  };
+}
 
 async function geocodeWithExpo(query: string, label: string): Promise<(Coords & { name: string }) | null> {
   const Location = await import('expo-location');
