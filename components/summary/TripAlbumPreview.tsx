@@ -12,6 +12,7 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type NativeTouchEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,7 +30,7 @@ const PAGE_H = 440;
 const SNAP_W = SCREEN_W;
 const MAX_PHOTO_PAGES = 15;
 const PAGE_TURN_DURATION_MS = 1350;
-const CURL_W = PAGE_W * 0.66;
+const CURL_W = PAGE_W * 0.38;
 
 type AlbumPage =
   | { type: 'cover' }
@@ -255,6 +256,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const scrollX = useRef(new Animated.Value(0)).current;
   const flipAnim = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList<AlbumPage>>(null);
+  const swipeStartRef = useRef({ x: 0, y: 0, time: 0 });
   const [pageIndex, setPageIndex] = useState(0);
   const [flippingPage, setFlippingPage] = useState<AlbumPage | null>(null);
   const [flippingToPage, setFlippingToPage] = useState<AlbumPage | null>(null);
@@ -309,6 +311,26 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
           if (canTurnPage && !flippingPage && leftSwipe && mostlyHorizontal) openNextPage();
         },
       }),
+    [canTurnPage, flippingPage, openNextPage],
+  );
+
+  const handleTouchStart = useCallback((event: NativeSyntheticEvent<NativeTouchEvent>) => {
+    const touch = event.nativeEvent;
+    swipeStartRef.current = { x: touch.pageX, y: touch.pageY, time: Date.now() };
+  }, []);
+
+  const handleTouchEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeTouchEvent>) => {
+      const touch = event.nativeEvent;
+      const start = swipeStartRef.current;
+      const dx = touch.pageX - start.x;
+      const dy = touch.pageY - start.y;
+      const elapsed = Date.now() - start.time;
+      const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.1;
+      const intentionalSwipe = dx < -42 && mostlyHorizontal && elapsed < 900;
+
+      if (canTurnPage && !flippingPage && intentionalSwipe) openNextPage();
+    },
     [canTurnPage, flippingPage, openNextPage],
   );
 
@@ -390,7 +412,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         </View>
       </View>
 
-      <View style={styles.bookViewport} {...pageSwipeResponder.panHandlers}>
+      <View style={styles.bookViewport} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} {...pageSwipeResponder.panHandlers}>
         <Animated.FlatList
           ref={flatListRef}
           data={pages}
@@ -450,8 +472,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                 {
                   opacity: flipAnim.interpolate({ inputRange: [0, 0.18, 0.66, 1], outputRange: [0, 0.48, 0.3, 0], extrapolate: 'clamp' }),
                   transform: [
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.52, 1], outputRange: [PAGE_W * 0.28, -PAGE_W * 0.08, -PAGE_W * 0.46], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.18, 0.92, 0.16], extrapolate: 'clamp' }) },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.52, 1], outputRange: [PAGE_W * 0.36, -PAGE_W * 0.2, -PAGE_W * 0.62], extrapolate: 'clamp' }) },
+                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.14, 0.72, 0.14], extrapolate: 'clamp' }) },
                   ],
                 },
               ]}
@@ -463,9 +485,9 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                   opacity: flipAnim.interpolate({ inputRange: [0, 0.78, 0.96, 1], outputRange: [1, 1, 0.48, 0], extrapolate: 'clamp' }),
                   transform: [
                     { perspective: 1400 },
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [PAGE_W * 0.17, -PAGE_W * 0.11, -PAGE_W * 0.5], extrapolate: 'clamp' }) },
-                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.24, 0.72, 1], outputRange: ['0deg', '-34deg', '-96deg', '-132deg'], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.42, 0.78, 1], outputRange: [1, 0.78, 0.32, 0.12], extrapolate: 'clamp' }) },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [PAGE_W * 0.31, -PAGE_W * 0.24, -PAGE_W * 0.68], extrapolate: 'clamp' }) },
+                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.24, 0.72, 1], outputRange: ['0deg', '-42deg', '-104deg', '-142deg'], extrapolate: 'clamp' }) },
+                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.42, 0.78, 1], outputRange: [1, 0.68, 0.25, 0.1], extrapolate: 'clamp' }) },
                     { scaleY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.01, 0.99], extrapolate: 'clamp' }) },
                   ],
                 },
@@ -490,7 +512,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                   {
                     opacity: flipAnim.interpolate({ inputRange: [0, 0.2, 0.72, 1], outputRange: [0, 0.9, 0.52, 0], extrapolate: 'clamp' }),
                     transform: [
-                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [CURL_W * 0.58, -CURL_W * 0.22], extrapolate: 'clamp' }) },
+                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [CURL_W * 0.54, -CURL_W * 0.34], extrapolate: 'clamp' }) },
                     ],
                   },
                 ]}
@@ -502,7 +524,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                   {
                     opacity: flipAnim.interpolate({ inputRange: [0, 0.28, 0.78, 1], outputRange: [0, 0.92, 0.58, 0], extrapolate: 'clamp' }),
                     transform: [
-                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [CURL_W * 0.68, CURL_W * 0.08], extrapolate: 'clamp' }) },
+                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [CURL_W * 0.52, -CURL_W * 0.02], extrapolate: 'clamp' }) },
                     ],
                   },
                 ]}
@@ -809,7 +831,7 @@ const getStyles = (_colors: ThemeColors) =>
     revealedPageShadow: {
       position: 'absolute',
       zIndex: 2,
-      width: PAGE_W * 0.72,
+      width: PAGE_W * 0.46,
       height: PAGE_H - 16,
       borderRadius: 28,
       backgroundColor: 'rgba(34,20,10,0.55)',
@@ -905,7 +927,7 @@ const getStyles = (_colors: ThemeColors) =>
       position: 'absolute',
       top: 0,
       bottom: 0,
-      width: 116,
+      width: 82,
       borderTopLeftRadius: 18,
       borderBottomLeftRadius: 18,
       backgroundColor: '#f7efdf',
@@ -920,7 +942,7 @@ const getStyles = (_colors: ThemeColors) =>
       position: 'absolute',
       top: -20,
       bottom: -20,
-      width: 42,
+      width: 34,
       borderRadius: 30,
       backgroundColor: 'rgba(255,255,255,0.42)',
       shadowColor: '#fff',
