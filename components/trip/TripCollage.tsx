@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { getMoments, supabase } from '@/lib/supabase';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 
 const GAP = 2;
 
@@ -54,9 +55,13 @@ async function fetchQuickTripPhotos(quickTripId: string, maxPhotos: number): Pro
 
   if (!data || data.length === 0) return [];
 
-  const urls = data
+  const rawUrls = data
     .map((row) => row.photo_url as string | undefined)
     .filter((url): url is string => !!url && !url.endsWith('/'));
+
+  const urls = (await Promise.all(
+    rawUrls.map((url) => resolveRenderableStorageUrl(url, 'moments').catch(() => url)),
+  )).filter((url): url is string => !!url);
 
   return shuffle(urls);
 }

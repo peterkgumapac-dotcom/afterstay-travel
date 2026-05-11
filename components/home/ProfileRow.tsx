@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Settings, UserRound } from 'lucide-react-native';
 import { Image, StyleSheet, Text, View } from 'react-native';
@@ -6,6 +6,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { AnimatedPressable } from '@/components/shared/AnimatedPressable';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 
 interface Props {
   userName: string;
@@ -28,8 +29,27 @@ export default function ProfileRow({
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
   const [avatarFailed, setAvatarFailed] = useState(false);
+  const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string | undefined>();
   const firstName = userName.split(' ')[0];
   const initial = firstName.charAt(0).toUpperCase();
+
+  useEffect(() => {
+    let cancelled = false;
+    setAvatarFailed(false);
+    setResolvedAvatarUrl(undefined);
+
+    if (!avatarUrl) return () => { cancelled = true; };
+
+    resolveRenderableStorageUrl(avatarUrl, 'moments')
+      .then((url) => {
+        if (!cancelled) setResolvedAvatarUrl(url ?? avatarUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedAvatarUrl(avatarUrl);
+      });
+
+    return () => { cancelled = true; };
+  }, [avatarUrl]);
 
   const goToProfile = () => {
     if (userId) {
@@ -129,9 +149,9 @@ export default function ProfileRow({
           accessibilityLabel="View profile"
           accessibilityRole="button"
         >
-          {avatarUrl && !avatarFailed ? (
+          {resolvedAvatarUrl && !avatarFailed ? (
             <Image
-              source={{ uri: avatarUrl }}
+              source={{ uri: resolvedAvatarUrl }}
               style={styles.avatar}
               onError={() => setAvatarFailed(true)}
             />
