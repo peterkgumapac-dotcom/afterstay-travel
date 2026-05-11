@@ -34,14 +34,24 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+async function resolveMomentPhotos(rawUrls: string[], maxPhotos: number): Promise<string[]> {
+  const resolved = await Promise.all(
+    rawUrls
+      .filter((url): url is string => !!url && !url.endsWith('/'))
+      .slice(0, maxPhotos)
+      .map((url) => resolveRenderableStorageUrl(url, 'moments').catch(() => url)),
+  );
+  return resolved.filter((url): url is string => !!url);
+}
+
 /** Fetch random moment photos for a trip. */
 async function fetchTripPhotos(tripId: string, maxPhotos: number): Promise<string[]> {
   const moments = await getMoments(tripId);
-  const urls = moments
+  const rawUrls = moments
     .map((moment) => moment.photo)
-    .filter((url): url is string => !!url && !url.endsWith('/'))
-    .slice(0, maxPhotos);
+    .filter((url): url is string => !!url && !url.endsWith('/'));
 
+  const urls = await resolveMomentPhotos(rawUrls, maxPhotos);
   return shuffle(urls);
 }
 
@@ -58,10 +68,7 @@ async function fetchQuickTripPhotos(quickTripId: string, maxPhotos: number): Pro
   const rawUrls = data
     .map((row) => row.photo_url as string | undefined)
     .filter((url): url is string => !!url && !url.endsWith('/'));
-
-  const urls = (await Promise.all(
-    rawUrls.map((url) => resolveRenderableStorageUrl(url, 'moments').catch(() => url)),
-  )).filter((url): url is string => !!url);
+  const urls = await resolveMomentPhotos(rawUrls, maxPhotos);
 
   return shuffle(urls);
 }
@@ -151,8 +158,19 @@ function TripCollageInner({ tripId, quickTripId, width, height, animated = true,
   useEffect(() => {
     let cancelled = false;
     if (photoUrls) {
-      setPhotos(photoUrls.slice(0, fetchLimit));
-      setLoaded(true);
+      setLoaded(false);
+      resolveMomentPhotos(photoUrls, fetchLimit)
+        .then((urls) => {
+          if (cancelled) return;
+          setPhotos(urls.slice(0, fetchLimit));
+          setLoaded(true);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setPhotos(photoUrls.filter(Boolean).slice(0, fetchLimit));
+            setLoaded(true);
+          }
+        });
       return () => { cancelled = true; };
     }
     const fetchFn = quickTripId

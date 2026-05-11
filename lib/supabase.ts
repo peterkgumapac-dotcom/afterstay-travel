@@ -1999,7 +1999,7 @@ export async function getGroupMembers(tripId?: string): Promise<GroupMember[]> {
     return {
       ...member,
       name: member.name || profile.name || member.name,
-      profilePhoto: member.profilePhoto || profile.avatar,
+      profilePhoto: profile.avatar || member.profilePhoto,
     };
   });
 }
@@ -3410,22 +3410,36 @@ export async function getAlbums(tripId?: string): Promise<Album[]> {
       .select('*', { count: 'exact', head: true })
       .eq('album_id', row.id);
 
-    // Get cover URL if set
+    // Get cover URL if set, otherwise fall back to the first photo in the album.
     let coverUrl: string | undefined;
-    if (row.cover_moment_id) {
+    let coverMomentId = (row.cover_moment_id as string) ?? undefined;
+    if (!coverMomentId) {
+      const { data: firstAlbumMoment } = await supabase
+        .from('album_moments')
+        .select('moment_id')
+        .eq('album_id', row.id)
+        .limit(1)
+        .maybeSingle();
+      coverMomentId = (firstAlbumMoment?.moment_id as string) ?? undefined;
+    }
+
+    if (coverMomentId) {
       const { data: coverRow } = await supabase
         .from(T.moments)
         .select('public_url, storage_path')
-        .eq('id', row.cover_moment_id)
-        .single();
-      if (coverRow) coverUrl = momentPhotoUrl(coverRow);
+        .eq('id', coverMomentId)
+        .maybeSingle();
+      if (coverRow) {
+        coverUrl = await signedMomentPhotoUrl(coverRow).catch(() => undefined);
+        coverUrl = coverUrl ?? momentPhotoUrl(coverRow);
+      }
     }
 
     albums.push({
       id: row.id as string,
       tripId: id,
       name: row.name as string,
-      coverMomentId: (row.cover_moment_id as string) ?? undefined,
+      coverMomentId,
       coverUrl,
       ownerId: row.owner_id as string,
       hideFromMosaic: !!row.hide_from_mosaic,
