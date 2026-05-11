@@ -29,7 +29,7 @@ const PAGE_W = SCREEN_W - 40;
 const PAGE_H = 440;
 const SNAP_W = SCREEN_W;
 const MAX_PHOTO_PAGES = 15;
-const PAGE_TURN_DURATION_MS = 1350;
+const PAGE_TURN_DURATION_MS = 1550;
 const CURL_W = PAGE_W * 0.38;
 
 type AlbumPage =
@@ -482,12 +482,12 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
               style={[
                 styles.curledPageSheet,
                 {
-                  opacity: flipAnim.interpolate({ inputRange: [0, 0.78, 0.96, 1], outputRange: [1, 1, 0.48, 0], extrapolate: 'clamp' }),
+                  opacity: flipAnim.interpolate({ inputRange: [0, 0.92, 0.99, 1], outputRange: [1, 1, 0.72, 0], extrapolate: 'clamp' }),
                   transform: [
                     { perspective: 1400 },
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [PAGE_W * 0.31, -PAGE_W * 0.24, -PAGE_W * 0.68], extrapolate: 'clamp' }) },
-                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.24, 0.72, 1], outputRange: ['0deg', '-42deg', '-104deg', '-142deg'], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.42, 0.78, 1], outputRange: [1, 0.68, 0.25, 0.1], extrapolate: 'clamp' }) },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [PAGE_W * 0.31, -PAGE_W * 0.18, -PAGE_W * 0.56], extrapolate: 'clamp' }) },
+                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.24, 0.72, 1], outputRange: ['0deg', '-38deg', '-96deg', '-132deg'], extrapolate: 'clamp' }) },
+                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.42, 0.78, 1], outputRange: [1, 0.76, 0.44, 0.24], extrapolate: 'clamp' }) },
                     { scaleY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.01, 0.99], extrapolate: 'clamp' }) },
                   ],
                 },
@@ -497,7 +497,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                 style={[
                   styles.curledPageContent,
                   {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.42, 0.6, 1], outputRange: [1, 1, 0.12, 0], extrapolate: 'clamp' }),
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.34, 0.54, 1], outputRange: [1, 1, 0.08, 0], extrapolate: 'clamp' }),
                   },
                 ]}
               >
@@ -509,7 +509,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                 style={[
                   styles.curledPageBackFace,
                   {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.34, 0.5, 0.9, 1], outputRange: [0, 0, 0.92, 1, 0], extrapolate: 'clamp' }),
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.18, 0.36, 0.96, 1], outputRange: [0, 0, 1, 1, 0.2], extrapolate: 'clamp' }),
                   },
                 ]}
               >
