@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Easing,
   FlatList,
   Pressable,
   Share,
@@ -14,7 +15,7 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, BookOpen, Camera, Images, MapPin, Share2, Sparkles, Wallet } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Camera, ChevronRight, Images, MapPin, Share2, Sparkles, Wallet } from 'lucide-react-native';
 
 import type { ThemeColors } from '@/constants/ThemeContext';
 import type { Expense, GroupMember, Moment, Place, Trip } from '@/lib/types';
@@ -244,9 +245,12 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const scrollX = useRef(new Animated.Value(0)).current;
+  const flipAnim = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef<FlatList<AlbumPage>>(null);
   const [pageIndex, setPageIndex] = useState(0);
+  const [flippingPage, setFlippingPage] = useState<AlbumPage | null>(null);
   const pages = useMemo(() => buildPages(data), [data]);
+  const canTurnPage = pageIndex < pages.length - 1;
 
   useEffect(() => {
     const urls = data.photos.slice(Math.max(0, pageIndex - 1), pageIndex + 4).map((photo) => photo.uri);
@@ -260,19 +264,45 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   };
 
   const openNextPage = () => {
-    if (pages.length <= 1) return;
+    if (pages.length <= 1 || flippingPage) return;
     const nextIndex = Math.min(pageIndex + 1, pages.length - 1);
+    if (nextIndex === pageIndex) return;
+
+    setFlippingPage(pages[pageIndex]);
+    flipAnim.setValue(0);
     setPageIndex(nextIndex);
-    flatListRef.current?.scrollToOffset({ offset: nextIndex * SNAP_W, animated: true });
-    setTimeout(() => {
-      flatListRef.current?.scrollToOffset({ offset: nextIndex * SNAP_W, animated: false });
-      scrollX.setValue(nextIndex * SNAP_W);
-    }, 360);
+    flatListRef.current?.scrollToOffset({ offset: nextIndex * SNAP_W, animated: false });
+    scrollX.setValue(nextIndex * SNAP_W);
+
+    Animated.timing(flipAnim, {
+      toValue: 1,
+      duration: 620,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => setFlippingPage(null));
   };
 
   const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setPageIndex(Math.round(event.nativeEvent.contentOffset.x / SNAP_W));
   };
+
+  const renderAlbumPageContent = (item: AlbumPage) => (
+    <>
+      {item.type === 'cover' ? (
+        <AlbumCoverPage data={data} styles={styles} colors={colors} onOpenAlbum={openNextPage} onAddPhoto={onAddPhoto} />
+      ) : null}
+      {item.type === 'collage' ? (
+        <AlbumCollagePage page={item} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
+      ) : null}
+      {item.type === 'photo' ? (
+        <AlbumPhotoPage photo={item.photo} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
+      ) : null}
+      {item.type === 'stats' ? <AlbumStatsPage data={data} styles={styles} colors={colors} /> : null}
+      {item.type === 'closing' ? (
+        <AlbumClosingPage data={data} styles={styles} colors={colors} onOpenAlbum={onOpenAlbum} onShare={handleShare} />
+      ) : null}
+    </>
+  );
 
   const renderPage = ({ item, index }: { item: AlbumPage; index: number }) => {
     const inputRange = [(index - 1) * SNAP_W, index * SNAP_W, (index + 1) * SNAP_W];
@@ -297,19 +327,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
             },
           ]}
         >
-          {item.type === 'cover' ? (
-            <AlbumCoverPage data={data} styles={styles} colors={colors} onOpenAlbum={openNextPage} onAddPhoto={onAddPhoto} />
-          ) : null}
-          {item.type === 'collage' ? (
-            <AlbumCollagePage page={item} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
-          ) : null}
-          {item.type === 'photo' ? (
-            <AlbumPhotoPage photo={item.photo} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
-          ) : null}
-          {item.type === 'stats' ? <AlbumStatsPage data={data} styles={styles} colors={colors} /> : null}
-          {item.type === 'closing' ? (
-            <AlbumClosingPage data={data} styles={styles} colors={colors} onOpenAlbum={onOpenAlbum} onShare={handleShare} />
-          ) : null}
+          {renderAlbumPageContent(item)}
           <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.16)']} style={styles.pageEdge} />
           <Animated.View style={[styles.turnShade, { opacity: pageShadeOpacity }]} />
           <View style={styles.pageCorner} />
@@ -342,30 +360,74 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         </View>
       </View>
 
-      <Animated.FlatList
-        ref={flatListRef}
-        data={pages}
-        renderItem={renderPage}
-        keyExtractor={(item, index) => `${item.type}-${index}`}
-        getItemLayout={(_, index) => ({ length: SNAP_W, offset: SNAP_W * index, index })}
-        horizontal
-        pagingEnabled
-        snapToInterval={SNAP_W}
-        decelerationRate="fast"
-        showsHorizontalScrollIndicator={false}
-        bounces={false}
-        initialNumToRender={pages.length}
-        maxToRenderPerBatch={pages.length}
-        windowSize={pages.length}
-        onMomentumScrollEnd={handleScrollEnd}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-        onScrollToIndexFailed={({ index }) => {
-          const offset = index * SNAP_W;
-          flatListRef.current?.scrollToOffset({ offset, animated: false });
-          scrollX.setValue(offset);
-        }}
-        scrollEventThrottle={16}
-      />
+      <View style={styles.bookViewport}>
+        <Animated.FlatList
+          ref={flatListRef}
+          data={pages}
+          renderItem={renderPage}
+          keyExtractor={(item, index) => `${item.type}-${index}`}
+          getItemLayout={(_, index) => ({ length: SNAP_W, offset: SNAP_W * index, index })}
+          horizontal
+          pagingEnabled
+          snapToInterval={SNAP_W}
+          decelerationRate="fast"
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          initialNumToRender={pages.length}
+          maxToRenderPerBatch={pages.length}
+          windowSize={pages.length}
+          onMomentumScrollEnd={handleScrollEnd}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+          onScrollToIndexFailed={({ index }) => {
+            const offset = index * SNAP_W;
+            flatListRef.current?.scrollToOffset({ offset, animated: false });
+            scrollX.setValue(offset);
+          }}
+          scrollEventThrottle={16}
+        />
+        {flippingPage ? (
+          <View pointerEvents="none" style={styles.flipOverlay}>
+            <Animated.View
+              style={[
+                styles.pageShell,
+                styles.flipSheet,
+                {
+                  opacity: flipAnim.interpolate({ inputRange: [0, 0.88, 1], outputRange: [1, 1, 0], extrapolate: 'clamp' }),
+                  transform: [
+                    { perspective: 980 },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -PAGE_W * 0.48], extrapolate: 'clamp' }) },
+                    { rotateY: flipAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-104deg'], extrapolate: 'clamp' }) },
+                    { scaleX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.72], extrapolate: 'clamp' }) },
+                  ],
+                },
+              ]}
+            >
+              {renderAlbumPageContent(flippingPage)}
+              <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.24)']} style={styles.pageEdge} />
+              <Animated.View
+                style={[
+                  styles.turnShade,
+                  {
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [0.03, 0.34, 0.08], extrapolate: 'clamp' }),
+                  },
+                ]}
+              />
+              <View style={styles.pageCorner} />
+            </Animated.View>
+          </View>
+        ) : null}
+        {canTurnPage ? (
+          <Pressable
+            onPress={openNextPage}
+            style={styles.turnPageControl}
+            accessibilityLabel="Turn album page"
+            accessibilityRole="button"
+            hitSlop={12}
+          >
+            <ChevronRight size={21} color="#21160f" strokeWidth={2.5} />
+          </Pressable>
+        ) : null}
+      </View>
 
       <View style={styles.dots}>
         {pages.map((_, index) => (
@@ -632,6 +694,43 @@ const getStyles = (_colors: ThemeColors) =>
       height: PAGE_H + 24,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    bookViewport: {
+      height: PAGE_H + 24,
+    },
+    flipOverlay: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    flipSheet: {
+      shadowOpacity: 0.48,
+      shadowRadius: 26,
+      shadowOffset: { width: -16, height: 16 },
+      elevation: 14,
+    },
+    turnPageControl: {
+      position: 'absolute',
+      right: 38,
+      bottom: 24,
+      zIndex: 8,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#f3c996',
+      borderWidth: 1,
+      borderColor: 'rgba(70,42,23,0.18)',
+      shadowColor: '#000',
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
     },
     bookStackBack: {
       position: 'absolute',
