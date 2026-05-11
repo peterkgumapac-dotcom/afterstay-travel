@@ -27,6 +27,9 @@ yarn-error.*
 *.zip
 bugreport-*
 screenshots/audit_*.png
+moments_smooth_*.png
+post_ota_*.png
+post_ota_resume_*.png
 
 # Native builds
 ios/
