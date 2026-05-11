@@ -261,8 +261,13 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
 
   const openNextPage = () => {
     if (pages.length <= 1) return;
-    flatListRef.current?.scrollToIndex({ index: 1, animated: true });
-    setPageIndex(1);
+    const nextIndex = Math.min(pageIndex + 1, pages.length - 1);
+    setPageIndex(nextIndex);
+    flatListRef.current?.scrollToOffset({ offset: nextIndex * SNAP_W, animated: true });
+    setTimeout(() => {
+      flatListRef.current?.scrollToOffset({ offset: nextIndex * SNAP_W, animated: false });
+      scrollX.setValue(nextIndex * SNAP_W);
+    }, 360);
   };
 
   const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -342,14 +347,23 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         data={pages}
         renderItem={renderPage}
         keyExtractor={(item, index) => `${item.type}-${index}`}
+        getItemLayout={(_, index) => ({ length: SNAP_W, offset: SNAP_W * index, index })}
         horizontal
         pagingEnabled
         snapToInterval={SNAP_W}
         decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
         bounces={false}
+        initialNumToRender={pages.length}
+        maxToRenderPerBatch={pages.length}
+        windowSize={pages.length}
         onMomentumScrollEnd={handleScrollEnd}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+        onScrollToIndexFailed={({ index }) => {
+          const offset = index * SNAP_W;
+          flatListRef.current?.scrollToOffset({ offset, animated: false });
+          scrollX.setValue(offset);
+        }}
         scrollEventThrottle={16}
       />
 
