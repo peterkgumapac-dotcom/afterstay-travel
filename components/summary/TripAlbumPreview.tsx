@@ -28,6 +28,7 @@ const PAGE_H = 440;
 const SNAP_W = SCREEN_W;
 const MAX_PHOTO_PAGES = 15;
 const PAGE_TURN_DURATION_MS = 1350;
+const CURL_W = PAGE_W * 0.66;
 
 type AlbumPage =
   | { type: 'cover' }
@@ -426,37 +427,39 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
               style={[
                 styles.revealedPageShadow,
                 {
-                  opacity: flipAnim.interpolate({ inputRange: [0, 0.22, 0.72, 1], outputRange: [0, 0.42, 0.22, 0], extrapolate: 'clamp' }),
+                  opacity: flipAnim.interpolate({ inputRange: [0, 0.18, 0.66, 1], outputRange: [0, 0.48, 0.3, 0], extrapolate: 'clamp' }),
                   transform: [
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [PAGE_W * 0.22, -PAGE_W * 0.44], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.28, 0.82, 0.18], extrapolate: 'clamp' }) },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.52, 1], outputRange: [PAGE_W * 0.28, -PAGE_W * 0.08, -PAGE_W * 0.46], extrapolate: 'clamp' }) },
+                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.18, 0.92, 0.16], extrapolate: 'clamp' }) },
                   ],
                 },
               ]}
             />
             <Animated.View
               style={[
-                styles.pageShell,
-                styles.flipSheet,
+                styles.curledPageSheet,
                 {
-                  opacity: flipAnim.interpolate({ inputRange: [0, 0.72, 0.92, 1], outputRange: [1, 1, 0.35, 0], extrapolate: 'clamp' }),
+                  opacity: flipAnim.interpolate({ inputRange: [0, 0.78, 0.96, 1], outputRange: [1, 1, 0.48, 0], extrapolate: 'clamp' }),
                   transform: [
-                    { perspective: 1200 },
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [0, -PAGE_W * 0.22, -PAGE_W * 0.56], extrapolate: 'clamp' }) },
-                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.35, 0.78, 1], outputRange: ['0deg', '-38deg', '-92deg', '-118deg'], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.5, 0.84, 1], outputRange: [1, 0.68, 0.22, 0.08], extrapolate: 'clamp' }) },
+                    { perspective: 1400 },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [PAGE_W * 0.17, -PAGE_W * 0.11, -PAGE_W * 0.5], extrapolate: 'clamp' }) },
+                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.24, 0.72, 1], outputRange: ['0deg', '-34deg', '-96deg', '-132deg'], extrapolate: 'clamp' }) },
+                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.42, 0.78, 1], outputRange: [1, 0.78, 0.32, 0.12], extrapolate: 'clamp' }) },
                     { scaleY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.01, 0.99], extrapolate: 'clamp' }) },
                   ],
                 },
               ]}
             >
-              {renderAlbumPageContent(flippingPage)}
-              <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.24)']} style={styles.pageEdge} />
+              <View style={styles.curledPageContent}>
+                {renderAlbumPageContent(flippingPage)}
+                <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.24)']} style={styles.pageEdge} />
+                <View style={styles.pageCorner} />
+              </View>
               <Animated.View
                 style={[
-                  styles.turnShade,
+                  styles.curlFaceShade,
                   {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [0.03, 0.34, 0.08], extrapolate: 'clamp' }),
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.02, 0.48, 0.18], extrapolate: 'clamp' }),
                   },
                 ]}
               />
@@ -464,22 +467,21 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                 style={[
                   styles.flipCurlHighlight,
                   {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.25, 0.78, 1], outputRange: [0, 0.75, 0.38, 0], extrapolate: 'clamp' }),
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.2, 0.72, 1], outputRange: [0, 0.9, 0.52, 0], extrapolate: 'clamp' }),
                     transform: [
-                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [PAGE_W * 0.45, -PAGE_W * 0.45], extrapolate: 'clamp' }) },
+                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [CURL_W * 0.58, -CURL_W * 0.22], extrapolate: 'clamp' }) },
                     ],
                   },
                 ]}
               />
-              <View style={styles.pageCorner} />
               <View style={styles.flipPageThickness} />
               <Animated.View
                 style={[
                   styles.flipBackCurl,
                   {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.36, 0.76, 1], outputRange: [0, 0.88, 0.48, 0], extrapolate: 'clamp' }),
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.28, 0.78, 1], outputRange: [0, 0.92, 0.58, 0], extrapolate: 'clamp' }),
                     transform: [
-                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [PAGE_W * 0.43, PAGE_W * 0.05], extrapolate: 'clamp' }) },
+                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [CURL_W * 0.68, CURL_W * 0.08], extrapolate: 'clamp' }) },
                     ],
                   },
                 ]}
@@ -803,6 +805,38 @@ const getStyles = (_colors: ThemeColors) =>
       shadowOffset: { width: -24, height: 18 },
       elevation: 14,
     },
+    curledPageSheet: {
+      position: 'absolute',
+      zIndex: 3,
+      right: 20,
+      width: CURL_W,
+      height: PAGE_H,
+      borderTopRightRadius: 18,
+      borderBottomRightRadius: 18,
+      overflow: 'hidden',
+      backgroundColor: '#f4eadb',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.42)',
+      shadowColor: '#000',
+      shadowOpacity: 0.5,
+      shadowRadius: 26,
+      shadowOffset: { width: -22, height: 18 },
+      elevation: 14,
+      backfaceVisibility: 'hidden',
+    },
+    curledPageContent: {
+      width: PAGE_W,
+      height: PAGE_H,
+      transform: [{ translateX: -(PAGE_W - CURL_W) }],
+    },
+    curlFaceShade: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: '#2a1609',
+    },
     flipBackSheet: {
       backgroundColor: '#f7efdf',
       borderColor: 'rgba(99,65,38,0.24)',
@@ -850,7 +884,7 @@ const getStyles = (_colors: ThemeColors) =>
       position: 'absolute',
       top: 0,
       bottom: 0,
-      width: 92,
+      width: 116,
       borderTopLeftRadius: 18,
       borderBottomLeftRadius: 18,
       backgroundColor: '#f7efdf',
@@ -865,7 +899,7 @@ const getStyles = (_colors: ThemeColors) =>
       position: 'absolute',
       top: -20,
       bottom: -20,
-      width: 54,
+      width: 42,
       borderRadius: 30,
       backgroundColor: 'rgba(255,255,255,0.42)',
       shadowColor: '#fff',
@@ -878,7 +912,7 @@ const getStyles = (_colors: ThemeColors) =>
       top: 10,
       bottom: 10,
       right: -5,
-      width: 9,
+      width: 11,
       borderTopRightRadius: 16,
       borderBottomRightRadius: 16,
       backgroundColor: '#d8c6ac',
