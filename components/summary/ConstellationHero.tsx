@@ -2,12 +2,8 @@ import { useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
-  Defs,
   G,
   Line,
-  RadialGradient,
-  Rect,
-  Stop,
   Text as SvgText,
 } from 'react-native-svg';
 import Animated, {
@@ -136,7 +132,7 @@ function DestinationStar({
         ),
       );
     }
-  }, [index, star.current, opacity, pulseR, pulseOpacity]);
+  }, [index, star, opacity, pulseR, pulseOpacity]);
 
   const starProps = useAnimatedProps(() => ({
     opacity: opacity.value,
@@ -244,6 +240,8 @@ export default function ConstellationHero({
 
   const spentFormatted = `\u20B1${Math.round(spent / 1000)}k`;
   const hasDistance = miles > 0;
+  const primaryMetric = hasDistance ? miles.toLocaleString() : trips.toLocaleString();
+  const primaryLabel = hasDistance ? 'km traveled' : trips === 1 ? 'trip logged' : 'trips logged';
 
   return (
     <View style={styles.container}>
@@ -254,8 +252,8 @@ export default function ConstellationHero({
       <View style={styles.header}>
         <Text style={styles.eyebrow}>Lifetime · since 2024</Text>
         <View style={styles.milesRow}>
-          <Text style={styles.milesNum}>{hasDistance ? miles.toLocaleString() : '--'}</Text>
-          <Text style={styles.milesLabel}>{hasDistance ? 'km traveled' : 'distance syncing'}</Text>
+          <Text style={styles.milesNum}>{primaryMetric}</Text>
+          <Text style={styles.milesLabel}>{primaryLabel}</Text>
         </View>
       </View>
 

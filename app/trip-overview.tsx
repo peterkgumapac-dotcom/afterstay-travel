@@ -7,10 +7,16 @@ import {
   ClipboardList,
   Copy,
   DollarSign,
+  FileText,
+  ImagePlus,
   MapPin,
   Plane,
   Luggage,
+  Settings,
+  Share2,
+  Sparkles,
   Users,
+  UserPlus,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -343,6 +349,23 @@ interface OverviewData {
   places: Place[];
 }
 
+type ControlSection = 'recap' | 'details' | 'companions' | 'essentials' | 'settings';
+
+const CONTROL_SECTIONS: { key: ControlSection; label: string }[] = [
+  { key: 'recap', label: 'Recap' },
+  { key: 'details', label: 'Details' },
+  { key: 'companions', label: 'Companions' },
+  { key: 'essentials', label: 'Essentials' },
+  { key: 'settings', label: 'Settings' },
+];
+
+function normalizeSection(value: string | undefined, trip?: Trip | null): ControlSection {
+  if (value === 'recap' || value === 'details' || value === 'companions' || value === 'essentials' || value === 'settings') {
+    return value;
+  }
+  return trip?.status === 'Completed' ? 'recap' : 'details';
+}
+
 export default function TripOverviewScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -354,6 +377,7 @@ export default function TripOverviewScreen() {
   const flightsYRef = useRef(0);
   const didScrollToSectionRef = useRef(false);
   const [data, setData] = useState<OverviewData | null>(null);
+  const [activeSection, setActiveSection] = useState<ControlSection>('details');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
@@ -374,12 +398,13 @@ export default function TripOverviewScreen() {
         getSavedPlaces(trip.id).catch(() => [] as Place[]),
       ]);
       setData({ trip, flights, members, packing, expenses, checklist, places });
+      setActiveSection(normalizeSection(requestedSection, trip));
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load overview');
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [requestedSection, tripId]);
 
   useEffect(() => {
     load();
@@ -452,6 +477,13 @@ export default function TripOverviewScreen() {
     placeCategoryCounts[p.category] = (placeCategoryCounts[p.category] ?? 0) + 1;
   }
 
+  const openRecap = () => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never);
+  const openSummary = () => router.push({ pathname: '/trip-summary', params: { tripId: trip.id } } as never);
+  const addPhoto = () => router.push({ pathname: '/add-moment', params: { tripId: trip.id } } as never);
+  const uploadFile = () => router.push({ pathname: '/add-file', params: { tripId: trip.id } } as never);
+  const rescanBooking = () => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never);
+  const inviteCompanions = () => router.push('/invite' as never);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Header bar */}
@@ -459,7 +491,7 @@ export default function TripOverviewScreen() {
         <TouchableOpacity onPress={() => router.back()} hitSlop={12}>
           <ChevronLeft size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginLeft: 10 }}>Trip Overview</Text>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginLeft: 10 }}>Trip Control Center</Text>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -481,20 +513,71 @@ export default function TripOverviewScreen() {
           </View>
         </SimpleCard>
 
-        <Pressable
-          style={styles.scanDetailsBtn}
-          onPress={() => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never)}
-        >
-          <View style={styles.scanDetailsIcon}>
-            <ClipboardList size={18} color={colors.accent} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.scanDetailsTitle}>Rescan booking details</Text>
-            <Text style={styles.scanDetailsSub}>
-              Replace hotel, dates, and outbound/return flights from new screenshots.
-            </Text>
-          </View>
-        </Pressable>
+        <View style={styles.controlTabs}>
+          {CONTROL_SECTIONS.map((section) => {
+            const active = activeSection === section.key;
+            return (
+              <Pressable
+                key={section.key}
+                style={[styles.controlTab, active && styles.controlTabActive]}
+                onPress={() => setActiveSection(section.key)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${section.label}`}
+              >
+                <Text style={[styles.controlTabText, active && styles.controlTabTextActive]}>
+                  {section.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {activeSection === 'recap' && (
+          <>
+            <View style={styles.memoryCard}>
+              <View style={styles.memoryIcon}>
+                <Sparkles size={22} color={colors.accent} />
+              </View>
+              <Text style={styles.memoryKicker}>Trip recap</Text>
+              <Text style={styles.memoryTitle}>
+                {trip.destination || trip.name} is ready to remember
+              </Text>
+              <Text style={styles.memoryBody}>
+                Replay the trip, add missing photos, or open the full travel summary.
+              </Text>
+              <Pressable style={styles.primaryAction} onPress={openRecap}>
+                <Text style={styles.primaryActionText}>View Recap</Text>
+              </Pressable>
+              <View style={styles.actionGrid}>
+                <Pressable style={styles.secondaryAction} onPress={addPhoto}>
+                  <ImagePlus size={16} color={colors.accent} />
+                  <Text style={styles.secondaryActionText}>Add Photo</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryAction} onPress={openSummary}>
+                  <FileText size={16} color={colors.accent} />
+                  <Text style={styles.secondaryActionText}>Full Summary</Text>
+                </Pressable>
+              </View>
+            </View>
+          </>
+        )}
+
+        {activeSection === 'details' && (
+          <>
+            <Pressable
+              style={styles.scanDetailsBtn}
+              onPress={rescanBooking}
+            >
+              <View style={styles.scanDetailsIcon}>
+                <ClipboardList size={18} color={colors.accent} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.scanDetailsTitle}>Rescan booking details</Text>
+                <Text style={styles.scanDetailsSub}>
+                  Replace hotel, dates, and outbound/return flights from new screenshots.
+                </Text>
+              </View>
+            </Pressable>
 
         {/* Accommodation */}
         {trip.accommodation ? (
@@ -566,12 +649,31 @@ export default function TripOverviewScreen() {
           </CollapsibleCard>
           </View>
         ) : null}
+          </>
+        )}
 
         {/* Group */}
-        {members.length > 0 ? (
-          <CollapsibleCard icon={<Users size={18} color={colors.green2} />} title={`Group (${members.length})`}>
+        {activeSection === 'companions' && (
+          <CollapsibleCard icon={<Users size={18} color={colors.green2} />} title={`Companions (${members.length})`}>
+            {trip.status !== 'Completed' ? (
+              <Pressable style={styles.scanDetailsBtn} onPress={inviteCompanions}>
+                <View style={styles.scanDetailsIcon}>
+                  <UserPlus size={18} color={colors.accent} strokeWidth={2} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.scanDetailsTitle}>Invite companions</Text>
+                  <Text style={styles.scanDetailsSub}>
+                    Share trip access and keep traveler details in sync.
+                  </Text>
+                </View>
+              </Pressable>
+            ) : (
+              <Text style={styles.emptySectionText}>
+                These are the travelers saved on this completed trip.
+              </Text>
+            )}
             <View style={styles.memberList}>
-              {members.map(m => (
+              {members.length > 0 ? members.map(m => (
                 <View key={m.id} style={styles.memberChip}>
                   <Text style={styles.memberName}>{m.name}</Text>
                   {m.role === 'Primary' ? (
@@ -580,13 +682,28 @@ export default function TripOverviewScreen() {
                     </View>
                   ) : null}
                 </View>
-              ))}
+              )) : (
+                <Text style={styles.emptySectionText}>No companions added yet.</Text>
+              )}
             </View>
           </CollapsibleCard>
-        ) : null}
+        )}
 
         {/* Packing */}
-        {packing.length > 0 ? (
+        {activeSection === 'essentials' && (
+          <>
+          <Pressable style={styles.scanDetailsBtn} onPress={uploadFile}>
+            <View style={styles.scanDetailsIcon}>
+              <FileText size={18} color={colors.accent} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.scanDetailsTitle}>Upload travel files</Text>
+              <Text style={styles.scanDetailsSub}>
+                Save boarding passes, IDs, hotel bookings, and shared documents.
+              </Text>
+            </View>
+          </Pressable>
+          {packing.length > 0 ? (
           <CollapsibleCard icon={<Luggage size={18} color={colors.amber} />} title="Packing" defaultOpen={false}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressLabel}>
@@ -596,10 +713,19 @@ export default function TripOverviewScreen() {
             </View>
             <ProgressBar pct={packPct} color={progressColor(packPct, colors)} />
           </CollapsibleCard>
-        ) : null}
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No saved essentials for this trip yet</Text>
+              <Text style={styles.emptySectionText}>
+                Upload files or add packing items when you want this trip record to keep them.
+              </Text>
+            </View>
+          )}
+          </>
+        )}
 
         {/* Budget */}
-        {expenses.length > 0 ? (
+        {activeSection === 'details' && expenses.length > 0 ? (
           <CollapsibleCard icon={<DollarSign size={18} color={colors.green} />} title="Budget" defaultOpen={false}>
             <Text style={styles.budgetTotal}>
               {expenses[0]?.currency ?? 'PHP'} {totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
@@ -612,7 +738,7 @@ export default function TripOverviewScreen() {
         ) : null}
 
         {/* Checklist */}
-        {checklist.length > 0 ? (
+        {activeSection === 'essentials' && checklist.length > 0 ? (
           <CollapsibleCard icon={<CheckSquare size={18} color={colors.green2} />} title="Checklist" defaultOpen={false}>
             <View style={styles.progressHeader}>
               <Text style={styles.progressLabel}>
@@ -625,7 +751,7 @@ export default function TripOverviewScreen() {
         ) : null}
 
         {/* Places */}
-        {places.length > 0 ? (
+        {activeSection === 'details' && places.length > 0 ? (
           <CollapsibleCard icon={<MapPin size={18} color={colors.pink} />} title={`Saved Places (${places.length})`} defaultOpen={false}>
             <View style={styles.placeCategories}>
               {Object.entries(placeCategoryCounts).map(([cat, count]) => (
@@ -638,6 +764,38 @@ export default function TripOverviewScreen() {
             </View>
           </CollapsibleCard>
         ) : null}
+
+        {activeSection === 'settings' && (
+          <>
+            <Pressable style={styles.scanDetailsBtn} onPress={rescanBooking}>
+              <View style={styles.scanDetailsIcon}>
+                <ClipboardList size={18} color={colors.accent} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.scanDetailsTitle}>Rescan Booking</Text>
+                <Text style={styles.scanDetailsSub}>Refresh hotel, date, and flight details from a new screenshot.</Text>
+              </View>
+            </Pressable>
+            <Pressable style={styles.scanDetailsBtn} onPress={() => setActiveSection('details')}>
+              <View style={styles.scanDetailsIcon}>
+                <Settings size={18} color={colors.accent} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.scanDetailsTitle}>Edit Trip Details</Text>
+                <Text style={styles.scanDetailsSub}>Update accommodation, flight, budget, and saved-place information.</Text>
+              </View>
+            </Pressable>
+            <Pressable style={styles.scanDetailsBtn} onPress={openRecap}>
+              <View style={styles.scanDetailsIcon}>
+                <Share2 size={18} color={colors.accent} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.scanDetailsTitle}>Open Share Recap</Text>
+                <Text style={styles.scanDetailsSub}>Replay or share this trip’s memory card.</Text>
+              </View>
+            </Pressable>
+          </>
+        )}
       </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -727,6 +885,103 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.pill,
   },
   countdownText: { color: colors.green2, fontSize: 14, fontWeight: '700' },
+  controlTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.xs,
+  },
+  controlTab: {
+    flexGrow: 1,
+    minWidth: '30%',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: radius.md,
+  },
+  controlTabActive: {
+    backgroundColor: colors.accent,
+  },
+  controlTabText: {
+    color: colors.text2,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  controlTabTextActive: {
+    color: colors.bg,
+  },
+  memoryCard: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    ...elevation.card,
+  },
+  memoryIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoryKicker: {
+    color: colors.text3,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+  },
+  memoryTitle: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 30,
+  },
+  memoryBody: {
+    color: colors.text2,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  primaryAction: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.accent,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  primaryActionText: {
+    color: colors.bg,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  secondaryAction: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  secondaryActionText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
   scanDetailsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -899,6 +1154,24 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: radius.pill,
   },
   memberName: { color: colors.text, fontSize: 13, fontWeight: '500' },
+  emptyCard: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.xs,
+  },
+  emptyTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  emptySectionText: {
+    color: colors.text2,
+    fontSize: 13,
+    lineHeight: 19,
+  },
   roleBadge: {
     backgroundColor: colors.purple + '30',
     paddingHorizontal: 6,

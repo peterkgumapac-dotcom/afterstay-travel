@@ -17,8 +17,6 @@ import * as Haptics from 'expo-haptics';
 
 import ConstellationHero from '@/components/summary/ConstellationHero';
 import HighlightsStrip from '@/components/summary/HighlightsStrip';
-import PastTripRow from '@/components/summary/PastTripRow';
-import SwipeableTripCard from '@/components/SwipeableTripCard';
 import EmptyState from '@/components/shared/EmptyState';
 import { TripCollage } from './TripCollage';
 import { GroupHeader } from './GroupHeader';
@@ -65,6 +63,9 @@ interface SummaryTabProps {
   onDeleteDraft?: (tripId: string) => void;
   onArchiveTrip?: (tripId: string) => void;
   onEditTrip?: (tripId: string) => void;
+  onViewRecap?: (tripId: string) => void;
+  onRescanTrip?: (tripId: string) => void;
+  onInviteTrip?: (tripId: string) => void;
   onRestoreTrip?: (tripId: string) => void;
 }
 
@@ -78,7 +79,6 @@ const FILTER_LABELS: Record<TripFilter, string> = {
 
 function EmptyFilterState({
   filter,
-  colors,
   onAction,
 }: {
   filter: TripFilter;
@@ -143,6 +143,9 @@ export function SummaryTab({
   onDeleteDraft,
   onArchiveTrip,
   onEditTrip,
+  onViewRecap,
+  onRescanTrip,
+  onInviteTrip,
   onRestoreTrip,
 }: SummaryTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -226,69 +229,6 @@ export function SummaryTab({
     [onRestoreTrip]
   );
 
-  const renderTripItem = (item: (typeof filteredItems)[number], index: number) => {
-    if (item.type === 'draft') {
-      const t = item.data as Trip;
-      const display: PastTripDisplay = mapTripToPastDisplay(t);
-      return (
-        <SwipeableTripCard
-          key={`draft-${t.id}`}
-          onEdit={() => handleEdit(t.id)}
-          onDelete={() => handleDelete(t.id, true)}
-        >
-          <PastTripRow
-            trip={{ ...display, isDraft: true }}
-            onPress={t.id && onTripPress ? () => onTripPress(t.id, 'draft') : undefined}
-          />
-        </SwipeableTripCard>
-      );
-    }
-
-    if (item.type === 'archived') {
-      const t = item.data as PastTripDisplay;
-      return (
-        <SwipeableTripCard
-          key={`archived-${t.tripId}`}
-          onRestore={() => t.tripId && handleRestore(t.tripId)}
-          isArchived
-        >
-          <PastTripRow
-            trip={t}
-            onPress={t.tripId && onTripPress ? () => onTripPress(t.tripId!, 'archived') : undefined}
-          />
-        </SwipeableTripCard>
-      );
-    }
-
-    const t = item.data as PastTripDisplay;
-    const statusColor =
-      item.type === 'active'
-        ? colors.success
-        : item.type === 'incoming'
-        ? colors.accent
-        : colors.text3;
-
-    return (
-      <SwipeableTripCard
-        key={`${item.type}-${t.tripId ?? index}`}
-        onEdit={t.tripId ? () => handleEdit(t.tripId!) : undefined}
-        onArchive={t.tripId ? () => handleArchive(t.tripId!) : undefined}
-        onDelete={t.tripId ? () => handleDelete(t.tripId!) : undefined}
-      >
-        <View style={styles.tripCardWrapper}>
-          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-          <View style={{ flex: 1 }}>
-            <PastTripRow
-              trip={t}
-              hasMemory={t.hasMemory}
-              onPress={t.tripId && onTripPress ? () => onTripPress(t.tripId!, item.type) : undefined}
-            />
-          </View>
-        </View>
-      </SwipeableTripCard>
-    );
-  };
-
   // ── Album card for a trip ──
   const renderTripAlbumCard = (item: (typeof filteredItems)[number], index: number) => {
     const t = item.type === 'draft' ? mapTripToPastDisplay(item.data as Trip) : (item.data as PastTripDisplay);
@@ -296,8 +236,7 @@ export function SummaryTab({
     const isArchived = item.type === 'archived';
     const statusColor = item.type === 'active' ? colors.success : item.type === 'incoming' ? colors.accent : undefined;
     const statusLabel = getTripStatusLabel(item.type, t);
-    const shortId = t.tripId ? t.tripId.slice(-6).toUpperCase() : null;
-    const canManage = !!t.tripId && (onEditTrip || onArchiveTrip || onDeleteTrip || onDeleteDraft || onRestoreTrip);
+    const canManage = !!t.tripId && (onEditTrip || onArchiveTrip || onDeleteTrip || onDeleteDraft || onRestoreTrip || onViewRecap || onRescanTrip || onInviteTrip);
 
     const showTripActions = () => {
       if (!t.tripId) return;
@@ -329,7 +268,7 @@ export function SummaryTab({
         <View style={styles.albumGradient} />
         {statusColor && <View style={[styles.albumDot, { backgroundColor: statusColor }]} />}
         <View style={styles.albumBadge}>
-          <Text style={styles.albumBadgeText}>{statusLabel}{shortId ? ` · ${shortId}` : ''}</Text>
+          <Text style={styles.albumBadgeText}>{statusLabel}</Text>
         </View>
         {canManage && (
           <TouchableOpacity
@@ -480,6 +419,21 @@ export function SummaryTab({
               </TouchableOpacity>
             ) : (
               <>
+                {onViewRecap && actionTrip && actionTrip.statusLabel === 'Completed' && (
+                  <TouchableOpacity
+                    style={styles.actionRow}
+                    onPress={() => {
+                      const id = actionTrip.tripId;
+                      setActionTrip(null);
+                      onViewRecap(id);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.actionRowTitle}>View Recap</Text>
+                    <Text style={styles.actionRowSub}>Open photos, places, spending, and trip memories</Text>
+                  </TouchableOpacity>
+                )}
+
                 {onEditTrip && actionTrip && (
                   <TouchableOpacity
                     style={styles.actionRow}
@@ -492,6 +446,36 @@ export function SummaryTab({
                   >
                     <Text style={styles.actionRowTitle}>Edit Trip</Text>
                     <Text style={styles.actionRowSub}>Update dates, hotel, flights, and details</Text>
+                  </TouchableOpacity>
+                )}
+
+                {onRescanTrip && actionTrip && !actionTrip.isDraft && actionTrip.statusLabel !== 'Completed' && (
+                  <TouchableOpacity
+                    style={styles.actionRow}
+                    onPress={() => {
+                      const id = actionTrip.tripId;
+                      setActionTrip(null);
+                      onRescanTrip(id);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.actionRowTitle}>Rescan Booking</Text>
+                    <Text style={styles.actionRowSub}>Replace hotel, dates, outbound, and return flights</Text>
+                  </TouchableOpacity>
+                )}
+
+                {onInviteTrip && actionTrip && !actionTrip.isDraft && actionTrip.statusLabel !== 'Completed' && (
+                  <TouchableOpacity
+                    style={styles.actionRow}
+                    onPress={() => {
+                      const id = actionTrip.tripId;
+                      setActionTrip(null);
+                      onInviteTrip(id);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.actionRowTitle}>Invite Companions</Text>
+                    <Text style={styles.actionRowSub}>Review travelers and share trip access</Text>
                   </TouchableOpacity>
                 )}
 

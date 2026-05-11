@@ -456,7 +456,7 @@ export default function TripSummaryScreen() {
         <View style={styles.statsGrid}>
           <StatPill icon={<Camera size={18} color={colors.accent} />} value={totalMoments} label="Moments" colors={colors} />
           <StatPill icon={<MapPin size={18} color={colors.coral} />} value={dedupedPlaces.length} label="Places" colors={colors} />
-          <StatPill icon={<Heart size={18} color={colors.danger} />} value={favoriteCount} label="Favorites" colors={colors} />
+          <StatPill icon={<Heart size={18} color={colors.danger} />} value={favoriteCount} label="Favs" colors={colors} />
           <StatPill icon={<Wallet size={18} color={colors.gold} />} value={formatCurrency(summary.total, currency)} label="Spent" colors={colors} />
         </View>
 

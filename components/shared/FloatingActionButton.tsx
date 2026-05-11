@@ -42,6 +42,7 @@ export const FloatingActionButton: React.FC = () => {
   const isComposedRoute = ['/moments', '/discover', '/photo-viewer'].some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
+  const isTripLibraryRoute = pathname === '/trip' || pathname === '/(tabs)/trip' || pathname.endsWith('/trip');
 
   const actions: FabAction[] = useMemo(() => {
     const items: FabAction[] = [
@@ -77,7 +78,7 @@ export const FloatingActionButton: React.FC = () => {
         Animated.timing(anim, { toValue: 0, duration: 150, useNativeDriver: true }).start();
       });
     }
-  }, [open]);
+  }, [actions.length, menuAnims, open, rotateAnim]);
 
   const toggle = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -92,7 +93,7 @@ export const FloatingActionButton: React.FC = () => {
 
   const rotation = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '135deg'] });
 
-  if (isBudgetRoute || isComposedRoute) return null;
+  if (isBudgetRoute || isComposedRoute || isTripLibraryRoute) return null;
 
   return (
     <>
