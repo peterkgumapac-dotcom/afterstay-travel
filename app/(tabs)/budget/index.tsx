@@ -25,16 +25,15 @@ import {
   ChevronRight,
   CircleDollarSign,
   Coffee,
-  QrCode,
   ReceiptText,
   ScanLine,
   ShoppingBag,
+  Settings,
   Users,
   UtensilsCrossed,
   Wallet,
 } from 'lucide-react-native';
 
-import { DailyTrackerCard } from '@/components/budget/DailyTrackerCard';
 import { DailyTrackerSheet } from '@/components/budget/DailyTrackerSheet';
 import { ExpenseDetailSheet } from '@/components/budget/ExpenseDetailSheet';
 import ExpenseTargetSheet from '@/components/budget/ExpenseTargetSheet';
@@ -86,12 +85,13 @@ import type {
   Trip,
   UnifiedExpenseHistoryItem,
 } from '@/lib/types';
-import { formatCurrency, formatDatePHT, MS_PER_DAY, safeParse } from '@/lib/utils';
+import { formatCurrency, formatDatePHT, safeParse } from '@/lib/utils';
 
 type BudgetMode = 'trips' | 'personal';
 type ExpenseTargetAction = 'add' | 'scan';
 type DetailExpense = Expense & { source?: UnifiedExpenseHistoryItem['source']; sourceId?: string };
 type MoneySummary = { today: number; week: number; month: number; currency: string; count: number };
+type TravelSummary = { total: number; tripTotal: number; quickTripTotal: number; count: number; tripCount: number; quickTripCount: number; currency: string };
 
 const CATEGORY_CONFIG = [
   { key: 'Food', label: 'Food', icon: UtensilsCrossed, color: '#d65a1f' },
@@ -161,14 +161,6 @@ function topCategoryLabel(byCategory: Record<string, number>, total: number, cur
 function tripDates(trip: Trip | null) {
   if (!trip) return '';
   return `${formatDatePHT(trip.startDate)} - ${formatDatePHT(trip.endDate)}`;
-}
-
-function tripDays(trip: Trip | null) {
-  if (!trip) return 1;
-  const start = safeParse(trip.startDate);
-  const end = safeParse(trip.endDate);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return Math.max(1, trip.nights || 1);
-  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY) + 1);
 }
 
 function historyToExpense(item: UnifiedExpenseHistoryItem): DetailExpense {
@@ -352,6 +344,23 @@ function BudgetScreen() {
     () => historyExpenses.filter((item) => item.source === 'standalone' || item.source === 'quick-trip' || item.source === 'daily'),
     [historyExpenses],
   );
+  const travelHistorySummary = useMemo<TravelSummary>(() => {
+    const travelItems = historyExpenses.filter((item) => item.source === 'trip' || item.source === 'quick-trip');
+    return travelItems.reduce<TravelSummary>((summary, item) => {
+      const isQuickTrip = item.source === 'quick-trip';
+      summary.total += item.amount;
+      summary.count += 1;
+      summary.currency = item.currency || summary.currency;
+      if (isQuickTrip) {
+        summary.quickTripTotal += item.amount;
+        summary.quickTripCount += 1;
+      } else {
+        summary.tripTotal += item.amount;
+        summary.tripCount += 1;
+      }
+      return summary;
+    }, { total: 0, tripTotal: 0, quickTripTotal: 0, count: 0, tripCount: 0, quickTripCount: 0, currency: 'PHP' });
+  }, [historyExpenses]);
   const personalSummary = useMemo(() => {
     const amountItems = personalHistory.map((item) => ({
       amount: item.amount,
@@ -648,15 +657,20 @@ function BudgetScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Budget</Text>
-          <Text style={styles.subtitle}>Trips and quick trips</Text>
+          <Text style={styles.subtitle}>{mode === 'trips' ? 'On trip spending' : 'Personal spending'}</Text>
         </View>
-        <TouchableOpacity
-          style={styles.headerIcon}
-          onPress={() => router.push('/settings' as never)}
-          activeOpacity={0.75}
-        >
-          <Wallet size={20} color={colors.text} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerIcon} onPress={() => router.push('/add-member' as never)} activeOpacity={0.75}>
+            <Users size={20} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerIcon}
+            onPress={() => router.push('/settings' as never)}
+            activeOpacity={0.75}
+          >
+            <Settings size={20} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.modeWrap}>
@@ -696,6 +710,7 @@ function BudgetScreen() {
             members={members}
             tripSummary={tripSummary}
             tripPulse={tripPulse}
+            travelHistorySummary={travelHistorySummary}
             budgetPct={budgetPct}
             budgetLimit={budgetLimit}
             remaining={remaining}
@@ -706,6 +721,7 @@ function BudgetScreen() {
             onToggleInsight={() => setExpandedInsight((prev) => !prev)}
             onAdd={() => openTargetSheet('add')}
             onScan={() => openTargetSheet('scan')}
+            onPlanTrip={() => router.push('/create-trip' as never)}
             onSetBudget={() => {
               setBudgetInput(trip?.budgetLimit ? String(trip.budgetLimit) : '');
               setShowBudgetModal(true);
@@ -912,6 +928,7 @@ function TripsMode(props: {
   members: GroupMember[];
   tripSummary: { total: number; byCategory: Record<string, number>; count: number };
   tripPulse: MoneySummary;
+  travelHistorySummary: TravelSummary;
   budgetPct: number;
   budgetLimit: number;
   remaining: number;
@@ -922,6 +939,7 @@ function TripsMode(props: {
   onToggleInsight: () => void;
   onAdd: () => void;
   onScan: () => void;
+  onPlanTrip: () => void;
   onSetBudget: () => void;
   onOpenSettle: () => void;
   onExpensePress: (expense: Expense) => void;
@@ -943,6 +961,7 @@ function TripsMode(props: {
     members,
     tripSummary,
     tripPulse,
+    travelHistorySummary,
     budgetPct,
     budgetLimit,
     remaining,
@@ -952,27 +971,75 @@ function TripsMode(props: {
     onToggleInsight,
     onAdd,
     onScan,
+    onPlanTrip,
     onSetBudget,
     onOpenSettle,
     onExpensePress,
     onEditExpense,
     onDeleteExpense,
-    onAddQr,
-    onOpenQr,
-    onRemoveQr,
-    paymentQrs,
   } = props;
 
   if (!trip) {
     return (
       <>
-        <View style={styles.emptyCard}>
-          <Briefcase size={26} color={colors.text3} />
-          <Text style={styles.emptyTitle}>No active trip budget</Text>
-          <Text style={styles.emptyText}>Use Personal for everyday and quick-trip spending, or create a trip to start a shared budget.</Text>
+        <View style={styles.travelBudgetCard}>
+          <View style={styles.travelCardHeader}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.cardEyebrow}>Travel budget</Text>
+              <View style={styles.amountRow}>
+                <Text style={styles.heroAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+                  {formatCurrency(travelHistorySummary.total, travelHistorySummary.currency)}
+                </Text>
+                <Text style={styles.amountSuffix}>tracked</Text>
+              </View>
+            </View>
+            <View style={styles.quickTripPill}>
+              <Text style={styles.quickTripPillText}>Quick Trips</Text>
+            </View>
+          </View>
+          <Text style={styles.cardCopy}>
+            Plan a trip or create a quick trip to keep travel spending separate from everyday purchases.
+          </Text>
+          <ActionButtons styles={styles} colors={colors} onAdd={onAdd} onScan={onScan} />
         </View>
-        <ActionButtons styles={styles} colors={colors} onAdd={onAdd} onScan={onScan} />
-        <DailyTrackerCard onAddExpense={onAdd} onScanReceipt={onScan} embedded />
+
+        <View style={styles.quietLine}>
+          <ReceiptText size={17} color={colors.text3} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.quietLineTitle}>No spending logged today</Text>
+            <Text style={styles.quietLineText}>Today, week, and month are clear.</Text>
+          </View>
+        </View>
+
+        <View style={styles.travelFilterRow}>
+          <TravelFilterCard styles={styles} label="All" count={travelHistorySummary.count} amount={travelHistorySummary.total} currency={travelHistorySummary.currency} active={false} />
+          <TravelFilterCard styles={styles} label="Trips" count={travelHistorySummary.tripCount} amount={travelHistorySummary.tripTotal} currency={travelHistorySummary.currency} active={false} />
+          <TravelFilterCard styles={styles} label="Quick Trips" count={travelHistorySummary.quickTripCount} amount={travelHistorySummary.quickTripTotal} currency={travelHistorySummary.currency} active />
+        </View>
+
+        <View style={styles.collapsibleCard}>
+          <View style={styles.collapsibleHead}>
+            <View>
+              <Text style={styles.collapsibleTitle}>Everyday spending</Text>
+              <Text style={styles.collapsibleSub}>For non-trip purchases</Text>
+            </View>
+            <ChevronDown size={18} color={colors.text3} />
+          </View>
+        </View>
+
+        <View style={styles.travelEmptyState}>
+          <Wallet size={34} color={colors.text3} />
+          <Text style={styles.emptyTitle}>No travel expenses yet</Text>
+          <Text style={styles.emptyText}>Trips and Quick Trips will appear here. Normal expenses stay in their own filter.</Text>
+          <View style={styles.bottomCtaRow}>
+            <TouchableOpacity style={styles.primaryAction} onPress={onAdd} activeOpacity={0.78}>
+              <Text style={styles.primaryActionText}>Add Travel Expense</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryAction} onPress={onPlanTrip} activeOpacity={0.78}>
+              <Text style={styles.secondaryActionText}>Plan a Trip</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </>
     );
   }
@@ -1067,27 +1134,36 @@ function TripsMode(props: {
         onToggle={onToggleInsight}
       />
 
-      <TripPulseCard
-        styles={styles}
-        colors={colors}
-        tripPulse={tripPulse}
-        days={tripDays(trip)}
-        currency={trip.costCurrency ?? 'PHP'}
-      />
-
-      <PaymentQrPanel
-        styles={styles}
-        colors={colors}
-        title="Trip payment QR"
-        subtitle={`${paymentQrs.length} saved code${paymentQrs.length === 1 ? '' : 's'}`}
-        qrs={paymentQrs}
-        onAdd={onAddQr}
-        onOpen={onOpenQr}
-        onRemove={onRemoveQr}
-      />
-
-      <DailyTrackerCard onAddExpense={onAdd} onScanReceipt={onScan} embedded />
+      <View style={styles.monthSummaryRow}>
+        <View style={styles.monthSummaryIcon}><ReceiptText size={17} color={colors.text2} /></View>
+        <Text style={styles.monthSummaryTitle}>Trip pulse</Text>
+        <Text style={styles.monthSummaryMeta}>{formatCurrency(tripPulse.week, trip.costCurrency ?? 'PHP')} this week</Text>
+        <ChevronRight size={15} color={colors.text3} />
+      </View>
     </>
+  );
+}
+
+function TravelFilterCard({
+  active,
+  amount,
+  count,
+  currency,
+  label,
+  styles,
+}: {
+  active: boolean;
+  amount: number;
+  count: number;
+  currency: string;
+  label: string;
+  styles: ReturnType<typeof getStyles>;
+}) {
+  return (
+    <View style={[styles.travelFilterCard, active && styles.travelFilterCardActive]}>
+      <Text style={[styles.travelFilterLabel, active && styles.travelFilterLabelActive]}>{label}</Text>
+      <Text style={styles.travelFilterValue}>{count} · {formatCurrency(amount, currency)}</Text>
+    </View>
   );
 }
 
@@ -1145,13 +1221,6 @@ function PersonalMode(props: {
     onLogSavings,
     onEditSavings,
     onPlanTrip,
-    onAddQr,
-    onOpenQr,
-    onRemoveQr,
-    userQrs,
-    onAddDaily,
-    onScanDaily,
-    onEditDaily,
   } = props;
 
   return (
@@ -1159,7 +1228,10 @@ function PersonalMode(props: {
       <View style={styles.personalCard}>
         <View style={styles.personalTop}>
           <View>
-            <Text style={styles.personalPeriod}>This week</Text>
+            <View style={styles.periodRow}>
+              <Text style={styles.personalPeriod}>This week</Text>
+              <ChevronDown size={15} color={colors.text3} />
+            </View>
             <View style={styles.amountRow}>
               <Text style={styles.compactAmount}>{formatCurrency(personalSummary.week, personalSummary.currency)}</Text>
               <Text style={styles.amountSuffix}>spent</Text>
@@ -1170,7 +1242,7 @@ function PersonalMode(props: {
         </View>
         <TouchableOpacity style={styles.insightBanner} onPress={onToggleInsight} activeOpacity={0.75}>
           <View style={styles.insightIcon}><Coffee size={17} color={colors.accent} /></View>
-          <Text style={styles.insightText}>{personalSummary.week > 0 ? topCategory : 'No spending logged today'}</Text>
+          <Text style={styles.insightText}>{personalSummary.week > 0 ? `Nice! ${topCategory}` : 'No spending logged today'}</Text>
           <ChevronRight size={16} color={colors.text3} />
         </TouchableOpacity>
       </View>
@@ -1220,23 +1292,12 @@ function PersonalMode(props: {
         onPlanTrip={onPlanTrip}
       />
 
-      <DailyTrackerCard
-        onAddExpense={onAddDaily}
-        onScanReceipt={onScanDaily}
-        onEditExpense={onEditDaily}
-        embedded
-      />
-
-      <PaymentQrPanel
-        styles={styles}
-        colors={colors}
-        title="Personal payment QR"
-        subtitle={`${userQrs.length} saved code${userQrs.length === 1 ? '' : 's'}`}
-        qrs={userQrs}
-        onAdd={onAddQr}
-        onOpen={onOpenQr}
-        onRemove={onRemoveQr}
-      />
+      <View style={styles.monthSummaryRow}>
+        <View style={styles.monthSummaryIcon}><CircleDollarSign size={17} color={colors.text2} /></View>
+        <Text style={styles.monthSummaryTitle}>Monthly summary</Text>
+        <Text style={styles.monthSummaryMeta}>{formatCurrency(personalSummary.month, personalSummary.currency)}</Text>
+        <ChevronRight size={15} color={colors.text3} />
+      </View>
     </>
   );
 }
@@ -1526,46 +1587,6 @@ function InsightSection({
   );
 }
 
-function TripPulseCard({
-  colors,
-  currency,
-  days,
-  styles,
-  tripPulse,
-}: {
-  colors: ThemeColors;
-  styles: ReturnType<typeof getStyles>;
-  tripPulse: MoneySummary;
-  days: number;
-  currency: string;
-}) {
-  if (tripPulse.today === 0 && tripPulse.week === 0 && tripPulse.month === 0) {
-    return (
-      <View style={styles.quietLine}>
-        <ReceiptText size={17} color={colors.text3} />
-        <Text style={styles.quietLineText}>No spending logged today</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.pulseGrid}>
-      <SmallMetric styles={styles} label="Today" value={formatCurrency(tripPulse.today, currency)} />
-      <SmallMetric styles={styles} label="This week" value={formatCurrency(tripPulse.week, currency)} />
-      <SmallMetric styles={styles} label={`${days} trip days`} value={formatCurrency(tripPulse.month, currency)} />
-    </View>
-  );
-}
-
-function SmallMetric({ label, styles, value }: { styles: ReturnType<typeof getStyles>; label: string; value: string }) {
-  return (
-    <View style={styles.smallMetric}>
-      <Text style={styles.smallMetricLabel}>{label}</Text>
-      <Text style={styles.smallMetricValue} numberOfLines={1}>{value}</Text>
-    </View>
-  );
-}
-
 function MiniBars({ colors }: { colors: ThemeColors }) {
   const heights = [18, 26, 38, 22, 30, 34, 24];
   return (
@@ -1578,51 +1599,6 @@ function MiniBars({ colors }: { colors: ThemeColors }) {
           </Text>
         </View>
       ))}
-    </View>
-  );
-}
-
-function PaymentQrPanel<T extends PaymentQr | UserPaymentQr>({
-  colors,
-  onAdd,
-  onOpen,
-  onRemove,
-  qrs,
-  styles,
-  subtitle,
-  title,
-}: {
-  colors: ThemeColors;
-  styles: ReturnType<typeof getStyles>;
-  title: string;
-  subtitle: string;
-  qrs: T[];
-  onAdd: () => void;
-  onOpen: (qr: T) => void;
-  onRemove: (qr: T extends UserPaymentQr ? T : number) => void;
-}) {
-  return (
-    <View style={styles.collapsibleCard}>
-      <View style={styles.qrHeader}>
-        <View>
-          <Text style={styles.collapsibleTitle}>{title}</Text>
-          <Text style={styles.collapsibleSub}>{subtitle}</Text>
-        </View>
-        <TouchableOpacity style={styles.qrAdd} onPress={onAdd} activeOpacity={0.75}>
-          <QrCode size={15} color={colors.accent} />
-          <Text style={styles.qrAddText}>Add</Text>
-        </TouchableOpacity>
-      </View>
-      {qrs.length > 0 && (
-        <View style={styles.qrList}>
-          {qrs.map((qr, index) => (
-            <TouchableOpacity key={`${qr.label}-${index}`} style={styles.qrChip} onPress={() => onOpen(qr)} onLongPress={() => onRemove(('id' in qr ? qr : index) as never)} activeOpacity={0.75}>
-              <QrCode size={14} color={colors.text2} />
-              <Text style={styles.qrChipText} numberOfLines={1}>{qr.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
     </View>
   );
 }
@@ -1713,8 +1689,8 @@ function categoryConfig(category: string) {
 const modeStyles = StyleSheet.create({
   button: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: 15,
+    minHeight: 40,
+    borderRadius: 14,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1725,7 +1701,7 @@ const modeStyles = StyleSheet.create({
 });
 
 const miniStyles = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  wrap: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
   barCol: { alignItems: 'center', gap: 4 },
   bar: { width: 6, borderRadius: 4 },
   day: { fontSize: 10, fontWeight: '800' },
@@ -1734,21 +1710,38 @@ const miniStyles = StyleSheet.create({
 const getStyles = (c: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: c.bg },
   header: {
-    paddingHorizontal: 22,
-    paddingTop: 14,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  title: { fontSize: 32, fontWeight: '900', color: c.text, letterSpacing: 0 },
-  subtitle: { marginTop: 3, fontSize: 12, fontWeight: '900', color: c.text3, letterSpacing: 4, textTransform: 'uppercase' },
-  headerIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: c.card, borderWidth: 1, borderColor: c.border },
-  modeWrap: { marginHorizontal: 22, padding: 4, borderWidth: 1, borderColor: c.border, borderRadius: 18, backgroundColor: c.card, flexDirection: 'row', gap: 4 },
+  title: { fontSize: 28, fontWeight: '900', color: c.text, letterSpacing: 0 },
+  subtitle: { marginTop: 4, fontSize: 12, fontWeight: '900', color: c.text3, letterSpacing: 3, textTransform: 'uppercase' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  modeWrap: { marginHorizontal: 24, padding: 4, borderWidth: 1, borderColor: c.border, borderRadius: 18, backgroundColor: c.card, flexDirection: 'row', gap: 4 },
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 22, paddingTop: 20, paddingBottom: 130, gap: 14 },
+  content: { paddingHorizontal: 24, paddingTop: 18, paddingBottom: 130, gap: 14 },
 
-  tripCard: { borderRadius: 20, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, padding: 16 },
+  travelBudgetCard: { borderRadius: 22, borderWidth: 1, borderColor: c.accentBorder, backgroundColor: c.card, padding: 18, gap: 16 },
+  travelCardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  cardEyebrow: { fontSize: 12, fontWeight: '900', color: c.text3, letterSpacing: 4, textTransform: 'uppercase' },
+  heroAmount: { flexShrink: 1, fontSize: 38, fontWeight: '900', color: c.text, letterSpacing: 0 },
+  quickTripPill: { borderRadius: 17, borderWidth: 1, borderColor: c.accentBorder, backgroundColor: c.accentDim, paddingHorizontal: 16, paddingVertical: 9 },
+  quickTripPillText: { fontSize: 13, fontWeight: '900', color: c.accent },
+  cardCopy: { fontSize: 15, fontWeight: '600', lineHeight: 22, color: c.text2, maxWidth: 290 },
+  travelFilterRow: { flexDirection: 'row', gap: 10 },
+  travelFilterCard: { flex: 1, minHeight: 58, borderRadius: 15, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, paddingHorizontal: 12, justifyContent: 'center' },
+  travelFilterCardActive: { backgroundColor: c.accentDim, borderColor: c.accentBorder },
+  travelFilterLabel: { fontSize: 13, fontWeight: '900', color: c.text2 },
+  travelFilterLabelActive: { color: c.accent },
+  travelFilterValue: { marginTop: 5, fontSize: 11, fontWeight: '800', color: c.text3 },
+  travelEmptyState: { alignItems: 'center', gap: 10, paddingTop: 42, paddingHorizontal: 10 },
+  bottomCtaRow: { width: '100%', flexDirection: 'row', gap: 12, marginTop: 22 },
+
+  tripCard: { borderRadius: 20, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, padding: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   tripCardTop: { flexDirection: 'row', gap: 14, alignItems: 'center' },
   tripThumb: { width: 82, height: 82, borderRadius: 16, backgroundColor: c.card2 },
   tripThumbFallback: { width: 82, height: 82, borderRadius: 16, backgroundColor: c.accentDim, alignItems: 'center', justifyContent: 'center' },
@@ -1756,7 +1749,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   tripTitle: { flex: 1, fontSize: 17, fontWeight: '900', color: c.text },
   tripMeta: { marginTop: 4, fontSize: 12, fontWeight: '600', color: c.text2 },
   amountRow: { marginTop: 8, flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  compactAmount: { fontSize: 28, fontWeight: '900', color: c.text, letterSpacing: 0 },
+  compactAmount: { fontSize: 29, fontWeight: '900', color: c.text, letterSpacing: 0 },
   amountSuffix: { fontSize: 13, fontWeight: '700', color: c.text2 },
   miniMeta: { marginTop: 3, fontSize: 12, fontWeight: '800', color: c.text2 },
   progressCircle: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg2, borderWidth: 5, borderColor: c.accent },
@@ -1770,6 +1763,7 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
 
   personalCard: { borderRadius: 20, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, overflow: 'hidden' },
   personalTop: { padding: 18, flexDirection: 'row', justifyContent: 'space-between', gap: 16, alignItems: 'center' },
+  periodRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   personalPeriod: { fontSize: 13, fontWeight: '900', color: c.text, marginBottom: 2 },
   insightBanner: { borderTopWidth: 1, borderTopColor: c.border, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
   insightIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: c.accentDim, alignItems: 'center', justifyContent: 'center' },
@@ -1816,8 +1810,9 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   categoryAmount: { width: 92, textAlign: 'right', fontSize: 12, fontWeight: '900', color: c.text },
   categoryFoot: { fontSize: 11, fontWeight: '700', color: c.text3 },
 
-  quietLine: { minHeight: 52, borderRadius: 15, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10 },
-  quietLineText: { fontSize: 13, fontWeight: '800', color: c.text2 },
+  quietLine: { minHeight: 62, borderRadius: 16, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 12 },
+  quietLineTitle: { fontSize: 15, fontWeight: '900', color: c.text },
+  quietLineText: { marginTop: 2, fontSize: 12, fontWeight: '800', color: c.text2 },
   pulseGrid: { flexDirection: 'row', gap: 10 },
   smallMetric: { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, padding: 12 },
   smallMetricLabel: { fontSize: 10, fontWeight: '900', color: c.text3, textTransform: 'uppercase', letterSpacing: 1.2 },
@@ -1829,6 +1824,11 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   qrList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: c.border },
   qrChip: { maxWidth: '48%', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 14, backgroundColor: c.bg2 },
   qrChipText: { flex: 1, fontSize: 12, fontWeight: '800', color: c.text2 },
+
+  monthSummaryRow: { minHeight: 54, borderRadius: 15, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10 },
+  monthSummaryIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.bg2, alignItems: 'center', justifyContent: 'center' },
+  monthSummaryTitle: { flex: 1, fontSize: 14, fontWeight: '900', color: c.text },
+  monthSummaryMeta: { fontSize: 12, fontWeight: '700', color: c.text2 },
 
   emptyCard: { borderRadius: 18, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, padding: 24, alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 17, fontWeight: '900', color: c.text, textAlign: 'center' },
