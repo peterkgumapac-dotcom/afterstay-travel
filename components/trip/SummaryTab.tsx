@@ -1,45 +1,35 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
-  Dimensions,
-  LayoutAnimation,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
-  UIManager,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Coffee, Dumbbell, Heart, MapPin, Moon, MoreHorizontal, Plus, Sparkles, User, Users, UtensilsCrossed, Wallet, Zap } from 'lucide-react-native';
+import { Archive, ChevronRight, Coffee, Dumbbell, Heart, MapPin, MoreHorizontal, Plus, Sparkles, User, Users, UtensilsCrossed, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-import ConstellationHero from '@/components/summary/ConstellationHero';
-import HighlightsStrip from '@/components/summary/HighlightsStrip';
 import EmptyState from '@/components/shared/EmptyState';
 import { TripCollage } from './TripCollage';
-import { GroupHeader } from './GroupHeader';
 import type { PastTripDisplay, ThemeColors } from './tripConstants';
 import { CATEGORY_ICON, type QuickTrip } from '@/lib/quickTripTypes';
 import { formatCurrency } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const CARD_W = (SCREEN_W - 48 - 12) / 2; // 2 columns with gap
-const CARD_H = CARD_W * 1.25;
-
 const QT_ICON_MAP: Record<string, React.ElementType> = {
   Users, Heart, Coffee, User, UtensilsCrossed, Dumbbell, Sparkles,
 };
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 type TopSegment = 'trips' | 'quick';
-type TripFilter = 'all' | 'past' | 'upcoming' | 'drafts' | 'archived';
 type TripCardStatus = 'active' | 'incoming' | 'past' | 'draft' | 'archived';
+type TripLibraryItem =
+  | { type: 'active'; data: PastTripDisplay }
+  | { type: 'incoming'; data: PastTripDisplay }
+  | { type: 'past'; data: PastTripDisplay }
+  | { type: 'draft'; data: Trip }
+  | { type: 'archived'; data: PastTripDisplay };
 
 interface SummaryTabProps {
   totalMiles: number;
@@ -69,65 +59,7 @@ interface SummaryTabProps {
   onRestoreTrip?: (tripId: string) => void;
 }
 
-const FILTER_LABELS: Record<TripFilter, string> = {
-  all: 'All',
-  past: 'Past',
-  upcoming: 'Upcoming',
-  drafts: 'Drafts',
-  archived: 'Archived',
-};
-
-function EmptyFilterState({
-  filter,
-  onAction,
-}: {
-  filter: TripFilter;
-  colors: ThemeColors;
-  onAction?: () => void;
-}) {
-  const messages: Record<TripFilter, { title: string; subtitle: string }> = {
-    all: {
-      title: 'No trips yet',
-      subtitle: 'Create your first trip to start tracking adventures.',
-    },
-    past: {
-      title: 'No past trips',
-      subtitle: 'Completed trips will appear here.',
-    },
-    upcoming: {
-      title: 'No upcoming trips',
-      subtitle: 'Plan something exciting — your next adventure awaits.',
-    },
-    drafts: {
-      title: 'No drafts',
-      subtitle: 'Drafts are auto-saved when you start planning.',
-    },
-    archived: {
-      title: 'No archived trips',
-      subtitle: 'Archived trips hide from main lists but stay in stats.',
-    },
-  };
-  const msg = messages[filter];
-  return (
-    <View style={{ paddingVertical: 32, paddingHorizontal: 24 }}>
-      <EmptyState
-        icon={MapPin}
-        title={msg.title}
-        subtitle={msg.subtitle}
-        actionLabel={filter === 'upcoming' || filter === 'all' ? 'Plan a Trip' : undefined}
-        onAction={onAction}
-      />
-    </View>
-  );
-}
-
 export function SummaryTab({
-  totalMiles,
-  totalTrips,
-  countriesCount,
-  totalNights,
-  totalSpent,
-  highlights,
   activeTrips,
   incomingTrips,
   pastTrips,
@@ -150,7 +82,7 @@ export function SummaryTab({
 }: SummaryTabProps) {
   const styles = useMemo(() => getStyles(colors), [colors]);
   const [segment, setSegment] = useState<TopSegment>('trips');
-  const [filter, setFilter] = useState<TripFilter>('all');
+  const [showArchived, setShowArchived] = useState(false);
   const [actionTrip, setActionTrip] = useState<{
     tripId: string;
     dest: string;
@@ -160,42 +92,18 @@ export function SummaryTab({
     isArchived: boolean;
   } | null>(null);
 
-  // Build filtered list based on active filter
-  const filteredItems = useMemo(() => {
-    switch (filter) {
-      case 'past':
-        return pastTrips.map((t) => ({ type: 'past' as const, data: t }));
-      case 'upcoming':
-        return [
-          ...activeTrips.map((t) => ({ type: 'active' as const, data: t })),
-          ...incomingTrips.map((t) => ({ type: 'incoming' as const, data: t })),
-        ];
-      case 'drafts':
-        return draftTrips.map((t) => ({ type: 'draft' as const, data: t }));
-      case 'archived':
-        return archivedTrips.map((t) => ({
-          type: 'archived' as const,
-          data: mapTripToPastDisplay(t),
-        }));
-      case 'all':
-      default:
-        return [
-          ...activeTrips.map((t) => ({ type: 'active' as const, data: t })),
-          ...incomingTrips.map((t) => ({ type: 'incoming' as const, data: t })),
-          ...pastTrips.map((t) => ({ type: 'past' as const, data: t })),
-          ...draftTrips.map((t) => ({ type: 'draft' as const, data: t })),
-        ];
-    }
-  }, [filter, activeTrips, incomingTrips, pastTrips, draftTrips, archivedTrips]);
+  const upcomingItems = useMemo<TripLibraryItem[]>(() => [
+    ...activeTrips.map((t) => ({ type: 'active' as const, data: t })),
+    ...incomingTrips.map((t) => ({ type: 'incoming' as const, data: t })),
+    ...draftTrips.map((t) => ({ type: 'draft' as const, data: t })),
+  ], [activeTrips, incomingTrips, draftTrips]);
 
-  const handleFilterChange = useCallback(
-    (f: TripFilter) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setFilter(f);
-    },
-    []
-  );
+  const completedItems = useMemo<TripLibraryItem[]>(() => pastTrips.map((t) => ({ type: 'past' as const, data: t })), [pastTrips]);
+
+  const archivedItems = useMemo<TripLibraryItem[]>(() => archivedTrips.map((t) => ({
+    type: 'archived' as const,
+    data: mapTripToPastDisplay(t),
+  })), [archivedTrips]);
 
   const handleDelete = useCallback(
     (tripId: string, isDraft?: boolean) => {
@@ -229,12 +137,14 @@ export function SummaryTab({
     [onRestoreTrip]
   );
 
-  // ── Album card for a trip ──
-  const renderTripAlbumCard = (item: (typeof filteredItems)[number], index: number) => {
+  // ── Library card for a trip ──
+  const renderTripLibraryCard = (
+    item: TripLibraryItem,
+    index: number,
+  ) => {
     const t = item.type === 'draft' ? mapTripToPastDisplay(item.data as Trip) : (item.data as PastTripDisplay);
     const isDraft = item.type === 'draft';
     const isArchived = item.type === 'archived';
-    const statusColor = item.type === 'active' ? colors.success : item.type === 'incoming' ? colors.accent : undefined;
     const statusLabel = getTripStatusLabel(item.type, t);
     const canManage = !!t.tripId && (onEditTrip || onArchiveTrip || onDeleteTrip || onDeleteDraft || onRestoreTrip || onViewRecap || onRescanTrip || onInviteTrip);
 
@@ -254,73 +164,145 @@ export function SummaryTab({
     return (
       <TouchableOpacity
         key={`${item.type}-${t.tripId ?? index}`}
-        style={styles.albumCard}
+        style={styles.tripLibraryCard}
         onPress={t.tripId && onTripPress ? () => onTripPress(t.tripId!, item.type) : undefined}
         activeOpacity={0.8}
       >
-        {t.tripId ? (
-          <TripCollage tripId={t.tripId} width={CARD_W} height={CARD_H} />
-        ) : (
-          <View style={[styles.albumCover, styles.albumCoverFallback]}>
-            <Text style={styles.albumFlag}>{t.flag}</Text>
-          </View>
-        )}
-        <View style={styles.albumGradient} />
-        {statusColor && <View style={[styles.albumDot, { backgroundColor: statusColor }]} />}
-        <View style={styles.albumBadge}>
-          <Text style={styles.albumBadgeText}>{statusLabel}</Text>
+        <View style={styles.tripThumbWrap}>
+          {t.tripId ? (
+            <TripCollage tripId={t.tripId} width={92} height={92} animated={false} />
+          ) : (
+            <View style={[styles.tripThumbFallback]}>
+              <Text style={styles.albumFlag}>{t.flag}</Text>
+            </View>
+          )}
         </View>
-        {canManage && (
-          <TouchableOpacity
-            style={styles.albumActionBtn}
-            onPress={showTripActions}
-            hitSlop={8}
-            activeOpacity={0.75}
-            accessibilityRole="button"
-            accessibilityLabel={`${statusLabel} trip actions`}
-          >
-            <MoreHorizontal size={16} color="#fff" />
-          </TouchableOpacity>
-        )}
-        <View style={styles.albumInfo}>
-          <Text style={styles.albumDest} numberOfLines={1}>{t.dest}</Text>
-          <Text style={styles.albumDates} numberOfLines={1}>{t.dates}</Text>
-          {t.nights > 0 && (
-            <View style={styles.albumMetaRow}><Moon size={10} color="rgba(255,255,255,0.7)" /><Text style={styles.albumMetaText}>{t.nights}n</Text></View>
+
+        <View style={styles.tripLibraryInfo}>
+          <View style={styles.tripTitleRow}>
+            <Text style={styles.tripLibraryTitle} numberOfLines={1}>{t.dest}</Text>
+            <View style={[
+              styles.statusPill,
+              item.type === 'active' && styles.statusPillActive,
+              item.type === 'incoming' && styles.statusPillUpcoming,
+              item.type === 'past' && styles.statusPillCompleted,
+              item.type === 'draft' && styles.statusPillDraft,
+              item.type === 'archived' && styles.statusPillArchived,
+            ]}>
+              <Text style={[
+                styles.statusPillText,
+                item.type === 'active' && styles.statusPillTextActive,
+                item.type === 'incoming' && styles.statusPillTextUpcoming,
+                item.type === 'past' && styles.statusPillTextCompleted,
+                item.type === 'draft' && styles.statusPillTextDraft,
+                item.type === 'archived' && styles.statusPillTextArchived,
+              ]}>{statusLabel}</Text>
+            </View>
+          </View>
+          <Text style={styles.tripLibraryDates} numberOfLines={1}>{t.dates}</Text>
+          <View style={styles.tripMetaLine}>
+            {t.nights > 0 ? (
+              <Text style={styles.tripMetaText}>{t.nights} night{t.nights !== 1 ? 's' : ''}</Text>
+            ) : null}
+            {t.spent > 0 ? (
+              <Text style={styles.tripMetaText}>{formatCurrency(t.spent, 'PHP')} spent</Text>
+            ) : null}
+            {isDraft ? <Text style={styles.tripMetaText}>Resume planning</Text> : null}
+          </View>
+        </View>
+
+        <View style={styles.tripCardRight}>
+          {canManage ? (
+            <TouchableOpacity
+              style={styles.tripActionBtn}
+              onPress={showTripActions}
+              hitSlop={8}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={`${statusLabel} trip actions`}
+            >
+              <MoreHorizontal size={17} color={colors.text2} />
+            </TouchableOpacity>
+          ) : (
+            <ChevronRight size={18} color={colors.text3} />
           )}
         </View>
       </TouchableOpacity>
     );
   };
 
-  // ── Album card for a quick trip ──
-  const renderQuickTripCard = (qt: QuickTrip) => {
+  const renderSection = (
+    title: string,
+    items: TripLibraryItem[],
+    emptyText?: string,
+  ) => (
+    <View style={styles.librarySection}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionList}>
+        {items.length > 0 ? (
+          items.map((item, index) => renderTripLibraryCard(item, index))
+        ) : emptyText ? (
+          <Text style={styles.sectionEmptyText}>{emptyText}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  const renderArchiveRow = () => {
+    if (archivedItems.length === 0) return null;
+    return (
+      <TouchableOpacity
+        style={styles.archiveRow}
+        onPress={() => {
+          Haptics.selectionAsync();
+          setShowArchived((value) => !value);
+        }}
+        activeOpacity={0.75}
+      >
+        <View style={styles.archiveIcon}>
+          <Archive size={17} color={colors.text2} />
+        </View>
+        <Text style={styles.archiveText}>View archived trips</Text>
+        <Text style={styles.archiveCount}>{archivedItems.length}</Text>
+        <ChevronRight size={18} color={colors.text3} style={showArchived ? styles.archiveChevronOpen : undefined} />
+      </TouchableOpacity>
+    );
+  };
+
+  const renderQuickTripListCard = (qt: QuickTrip) => {
     const iconName = CATEGORY_ICON[qt.category] ?? 'Sparkles';
     const Icon = QT_ICON_MAP[iconName] ?? Sparkles;
     return (
-      <TouchableOpacity key={qt.id} style={styles.albumCard} onPress={onQuickTripPress ? () => onQuickTripPress(qt.id) : undefined} activeOpacity={0.8}>
+      <TouchableOpacity
+        key={qt.id}
+        style={styles.tripLibraryCard}
+        onPress={onQuickTripPress ? () => onQuickTripPress(qt.id) : undefined}
+        activeOpacity={0.8}
+      >
         {qt.coverPhotoUrl ? (
-          <Image source={{ uri: qt.coverPhotoUrl }} style={styles.albumCover} contentFit="cover" cachePolicy="memory-disk" transition={200} />
+          <Image source={{ uri: qt.coverPhotoUrl }} style={styles.quickThumb} contentFit="cover" cachePolicy="memory-disk" transition={200} />
         ) : (
-          <View style={[styles.albumCover, styles.albumCoverFallback]}><Icon size={32} color={colors.accent} strokeWidth={1.5} /></View>
+          <View style={styles.quickThumbFallback}>
+            <Icon size={28} color={colors.accent} strokeWidth={1.5} />
+          </View>
         )}
-        <View style={styles.albumGradient} />
-        <View style={styles.albumBadge}><Icon size={10} color="#fff" strokeWidth={2.5} /><Text style={styles.albumBadgeText}>{qt.category}</Text></View>
-        <View style={styles.albumInfo}>
-          <Text style={styles.albumDest} numberOfLines={1}>{qt.title}</Text>
-          <Text style={styles.albumDates} numberOfLines={1}>{qt.placeName}</Text>
-          {qt.totalSpendAmount > 0 && (
-            <View style={styles.albumMetaRow}><Wallet size={10} color="rgba(255,255,255,0.7)" /><Text style={styles.albumMetaText}>{formatCurrency(qt.totalSpendAmount, qt.totalSpendCurrency)}</Text></View>
-          )}
+        <View style={styles.tripLibraryInfo}>
+          <Text style={styles.tripLibraryTitle} numberOfLines={1}>{qt.title}</Text>
+          <Text style={styles.tripLibraryDates} numberOfLines={1}>{qt.placeName}</Text>
+          <View style={styles.tripMetaLine}>
+            <Text style={styles.tripMetaText}>{qt.category}</Text>
+            {qt.totalSpendAmount > 0 ? (
+              <Text style={styles.tripMetaText}>{formatCurrency(qt.totalSpendAmount, qt.totalSpendCurrency)} spent</Text>
+            ) : null}
+          </View>
         </View>
+        <ChevronRight size={18} color={colors.text3} />
       </TouchableOpacity>
     );
   };
 
   return (
     <>
-      <ConstellationHero miles={totalMiles} trips={totalTrips} countries={countriesCount} nights={totalNights} spent={totalSpent} />
-
       {/* ── Segment: Trips / Quick Trips ── */}
       <View style={styles.segmentRow}>
         {(['trips', 'quick'] as TopSegment[]).map((seg) => {
@@ -340,48 +322,57 @@ export function SummaryTab({
 
       {segment === 'trips' ? (
         <>
-          <GroupHeader kicker="Highlights" title="Your travel story" colors={colors} />
-          <HighlightsStrip highlights={highlights} />
-
-          <View style={styles.filterRow}>
-            {(Object.keys(FILTER_LABELS) as TripFilter[]).map((f) => (
-              <TouchableOpacity key={f} style={[styles.filterChip, filter === f && styles.filterChipActive]} onPress={() => handleFilterChange(f)} activeOpacity={0.7}>
-                <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>{FILTER_LABELS[f]}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={styles.albumGrid}>
-            {filteredItems.length === 0 ? (
-              <View style={{ width: '100%' }}>
-                <EmptyFilterState filter={filter} colors={colors} onAction={filter === 'upcoming' || filter === 'all' ? onAddTrip : undefined} />
-              </View>
-            ) : (
-              filteredItems.map((item, i) => renderTripAlbumCard(item, i))
-            )}
-            {(filter === 'all' || filter === 'upcoming') && (
-              <TouchableOpacity onPress={onAddTrip} style={styles.albumCardAdd} activeOpacity={0.7}>
+          {renderSection('Active & Upcoming', upcomingItems, 'No active or upcoming trips yet.')}
+          {renderSection('Completed', completedItems)}
+          {upcomingItems.length === 0 && completedItems.length === 0 ? (
+            <View style={styles.emptyLibraryWrap}>
+              <EmptyState
+                icon={MapPin}
+                title="Plan your first trip"
+                subtitle="Your trips, bookings, companions, and files will live here."
+                actionLabel="Plan a Trip"
+                onAction={onAddTrip}
+              />
+            </View>
+          ) : null}
+          <View style={styles.librarySection}>
+            <TouchableOpacity onPress={onAddTrip} style={styles.addTripRow} activeOpacity={0.7}>
+              <View style={styles.addTripIcon}>
                 <Plus size={24} color={colors.accent} />
-                <Text style={styles.albumAddLabel}>Add trip</Text>
-              </TouchableOpacity>
-            )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.addTripTitle}>Add trip</Text>
+                <Text style={styles.addTripSub}>Scan a booking or start from scratch</Text>
+              </View>
+              <ChevronRight size={18} color={colors.text3} />
+            </TouchableOpacity>
+            {renderArchiveRow()}
+            {showArchived ? renderSection('Archived', archivedItems) : null}
           </View>
         </>
       ) : (
         <>
-          <GroupHeader kicker={`${quickTrips.length} trips`} title="Quick trips" colors={colors} />
-          <View style={styles.albumGrid}>
+          <View style={styles.librarySection}>
+            <Text style={styles.sectionTitle}>Quick Trips</Text>
             {quickTrips.length === 0 ? (
-              <View style={{ width: '100%', paddingVertical: 32, paddingHorizontal: 24 }}>
+              <View style={styles.emptyLibraryWrap}>
                 <EmptyState icon={Zap} title="No quick trips yet" subtitle="Capture dinners, outings, and everyday moments" actionLabel="Add Quick Trip" onAction={onAddQuickTrip} />
               </View>
             ) : (
-              quickTrips.map((qt) => renderQuickTripCard(qt))
+              <View style={styles.sectionList}>
+                {quickTrips.map((qt) => renderQuickTripListCard(qt))}
+              </View>
             )}
             {onAddQuickTrip && quickTrips.length > 0 && (
-              <TouchableOpacity onPress={onAddQuickTrip} style={styles.albumCardAdd} activeOpacity={0.7}>
-                <Zap size={24} color={colors.accent} />
-                <Text style={styles.albumAddLabel}>Quick trip</Text>
+              <TouchableOpacity onPress={onAddQuickTrip} style={styles.addTripRow} activeOpacity={0.7}>
+                <View style={styles.addTripIcon}>
+                  <Zap size={22} color={colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.addTripTitle}>Add quick trip</Text>
+                  <Text style={styles.addTripSub}>Log a day out, meal, or short memory</Text>
+                </View>
+                <ChevronRight size={18} color={colors.text3} />
               </TouchableOpacity>
             )}
           </View>
@@ -585,93 +576,6 @@ function formatDate(iso: string): string {
 
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    ghostAction: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.accent,
-    },
-    listContainer: {
-      paddingHorizontal: 16,
-      gap: 8,
-      marginBottom: 8,
-    },
-    tripCardWrapper: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    statusDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    emptyText: {
-      fontSize: 13,
-      color: colors.text3,
-      textAlign: 'center',
-      paddingVertical: 16,
-    },
-    addPastTripRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingVertical: 12,
-      paddingHorizontal: 14,
-      borderWidth: 1.5,
-      borderColor: colors.border2,
-      borderStyle: 'dashed',
-      borderRadius: 14,
-    },
-    addPastTripIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: colors.accentBg,
-      borderWidth: 1,
-      borderColor: colors.accentBorder,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    addPastTripInfo: {
-      flex: 1,
-    },
-    addPastTripTitle: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    addPastTripSub: {
-      fontSize: 11,
-      color: colors.text3,
-      marginTop: 2,
-    },
-    filterRow: {
-      flexDirection: 'row',
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 12,
-      gap: 8,
-    },
-    filterChip: {
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-    },
-    filterChipActive: {
-      borderColor: colors.black,
-      backgroundColor: colors.black,
-    },
-    filterChipText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    filterChipTextActive: {
-      color: colors.onBlack,
-    },
     // ── Segment control ──
     segmentRow: {
       flexDirection: 'row',
@@ -723,129 +627,235 @@ const getStyles = (colors: ThemeColors) =>
     segmentCountTextActive: {
       color: colors.accent,
     },
-    // ── Album grid ──
-    albumGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+    librarySection: {
       paddingHorizontal: 16,
-      gap: 12,
-      paddingBottom: 16,
+      paddingTop: 16,
     },
-    albumCard: {
-      width: CARD_W,
-      height: CARD_H,
+    sectionTitle: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: colors.text2,
+      letterSpacing: 1.4,
+      textTransform: 'uppercase',
+      marginBottom: 10,
+    },
+    sectionList: {
+      gap: 10,
+    },
+    sectionEmptyText: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.text3,
+      paddingVertical: 12,
+    },
+    tripLibraryCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      minHeight: 112,
+      padding: 10,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    tripThumbWrap: {
+      width: 92,
+      height: 92,
       borderRadius: 16,
       overflow: 'hidden',
-      backgroundColor: colors.card,
+      backgroundColor: colors.elevated,
     },
-    albumCover: {
-      width: '100%',
-      height: '100%',
-    },
-    albumCoverFallback: {
+    tripThumbFallback: {
+      flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.elevated,
     },
     albumFlag: {
-      fontSize: 40,
+      fontSize: 34,
     },
-    albumGradient: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: '55%',
-      backgroundColor: 'rgba(0,0,0,0.25)',
+    quickThumb: {
+      width: 72,
+      height: 72,
+      borderRadius: 16,
+      backgroundColor: colors.elevated,
     },
-    albumDot: {
-      position: 'absolute',
-      top: 10,
-      right: 10,
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      borderWidth: 1.5,
-      borderColor: 'rgba(0,0,0,0.3)',
-    },
-    albumBadge: {
-      position: 'absolute',
-      top: 10,
-      left: 10,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 3,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 8,
-      maxWidth: CARD_W - 52,
-    },
-    albumBadgeText: {
-      fontSize: 9,
-      fontWeight: '700',
-      color: '#fff',
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    },
-    albumActionBtn: {
-      position: 'absolute',
-      top: 8,
-      right: 8,
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: 'rgba(0,0,0,0.48)',
+    quickThumbFallback: {
+      width: 72,
+      height: 72,
+      borderRadius: 16,
+      backgroundColor: colors.accentBg,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.18)',
+      borderColor: colors.accentBorder,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    albumInfo: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      padding: 12,
-      backgroundColor: 'rgba(0,0,0,0.45)',
+    tripLibraryInfo: {
+      flex: 1,
+      minWidth: 0,
+      justifyContent: 'center',
     },
-    albumDest: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: '#fff',
-      letterSpacing: -0.2,
-    },
-    albumDates: {
-      fontSize: 11,
-      color: 'rgba(255,255,255,0.7)',
-      marginTop: 2,
-    },
-    albumMetaRow: {
+    tripTitleRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 3,
-      marginTop: 4,
+      gap: 8,
     },
-    albumMetaText: {
-      fontSize: 10,
-      color: 'rgba(255,255,255,0.7)',
+    tripLibraryTitle: {
+      flex: 1,
+      minWidth: 0,
+      fontSize: 17,
+      fontWeight: '800',
+      color: colors.text,
+      letterSpacing: -0.25,
+    },
+    tripLibraryDates: {
+      fontSize: 13,
+      color: colors.text2,
+      marginTop: 6,
+    },
+    tripMetaLine: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 9,
+    },
+    tripMetaText: {
+      fontSize: 12,
+      lineHeight: 16,
+      color: colors.text3,
       fontWeight: '600',
     },
-    albumCardAdd: {
-      width: CARD_W,
-      height: CARD_H,
+    tripCardRight: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingLeft: 2,
+    },
+    tripActionBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.bg,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    statusPill: {
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: colors.elevated,
+    },
+    statusPillActive: {
+      backgroundColor: 'rgba(50, 150, 90, 0.13)',
+    },
+    statusPillUpcoming: {
+      backgroundColor: colors.accentBg,
+    },
+    statusPillCompleted: {
+      backgroundColor: colors.elevated,
+    },
+    statusPillDraft: {
+      backgroundColor: 'rgba(120, 120, 120, 0.12)',
+    },
+    statusPillArchived: {
+      backgroundColor: 'rgba(120, 120, 120, 0.10)',
+    },
+    statusPillText: {
+      fontSize: 11,
+      fontWeight: '800',
+      color: colors.text3,
+    },
+    statusPillTextActive: {
+      color: colors.success,
+    },
+    statusPillTextUpcoming: {
+      color: colors.accent,
+    },
+    statusPillTextCompleted: {
+      color: colors.text2,
+    },
+    statusPillTextDraft: {
+      color: colors.text3,
+    },
+    statusPillTextArchived: {
+      color: colors.text3,
+    },
+    emptyLibraryWrap: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+    },
+    addTripRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 14,
       borderRadius: 16,
       borderWidth: 1.5,
       borderColor: colors.border2,
       borderStyle: 'dashed',
+      backgroundColor: colors.card,
+      marginBottom: 10,
+    },
+    addTripIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: colors.accentBg,
+      borderWidth: 1,
+      borderColor: colors.accentBorder,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
     },
-    albumAddLabel: {
+    addTripTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: colors.text,
+    },
+    addTripSub: {
       fontSize: 12,
-      fontWeight: '600',
       color: colors.text3,
+      marginTop: 2,
+    },
+    archiveRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 14,
+      borderRadius: 16,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    archiveIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      backgroundColor: colors.elevated,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    archiveText: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    archiveCount: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: colors.text3,
+      backgroundColor: colors.elevated,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 999,
+    },
+    archiveChevronOpen: {
+      transform: [{ rotate: '90deg' }],
     },
     actionOverlay: {
       flex: 1,
