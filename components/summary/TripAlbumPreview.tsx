@@ -446,9 +446,9 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                   styles.pageShell,
                   styles.nextPageUnderlay,
                   {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.16, 0.45, 1], outputRange: [0, 0.5, 1, 1], extrapolate: 'clamp' }),
+                    opacity: 1,
                     transform: [
-                      { scale: flipAnim.interpolate({ inputRange: [0, 0.45, 1], outputRange: [0.985, 1, 1], extrapolate: 'clamp' }) },
+                      { scale: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.995, 1, 1], extrapolate: 'clamp' }) },
                     ],
                   },
                 ]}
@@ -470,10 +470,10 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
               style={[
                 styles.revealedPageShadow,
                 {
-                  opacity: flipAnim.interpolate({ inputRange: [0, 0.18, 0.66, 1], outputRange: [0, 0.48, 0.3, 0], extrapolate: 'clamp' }),
+                  opacity: flipAnim.interpolate({ inputRange: [0, 0.2, 0.7, 1], outputRange: [0, 0.28, 0.16, 0], extrapolate: 'clamp' }),
                   transform: [
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.52, 1], outputRange: [PAGE_W * 0.36, -PAGE_W * 0.2, -PAGE_W * 0.62], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.14, 0.72, 0.14], extrapolate: 'clamp' }) },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.52, 1], outputRange: [PAGE_W * 0.4, -PAGE_W * 0.06, -PAGE_W * 0.54], extrapolate: 'clamp' }) },
+                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.08, 0.38, 0.08], extrapolate: 'clamp' }) },
                   ],
                 },
               ]}
@@ -831,14 +831,14 @@ const getStyles = (_colors: ThemeColors) =>
     revealedPageShadow: {
       position: 'absolute',
       zIndex: 2,
-      width: PAGE_W * 0.46,
+      width: PAGE_W * 0.24,
       height: PAGE_H - 16,
       borderRadius: 28,
-      backgroundColor: 'rgba(34,20,10,0.55)',
+      backgroundColor: 'rgba(34,20,10,0.34)',
       shadowColor: '#000',
-      shadowOpacity: 0.5,
-      shadowRadius: 26,
-      shadowOffset: { width: -12, height: 10 },
+      shadowOpacity: 0.28,
+      shadowRadius: 20,
+      shadowOffset: { width: -10, height: 8 },
     },
     flipSheet: {
       position: 'absolute',
