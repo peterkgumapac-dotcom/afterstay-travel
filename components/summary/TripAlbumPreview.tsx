@@ -391,6 +391,44 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
           <View pointerEvents="none" style={styles.flipOverlay}>
             <Animated.View
               style={[
+                styles.revealedPageShadow,
+                {
+                  opacity: flipAnim.interpolate({ inputRange: [0, 0.32, 0.68, 1], outputRange: [0, 0.36, 0.2, 0], extrapolate: 'clamp' }),
+                  transform: [
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [PAGE_W * 0.2, -PAGE_W * 0.28], extrapolate: 'clamp' }) },
+                  ],
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.pageShell,
+                styles.flipSheet,
+                styles.flipBackSheet,
+                {
+                  opacity: flipAnim.interpolate({ inputRange: [0, 0.44, 0.52, 0.9, 1], outputRange: [0, 0, 1, 1, 0], extrapolate: 'clamp' }),
+                  transform: [
+                    { perspective: 1200 },
+                    { translateX: -PAGE_W / 2 },
+                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.18, 0.72, 1], outputRange: ['180deg', '156deg', '52deg', '4deg'], extrapolate: 'clamp' }) },
+                    { translateX: PAGE_W / 2 },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -22, -52], extrapolate: 'clamp' }) },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.pageBackPaper}>
+                <View style={styles.pageBackFold} />
+                <View style={styles.pageBackLine} />
+                <View style={[styles.pageBackLine, styles.pageBackLineShort]} />
+                <View style={styles.pageBackPhotoGhost} />
+                <View style={styles.pageBackLine} />
+                <View style={[styles.pageBackLine, styles.pageBackLineShort]} />
+              </View>
+              <LinearGradient colors={['rgba(77,48,27,0.18)', 'rgba(255,255,255,0.18)', 'rgba(255,255,255,0)']} style={styles.flipBackSheen} />
+            </Animated.View>
+            <Animated.View
+              style={[
                 styles.pageShell,
                 styles.flipSheet,
                 {
@@ -427,6 +465,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                 ]}
               />
               <View style={styles.pageCorner} />
+              <View style={styles.flipPageThickness} />
             </Animated.View>
           </View>
         ) : null}
@@ -721,11 +760,65 @@ const getStyles = (_colors: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
+    revealedPageShadow: {
+      position: 'absolute',
+      width: PAGE_W * 0.72,
+      height: PAGE_H - 16,
+      borderRadius: 28,
+      backgroundColor: 'rgba(34,20,10,0.55)',
+      shadowColor: '#000',
+      shadowOpacity: 0.5,
+      shadowRadius: 26,
+      shadowOffset: { width: -12, height: 10 },
+    },
     flipSheet: {
       shadowOpacity: 0.48,
       shadowRadius: 26,
       shadowOffset: { width: -24, height: 18 },
       elevation: 14,
+    },
+    flipBackSheet: {
+      backgroundColor: '#f7efdf',
+      borderColor: 'rgba(99,65,38,0.24)',
+    },
+    pageBackPaper: {
+      flex: 1,
+      padding: 26,
+      backgroundColor: '#f7efdf',
+    },
+    pageBackFold: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: 28,
+      backgroundColor: 'rgba(91,55,30,0.1)',
+      borderRightWidth: 1,
+      borderRightColor: 'rgba(91,55,30,0.08)',
+    },
+    pageBackLine: {
+      height: 10,
+      borderRadius: 999,
+      backgroundColor: 'rgba(118,88,62,0.16)',
+      marginBottom: 13,
+    },
+    pageBackLineShort: {
+      width: '62%',
+    },
+    pageBackPhotoGhost: {
+      flex: 1,
+      marginVertical: 18,
+      borderRadius: 20,
+      backgroundColor: 'rgba(150,108,72,0.14)',
+      borderWidth: 1,
+      borderColor: 'rgba(118,88,62,0.1)',
+    },
+    flipBackSheen: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: 78,
     },
     flipCurlHighlight: {
       position: 'absolute',
@@ -738,6 +831,18 @@ const getStyles = (_colors: ThemeColors) =>
       shadowOpacity: 0.65,
       shadowRadius: 18,
       shadowOffset: { width: 0, height: 0 },
+    },
+    flipPageThickness: {
+      position: 'absolute',
+      top: 10,
+      bottom: 10,
+      right: -5,
+      width: 9,
+      borderTopRightRadius: 16,
+      borderBottomRightRadius: 16,
+      backgroundColor: '#d8c6ac',
+      borderLeftWidth: 1,
+      borderLeftColor: 'rgba(91,62,37,0.18)',
     },
     turnPageControl: {
       position: 'absolute',
