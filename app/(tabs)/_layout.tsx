@@ -187,14 +187,14 @@ function CompactTabShortcut({
         compactTabStyles.button,
         {
           bottom: Math.max(insets.bottom, 16) + 16,
-          backgroundColor: colors.card,
+          backgroundColor: `${colors.card}D9`,
           shadowColor: colors.accent,
         },
       ]}
     >
       <MaterialCommunityIcons
         name={TAB_ICON_MAP[tab]}
-        size={30}
+        size={24}
         color={colors.accent}
       />
     </Pressable>
@@ -238,16 +238,16 @@ const testStyles = StyleSheet.create({
 const compactTabStyles = StyleSheet.create({
   button: {
     position: 'absolute',
-    left: 64,
+    left: 70,
     zIndex: 9000,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
 });
