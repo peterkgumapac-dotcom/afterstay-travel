@@ -1,10 +1,9 @@
 // Note: guide and settings are routable screens outside the tab bar.
 // They are configured as hidden triggers below per NativeTabs requirements.
-import { useRouter } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React, { createContext, useContext, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
@@ -55,8 +54,6 @@ const TAB_LABELS: Record<CompactTabName, string> = {
   trip: 'My Trips',
 };
 
-const COMPACT_TABS: CompactTabName[] = ['home', 'moments', 'discover', 'budget', 'trip'];
-
 /* ---------- Native Tabs Layout ---------- */
 
 export default function TabLayout() {
@@ -85,6 +82,7 @@ export default function TabLayout() {
           iconColor={{ default: colors.text3, selected: colors.accent }}
           blurEffect="systemChromeMaterial"
           shadowColor={colors.border}
+          minimizeBehavior="onScrollDown"
           hidden={!tabBarVisible}
         >
           <NativeTabs.Trigger name="home">
@@ -155,83 +153,8 @@ export default function TabLayout() {
 
         {/* Global FAB — rendered above native tabs */}
         {tabBarVisible && fabVisible && <FloatingActionButton />}
-        {!tabBarVisible && compactTab && (
-          <CompactTabBar
-            activeTab={compactTab}
-            onSelect={(tab) => {
-              setCompactTab(null);
-              setTabBarVisible(true);
-              setFabVisible(true);
-            }}
-          />
-        )}
         <TestModeBanner />
       </TabBarVisibilityContext.Provider>
-  );
-}
-
-function CompactTabBar({
-  activeTab,
-  onSelect,
-}: {
-  activeTab: CompactTabName;
-  onSelect: (tab: CompactTabName) => void;
-}) {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-
-  const handlePress = (tab: CompactTabName) => {
-    if (tab !== activeTab) {
-      router.replace(`/(tabs)/${tab}` as never);
-    }
-    onSelect(tab);
-  };
-
-  return (
-    <View
-      accessibilityRole="tablist"
-      style={[
-        compactTabStyles.bar,
-        {
-          bottom: Math.max(insets.bottom, 16) + 16,
-          backgroundColor: `${colors.card}D9`,
-          shadowColor: colors.accent,
-        },
-      ]}
-    >
-      {COMPACT_TABS.map((tab) => {
-        const active = tab === activeTab;
-        return (
-          <Pressable
-            key={tab}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={TAB_LABELS[tab]}
-            onPress={() => handlePress(tab)}
-            style={[
-              compactTabStyles.item,
-              active && { backgroundColor: colors.accentBg },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name={TAB_ICON_MAP[tab]}
-              size={22}
-              color={active ? colors.accent : colors.text3}
-            />
-            <Text
-              numberOfLines={1}
-              style={[
-                compactTabStyles.label,
-                { color: active ? colors.accent : colors.text3 },
-              ]}
-            >
-              {TAB_LABELS[tab]}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
   );
 }
 
@@ -266,37 +189,5 @@ const testStyles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
     textTransform: 'uppercase',
-  },
-});
-
-const compactTabStyles = StyleSheet.create({
-  bar: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    zIndex: 9000,
-    height: 66,
-    borderRadius: 33,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    gap: 4,
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  item: {
-    flex: 1,
-    height: 54,
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: '700',
   },
 });
