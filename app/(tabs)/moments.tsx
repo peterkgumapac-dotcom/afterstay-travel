@@ -270,6 +270,97 @@ function MomentsScreen() {
     [qtPhotos, selectedTrip],
   );
 
+  const nativeTabHeader = (
+    <View style={[styles.container, { paddingTop: insets.top, flex: 0 }]}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Moments</Text>
+      </View>
+
+      {hasPicker && (
+        <View style={styles.pickerWrap}>
+          <TouchableOpacity
+            style={styles.pickerBtn}
+            onPress={() => setShowPicker(!showPicker)}
+            activeOpacity={0.7}
+          >
+            {selectedType === 'quick' && <Zap size={14} color={colors.accent} />}
+            <Text style={styles.pickerLabel} numberOfLines={1}>{selectedLabel}</Text>
+            <Text style={styles.pickerDates}>{selectedDates}</Text>
+            <ChevronDown size={16} color={colors.text3} />
+          </TouchableOpacity>
+
+          {showPicker && (
+            <View style={styles.pickerDropdown}>
+              {tripCandidates.length > 0 && (
+                <View style={styles.pickerSection}>
+                  <Text style={styles.pickerSectionLabel}>TRIPS</Text>
+                </View>
+              )}
+              {tripCandidates.map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[styles.pickerRow, t.id === selectedTripId && selectedType === 'trip' && styles.pickerRowActive]}
+                  onPress={() => {
+                    userPickedTripRef.current = true;
+                    setSelectedTripId(t.id);
+                    setSelectedType('trip');
+                    setShowPicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.pickerRowText, t.id === selectedTripId && selectedType === 'trip' && styles.pickerRowTextActive]}>
+                    {t.destination ?? t.name}
+                  </Text>
+                  <Text style={styles.pickerRowDates}>
+                    {formatDatePHT(t.startDate)} – {formatDatePHT(t.endDate)}
+                    {tripMomentCounts[t.id] ? ` · ${tripMomentCounts[t.id]} photo${tripMomentCounts[t.id] === 1 ? '' : 's'}` : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              {quickTrips.length > 0 && (
+                <View style={styles.pickerSection}>
+                  <Zap size={10} color={colors.accent} />
+                  <Text style={styles.pickerSectionLabel}>QUICK TRIPS</Text>
+                </View>
+              )}
+              {quickTrips.map((qt) => (
+                <TouchableOpacity
+                  key={qt.id}
+                  style={[styles.pickerRow, qt.id === selectedTripId && selectedType === 'quick' && styles.pickerRowActive]}
+                  onPress={() => {
+                    userPickedTripRef.current = true;
+                    setSelectedTripId(qt.id);
+                    setSelectedType('quick');
+                    setShowPicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.pickerRowText, qt.id === selectedTripId && selectedType === 'quick' && styles.pickerRowTextActive]}>
+                    {qt.title}
+                  </Text>
+                  <Text style={styles.pickerRowDates}>
+                    {formatDatePHT(qt.occurredAt)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+
+  if (selectedTripId && selectedType === 'trip') {
+    return (
+      <MomentsTab
+        tripId={selectedTripId}
+        onScrollY={handleCompactTabScrollY}
+        ListHeaderComponent={nativeTabHeader}
+      />
+    );
+  }
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}

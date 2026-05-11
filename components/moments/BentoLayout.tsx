@@ -40,6 +40,7 @@ interface BentoLayoutProps {
   onRefresh?: () => void;
   contentContainerStyle?: StyleProp<ViewStyle>;
   onScrollY?: (y: number) => void;
+  ListHeaderComponent?: React.ReactElement | null;
 }
 
 function buildRows(items: MomentDisplay[]): BentoRow[] {
@@ -89,6 +90,7 @@ export function BentoLayout({
   onRefresh,
   contentContainerStyle,
   onScrollY,
+  ListHeaderComponent,
 }: BentoLayoutProps) {
   const { colors } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -249,6 +251,7 @@ export function BentoLayout({
         keyExtractor={(item) => item.id}
         renderItem={renderGalleryItem}
         numColumns={3}
+        ListHeaderComponent={ListHeaderComponent}
         getItemLayout={getGalleryItemLayout}
         contentContainerStyle={[styles.galleryContainer, contentContainerStyle]}
         initialNumToRender={12}
@@ -268,6 +271,7 @@ export function BentoLayout({
         data={rows}
         keyExtractor={(row) => row.key}
         renderItem={renderRow}
+        ListHeaderComponent={ListHeaderComponent}
         contentContainerStyle={[styles.container, contentContainerStyle]}
         initialNumToRender={3}
         maxToRenderPerBatch={2}

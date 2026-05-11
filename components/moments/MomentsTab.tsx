@@ -77,6 +77,7 @@ const PEOPLE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#7f3712', '#9a7d52'];
 interface MomentsTabProps {
   tripId?: string;
   onScrollY?: (y: number) => void;
+  ListHeaderComponent?: React.ReactElement | null;
 }
 
 type AlbumMode = 'timeline' | 'people' | 'places' | 'favorites';
@@ -151,7 +152,7 @@ function computeScopeCounts(moments: MomentDisplay[]): Record<ScopeFilter, numbe
 // Component
 // ---------------------------------------------------------------------------
 
-export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
+export function MomentsTab({ tripId, onScrollY, ListHeaderComponent }: MomentsTabProps) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
@@ -634,9 +635,9 @@ export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
     );
   }
 
-  return (
+  const tabHeader = (
     <>
-      <View style={{ flex: 1 }}>
+      {ListHeaderComponent}
         {/* ---- Header ---- */}
         <View style={s.header}>
           <View>
@@ -726,9 +727,15 @@ export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
             })}
           </ScrollView>
         )}
+    </>
+  );
+
+  return (
+    <>
 
         {activeScope === 'album' ? (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }} contentInsetAdjustmentBehavior="automatic">
+            {tabHeader}
             <AlbumsGrid
               tripId={tripId}
               totalMoments={allMoments.length}
@@ -798,6 +805,7 @@ export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
             onRefresh={() => { setRefreshing(true); load(true, true); }}
             contentContainerStyle={{ paddingBottom: 100 }}
             onScrollY={onScrollY}
+            ListHeaderComponent={tabHeader}
           />
         )}
 
@@ -941,8 +949,6 @@ export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
             </View>
           </View>
         </Modal>
-      </View>
-
       {/* ---- Edit details sheet ---- */}
       <PhotoEditSheet
         visible={editMomentId !== null}
