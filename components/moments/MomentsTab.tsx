@@ -76,6 +76,7 @@ const PEOPLE_COLORS = ['#a64d1e', '#b8892b', '#c66a36', '#7f3712', '#9a7d52'];
 
 interface MomentsTabProps {
   tripId?: string;
+  onScrollY?: (y: number) => void;
 }
 
 type AlbumMode = 'timeline' | 'people' | 'places' | 'favorites';
@@ -150,7 +151,7 @@ function computeScopeCounts(moments: MomentDisplay[]): Record<ScopeFilter, numbe
 // Component
 // ---------------------------------------------------------------------------
 
-export function MomentsTab({ tripId }: MomentsTabProps) {
+export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
   const { colors } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
@@ -795,6 +796,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
             refreshing={refreshing}
             onRefresh={() => { setRefreshing(true); load(true, true); }}
             contentContainerStyle={{ paddingBottom: 100 }}
+            onScrollY={onScrollY}
           />
         )}
 

@@ -57,6 +57,7 @@ interface StaysTabProps {
   savedNames?: Set<string>;
   onSavePlace: (place: DiscoverPlace) => void;
   onExplore: (placeId: string | undefined, name: string) => void;
+  onScrollY?: (y: number) => void;
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ export default function StaysTab({
   savedNames,
   onSavePlace,
   onExplore,
+  onScrollY,
 }: StaysTabProps) {
   const { colors } = useTheme();
   const s = useMemo(() => getStyles(colors), [colors]);
@@ -281,6 +283,8 @@ export default function StaysTab({
       ListFooterComponent={<View style={{ height: 100 }} />}
       contentContainerStyle={s.content}
       keyboardShouldPersistTaps="handled"
+      onScroll={(event) => onScrollY?.(event.nativeEvent.contentOffset.y)}
+      scrollEventThrottle={16}
     />
   );
 }

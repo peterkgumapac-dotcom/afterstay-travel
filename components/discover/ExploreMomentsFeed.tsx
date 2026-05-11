@@ -5,7 +5,16 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, Search } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from 'react-native';
 import { Image } from 'expo-image';
 
 import ExploreMomentCard from '@/components/discover/ExploreMomentCard';
@@ -33,6 +42,10 @@ type EnrichedFeedPost = FeedPost & {
   canOpenProfile: boolean;
 };
 
+interface ExploreMomentsFeedProps {
+  onScrollY?: (y: number) => void;
+}
+
 const CHIPS: { id: FeedMode; label: string }[] = [
   { id: 'recent', label: 'Recent' },
   { id: 'trending', label: 'Trending' },
@@ -57,7 +70,7 @@ function canOpenProfileIdentity(item: Pick<FeedPost, 'userId' | 'userName' | 'us
   return Boolean(item.userName || item.userAvatar);
 }
 
-export default function ExploreMomentsFeed() {
+export default function ExploreMomentsFeed({ onScrollY }: ExploreMomentsFeedProps = {}) {
   const router = useRouter();
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -112,6 +125,10 @@ export default function ExploreMomentsFeed() {
 
   // Comment sheet state
   const [commentPostId, setCommentPostId] = useState<string | null>(null);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    onScrollY?.(event.nativeEvent.contentOffset.y);
+  }, [onScrollY]);
 
   useEffect(() => {
     const postIds = activePostIdsKey ? activePostIdsKey.split('|') : [];
@@ -434,6 +451,8 @@ export default function ExploreMomentsFeed() {
         maxItemsInRecyclePool={8}
         refreshing={activeFeed.isRefreshing}
         onRefresh={activeFeed.refresh}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={listContentStyle}
         showsVerticalScrollIndicator={false}
       />

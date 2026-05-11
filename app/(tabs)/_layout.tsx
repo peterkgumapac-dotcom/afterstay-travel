@@ -3,7 +3,7 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import React, { createContext, useContext, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingActionButton } from '@/components/shared/FloatingActionButton';
@@ -17,6 +17,8 @@ interface TabBarVisibilityContextValue {
   setVisible: (v: boolean) => void;
   fabVisible: boolean;
   setFabVisible: (v: boolean) => void;
+  compactTab: CompactTabName | null;
+  setCompactTab: (tab: CompactTabName | null) => void;
 }
 
 const TabBarVisibilityContext = createContext<TabBarVisibilityContextValue>({
@@ -24,6 +26,8 @@ const TabBarVisibilityContext = createContext<TabBarVisibilityContextValue>({
   setVisible: () => {},
   fabVisible: true,
   setFabVisible: () => {},
+  compactTab: null,
+  setCompactTab: () => {},
 });
 
 export function useTabBarVisibility(): TabBarVisibilityContextValue {
@@ -32,7 +36,9 @@ export function useTabBarVisibility(): TabBarVisibilityContextValue {
 
 /* ---------- Icon mapping: lucide → MaterialCommunityIcons ---------- */
 
-const TAB_ICON_MAP: Record<string, keyof typeof MaterialCommunityIcons.glyphMap> = {
+export type CompactTabName = 'home' | 'moments' | 'discover' | 'budget' | 'trip';
+
+const TAB_ICON_MAP: Record<CompactTabName, keyof typeof MaterialCommunityIcons.glyphMap> = {
   home: 'home-outline',
   moments: 'camera-outline',
   discover: 'compass-outline',
@@ -40,7 +46,7 @@ const TAB_ICON_MAP: Record<string, keyof typeof MaterialCommunityIcons.glyphMap>
   trip: 'airplane',
 };
 
-const TAB_LABELS: Record<string, string> = {
+const TAB_LABELS: Record<CompactTabName, string> = {
   home: 'Home',
   moments: 'Moments',
   discover: 'Discover',
@@ -54,10 +60,18 @@ export default function TabLayout() {
   const { colors } = useTheme();
   const [tabBarVisible, setTabBarVisible] = useState(true);
   const [fabVisible, setFabVisible] = useState(true);
+  const [compactTab, setCompactTab] = useState<CompactTabName | null>(null);
 
   const visibilityValue = useMemo(
-    () => ({ visible: tabBarVisible, setVisible: setTabBarVisible, fabVisible, setFabVisible }),
-    [tabBarVisible, fabVisible],
+    () => ({
+      visible: tabBarVisible,
+      setVisible: setTabBarVisible,
+      fabVisible,
+      setFabVisible,
+      compactTab,
+      setCompactTab,
+    }),
+    [tabBarVisible, fabVisible, compactTab],
   );
 
   return (
@@ -139,8 +153,51 @@ export default function TabLayout() {
 
         {/* Global FAB — rendered above native tabs */}
         {tabBarVisible && fabVisible && <FloatingActionButton />}
+        {!tabBarVisible && compactTab && (
+          <CompactTabShortcut
+            tab={compactTab}
+            onPress={() => {
+              setCompactTab(null);
+              setTabBarVisible(true);
+              setFabVisible(true);
+            }}
+          />
+        )}
         <TestModeBanner />
       </TabBarVisibilityContext.Provider>
+  );
+}
+
+function CompactTabShortcut({
+  tab,
+  onPress,
+}: {
+  tab: CompactTabName;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Show ${TAB_LABELS[tab]} tab bar`}
+      onPress={onPress}
+      style={[
+        compactTabStyles.button,
+        {
+          bottom: Math.max(insets.bottom, 16) + 16,
+          backgroundColor: colors.card,
+          shadowColor: colors.accent,
+        },
+      ]}
+    >
+      <MaterialCommunityIcons
+        name={TAB_ICON_MAP[tab]}
+        size={30}
+        color={colors.accent}
+      />
+    </Pressable>
   );
 }
 
@@ -175,5 +232,22 @@ const testStyles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+});
+
+const compactTabStyles = StyleSheet.create({
+  button: {
+    position: 'absolute',
+    left: 64,
+    zIndex: 9000,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
 });

@@ -7,6 +7,8 @@ import {
   View,
   useWindowDimensions,
   type ListRenderItemInfo,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -37,6 +39,7 @@ interface BentoLayoutProps {
   refreshing?: boolean;
   onRefresh?: () => void;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  onScrollY?: (y: number) => void;
 }
 
 function buildRows(items: MomentDisplay[]): BentoRow[] {
@@ -85,6 +88,7 @@ export function BentoLayout({
   refreshing = false,
   onRefresh,
   contentContainerStyle,
+  onScrollY,
 }: BentoLayoutProps) {
   const { colors } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -128,6 +132,10 @@ export function BentoLayout({
     const length = galleryCellSize + GAP;
     return { length, offset: row * length, index };
   }, [galleryCellSize]);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    onScrollY?.(event.nativeEvent.contentOffset.y);
+  }, [onScrollY]);
 
   const renderRow = useCallback(
     ({ item: row }: ListRenderItemInfo<BentoRow>) => {
@@ -250,6 +258,8 @@ export function BentoLayout({
         removeClippedSubviews
         refreshing={refreshing}
         onRefresh={onRefresh}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       />
     ) : (
       <FlatList
@@ -265,6 +275,8 @@ export function BentoLayout({
         removeClippedSubviews
         refreshing={refreshing}
         onRefresh={onRefresh}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       />
     )
   );

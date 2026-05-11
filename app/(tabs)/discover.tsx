@@ -66,6 +66,7 @@ import {
 import { useAuth } from '@/lib/auth';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useVoteSubscription } from '@/hooks/useVoteSubscription';
+import { useCompactTabOnScroll } from '@/hooks/useCompactTabOnScroll';
 import type { GroupMember, Place, PlaceVote } from '@/lib/types';
 import DiscoverModeSwitch, { type DiscoverMode } from '@/components/discover/DiscoverModeSwitch';
 import { getDiscoverStyles } from '@/components/discover/discoverScreenStyles';
@@ -119,6 +120,10 @@ export default function DiscoverScreenWrapper() {
 function DiscoverScreenInner() {
   const { colors, mode } = useTheme();
   const styles = useMemo(() => getDiscoverStyles(colors), [colors]);
+  const {
+    handleScroll: handleCompactTabScroll,
+    handleScrollY: handleCompactTabScrollY,
+  } = useCompactTabOnScroll('discover');
   const params = useLocalSearchParams<{ mode?: string | string[] }>();
   const routeMode = useMemo(() => parseDiscoverRouteMode(params.mode), [params.mode]);
   const { segment, isTestMode, mockData } = useUserSegment();
@@ -1019,7 +1024,7 @@ function DiscoverScreenInner() {
       {/* ═══════ EXPLORE MOMENTS MODE ═══════ */}
       {discoverMode === 'explore_moments' && (
         <View style={styles.exploreMomentsPane} collapsable={false}>
-          <ExploreMomentsFeed />
+          <ExploreMomentsFeed onScrollY={handleCompactTabScrollY} />
         </View>
       )}
 
@@ -1127,6 +1132,8 @@ function DiscoverScreenInner() {
               tintColor={colors.accent}
             />
           }
+          onScroll={handleCompactTabScroll}
+          scrollEventThrottle={16}
           ListHeaderComponent={
             <>
               {/* Results count */}
@@ -1227,6 +1234,8 @@ function DiscoverScreenInner() {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          onScroll={handleCompactTabScroll}
+          scrollEventThrottle={16}
         >
           {/* ═══════ AI CONCIERGE TAB ═══════ */}
           {tab === 'concierge' && (
@@ -1508,6 +1517,7 @@ function DiscoverScreenInner() {
             savedNames={saved}
             onSavePlace={handleSavePlaceCard}
             onExplore={handleExplore}
+            onScrollY={handleCompactTabScrollY}
           />
         ) : (
           <View style={styles.emptyPlaces}>

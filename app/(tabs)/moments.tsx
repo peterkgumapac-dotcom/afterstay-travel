@@ -23,6 +23,7 @@ import type { Trip } from '@/lib/types';
 import type { QuickTrip, QuickTripPhoto } from '@/lib/quickTripTypes';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
 import { useAuth } from '@/lib/auth';
+import { useCompactTabOnScroll } from '@/hooks/useCompactTabOnScroll';
 const ExploreMomentsFeed = React.lazy(() => import('@/components/discover/ExploreMomentsFeed'));
 
 type ThemeColors = ReturnType<typeof useTheme>['colors'];
@@ -57,6 +58,7 @@ function MomentsScreen() {
   const { user } = useAuth();
   const userIdRef = useRef<string | undefined>(user?.id);
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const { handleScrollY: handleCompactTabScrollY } = useCompactTabOnScroll('moments');
 
   const { activeTrip: segActiveTrip, pastTrips: segPastTrips, isTestMode } = useUserSegment();
   const [extraActiveTrip, setExtraActiveTrip] = useState<Trip | null>(null);
@@ -393,14 +395,16 @@ function MomentsScreen() {
               </Text>
             </View>
             <React.Suspense fallback={<View style={{ padding: 40, alignItems: 'center' }}><Text style={{ color: colors.text3 }}>Loading...</Text></View>}>
-              <ExploreMomentsFeed />
+              <ExploreMomentsFeed onScrollY={handleCompactTabScrollY} />
             </React.Suspense>
           </View>
         </View>
       )}
 
       {/* Regular trip moments */}
-      {selectedTripId && selectedType === 'trip' && <MomentsTab tripId={selectedTripId} />}
+      {selectedTripId && selectedType === 'trip' && (
+        <MomentsTab tripId={selectedTripId} onScrollY={handleCompactTabScrollY} />
+      )}
 
       {/* Quick trip photo album */}
       {selectedTripId && selectedType === 'quick' && (
@@ -422,6 +426,7 @@ function MomentsScreen() {
               selectMode={false}
               onLongPress={() => {}}
               contentContainerStyle={{ paddingBottom: 40 }}
+              onScrollY={handleCompactTabScrollY}
             />
           )}
 
