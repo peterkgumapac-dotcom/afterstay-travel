@@ -259,32 +259,57 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     });
   };
 
+  const openNextPage = () => {
+    if (pages.length <= 1) return;
+    flatListRef.current?.scrollToIndex({ index: 1, animated: true });
+    setPageIndex(1);
+  };
+
   const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setPageIndex(Math.round(event.nativeEvent.contentOffset.x / SNAP_W));
   };
 
   const renderPage = ({ item, index }: { item: AlbumPage; index: number }) => {
     const inputRange = [(index - 1) * SNAP_W, index * SNAP_W, (index + 1) * SNAP_W];
-    const scale = scrollX.interpolate({ inputRange, outputRange: [0.94, 1, 0.94], extrapolate: 'clamp' });
-    const rotate = scrollX.interpolate({ inputRange, outputRange: ['2deg', '0deg', '-2deg'], extrapolate: 'clamp' });
-    const opacity = scrollX.interpolate({ inputRange, outputRange: [0.72, 1, 0.72], extrapolate: 'clamp' });
+    const scale = scrollX.interpolate({ inputRange, outputRange: [0.9, 1, 0.9], extrapolate: 'clamp' });
+    const rotateY = scrollX.interpolate({ inputRange, outputRange: ['-42deg', '0deg', '42deg'], extrapolate: 'clamp' });
+    const rotateZ = scrollX.interpolate({ inputRange, outputRange: ['-1.5deg', '0deg', '1.5deg'], extrapolate: 'clamp' });
+    const translateX = scrollX.interpolate({ inputRange, outputRange: [36, 0, -36], extrapolate: 'clamp' });
+    const opacity = scrollX.interpolate({ inputRange, outputRange: [0.62, 1, 0.62], extrapolate: 'clamp' });
+    const pageShadeOpacity = scrollX.interpolate({ inputRange, outputRange: [0.2, 0.02, 0.2], extrapolate: 'clamp' });
 
     return (
-      <Animated.View style={[styles.pageShell, { transform: [{ scale }, { rotate }], opacity }]}>
-        {item.type === 'cover' ? (
-          <AlbumCoverPage data={data} styles={styles} colors={colors} onOpenAlbum={onOpenAlbum} onAddPhoto={onAddPhoto} />
-        ) : null}
-        {item.type === 'collage' ? (
-          <AlbumCollagePage page={item} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
-        ) : null}
-        {item.type === 'photo' ? (
-          <AlbumPhotoPage photo={item.photo} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
-        ) : null}
-        {item.type === 'stats' ? <AlbumStatsPage data={data} styles={styles} colors={colors} /> : null}
-        {item.type === 'closing' ? (
-          <AlbumClosingPage data={data} styles={styles} colors={colors} onOpenAlbum={onOpenAlbum} onShare={handleShare} />
-        ) : null}
-      </Animated.View>
+      <View style={styles.pageFrame}>
+        <View style={styles.bookStackBack} />
+        <View style={styles.bookStackMid} />
+        <View style={styles.bookBindingShadow} />
+        <Animated.View
+          style={[
+            styles.pageShell,
+            {
+              opacity,
+              transform: [{ perspective: 900 }, { translateX }, { rotateY }, { rotateZ }, { scale }],
+            },
+          ]}
+        >
+          {item.type === 'cover' ? (
+            <AlbumCoverPage data={data} styles={styles} colors={colors} onOpenAlbum={openNextPage} onAddPhoto={onAddPhoto} />
+          ) : null}
+          {item.type === 'collage' ? (
+            <AlbumCollagePage page={item} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
+          ) : null}
+          {item.type === 'photo' ? (
+            <AlbumPhotoPage photo={item.photo} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
+          ) : null}
+          {item.type === 'stats' ? <AlbumStatsPage data={data} styles={styles} colors={colors} /> : null}
+          {item.type === 'closing' ? (
+            <AlbumClosingPage data={data} styles={styles} colors={colors} onOpenAlbum={onOpenAlbum} onShare={handleShare} />
+          ) : null}
+          <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.16)']} style={styles.pageEdge} />
+          <Animated.View style={[styles.turnShade, { opacity: pageShadeOpacity }]} />
+          <View style={styles.pageCorner} />
+        </Animated.View>
+      </View>
     );
   };
 
@@ -363,6 +388,10 @@ function AlbumCoverPage({
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.albumSpine} />
+      <View style={styles.coverInsetBorder} />
+      <View style={styles.coverCornerStamp}>
+        <Sparkles size={14} color="#e3bd8c" />
+      </View>
       <View style={styles.coverContent}>
         <View style={styles.coverBadge}>
           <BookOpen size={13} color="#f8eee1" />
@@ -578,18 +607,81 @@ const getStyles = (_colors: ThemeColors) =>
       fontWeight: '700',
       color: '#f8eee1',
     },
+    pageFrame: {
+      width: SNAP_W,
+      height: PAGE_H + 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    bookStackBack: {
+      position: 'absolute',
+      width: PAGE_W - 24,
+      height: PAGE_H - 8,
+      borderRadius: 20,
+      backgroundColor: '#d7c3aa',
+      transform: [{ translateX: 10 }, { translateY: 10 }, { rotate: '1deg' }],
+      opacity: 0.72,
+    },
+    bookStackMid: {
+      position: 'absolute',
+      width: PAGE_W - 12,
+      height: PAGE_H - 4,
+      borderRadius: 21,
+      backgroundColor: '#eadcc8',
+      transform: [{ translateX: 5 }, { translateY: 5 }, { rotate: '0.45deg' }],
+      opacity: 0.88,
+    },
+    bookBindingShadow: {
+      position: 'absolute',
+      left: 26,
+      top: 18,
+      bottom: 22,
+      width: 22,
+      borderRadius: 18,
+      backgroundColor: 'rgba(0,0,0,0.24)',
+    },
     pageShell: {
       width: PAGE_W,
       height: PAGE_H,
-      marginHorizontal: 20,
-      borderRadius: 22,
+      borderRadius: 18,
       overflow: 'hidden',
       backgroundColor: '#f4eadb',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.42)',
       shadowColor: '#000',
-      shadowOpacity: 0.28,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 12 },
-      elevation: 6,
+      shadowOpacity: 0.36,
+      shadowRadius: 22,
+      shadowOffset: { width: 0, height: 16 },
+      elevation: 9,
+      backfaceVisibility: 'hidden',
+    },
+    pageEdge: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: 34,
+      opacity: 0.92,
+    },
+    turnShade: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      backgroundColor: '#2a1609',
+    },
+    pageCorner: {
+      position: 'absolute',
+      right: 0,
+      bottom: 0,
+      width: 38,
+      height: 38,
+      borderTopLeftRadius: 24,
+      backgroundColor: 'rgba(255,255,255,0.22)',
+      borderLeftWidth: 1,
+      borderTopWidth: 1,
+      borderColor: 'rgba(91,62,37,0.18)',
     },
     coverPage: {
       flex: 1,
@@ -604,6 +696,29 @@ const getStyles = (_colors: ThemeColors) =>
       backgroundColor: 'rgba(26,13,4,0.55)',
       borderRightWidth: 1,
       borderRightColor: 'rgba(255,255,255,0.12)',
+    },
+    coverInsetBorder: {
+      position: 'absolute',
+      top: 14,
+      right: 14,
+      bottom: 14,
+      left: 30,
+      borderRadius: 15,
+      borderWidth: 1,
+      borderColor: 'rgba(255,248,235,0.32)',
+    },
+    coverCornerStamp: {
+      position: 'absolute',
+      top: 28,
+      right: 26,
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.34)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,248,235,0.22)',
     },
     coverContent: {
       position: 'absolute',
