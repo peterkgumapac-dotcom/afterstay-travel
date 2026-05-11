@@ -18,14 +18,16 @@ const SCREEN_W = Dimensions.get('window').width;
 const CARD_PAD = 16;
 const MEDIA_W = SCREEN_W - CARD_PAD * 2;
 const AFTERSTAY_AUTHOR_NAME = 'AfterStay Travel';
+const DIRECT_MEDIA_URI_RE = /^(https?:|file:|content:|data:)/i;
 
 interface ExploreMomentCardProps {
   post: FeedPost;
-  onLike: () => Promise<void> | void;
-  onComment: () => void;
-  onShare: () => void;
-  onSave: () => Promise<void> | void;
-  onProfilePress?: () => void;
+  onLike: (postId: string) => Promise<void> | void;
+  onComment: (postId: string) => void;
+  onShare: (postId: string) => void;
+  onSave: (postId: string) => Promise<void> | void;
+  onProfilePress?: (userId: string) => void;
+  profileUserId?: string;
   tags?: PostTag[];
   isOwner?: boolean;
   onDeleted?: () => void;
@@ -45,19 +47,6 @@ function PhotoZoomLink({ href, children }: { href: Href; children: React.ReactEl
     <Link href={href} asChild>
       <Link.AppleZoom>{children}</Link.AppleZoom>
     </Link>
-  );
-}
-
-function PaperTexture() {
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <View style={[styles.paperFiber, styles.paperFiberOne]} />
-      <View style={[styles.paperFiber, styles.paperFiberTwo]} />
-      <View style={[styles.paperFiber, styles.paperFiberThree]} />
-      <View style={[styles.paperStain, styles.paperStainTop]} />
-      <View style={[styles.paperStain, styles.paperStainBottom]} />
-      <View style={styles.innerPaperRule} />
-    </View>
   );
 }
 
@@ -150,13 +139,19 @@ function uniqueTexts(values: (string | undefined)[], limit: number): string[] {
   return out;
 }
 
-export default function ExploreMomentCard({
+function directRenderableUri(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && DIRECT_MEDIA_URI_RE.test(trimmed) ? trimmed : undefined;
+}
+
+function ExploreMomentCardComponent({
   post,
   onLike,
   onComment,
   onShare,
   onSave,
   onProfilePress,
+  profileUserId,
   tags,
   isOwner,
   onDeleted,
@@ -170,7 +165,6 @@ export default function ExploreMomentCard({
   const isPlatformPost = isOfficial || isTravelPulse;
   const authorName = isTravelPulse ? AFTERSTAY_AUTHOR_NAME : post.userName ?? 'Traveler';
   const authorAvatarUrl = post.userAvatar;
-  const effectiveProfilePress = onProfilePress;
   const postBadge = getPostBadge(post);
   const travelNote = getTravelNote(post);
   const pulseItems = isTravelPulse ? getTravelPulseItems(post) : [];
@@ -183,7 +177,7 @@ export default function ExploreMomentCard({
   const pulseTakeaway = isTravelPulse
     ? textMeta(post.metadata?.takeaway) ?? textMeta(post.metadata?.summary) ?? textMeta(post.caption)
     : undefined;
-  const pulseSignals = pulseItems.slice(0, 3);
+  const pulseSignals = pulseItems.slice(0, 2);
   const pulseSourceSummary = isTravelPulse
     ? uniqueTexts(pulseItems.map((item) => item.sourceName), 3).join(' · ')
     : '';
@@ -196,8 +190,12 @@ export default function ExploreMomentCard({
   useEffect(() => {
     let cancelled = false;
     setAvatarFailed(false);
-    setResolvedAvatarUrl(undefined);
-    if (!authorAvatarUrl) return () => { cancelled = true; };
+    const directAvatarUrl = directRenderableUri(authorAvatarUrl);
+    if (directAvatarUrl || !authorAvatarUrl) {
+      setResolvedAvatarUrl(directAvatarUrl);
+      return () => { cancelled = true; };
+    }
+
     resolveRenderableStorageUrl(authorAvatarUrl, 'avatars')
       .then((url) => {
         if (!cancelled) setResolvedAvatarUrl(url);
@@ -214,7 +212,7 @@ export default function ExploreMomentCard({
     const entries = [
       ...(post.media ?? []).map((media, index) => [`media:${media.id || index}`, media.mediaUrl] as const),
       ...(post.photoUrl ? [['photo', post.photoUrl] as const] : []),
-    ].filter(([, url]) => !!url);
+    ].filter(([, url]) => !!url && !directRenderableUri(url));
 
     if (entries.length === 0) {
       setResolvedMediaUrls({});
@@ -288,16 +286,23 @@ export default function ExploreMomentCard({
     ...media,
     mediaUrl: smallUrl(media.resolvedUrl) ?? media.resolvedUrl,
   })), [mediaWithResolvedUrls]);
+  const handleLike = useCallback(() => onLike(post.id), [onLike, post.id]);
+  const handleComment = useCallback(() => onComment(post.id), [onComment, post.id]);
+  const handleShare = useCallback(() => onShare(post.id), [onShare, post.id]);
+  const handleSave = useCallback(() => onSave(post.id), [onSave, post.id]);
+  const handleProfilePress = useCallback(() => {
+    if (profileUserId) onProfilePress?.(profileUserId);
+  }, [onProfilePress, profileUserId]);
+  const canPressProfile = Boolean(profileUserId && onProfilePress);
 
   return (
     <View style={[styles.card, isPlatformPost && styles.officialCard, isTravelPulse && styles.pulseCard]}>
-      <PaperTexture />
       {isPlatformPost ? (
         <TouchableOpacity
           style={styles.officialRail}
-          onPress={effectiveProfilePress}
-          activeOpacity={effectiveProfilePress ? 0.74 : 1}
-          disabled={!effectiveProfilePress}
+          onPress={handleProfilePress}
+          activeOpacity={canPressProfile ? 0.74 : 1}
+          disabled={!canPressProfile}
         >
           <View style={styles.officialRailIcon}>
             <Newspaper size={11} color={PAPER.stamp} strokeWidth={2.2} />
@@ -312,9 +317,9 @@ export default function ExploreMomentCard({
       {/* Header: avatar + name + time */}
       <TouchableOpacity
         style={styles.header}
-        onPress={effectiveProfilePress}
-        activeOpacity={effectiveProfilePress ? 0.7 : 1}
-        disabled={!effectiveProfilePress}
+        onPress={handleProfilePress}
+        activeOpacity={canPressProfile ? 0.7 : 1}
+        disabled={!canPressProfile}
       >
         {resolvedAvatarUrl && !avatarFailed ? (
           <Image
@@ -368,7 +373,7 @@ export default function ExploreMomentCard({
             </Text>
           ) : null}
           {pulseTakeaway ? (
-            <Text style={styles.pulseTakeaway} numberOfLines={3}>
+            <Text style={styles.pulseTakeaway} numberOfLines={2}>
               {pulseTakeaway}
             </Text>
           ) : null}
@@ -382,7 +387,7 @@ export default function ExploreMomentCard({
                   </View>
                   <View style={styles.pulseSignalText}>
                     {item.title ? <Text style={styles.pulseItemTitle} numberOfLines={2}>{item.title}</Text> : null}
-                    {item.summary ? <Text style={styles.pulseItemSummary} numberOfLines={2}>{item.summary}</Text> : null}
+                    {item.summary ? <Text style={styles.pulseItemSummary} numberOfLines={1}>{item.summary}</Text> : null}
                   </View>
                 </View>
               ))}
@@ -516,14 +521,16 @@ export default function ExploreMomentCard({
         shareCount={post.shareCount}
         viewerHasLiked={post.viewerHasLiked}
         viewerHasSaved={post.viewerHasSaved}
-        onLike={onLike}
-        onComment={onComment}
-        onShare={onShare}
-        onSave={onSave}
+        onLike={handleLike}
+        onComment={handleComment}
+        onShare={handleShare}
+        onSave={handleSave}
       />
     </View>
   );
 }
+
+export default React.memo(ExploreMomentCardComponent);
 
 const styles = StyleSheet.create({
   card: {

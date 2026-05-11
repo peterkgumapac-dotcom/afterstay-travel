@@ -193,7 +193,7 @@ export function MomentLightbox({
     try {
       const FileSystem = require('expo-file-system');
       const MediaLibrary = require('expo-media-library');
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      const { status } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
       if (status !== 'granted') return;
       const filename = `afterstay_${Date.now()}.jpg`;
       const fileUri = (FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? '') + filename;

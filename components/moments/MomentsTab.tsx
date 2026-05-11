@@ -292,7 +292,7 @@ export function MomentsTab({ tripId }: MomentsTabProps) {
       if (hdUrl) {
         (async () => {
           try {
-            const { status } = await MediaLibrary.requestPermissionsAsync();
+            const { status } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
             if (status !== 'granted') {
               Alert.alert('Permission needed', 'Allow photo library access to save photos.');
               return;

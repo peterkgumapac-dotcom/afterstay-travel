@@ -184,7 +184,7 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
       setExporting(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      const { status } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
       if (status !== 'granted') {
         showToast('Permission needed — allow photo library access');
         return;
@@ -274,7 +274,7 @@ export function FilmEditor({ visible, moments, initialIndex, onClose }: FilmEdit
     Keyboard.dismiss();
     setExporting(true);
 
-    const { status } = await MediaLibrary.requestPermissionsAsync();
+    const { status } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
     if (status !== 'granted') {
       showToast('Permission needed — allow photo library access');
       setExporting(false);

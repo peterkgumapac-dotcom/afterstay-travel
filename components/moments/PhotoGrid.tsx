@@ -1,18 +1,18 @@
 import React, {
   useCallback,
   useState,
-  useRef,
   useEffect,
+  useMemo,
 } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   Modal,
   Pressable,
   RefreshControl,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -114,7 +114,11 @@ export function PhotoGrid({
   const [carouselVisible, setCarouselVisible] = useState(false);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [favoritedDuringView, setFavoritedDuringView] = useState<Set<string>>(new Set());
-  const flatListRef = useRef<FlatList<MomentDisplay>>(null);
+  const animateEntryItems = moments.length <= 36;
+  const contentContainerStyle = useMemo(
+    () => [styles.gridContent, { paddingBottom: insets.bottom + 20 }],
+    [insets.bottom],
+  );
 
   // Pull-to-refresh animation values
   const gridScaleY = useSharedValue(1);
@@ -209,6 +213,10 @@ export function PhotoGrid({
     }
   }, [onAction]);
 
+  const handleDoubleTap = useCallback((moment: MomentDisplay) => {
+    if (onFavorite) onFavorite(moment.id);
+  }, [onFavorite]);
+
   const renderItem = useCallback(
     ({ item, index }: { item: MomentDisplay; index: number }) => (
       <PhotoItem
@@ -219,13 +227,12 @@ export function PhotoGrid({
         onPress={handlePress}
         onLongPress={handleLongPress}
         onToggleSelect={toggleSelect}
-        onDoubleTap={(m) => {
-          if (onFavorite) onFavorite(m.id);
-        }}
+        onDoubleTap={handleDoubleTap}
         isFavoritedDuringView={favoritedDuringView.has(item.id)}
+        animateEntry={animateEntryItems}
       />
     ),
-    [selectionMode, selectedIds, handlePress, handleLongPress, toggleSelect, onFavorite, favoritedDuringView]
+    [selectionMode, selectedIds, handlePress, handleLongPress, toggleSelect, handleDoubleTap, favoritedDuringView, animateEntryItems]
   );
 
   // FAB animation
@@ -281,28 +288,17 @@ export function PhotoGrid({
         gesture={Gesture.Native()}
       >
         <Animated.View style={[styles.gridContainer, gridStyle]}>
-          <FlatList
-            ref={flatListRef}
+          <FlashList
             data={moments}
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
             numColumns={NUM_COLS}
-            contentContainerStyle={[
-              styles.gridContent,
-              { paddingBottom: insets.bottom + 20 },
-            ]}
-            columnWrapperStyle={styles.gridRow}
+            contentContainerStyle={contentContainerStyle}
             showsVerticalScrollIndicator={false}
             ListFooterComponent={ListFooterComponent}
-            initialNumToRender={12}
-            maxToRenderPerBatch={12}
-            windowSize={5}
-            removeClippedSubviews
-            getItemLayout={(_data, index) => ({
-              length: THUMB_SIZE + GRID_GAP,
-              offset: (THUMB_SIZE + GRID_GAP) * Math.floor(index / NUM_COLS),
-              index,
-            })}
+            drawDistance={(THUMB_SIZE + GRID_GAP) * 6}
+            maintainVisibleContentPosition={{ disabled: true }}
+            maxItemsInRecyclePool={36}
             refreshControl={
               onRefresh ? (
                 <RefreshControl
@@ -351,10 +347,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 20,
-  },
-  gridRow: {
-    gap: GRID_GAP,
-    marginBottom: GRID_GAP,
   },
   selectionHeader: {
     flexDirection: 'row',

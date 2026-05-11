@@ -124,13 +124,14 @@ export async function resolveCurrentLocationOrigin(): Promise<ResolvedOrigin> {
     };
   }
 
-  const loc = await Promise.race([
-    Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced }),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
-  ]) ?? await Location.getLastKnownPositionAsync({
-    maxAge: 10 * 60 * 1000,
-    requiredAccuracy: 5000,
-  });
+  const lastKnown = await Location.getLastKnownPositionAsync({
+    maxAge: 30 * 60 * 1000,
+  }).catch(() => null);
+  const fresh = await Promise.race([
+    Location.getCurrentPositionAsync({ accuracy: Location.LocationAccuracy.Balanced }).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+  ]);
+  const loc = fresh ?? lastKnown;
   if (!loc) {
     return {
       status: 'needs_refinement',

@@ -84,15 +84,19 @@ export default function PhotoViewerRoute() {
         try {
           const url = moment.hdPhoto ?? moment.photo;
           if (!url) return;
-          const { status } = await MediaLibrary.requestPermissionsAsync();
-          if (status !== 'granted') {
-            Alert.alert('Permission needed', 'Allow photo library access to save photos');
-            return;
-          }
           const filename = url.split('/').pop() ?? 'photo.jpg';
           const localUri = `${FileSystem.cacheDirectory}${filename}`;
-          await FileSystem.downloadAsync(url, localUri);
-          await MediaLibrary.saveToLibraryAsync(localUri);
+          const download = await FileSystem.downloadAsync(url, localUri);
+          try {
+            await MediaLibrary.saveToLibraryAsync(download.uri);
+          } catch {
+            const { status } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+            if (status !== 'granted') {
+              Alert.alert('Permission needed', 'Allow photo library access to save photos');
+              return;
+            }
+            await MediaLibrary.saveToLibraryAsync(download.uri);
+          }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Alert.alert('Saved', 'Photo saved to your gallery');
         } catch {

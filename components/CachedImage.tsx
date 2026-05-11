@@ -11,16 +11,31 @@ interface CachedImageProps {
   style?: StyleProp<ImageStyle>;
   resizeMode?: 'cover' | 'contain' | 'stretch' | 'center';
   blurhash?: string;
+  resolveDiskCache?: boolean;
+  transition?: number;
 }
 
-function CachedImageInner({ remoteUrl, style, resizeMode = 'cover', blurhash }: CachedImageProps) {
-  const [uri, setUri] = useState<string | null>(null);
+function CachedImageInner({
+  remoteUrl,
+  style,
+  resizeMode = 'cover',
+  blurhash,
+  resolveDiskCache = true,
+  transition = 200,
+}: CachedImageProps) {
+  const [uri, setUri] = useState<string | null>(resolveDiskCache ? null : remoteUrl);
   const retried = useRef(false);
   const mounted = useRef(true);
 
   useEffect(() => {
     mounted.current = true;
     retried.current = false;
+
+    if (!resolveDiskCache) {
+      setUri(remoteUrl);
+      return () => { mounted.current = false; };
+    }
+
     setUri(null);
 
     // Try disk cache first, fall back to remote URL
@@ -34,7 +49,7 @@ function CachedImageInner({ remoteUrl, style, resizeMode = 'cover', blurhash }: 
       });
 
     return () => { mounted.current = false; };
-  }, [remoteUrl]);
+  }, [remoteUrl, resolveDiskCache]);
 
   const handleError = useCallback(() => {
     if (!retried.current) {
@@ -64,7 +79,7 @@ function CachedImageInner({ remoteUrl, style, resizeMode = 'cover', blurhash }: 
       contentFit={resizeMode === 'cover' ? 'cover' : resizeMode === 'contain' ? 'contain' : 'cover'}
       placeholder={{ blurhash: resolvedBlurhash }}
       onError={handleError}
-      transition={200}
+      transition={transition}
       cachePolicy="memory-disk"
     />
   );

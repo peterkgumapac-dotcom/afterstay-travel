@@ -16,7 +16,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { CachedImage } from '@/components/CachedImage';
 import { useTheme } from '@/constants/ThemeContext';
-import { springPresets, durations, thresholds } from '@/constants/animations';
+import { springPresets, thresholds } from '@/constants/animations';
 import { thumbUrl } from '@/lib/imageUrl';
 import { getMomentImageUri, type MomentDisplay } from './types';
 import { SelectionOverlay } from './SelectionOverlay';
@@ -36,6 +36,7 @@ interface PhotoItemProps {
   onToggleSelect: (id: string) => void;
   onDoubleTap?: (moment: MomentDisplay) => void;
   isFavoritedDuringView?: boolean;
+  animateEntry?: boolean;
 }
 
 function PhotoItemComponent({
@@ -48,25 +49,34 @@ function PhotoItemComponent({
   onToggleSelect,
   onDoubleTap,
   isFavoritedDuringView,
+  animateEntry = true,
 }: PhotoItemProps) {
   const { colors } = useTheme();
   const scale = useSharedValue(1);
-  const entryY = useSharedValue(20);
-  const entryOpacity = useSharedValue(0);
+  const entryY = useSharedValue(animateEntry ? 20 : 0);
+  const entryOpacity = useSharedValue(animateEntry ? 0 : 1);
   const favGlowOpacity = useSharedValue(0);
 
   // Staggered entry animation
   useEffect(() => {
-    const delay = index * 50;
+    if (!animateEntry) {
+      entryY.value = 0;
+      entryOpacity.value = 1;
+      return;
+    }
+
+    const delay = Math.min(index, 12) * 35;
+    entryY.value = 20;
+    entryOpacity.value = 0;
     entryY.value = withDelay(
       delay,
       withSpring(0, springPresets.GRID_ENTER)
     );
     entryOpacity.value = withDelay(
       delay,
-      withTiming(1, { duration: 300 })
+      withTiming(1, { duration: 220 })
     );
-  }, [index]);
+  }, [animateEntry, entryOpacity, entryY, index]);
 
   // Golden border glow when favorited during viewing
   useEffect(() => {
@@ -152,6 +162,8 @@ function PhotoItemComponent({
               remoteUrl={thumbUrl(getMomentImageUri(moment)) ?? getMomentImageUri(moment)}
               style={StyleSheet.absoluteFillObject}
               blurhash={moment.blurhash}
+              resolveDiskCache={false}
+              transition={0}
             />
           ) : (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1a1a1a' }]} />

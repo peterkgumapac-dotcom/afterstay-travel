@@ -188,7 +188,7 @@ function PolaroidCollageInner({ moments, onClose }: { moments: MomentDisplay[]; 
     try {
       setExporting(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      const { status } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
       if (status !== 'granted') {
         toast.show('Permission needed — allow photo library access');
         return;

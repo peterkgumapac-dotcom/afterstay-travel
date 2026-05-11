@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
+import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, Search } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 
 import ExploreMomentCard from '@/components/discover/ExploreMomentCard';
@@ -27,6 +28,10 @@ import { sharePost, toggleSave, createStory, deleteStory, getPostTagsForPosts } 
 import type { FeedPost, PostTag, Story } from '@/lib/types';
 
 type FeedMode = 'recent' | 'trending' | 'saved';
+type EnrichedFeedPost = FeedPost & {
+  authorProfileUserId?: string;
+  canOpenProfile: boolean;
+};
 
 const CHIPS: { id: FeedMode; label: string }[] = [
   { id: 'recent', label: 'Recent' },
@@ -67,6 +72,8 @@ export default function ExploreMomentsFeed() {
   const activeFeed = mode === 'saved' ? savedFeed : mode === 'trending' ? trendingFeed : recentFeed;
   const refreshActiveFeed = activeFeed.refresh;
   const updateActivePost = activeFeed.updateLocal;
+  const activeFeedHasMore = activeFeed.hasMore;
+  const loadMoreActiveFeed = activeFeed.loadMore;
   const officialAfterStayUserId = CONFIG.OFFICIAL_AFTERSTAY_USER_ID;
   const activeFeedHasTravelPulse = useMemo(
     () => activeFeed.posts.some((post) => isTravelPulsePost(post)),
@@ -78,6 +85,24 @@ export default function ExploreMomentsFeed() {
   );
   const profiles = useProfilesForPosts(activeFeed.posts, extraProfileIds);
   const activePostIdsKey = useMemo(() => activeFeed.posts.map((post) => post.id).join('|'), [activeFeed.posts]);
+  const enrichedPosts = useMemo<EnrichedFeedPost[]>(() => activeFeed.posts.map((item) => {
+    const isTravelPulse = isTravelPulsePost(item);
+    const authorUserId = isTravelPulse && officialAfterStayUserId ? officialAfterStayUserId : item.userId;
+    const authorProfile = authorUserId ? profiles[authorUserId] : undefined;
+    const enriched: FeedPost = {
+      ...item,
+      userName: isTravelPulse ? authorProfile?.name ?? 'AfterStay' : authorProfile?.name ?? item.userName,
+      userAvatar: authorProfile?.avatar ?? item.userAvatar,
+    };
+    const canOpenProfile = isTravelPulse
+      ? Boolean(officialAfterStayUserId)
+      : canOpenProfileIdentity(enriched, user?.id);
+    return {
+      ...enriched,
+      authorProfileUserId: canOpenProfile ? authorUserId : undefined,
+      canOpenProfile,
+    };
+  }), [activeFeed.posts, officialAfterStayUserId, profiles, user?.id]);
   const [tagsByPost, setTagsByPost] = useState<Record<string, PostTag[]>>({});
 
   // Story viewer state
@@ -191,37 +216,72 @@ export default function ExploreMomentsFeed() {
     }
   }, [user, router]);
 
-  const renderItem = useCallback(({ item }: { item: FeedPost }) => {
-    const isTravelPulse = isTravelPulsePost(item);
-    const authorUserId = isTravelPulse && officialAfterStayUserId ? officialAfterStayUserId : item.userId;
-    const authorProfile = authorUserId ? profiles[authorUserId] : undefined;
-    const enriched: FeedPost = {
-      ...item,
-      userName: isTravelPulse ? authorProfile?.name ?? 'AfterStay' : authorProfile?.name ?? item.userName,
-      userAvatar: authorProfile?.avatar ?? item.userAvatar,
-    };
-    const canOpenProfile = isTravelPulse
-      ? Boolean(officialAfterStayUserId)
-      : canOpenProfileIdentity(enriched, user?.id);
+  const handlePostLike = useCallback(async (postId: string) => {
+    await togglePostLike(postId);
+  }, []);
+
+  const handlePostComment = useCallback((postId: string) => {
+    setCommentPostId(postId);
+  }, []);
+
+  const handlePostShare = useCallback((postId: string) => {
+    sharePost(postId).catch(() => {});
+  }, []);
+
+  const handlePostSave = useCallback(async (postId: string) => {
+    await toggleSave(postId);
+  }, []);
+
+  const handlePostProfilePress = useCallback((profileUserId: string) => {
+    pushProfile(router, profileUserId, user?.id);
+  }, [router, user?.id]);
+
+  const handleEndReached = useCallback(() => {
+    if (activeFeedHasMore) loadMoreActiveFeed();
+  }, [activeFeedHasMore, loadMoreActiveFeed]);
+
+  const handleRefreshVisibleFeed = useCallback(() => {
+    refreshActiveFeed();
+  }, [refreshActiveFeed]);
+
+  const getItemType = useCallback((item: EnrichedFeedPost) => {
+    if (isTravelPulsePost(item)) return 'travel-pulse';
+    if ((item.media?.length ?? 0) > 1) return 'carousel';
+    if ((item.media?.length ?? 0) === 1 || item.photoUrl) return 'single-media';
+    return 'text';
+  }, []);
+
+  const renderItem = useCallback(({ item }: { item: EnrichedFeedPost }) => {
     return (
       <ExploreMomentCard
-        post={enriched}
-        onLike={async () => { await togglePostLike(item.id); }}
-        onComment={() => setCommentPostId(item.id)}
-        onShare={() => { sharePost(item.id).catch(() => {}); }}
-        onSave={async () => { await toggleSave(item.id); }}
-        onProfilePress={canOpenProfile ? () => pushProfile(router, authorUserId, user?.id) : undefined}
+        post={item}
+        onLike={handlePostLike}
+        onComment={handlePostComment}
+        onShare={handlePostShare}
+        onSave={handlePostSave}
+        onProfilePress={item.canOpenProfile ? handlePostProfilePress : undefined}
+        profileUserId={item.authorProfileUserId}
         tags={tagsByPost[item.id]}
         isOwner={item.userId === user?.id}
-        onDeleted={() => refreshActiveFeed()}
-        onHidden={() => refreshActiveFeed()}
+        onDeleted={handleRefreshVisibleFeed}
+        onHidden={handleRefreshVisibleFeed}
       />
     );
-  }, [officialAfterStayUserId, profiles, router, user, tagsByPost, refreshActiveFeed]);
+  }, [
+    handlePostComment,
+    handlePostLike,
+    handlePostProfilePress,
+    handlePostSave,
+    handlePostShare,
+    handleRefreshVisibleFeed,
+    tagsByPost,
+    user?.id,
+  ]);
 
   const avatarUri = profile?.avatarUrl;
   const displayName = profile?.fullName?.split(' ')[0] ?? 'traveler';
   const showAvatarPhoto = Boolean(resolvedAvatarUri && !avatarFailed);
+  const listContentStyle = useMemo(() => ({ paddingBottom: 90 }), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -324,7 +384,6 @@ export default function ExploreMomentsFeed() {
       </View>
     </View>
   ), [
-    avatarFailed,
     displayName,
     handleAddStory,
     handleCompose,
@@ -340,9 +399,10 @@ export default function ExploreMomentsFeed() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
-      <FlatList
-        data={activeFeed.posts}
+      <FlashList
+        data={enrichedPosts}
         keyExtractor={(item) => item.id}
+        getItemType={getItemType}
         renderItem={renderItem}
         ListHeaderComponent={headerContent}
         ListEmptyComponent={
@@ -367,18 +427,14 @@ export default function ExploreMomentsFeed() {
             </View>
           ) : null
         }
-        onEndReached={() => {
-          if (activeFeed.hasMore) activeFeed.loadMore();
-        }}
+        onEndReached={handleEndReached}
         onEndReachedThreshold={0.25}
-        initialNumToRender={3}
-        maxToRenderPerBatch={3}
-        updateCellsBatchingPeriod={80}
-        windowSize={5}
-        removeClippedSubviews
+        drawDistance={720}
+        maintainVisibleContentPosition={{ disabled: true }}
+        maxItemsInRecyclePool={8}
         refreshing={activeFeed.isRefreshing}
         onRefresh={activeFeed.refresh}
-        contentContainerStyle={{ paddingBottom: 90 }}
+        contentContainerStyle={listContentStyle}
         showsVerticalScrollIndicator={false}
       />
 
