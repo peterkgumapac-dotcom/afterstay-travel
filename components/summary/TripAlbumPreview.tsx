@@ -388,6 +388,11 @@ function AlbumCoverPage({
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.albumSpine} />
+      <View style={styles.coverPageEdges}>
+        <View style={styles.coverPageEdgeLine} />
+        <View style={styles.coverPageEdgeLine} />
+        <View style={styles.coverPageEdgeLine} />
+      </View>
       <View style={styles.coverInsetBorder} />
       <View style={styles.coverCornerStamp}>
         <Sparkles size={14} color="#e3bd8c" />
@@ -408,8 +413,8 @@ function AlbumCoverPage({
         </View>
         <View style={styles.coverActions}>
           <Pressable style={styles.primaryBtn} onPress={data.photos.length > 0 ? onOpenAlbum : onAddPhoto}>
-            <Images size={16} color="#21160f" />
-            <Text style={styles.primaryBtnText}>{data.photos.length > 0 ? 'Open Album' : 'Add Photos'}</Text>
+            {data.photos.length > 0 ? <BookOpen size={16} color="#21160f" /> : <Images size={16} color="#21160f" />}
+            <Text style={styles.primaryBtnText}>{data.photos.length > 0 ? 'Turn Page' : 'Add Photos'}</Text>
           </Pressable>
         </View>
       </View>
@@ -577,7 +582,8 @@ const getStyles = (_colors: ThemeColors) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 20,
+      paddingLeft: 78,
+      paddingRight: 20,
       paddingTop: 58,
       paddingBottom: 14,
     },
@@ -615,20 +621,20 @@ const getStyles = (_colors: ThemeColors) =>
     },
     bookStackBack: {
       position: 'absolute',
-      width: PAGE_W - 24,
+      width: PAGE_W,
       height: PAGE_H - 8,
       borderRadius: 20,
-      backgroundColor: '#d7c3aa',
-      transform: [{ translateX: 10 }, { translateY: 10 }, { rotate: '1deg' }],
+      backgroundColor: '#c4ad93',
+      transform: [{ translateX: 22 }, { translateY: 12 }, { rotate: '1.15deg' }],
       opacity: 0.72,
     },
     bookStackMid: {
       position: 'absolute',
-      width: PAGE_W - 12,
+      width: PAGE_W,
       height: PAGE_H - 4,
       borderRadius: 21,
       backgroundColor: '#eadcc8',
-      transform: [{ translateX: 5 }, { translateY: 5 }, { rotate: '0.45deg' }],
+      transform: [{ translateX: 12 }, { translateY: 6 }, { rotate: '0.55deg' }],
       opacity: 0.88,
     },
     bookBindingShadow: {
@@ -692,10 +698,27 @@ const getStyles = (_colors: ThemeColors) =>
       top: 0,
       bottom: 0,
       left: 0,
-      width: 18,
+      width: 22,
       backgroundColor: 'rgba(26,13,4,0.55)',
       borderRightWidth: 1,
       borderRightColor: 'rgba(255,255,255,0.12)',
+    },
+    coverPageEdges: {
+      position: 'absolute',
+      top: 16,
+      right: 0,
+      bottom: 16,
+      width: 16,
+      justifyContent: 'center',
+      gap: 7,
+      backgroundColor: 'rgba(255,248,235,0.3)',
+      borderLeftWidth: 1,
+      borderLeftColor: 'rgba(255,248,235,0.22)',
+    },
+    coverPageEdgeLine: {
+      height: 1,
+      marginLeft: 3,
+      backgroundColor: 'rgba(55,34,20,0.22)',
     },
     coverInsetBorder: {
       position: 'absolute',
