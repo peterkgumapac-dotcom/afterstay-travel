@@ -27,6 +27,7 @@ import {
   softDeleteTrip,
   restoreTrip,
   getProfile,
+  getGroupMembers,
 } from '@/lib/supabase';
 import {
   getActiveTripPromise,
@@ -45,6 +46,7 @@ import { useAuth } from '@/lib/auth';
 import { formatDatePHT, safeParse } from '@/lib/utils';
 import type {
   Highlight,
+  GroupMember,
   Trip,
 } from '@/lib/types';
 
@@ -76,7 +78,16 @@ interface PastTripDisplay {
   hasMemory?: boolean;
   isDraft?: boolean;
   lifecycleStatus?: 'Planning' | 'Active' | 'Completed' | 'Draft' | 'Archived';
+  memberCount?: number;
+  memberNames?: string[];
+  memberAvatars?: (string | undefined)[];
 }
+
+type TripCompanionMeta = {
+  count: number;
+  names: string[];
+  avatars: (string | undefined)[];
+};
 
 const COUNTRY_FLAGS: Record<string, string> = {
   JP: '\u{1F1EF}\u{1F1F5}',
@@ -89,7 +100,7 @@ const COUNTRY_FLAGS: Record<string, string> = {
   ID: '\u{1F1EE}\u{1F1E9}',
 };
 
-function mapTripToPastDisplay(t: Trip): PastTripDisplay {
+function mapTripToPastDisplay(t: Trip, companionMeta?: TripCompanionMeta): PastTripDisplay {
   // Prefer computed nights from dates over denormalized totalNights (which may be NULL/0)
   const nights = t.nights > 0 ? t.nights : (t.totalNights ?? 0);
   return {
@@ -105,6 +116,18 @@ function mapTripToPastDisplay(t: Trip): PastTripDisplay {
     hasMemory: t.status === 'Completed',
     isDraft: t.isDraft,
     lifecycleStatus: t.isDraft ? 'Draft' : t.archivedAt ? 'Archived' : t.status,
+    memberCount: companionMeta?.count,
+    memberNames: companionMeta?.names,
+    memberAvatars: companionMeta?.avatars,
+  };
+}
+
+function mapMembersToCompanionMeta(members: GroupMember[]): TripCompanionMeta {
+  const visible = members.filter((member) => member.name?.trim());
+  return {
+    count: visible.length,
+    names: visible.map((member) => member.name.trim()),
+    avatars: visible.map((member) => member.profilePhoto),
   };
 }
 
@@ -142,6 +165,7 @@ function TripScreen() {
   const [archivedTripsData, setArchivedTripsData] = useState<Trip[]>([]);
   const [quickTripsData, setQuickTripsData] = useState<QuickTrip[]>([]);
   const [highlightsData, setHighlightsData] = useState<Highlight[]>([]);
+  const [tripCompanionMeta, setTripCompanionMeta] = useState<Record<string, TripCompanionMeta>>({});
   const loadSeq = useRef(0);
   const [lifetimeStats, setLifetimeStats] = useState<{
     totalTrips: number;
@@ -164,6 +188,7 @@ function TripScreen() {
     setArchivedTripsData([]);
     setQuickTripsData([]);
     setHighlightsData([]);
+    setTripCompanionMeta({});
     setLifetimeStats(null);
   }
 
@@ -175,6 +200,7 @@ function TripScreen() {
     setArchivedTripsData([]);
     setQuickTripsData([]);
     setActiveTripSpent(0);
+    setTripCompanionMeta({});
     setLifetimeStats(null);
     setAddOpen(false);
   }, []);
@@ -194,6 +220,7 @@ function TripScreen() {
     setPastTripsData(mockData.pastTrips as Trip[]);
     setDraftTripsData(mockData.draftTrips as Trip[]);
     setQuickTripsData([]);
+    setTripCompanionMeta({});
     setLifetimeStats(mockData.lifetimeStats ? {
       totalTrips: mockData.lifetimeStats.totalTrips,
       totalCountries: mockData.lifetimeStats.totalCountries,
@@ -243,6 +270,21 @@ function TripScreen() {
       setArchivedTripsData(archived);
 
       setPastTripsData(nonDrafts);
+
+      const previewTripIds = [...nonDrafts, ...drafts, ...archived].slice(0, 12).map((row) => row.id);
+      if (previewTripIds.length > 0) {
+        Promise.all(
+          previewTripIds.map(async (id) => {
+            const members = await getGroupMembers(id).catch(() => [] as GroupMember[]);
+            return [id, mapMembersToCompanionMeta(members)] as const;
+          }),
+        ).then((rows) => {
+          if (!isCurrentRequest()) return;
+          setTripCompanionMeta((current) => ({ ...current, ...Object.fromEntries(rows) }));
+        }).catch(() => {
+          /* companion previews are non-blocking */
+        });
+      }
 
       // Backfill spent for legacy trips after first paint so tab switching is not blocked.
       const tripsNeedingSpent = nonDrafts.filter((t) => t.status === 'Completed' && (t.totalSpent ?? 0) <= 0);
@@ -303,6 +345,15 @@ function TripScreen() {
     setDraftTripsData(drafts);
     setArchivedTripsData(archived);
     setPastTripsData(nonDrafts);
+    const previewTripIds = [...nonDrafts, ...drafts, ...archived].slice(0, 12).map((row) => row.id);
+    if (previewTripIds.length > 0) {
+      Promise.all(
+        previewTripIds.map(async (id) => {
+          const members = await getGroupMembers(id).catch(() => [] as GroupMember[]);
+          return [id, mapMembersToCompanionMeta(members)] as const;
+        }),
+      ).then((rows) => setTripCompanionMeta((current) => ({ ...current, ...Object.fromEntries(rows) }))).catch(() => {});
+    }
   }, [user?.id]);
 
   const onRefresh = useCallback(async () => {
@@ -352,18 +403,18 @@ function TripScreen() {
   }, [load]);
 
   const pastTripsDisplay = useMemo(
-    () => pastTripsData.filter(t => t.status === 'Completed').map(mapTripToPastDisplay),
-    [pastTripsData],
+    () => pastTripsData.filter(t => t.status === 'Completed').map((t) => mapTripToPastDisplay(t, tripCompanionMeta[t.id])),
+    [pastTripsData, tripCompanionMeta],
   );
 
   const activeTripsDisplay = useMemo(
-    () => pastTripsData.filter(t => t.status === 'Active').map(mapTripToPastDisplay),
-    [pastTripsData],
+    () => pastTripsData.filter(t => t.status === 'Active').map((t) => mapTripToPastDisplay(t, tripCompanionMeta[t.id])),
+    [pastTripsData, tripCompanionMeta],
   );
 
   const incomingTripsDisplay = useMemo(
-    () => pastTripsData.filter(t => t.status === 'Planning').map(mapTripToPastDisplay),
-    [pastTripsData],
+    () => pastTripsData.filter(t => t.status === 'Planning').map((t) => mapTripToPastDisplay(t, tripCompanionMeta[t.id])),
+    [pastTripsData, tripCompanionMeta],
   );
 
   // Summary computed values — include active trip in fallback calculations
@@ -593,6 +644,7 @@ function TripScreen() {
           draftTrips={draftTripsData}
           archivedTrips={archivedTripsData}
           quickTrips={quickTripsData}
+          tripCompanionMeta={tripCompanionMeta}
           colors={colors}
           onAddTrip={() => setAddOpen(true)}
           onTripPress={(tripId, cardStatus) => {

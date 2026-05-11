@@ -30,6 +30,11 @@ type TripLibraryItem =
   | { type: 'past'; data: PastTripDisplay }
   | { type: 'draft'; data: Trip }
   | { type: 'archived'; data: PastTripDisplay };
+type TripCompanionMeta = {
+  count: number;
+  names: string[];
+  avatars: (string | undefined)[];
+};
 
 interface SummaryTabProps {
   totalMiles: number;
@@ -44,6 +49,7 @@ interface SummaryTabProps {
   draftTrips?: Trip[];
   archivedTrips?: Trip[];
   quickTrips?: QuickTrip[];
+  tripCompanionMeta?: Record<string, TripCompanionMeta>;
   colors: ThemeColors;
   onAddTrip: () => void;
   onTripPress?: (tripId: string, status?: TripCardStatus) => void;
@@ -66,6 +72,7 @@ export function SummaryTab({
   draftTrips = [],
   archivedTrips = [],
   quickTrips = [],
+  tripCompanionMeta = {},
   colors,
   onAddTrip,
   onTripPress,
@@ -102,8 +109,8 @@ export function SummaryTab({
 
   const archivedItems = useMemo<TripLibraryItem[]>(() => archivedTrips.map((t) => ({
     type: 'archived' as const,
-    data: mapTripToPastDisplay(t),
-  })), [archivedTrips]);
+    data: mapTripToPastDisplay(t, tripCompanionMeta[t.id]),
+  })), [archivedTrips, tripCompanionMeta]);
 
   const handleDelete = useCallback(
     (tripId: string, isDraft?: boolean) => {
@@ -142,7 +149,7 @@ export function SummaryTab({
     item: TripLibraryItem,
     index: number,
   ) => {
-    const t = item.type === 'draft' ? mapTripToPastDisplay(item.data as Trip) : (item.data as PastTripDisplay);
+    const t = item.type === 'draft' ? mapTripToPastDisplay(item.data as Trip, tripCompanionMeta[(item.data as Trip).id]) : (item.data as PastTripDisplay);
     const isDraft = item.type === 'draft';
     const isArchived = item.type === 'archived';
     const statusLabel = getTripStatusLabel(item.type, t);
@@ -204,11 +211,37 @@ export function SummaryTab({
             {t.nights > 0 ? (
               <Text style={styles.tripMetaText}>{t.nights} night{t.nights !== 1 ? 's' : ''}</Text>
             ) : null}
+            {t.memberCount && t.memberCount > 0 ? (
+              <Text style={styles.tripMetaText}>
+                {t.memberCount} companion{t.memberCount !== 1 ? 's' : ''}
+              </Text>
+            ) : null}
             {t.spent > 0 ? (
               <Text style={styles.tripMetaText}>{formatCurrency(t.spent, 'PHP')} spent</Text>
             ) : null}
             {isDraft ? <Text style={styles.tripMetaText}>Resume planning</Text> : null}
           </View>
+          {t.memberCount && t.memberCount > 0 ? (
+            <View style={styles.memberPreviewRow}>
+              {(t.memberNames ?? []).slice(0, 4).map((name, idx) => {
+                const avatar = t.memberAvatars?.[idx];
+                return (
+                  <View key={`${t.tripId}-member-${idx}`} style={[styles.memberPreviewAvatar, { marginLeft: idx === 0 ? 0 : -8 }]}>
+                    {avatar ? (
+                      <Image source={{ uri: avatar }} style={styles.memberPreviewImage} contentFit="cover" cachePolicy="memory-disk" />
+                    ) : (
+                      <Text style={styles.memberPreviewInitial}>{name.charAt(0).toUpperCase()}</Text>
+                    )}
+                  </View>
+                );
+              })}
+              {t.memberCount > 4 ? (
+                <View style={[styles.memberPreviewAvatar, styles.memberPreviewMore, { marginLeft: -8 }]}>
+                  <Text style={styles.memberPreviewMoreText}>+{t.memberCount - 4}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.tripCardRight}>
@@ -291,6 +324,11 @@ export function SummaryTab({
           <Text style={styles.tripLibraryDates} numberOfLines={1}>{qt.placeName}</Text>
           <View style={styles.tripMetaLine}>
             <Text style={styles.tripMetaText}>{qt.category}</Text>
+            {qt.companionCount > 0 ? (
+              <Text style={styles.tripMetaText}>
+                {qt.companionCount} companion{qt.companionCount !== 1 ? 's' : ''}
+              </Text>
+            ) : null}
             {qt.totalSpendAmount > 0 ? (
               <Text style={styles.tripMetaText}>{formatCurrency(qt.totalSpendAmount, qt.totalSpendCurrency)} spent</Text>
             ) : null}
@@ -519,7 +557,7 @@ export function SummaryTab({
   );
 }
 
-function mapTripToPastDisplay(t: Trip): PastTripDisplay {
+function mapTripToPastDisplay(t: Trip, companionMeta?: TripCompanionMeta): PastTripDisplay {
   const COUNTRY_FLAGS: Record<string, string> = {
     JP: '\u{1F1EF}\u{1F1F5}',
     VN: '\u{1F1FB}\u{1F1F3}',
@@ -544,6 +582,9 @@ function mapTripToPastDisplay(t: Trip): PastTripDisplay {
     heroImageUrl: t.heroImageUrl,
     isDraft: t.isDraft,
     lifecycleStatus: t.isDraft ? 'Draft' : t.archivedAt ? 'Archived' : t.status,
+    memberCount: companionMeta?.count,
+    memberNames: companionMeta?.names,
+    memberAvatars: companionMeta?.avatars,
   };
 }
 
@@ -726,6 +767,40 @@ const getStyles = (colors: ThemeColors) =>
       lineHeight: 16,
       color: colors.text3,
       fontWeight: '600',
+    },
+    memberPreviewRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 10,
+      paddingLeft: 1,
+    },
+    memberPreviewAvatar: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.card,
+      backgroundColor: colors.accentBg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    memberPreviewImage: {
+      width: '100%',
+      height: '100%',
+    },
+    memberPreviewInitial: {
+      fontSize: 10,
+      fontWeight: '900',
+      color: colors.accent,
+    },
+    memberPreviewMore: {
+      backgroundColor: colors.elevated,
+    },
+    memberPreviewMoreText: {
+      fontSize: 9,
+      fontWeight: '900',
+      color: colors.text2,
     },
     tripCardRight: {
       alignItems: 'center',

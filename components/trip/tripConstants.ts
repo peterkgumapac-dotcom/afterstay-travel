@@ -40,6 +40,9 @@ export interface PastTripDisplay {
   heroImageUrl?: string;
   isDraft?: boolean;
   lifecycleStatus?: 'Planning' | 'Active' | 'Completed' | 'Draft' | 'Archived';
+  memberCount?: number;
+  memberNames?: string[];
+  memberAvatars?: (string | undefined)[];
 }
 
 // ---------- CONSTANTS ----------

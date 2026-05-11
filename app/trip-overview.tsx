@@ -18,7 +18,7 @@ import {
   Users,
   UserPlus,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ElementType } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -33,6 +33,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -47,8 +48,11 @@ import {
   getGroupMembers,
   getPackingList,
   getSavedPlaces,
+  removeGroupMember,
   updateTripProperty,
+  updateMyTripMemberPreferences,
 } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
 import type {
   ChecklistItem,
   Expense,
@@ -351,12 +355,12 @@ interface OverviewData {
 
 type ControlSection = 'recap' | 'details' | 'companions' | 'essentials' | 'settings';
 
-const CONTROL_SECTIONS: { key: ControlSection; label: string }[] = [
-  { key: 'recap', label: 'Recap' },
-  { key: 'details', label: 'Details' },
-  { key: 'companions', label: 'Companions' },
-  { key: 'essentials', label: 'Essentials' },
-  { key: 'settings', label: 'Settings' },
+const CONTROL_SECTIONS: { key: ControlSection; label: string; icon: ElementType }[] = [
+  { key: 'recap', label: 'Recap', icon: Sparkles },
+  { key: 'details', label: 'Details', icon: ClipboardList },
+  { key: 'companions', label: 'Companions', icon: Users },
+  { key: 'essentials', label: 'Essentials', icon: Luggage },
+  { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
 function normalizeSection(value: string | undefined, trip?: Trip | null): ControlSection {
@@ -370,6 +374,7 @@ export default function TripOverviewScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ tripId?: string; section?: string }>();
   const tripId = typeof params.tripId === 'string' ? params.tripId : undefined;
   const requestedSection = typeof params.section === 'string' ? params.section : undefined;
@@ -483,6 +488,51 @@ export default function TripOverviewScreen() {
   const uploadFile = () => router.push({ pathname: '/add-file', params: { tripId: trip.id } } as never);
   const rescanBooking = () => router.push({ pathname: '/scan-trip', params: { tripId: trip.id } } as never);
   const inviteCompanions = () => router.push('/invite' as never);
+  const openProfile = (userId: string) => router.push({ pathname: '/profile/[userId]', params: { userId } } as never);
+
+  const refreshMembers = async () => {
+    const nextMembers = await getGroupMembers(trip.id).catch(() => members);
+    setData({ ...data, members: nextMembers });
+  };
+
+  const handleRemoveMember = (member: GroupMember) => {
+    if (member.role === 'Primary') {
+      Alert.alert('Organizer stays on the trip', 'The primary traveler cannot be removed from this trip.');
+      return;
+    }
+    Alert.alert(
+      'Remove companion?',
+      `${member.name} will be removed from this trip.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeGroupMember(member.id);
+              await refreshMembers();
+            } catch (e: any) {
+              Alert.alert('Could not remove companion', e?.message ?? 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const toggleMyStay = async (member: GroupMember) => {
+    if (!user?.id || member.userId !== user.id) return;
+    try {
+      await updateMyTripMemberPreferences(trip.id, {
+        sharesAccommodation: member.sharesAccommodation !== true,
+        travelNotes: member.travelNotes,
+      });
+      await refreshMembers();
+    } catch (e: any) {
+      Alert.alert('Could not update stay preference', e?.message ?? 'Please try again.');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -516,6 +566,7 @@ export default function TripOverviewScreen() {
         <View style={styles.controlTabs}>
           {CONTROL_SECTIONS.map((section) => {
             const active = activeSection === section.key;
+            const Icon = section.icon;
             return (
               <Pressable
                 key={section.key}
@@ -524,6 +575,7 @@ export default function TripOverviewScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${section.label}`}
               >
+                <Icon size={15} color={active ? colors.bg : colors.text2} strokeWidth={2} />
                 <Text style={[styles.controlTabText, active && styles.controlTabTextActive]}>
                   {section.label}
                 </Text>
@@ -673,16 +725,73 @@ export default function TripOverviewScreen() {
               </Text>
             )}
             <View style={styles.memberList}>
-              {members.length > 0 ? members.map(m => (
-                <View key={m.id} style={styles.memberChip}>
-                  <Text style={styles.memberName}>{m.name}</Text>
-                  {m.role === 'Primary' ? (
-                    <View style={styles.roleBadge}>
-                      <Text style={styles.roleBadgeText}>Primary</Text>
+              {members.length > 0 ? members.map((m) => {
+                const isSelf = !!user?.id && m.userId === user.id;
+                return (
+                <View key={m.id} style={styles.memberCard}>
+                  <View style={styles.memberAvatar}>
+                    {m.profilePhoto ? (
+                      <ExpoImage source={{ uri: m.profilePhoto }} style={styles.memberAvatarImage} contentFit="cover" cachePolicy="memory-disk" />
+                    ) : (
+                      <Text style={styles.memberAvatarText}>{m.name.charAt(0).toUpperCase()}</Text>
+                    )}
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <View style={styles.memberNameRow}>
+                      <Text style={styles.memberName} numberOfLines={1}>{m.name}</Text>
+                      {isSelf ? <Text style={styles.youBadge}>You</Text> : null}
                     </View>
-                  ) : null}
+                    <View style={styles.memberBadgeRow}>
+                      <View style={styles.roleBadge}>
+                        <Text style={styles.roleBadgeText}>{m.role}</Text>
+                      </View>
+                      {m.userId ? (
+                        <View style={styles.linkedBadge}>
+                          <Text style={styles.linkedBadgeText}>On app</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.pendingBadge}>
+                          <Text style={styles.pendingBadgeText}>Invite pending</Text>
+                        </View>
+                      )}
+                      {m.sharesAccommodation !== undefined ? (
+                        <View style={styles.stayBadge}>
+                          <Text style={styles.stayBadgeText}>{m.sharesAccommodation ? 'Same stay' : 'Own stay'}</Text>
+                        </View>
+                      ) : null}
+                      {m.flightId ? (
+                        <View style={styles.stayBadge}>
+                          <Text style={styles.stayBadgeText}>Flight linked</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    {m.travelNotes ? <Text style={styles.memberNote} numberOfLines={2}>{m.travelNotes}</Text> : null}
+                    <View style={styles.memberActions}>
+                      {m.userId ? (
+                        <Pressable style={styles.memberActionBtn} onPress={() => openProfile(m.userId!)}>
+                          <Text style={styles.memberActionText}>Profile</Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable style={styles.memberActionBtn} onPress={inviteCompanions}>
+                          <Text style={styles.memberActionText}>Send invite</Text>
+                        </Pressable>
+                      )}
+                      {isSelf ? (
+                        <Pressable style={styles.memberActionBtn} onPress={() => toggleMyStay(m)}>
+                          <Text style={styles.memberActionText}>
+                            {m.sharesAccommodation === true ? 'Own stay' : 'Same stay'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                      {m.role !== 'Primary' && trip.status !== 'Completed' ? (
+                        <Pressable style={[styles.memberActionBtn, styles.memberDangerBtn]} onPress={() => handleRemoveMember(m)}>
+                          <Text style={styles.memberDangerText}>Remove</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
                 </View>
-              )) : (
+              );}) : (
                 <Text style={styles.emptySectionText}>No companions added yet.</Text>
               )}
             </View>
@@ -899,6 +1008,8 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
     flexGrow: 1,
     minWidth: '30%',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
     paddingVertical: 9,
     paddingHorizontal: 10,
     borderRadius: radius.md,
@@ -1143,17 +1254,62 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   },
 
   // group
-  memberList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  memberChip: {
+  memberList: { gap: spacing.sm },
+  memberCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    backgroundColor: colors.bg3,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  memberAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.accentBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  memberAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  memberAvatarText: {
+    color: colors.accent,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  memberInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  memberNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.bg3,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: radius.pill,
   },
-  memberName: { color: colors.text, fontSize: 13, fontWeight: '500' },
+  memberName: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  youBadge: {
+    color: colors.accent,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  memberBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
   emptyCard: {
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -1175,10 +1331,66 @@ const getStyles = (colors: ThemeColors) => StyleSheet.create({
   roleBadge: {
     backgroundColor: colors.purple + '30',
     paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingVertical: 3,
     borderRadius: radius.sm,
   },
   roleBadgeText: { color: colors.purple, fontSize: 10, fontWeight: '700' },
+  linkedBadge: {
+    backgroundColor: colors.green + '20',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+  },
+  linkedBadgeText: { color: colors.green2, fontSize: 10, fontWeight: '700' },
+  pendingBadge: {
+    backgroundColor: colors.amber + '20',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+  },
+  pendingBadgeText: { color: colors.amber, fontSize: 10, fontWeight: '700' },
+  stayBadge: {
+    backgroundColor: colors.card,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  stayBadgeText: { color: colors.text2, fontSize: 10, fontWeight: '700' },
+  memberNote: {
+    color: colors.text2,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 8,
+  },
+  memberActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  memberActionBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  memberActionText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  memberDangerBtn: {
+    borderColor: colors.danger + '40',
+  },
+  memberDangerText: {
+    color: colors.danger,
+    fontSize: 11,
+    fontWeight: '800',
+  },
 
   // progress
   progressHeader: {
