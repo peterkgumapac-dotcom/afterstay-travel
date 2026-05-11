@@ -30,7 +30,7 @@ const PAGE_H = 440;
 const SNAP_W = SCREEN_W;
 const MAX_PHOTO_PAGES = 15;
 const PAGE_TURN_DURATION_MS = 1550;
-const CURL_W = PAGE_W * 0.38;
+const CURL_W = PAGE_W * 0.58;
 
 type AlbumPage =
   | { type: 'cover' }
@@ -485,9 +485,9 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                   opacity: flipAnim.interpolate({ inputRange: [0, 0.92, 0.99, 1], outputRange: [1, 1, 0.72, 0], extrapolate: 'clamp' }),
                   transform: [
                     { perspective: 1400 },
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [PAGE_W * 0.31, -PAGE_W * 0.18, -PAGE_W * 0.56], extrapolate: 'clamp' }) },
-                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.24, 0.72, 1], outputRange: ['0deg', '-38deg', '-96deg', '-132deg'], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.42, 0.78, 1], outputRange: [1, 0.76, 0.44, 0.24], extrapolate: 'clamp' }) },
+                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [PAGE_W * 0.22, -PAGE_W * 0.16, -PAGE_W * 0.48], extrapolate: 'clamp' }) },
+                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.24, 0.72, 1], outputRange: ['0deg', '-34deg', '-82deg', '-118deg'], extrapolate: 'clamp' }) },
+                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.42, 0.78, 1], outputRange: [1, 0.92, 0.68, 0.42], extrapolate: 'clamp' }) },
                     { scaleY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.01, 0.99], extrapolate: 'clamp' }) },
                   ],
                 },
@@ -962,7 +962,7 @@ const getStyles = (_colors: ThemeColors) =>
       position: 'absolute',
       top: 0,
       bottom: 0,
-      width: 82,
+      width: 118,
       borderTopLeftRadius: 18,
       borderBottomLeftRadius: 18,
       backgroundColor: '#f7efdf',
@@ -977,7 +977,7 @@ const getStyles = (_colors: ThemeColors) =>
       position: 'absolute',
       top: -20,
       bottom: -20,
-      width: 34,
+      width: 48,
       borderRadius: 30,
       backgroundColor: 'rgba(255,255,255,0.42)',
       shadowColor: '#fff',
