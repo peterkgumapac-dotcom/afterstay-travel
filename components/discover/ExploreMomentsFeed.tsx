@@ -1,6 +1,5 @@
 import { useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
-import { FlashList } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, Search } from 'lucide-react-native';
@@ -8,6 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -262,13 +262,6 @@ export default function ExploreMomentsFeed({ ListHeaderComponent, onScrollY }: E
     refreshActiveFeed();
   }, [refreshActiveFeed]);
 
-  const getItemType = useCallback((item: EnrichedFeedPost) => {
-    if (isTravelPulsePost(item)) return 'travel-pulse';
-    if ((item.media?.length ?? 0) > 1) return 'carousel';
-    if ((item.media?.length ?? 0) === 1 || item.photoUrl) return 'single-media';
-    return 'text';
-  }, []);
-
   const renderItem = useCallback(({ item }: { item: EnrichedFeedPost }) => {
     return (
       <ExploreMomentCard
@@ -421,10 +414,9 @@ export default function ExploreMomentsFeed({ ListHeaderComponent, onScrollY }: E
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
-      <FlashList
+      <FlatList
         data={enrichedPosts}
         keyExtractor={(item) => item.id}
-        getItemType={getItemType}
         renderItem={renderItem}
         ListHeaderComponent={headerContent}
         ListEmptyComponent={
@@ -451,9 +443,11 @@ export default function ExploreMomentsFeed({ ListHeaderComponent, onScrollY }: E
         }
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.25}
-        drawDistance={720}
-        maintainVisibleContentPosition={{ disabled: true }}
-        maxItemsInRecyclePool={8}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        updateCellsBatchingPeriod={80}
+        windowSize={7}
+        removeClippedSubviews
         refreshing={activeFeed.isRefreshing}
         onRefresh={activeFeed.refresh}
         onScroll={handleScroll}
