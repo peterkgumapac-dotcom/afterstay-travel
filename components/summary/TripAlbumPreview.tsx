@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
   Easing,
   FlatList,
+  PanResponder,
   Pressable,
   Share,
   StyleSheet,
@@ -266,7 +267,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     });
   };
 
-  const openNextPage = () => {
+  const openNextPage = useCallback(() => {
     if (pages.length <= 1 || flippingPage) return;
     const nextIndex = Math.min(pageIndex + 1, pages.length - 1);
     if (nextIndex === pageIndex) return;
@@ -289,7 +290,24 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       setFlippingPage(null);
       setFlippingToPage(null);
     });
-  };
+  }, [flippingPage, flipAnim, pageIndex, pages, scrollX]);
+
+  const pageSwipeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => {
+          const horizontal = Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25;
+          return canTurnPage && !flippingPage && horizontal && gesture.dx < 0;
+        },
+        onPanResponderTerminationRequest: () => true,
+        onPanResponderRelease: (_, gesture) => {
+          const leftSwipe = gesture.dx < -44 || gesture.vx < -0.35;
+          const mostlyHorizontal = Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.15;
+          if (canTurnPage && !flippingPage && leftSwipe && mostlyHorizontal) openNextPage();
+        },
+      }),
+    [canTurnPage, flippingPage, openNextPage],
+  );
 
   const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setPageIndex(Math.round(event.nativeEvent.contentOffset.x / SNAP_W));
@@ -369,7 +387,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         </View>
       </View>
 
-      <View style={styles.bookViewport}>
+      <View style={styles.bookViewport} {...pageSwipeResponder.panHandlers}>
         <Animated.FlatList
           ref={flatListRef}
           data={pages}
