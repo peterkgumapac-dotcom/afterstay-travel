@@ -244,6 +244,10 @@ function RootLayoutInner() {
           }}
         />
         <Stack.Screen
+          name="trip-summary-album-mock"
+          options={{ presentation: 'modal', title: 'Album Preview', headerShown: false, animation: 'fade_from_bottom', animationDuration: 250 }}
+        />
+        <Stack.Screen
           name="trip-recap"
           options={{ presentation: 'fullScreenModal', title: 'Trip Recap', headerShown: false, animation: 'fade', animationDuration: 200 }}
         />

@@ -32,7 +32,7 @@ import StatPill from '@/components/summary/StatPill';
 import CategoryBar from '@/components/summary/CategoryBar';
 import PlaceRow from '@/components/summary/PlaceRow';
 import type { PlaceSource } from '@/components/summary/PlaceRow';
-import HeroSection from '@/components/summary/HeroSection';
+import TripAlbumPreview, { buildTripAlbumData, type AlbumPhoto } from '@/components/summary/TripAlbumPreview';
 import SuperlativeCard from '@/components/summary/SuperlativeCard';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import {
@@ -328,35 +328,11 @@ export default function TripSummaryScreen() {
 
   // ---------- SUPERLATIVES (derived from existing data) ----------
 
-  const heroPhoto = useMemo(() => {
-    // Pick most-favorited moment with a photo, or fall back to first photo
-    const withPhotos = moments.filter((m) => resolvePhotoUrl(m.photo));
-    const favIds = Object.entries(favorites)
-      .filter(([, f]) => f.count > 0)
-      .sort(([, a], [, b]) => b.count - a.count)
-      .map(([id]) => id);
-    const topFav = favIds.find((id) => withPhotos.some((m) => m.id === id));
-    if (topFav) return resolvePhotoUrl(withPhotos.find((m) => m.id === topFav)?.photo);
-    return resolvePhotoUrl(withPhotos[0]?.photo);
-  }, [moments, favorites]);
-
   const topCategory = useMemo(() => {
     const entries = Object.entries(summary.byCategory);
     if (entries.length === 0) return undefined;
     return entries.sort(([, a], [, b]) => b - a)[0][0];
   }, [summary.byCategory]);
-
-  const tripPersonality = useMemo(() => {
-    if (!topCategory) return undefined;
-    const map: Record<string, string> = {
-      Food: 'Foodie Escape',
-      Activity: 'Adventure Mode',
-      Shopping: 'Retail Therapy',
-      Transport: 'Road Trip',
-      Accommodation: 'Luxury Stay',
-    };
-    return map[topCategory] ?? 'The Getaway';
-  }, [topCategory]);
 
   const peakDay = useMemo(() => {
     if (momentsByDay.length === 0) return undefined;
@@ -408,6 +384,33 @@ export default function TripSummaryScreen() {
     } as never);
   };
 
+  const handleOpenAlbumPhoto = (photo: AlbumPhoto) => {
+    const photoMoments = moments.filter((m) => resolvePhotoUrl(m.photo) || m.hdPhoto);
+    if (photoMoments.length === 0) return;
+    const initialIndex = Math.max(0, photoMoments.findIndex((m) => m.id === photo.id));
+    const viewerMoments = photoMoments.slice(0, 60).map((m) => ({
+      ...m,
+      place: m.location,
+      favoriteCount: favorites[m.id]?.count ?? m.likesCount ?? 0,
+      commentCount: m.commentsCount ?? 0,
+      isFavorited: (favorites[m.id]?.count ?? 0) > 0,
+    }));
+    const people = members.reduce<Record<string, { name: string; color: string; avatar?: string }>>((acc, member, index) => {
+      const key = member.name?.[0]?.toUpperCase() || String(index + 1);
+      acc[key] = { name: member.name, color: ['#a64d1e', '#b8892b', '#c66a36', '#8a5a2b'][index % 4], avatar: member.profilePhoto };
+      return acc;
+    }, {});
+
+    router.push({
+      pathname: '/photo-viewer',
+      params: {
+        moments: JSON.stringify(viewerMoments),
+        initialIndex: String(initialIndex),
+        people: JSON.stringify(people),
+      },
+    } as never);
+  };
+
   // ---------- RENDER ----------
 
   if (loading) {
@@ -434,22 +437,29 @@ export default function TripSummaryScreen() {
   }
 
   const dateLabel = `${formatDatePHT(trip.startDate)} – ${formatDatePHT(trip.endDate)}`;
+  const albumData = buildTripAlbumData({
+    trip,
+    moments,
+    favorites,
+    places,
+    expenses,
+    members,
+    dateLabel,
+    currency,
+  });
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {/* ==================== 1. HERO ==================== */}
-        <HeroSection
-          photoUrl={heroPhoto}
-          tripName={trip.name}
-          destination={trip.destination ?? ''}
-          dateLabel={dateLabel}
-          nights={trip.nights}
-          members={members}
-          personality={tripPersonality}
+        <TripAlbumPreview
+          data={albumData}
           colors={colors}
           onBack={() => router.back()}
+          onOpenAlbum={handlePlayReel}
+          onAddPhoto={handleAddMoment}
+          onOpenPhoto={handleOpenAlbumPhoto}
         />
 
         {/* ==================== 2. STATS STRIP ==================== */}
