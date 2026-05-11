@@ -381,6 +381,8 @@ function HomeScreen() {
     returningMoments,
     returningMembers,
     returningSavedPlaces,
+    historyStatus,
+    profileSuggestsHistory,
     userName,
     userAvatar,
     user,
@@ -577,7 +579,11 @@ function HomeScreen() {
       quickTrips.length > 0 ||
       draftTrips.length > 0 ||
       allTrips.some((t) => !t.deletedAt && !t.isDraft);
-    if (!isTestMode && !historyHydrated && !hasHistory) {
+    const shouldKeepCheckingHistory =
+      !isTestMode &&
+      !hasHistory &&
+      (!historyHydrated || historyStatus === 'unknown');
+    if (shouldKeepCheckingHistory) {
       return (
         <AfterStayLoader
           message="Checking your travel history..."
@@ -589,7 +595,7 @@ function HomeScreen() {
         />
       );
     }
-    if (hasHistory) {
+    if (hasHistory || profileSuggestsHistory) {
       const displayName = userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || '';
       const handle =
         user?.email?.split('@')[0] ||

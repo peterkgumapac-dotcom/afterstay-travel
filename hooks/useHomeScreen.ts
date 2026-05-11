@@ -36,7 +36,13 @@ import {
   getHomeExpensesPromise,
 } from '@/hooks/useTabHomeData';
 import { fetchDestinationPhotos } from '@/lib/google-places';
-import { pickHomeLoadedTrip, pickHomeSeedTrip } from '@/lib/homeStartup';
+import {
+  pickHomeLoadedTrip,
+  pickHomeSeedTrip,
+  profileImpliesHomeHistory,
+  resolveHomeHistoryStatus,
+  type HomeHistoryStatus,
+} from '@/lib/homeStartup';
 import { resolveTripMediaLocation } from '@/lib/tripMedia';
 import { filterRenderableImageUrls } from '@/lib/imageUrl';
 import { setHotelCoords } from '@/lib/config';
@@ -94,6 +100,12 @@ type TimedValue<T> =
 type HomeProfileIdentity = {
   fullName?: string | null;
   avatarUrl?: string | null;
+  tripCount?: number | null;
+  completedTripCount?: number | null;
+  lastTripId?: string | null;
+  onboardedAt?: string | null;
+  onboardingState?: Record<string, unknown> | null;
+  userSegment?: string | null;
 };
 
 type HomeAuthIdentity = {
@@ -147,6 +159,9 @@ export function useHomeScreen() {
   const loadSeq = useRef(0);
   const userRef = useRef(user);
   const segmentActiveTripRef = useRef<Trip | null>(segmentActiveTrip ?? null);
+  const allTripsRef = useRef<Trip[]>([]);
+  const quickTripsRef = useRef<QuickTrip[]>([]);
+  const historyRecoveryAttempted = useRef(false);
 
   useEffect(() => {
     userRef.current = user;
@@ -163,6 +178,8 @@ export function useHomeScreen() {
   const [savedPlaces, setSavedPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(true);
   const [historyHydrated, setHistoryHydrated] = useState(false);
+  const [historyStatus, setHistoryStatus] = useState<HomeHistoryStatus>('unknown');
+  const [profileSuggestsHistory, setProfileSuggestsHistory] = useState(false);
   const [showLoader, setShowLoader] = useState(false);
   const [loaderDone, setLoaderDone] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -221,6 +238,9 @@ export function useHomeScreen() {
     setRSavedPlaces([]);
     setRStats(null);
     setRAllTrips([]);
+    historyRecoveryAttempted.current = false;
+    setHistoryStatus('unknown');
+    setProfileSuggestsHistory(false);
     setDebugInfo('');
     setError(undefined);
   }
@@ -235,6 +255,14 @@ export function useHomeScreen() {
   const quickTrips = isTestMode ? [] as QuickTrip[] : rQuickTrips;
   const allTrips = isTestMode ? [...pastTrips, ...draftTrips, ...(trip ? [trip] : [])] : rAllTrips;
   const lifetimeStats = isTestMode ? (mockData?.lifetimeStats ?? null) : rStats;
+
+  useEffect(() => {
+    allTripsRef.current = rAllTrips;
+  }, [rAllTrips]);
+
+  useEffect(() => {
+    quickTripsRef.current = rQuickTrips;
+  }, [rQuickTrips]);
 
   const isPlaneTransport = !trip?.transport || trip?.transport === 'plane';
   const showFlightFeatures = isPlaneTransport || flights.length > 0;
@@ -327,6 +355,8 @@ export function useHomeScreen() {
     setRSavedPlaces([]);
     setRStats(null);
     setRAllTrips([]);
+    setHistoryStatus('unknown');
+    setProfileSuggestsHistory(false);
     setDailyTrackerOn(false);
     setDailyTrackerTotal(0);
     setDailyTrackerCount(0);
@@ -360,12 +390,8 @@ export function useHomeScreen() {
       }
       setError(undefined);
 
-      const allTripsPromise = withTimeout(
-        getHomeAllTripsPromise(force),
-        [] as Trip[],
-        HOME_SLOW_REQUEST_TIMEOUT_MS,
-      );
-      const quickTripsPromise = withTimeout(getHomeQuickTripsPromise(force), [] as QuickTrip[]);
+      const allTripsStatusPromise = withTimeoutStatus(getHomeAllTripsPromise(force), HOME_SLOW_REQUEST_TIMEOUT_MS);
+      const quickTripsStatusPromise = withTimeoutStatus(getHomeQuickTripsPromise(force));
       const lifetimeStatsPromise = withTimeout(getHomeLifetimeStatsPromise(force), null);
 
       const currentUser = userRef.current;
@@ -444,22 +470,51 @@ export function useHomeScreen() {
       }
 
       // Returning-user data
-      const [allTripsData, quick, stats] = await Promise.all([
-        allTripsPromise,
-        quickTripsPromise,
+      const [allTripsResult, quickTripsResult, stats, profileForHistory] = await Promise.all([
+        allTripsStatusPromise,
+        quickTripsStatusPromise,
         lifetimeStatsPromise,
+        profilePromise,
       ]);
       if (!isCurrentRequest()) return;
-      setDebugInfo(`User: ${currentUser?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTripsData.length}`);
+      const existingTrips = allTripsRef.current.length > 0 ? allTripsRef.current : getHomeAllTripsCached() ?? [];
+      const existingQuickTrips = quickTripsRef.current.length > 0 ? quickTripsRef.current : getHomeQuickTripsCached() ?? [];
+      const allTripsData = allTripsResult.status === 'ok' ? allTripsResult.value : existingTrips;
+      const quick = quickTripsResult.status === 'ok' ? quickTripsResult.value : existingQuickTrips;
+      const profileHasHistory = profileImpliesHomeHistory(profileForHistory);
+      const historyUncertain = allTripsResult.status !== 'ok' || quickTripsResult.status !== 'ok';
+      const nextHistoryStatus = resolveHomeHistoryStatus({
+        tripCount: allTripsData.length,
+        quickTripCount: quick.length,
+        profileSuggestsHistory: profileHasHistory,
+        uncertain: historyUncertain,
+      });
+      const hasLoadedHistory = nextHistoryStatus === 'hasHistory';
+      setProfileSuggestsHistory(profileHasHistory);
+      setDebugInfo(
+        `User: ${currentUser?.id?.slice(0, 8) ?? 'none'} · Trips: ${allTripsData.length} · ` +
+        `History: ${hasLoadedHistory ? 'hasHistory' : historyUncertain ? 'unknown' : 'confirmedEmpty'}`
+      );
       const split = splitTripsByLifecycle(allTripsData);
-      setRPastTrips(split.pastTrips);
-      setRDraftTrips(split.draftTrips);
-      setRUpcomingTrips(split.upcomingTrips);
-      setRActiveTrips(split.activeTrips);
-      setRQuickTrips(quick);
+      if (!historyUncertain || allTripsData.length > 0) {
+        setRPastTrips(split.pastTrips);
+        setRDraftTrips(split.draftTrips);
+        setRUpcomingTrips(split.upcomingTrips);
+        setRActiveTrips(split.activeTrips);
+        setRAllTrips(allTripsData);
+      }
+      if (!historyUncertain || quick.length > 0) setRQuickTrips(quick);
       setRStats(stats);
-      setRAllTrips(allTripsData);
-      setHistoryHydrated(true);
+      setHistoryStatus(nextHistoryStatus);
+      setHistoryHydrated(!historyUncertain || hasLoadedHistory);
+      if (!historyUncertain) {
+        historyRecoveryAttempted.current = false;
+      } else if (!hasLoadedHistory && !historyRecoveryAttempted.current) {
+        historyRecoveryAttempted.current = true;
+        setTimeout(() => {
+          if (isCurrentRequest()) load({ force: true, silent: true }).catch(() => {});
+        }, 1200);
+      }
       if (!t && !silent) {
         setLoading(false);
         setRefreshing(false);
@@ -488,7 +543,7 @@ export function useHomeScreen() {
       }
 
       if (currentUser) {
-        const profile = await profilePromise;
+        const profile = profileForHistory ?? await profilePromise;
         if (!isCurrentRequest()) return;
         const identity = resolveAuthIdentity(profile, currentUser);
         setUserName(identity.name);
@@ -534,9 +589,10 @@ export function useHomeScreen() {
         setRUpcomingTrips((prev) => (prev.length > 0 ? prev : split.upcomingTrips));
         setRActiveTrips((prev) => (prev.length > 0 ? prev : split.activeTrips));
         setRAllTrips((prev) => (prev.length > 0 ? prev : contextTrips));
+        setHistoryStatus('hasHistory');
         setHistoryHydrated(true);
       } else if (!segmentLoading) {
-        setHistoryHydrated(true);
+        setHistoryStatus((prev) => (prev === 'hasHistory' ? prev : 'unknown'));
       }
       return;
     }
@@ -589,11 +645,15 @@ export function useHomeScreen() {
         setRUpcomingTrips(split.upcomingTrips);
         setRActiveTrips(split.activeTrips);
         setRAllTrips(seededTrips);
+        setHistoryStatus('hasHistory');
         setHistoryHydrated(true);
       }
       const cq = getHomeQuickTripsCached(); if (cq) setRQuickTrips(cq);
       const cs = getHomeLifetimeStatsCached(); if (cs) setRStats(cs);
-      if (!segmentLoading && seededTrips.length === 0) setHistoryHydrated(true);
+      if (cq && cq.length > 0) {
+        setHistoryStatus('hasHistory');
+        setHistoryHydrated(true);
+      }
       if (hasTripSeed || seededTrips.length > 0 || !segmentLoading) {
         setLoaderDone(true); setLoading(false);
         load({ silent: true });
@@ -832,6 +892,7 @@ export function useHomeScreen() {
     dailyTrackerOn, dailyTrackerTotal, dailyTrackerCount, dailyTrackerByCat, setDailyTrackerOn,
     // Returning (test-mode-aware)
           pastTrips, draftTrips, upcomingTrips, activeTrips, quickTrips, allTrips, lifetimeStats, historyHydrated,
+          historyStatus, profileSuggestsHistory,
     returningMoments: isTestMode ? (mockData?.moments ?? []) as Moment[] : rMoments,
     returningMembers: isTestMode ? (mockData?.members ?? []) as GroupMember[] : rMembers,
     returningSavedPlaces: isTestMode ? (mockData?.places?.filter(p => p.saved) ?? []) as Place[] : rSavedPlaces,
