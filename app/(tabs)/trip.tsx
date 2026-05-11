@@ -44,6 +44,7 @@ import type { QuickTrip } from '@/lib/quickTripTypes';
 import { useUserSegment } from '@/contexts/UserSegmentContext';
 import { useAuth } from '@/lib/auth';
 import { formatDatePHT, safeParse } from '@/lib/utils';
+import { useCompactTabOnScroll } from '@/hooks/useCompactTabOnScroll';
 import type {
   Highlight,
   GroupMember,
@@ -147,6 +148,7 @@ function TripScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
+  const { handleScroll: handleCompactTabScroll } = useCompactTabOnScroll('trip');
   const { user } = useAuth();
   const userIdRef = useRef<string | undefined>(user?.id);
   const { isTestMode, mockData } = useUserSegment();
@@ -608,6 +610,8 @@ function TripScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onScroll={handleCompactTabScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

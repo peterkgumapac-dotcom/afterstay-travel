@@ -83,7 +83,6 @@ export default function TabLayout() {
           blurEffect="systemChromeMaterial"
           shadowColor={colors.border}
           hidden={!tabBarVisible}
-          minimizeBehavior="onScrollDown"
         >
           <NativeTabs.Trigger name="home">
             <NativeTabs.Trigger.Icon
@@ -238,7 +237,7 @@ const testStyles = StyleSheet.create({
 const compactTabStyles = StyleSheet.create({
   button: {
     position: 'absolute',
-    left: 70,
+    left: 24,
     zIndex: 9000,
     width: 52,
     height: 52,
