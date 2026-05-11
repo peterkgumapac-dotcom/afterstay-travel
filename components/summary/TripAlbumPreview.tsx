@@ -493,16 +493,39 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                 },
               ]}
             >
-              <View style={styles.curledPageContent}>
+              <Animated.View
+                style={[
+                  styles.curledPageContent,
+                  {
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.42, 0.6, 1], outputRange: [1, 1, 0.12, 0], extrapolate: 'clamp' }),
+                  },
+                ]}
+              >
                 {renderAlbumPageContent(flippingPage)}
                 <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.24)']} style={styles.pageEdge} />
                 <View style={styles.pageCorner} />
-              </View>
+              </Animated.View>
+              <Animated.View
+                style={[
+                  styles.curledPageBackFace,
+                  {
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.34, 0.5, 0.9, 1], outputRange: [0, 0, 0.92, 1, 0], extrapolate: 'clamp' }),
+                  },
+                ]}
+              >
+                <LinearGradient colors={['#fff8ec', '#efe0c8', '#d9c3a4']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                <View style={styles.pageBackFold} />
+                <View style={styles.pageBackLine} />
+                <View style={[styles.pageBackLine, styles.pageBackLineShort]} />
+                <View style={styles.pageBackPhotoGhost} />
+                <View style={styles.pageBackLine} />
+                <View style={[styles.pageBackLine, styles.pageBackLineShort]} />
+              </Animated.View>
               <Animated.View
                 style={[
                   styles.curlFaceShade,
                   {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.02, 0.48, 0.18], extrapolate: 'clamp' }),
+                    opacity: flipAnim.interpolate({ inputRange: [0, 0.46, 0.82, 1], outputRange: [0.02, 0.36, 0.2, 0], extrapolate: 'clamp' }),
                   },
                 ]}
               />
@@ -871,6 +894,18 @@ const getStyles = (_colors: ThemeColors) =>
       width: PAGE_W,
       height: PAGE_H,
       transform: [{ translateX: -(PAGE_W - CURL_W) }],
+    },
+    curledPageBackFace: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      paddingTop: 34,
+      paddingHorizontal: 16,
+      paddingBottom: 24,
+      overflow: 'hidden',
+      backgroundColor: '#f7efdf',
     },
     curlFaceShade: {
       position: 'absolute',
