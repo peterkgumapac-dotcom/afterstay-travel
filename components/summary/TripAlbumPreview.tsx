@@ -244,6 +244,11 @@ function buildPages(data: TripAlbumData): AlbumPage[] {
   return pages;
 }
 
+function shouldTurnBySwipe(dx: number, dy: number, canTurnPage: boolean, isFlipping: boolean) {
+  const horizontal = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.15;
+  return canTurnPage && !isFlipping && horizontal && dx < 0;
+}
+
 export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, onAddPhoto, onOpenPhoto }: Props) {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -295,10 +300,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const pageSwipeResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => {
-          const horizontal = Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25;
-          return canTurnPage && !flippingPage && horizontal && gesture.dx < 0;
-        },
+        onMoveShouldSetPanResponder: (_, gesture) => shouldTurnBySwipe(gesture.dx, gesture.dy, canTurnPage, Boolean(flippingPage)),
+        onMoveShouldSetPanResponderCapture: (_, gesture) => shouldTurnBySwipe(gesture.dx, gesture.dy, canTurnPage, Boolean(flippingPage)),
         onPanResponderTerminationRequest: () => true,
         onPanResponderRelease: (_, gesture) => {
           const leftSwipe = gesture.dx < -44 || gesture.vx < -0.35;
