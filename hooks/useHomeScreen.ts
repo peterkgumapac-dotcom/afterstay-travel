@@ -46,6 +46,12 @@ import {
 import { resolveTripMediaLocation } from '@/lib/tripMedia';
 import { filterRenderableImageUrls } from '@/lib/imageUrl';
 import { setHotelCoords } from '@/lib/config';
+import { markStartup } from '@/lib/startupPerf';
+import {
+  getStartupSnapshot,
+  setStartupSnapshot,
+  summarizeFirstFlight,
+} from '@/lib/startupSnapshot';
 import {
   computeTripPhase,
   selectReturnFlight,
@@ -162,6 +168,13 @@ export function useHomeScreen() {
   const allTripsRef = useRef<Trip[]>([]);
   const quickTripsRef = useRef<QuickTrip[]>([]);
   const historyRecoveryAttempted = useRef(false);
+  const homeCachedPaintMarked = useRef(false);
+
+  const markHomeCachedPaint = useCallback((source: string) => {
+    if (homeCachedPaintMarked.current) return;
+    homeCachedPaintMarked.current = true;
+    markStartup('home_cached_paint', { source });
+  }, []);
 
   useEffect(() => {
     userRef.current = user;
@@ -299,6 +312,7 @@ export function useHomeScreen() {
     }
     let cancelled = false;
     const cacheKey = destinationPhotoCacheKey(heroLocation);
+    let interactionTask: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
     (async () => {
       const cached = await cacheGet<string[]>(cacheKey);
       const cachedPhotos = filterRenderableImageUrls(cached ?? []);
@@ -307,20 +321,29 @@ export function useHomeScreen() {
         setDestPhotos(cachedPhotos);
         return;
       }
-      const photos = filterRenderableImageUrls(await withTimeout(
-        fetchDestinationPhotos(heroLocation),
-        [] as string[],
-        HOME_REQUEST_TIMEOUT_MS,
-      ));
-      if (!cancelled && photos.length > 0) {
-        destPhotoKeyRef.current = cacheKey;
-        setDestPhotos(photos);
-        await cacheSet(cacheKey, photos);
-      } else if (!cancelled && destPhotoKeyRef.current !== cacheKey) {
-        setDestPhotos([]);
-      }
+      interactionTask = InteractionManager.runAfterInteractions(() => {
+        withTimeout(
+          fetchDestinationPhotos(heroLocation),
+          [] as string[],
+          HOME_REQUEST_TIMEOUT_MS,
+        ).then(async (rawPhotos) => {
+          const photos = filterRenderableImageUrls(rawPhotos);
+          if (!cancelled && photos.length > 0) {
+            destPhotoKeyRef.current = cacheKey;
+            setDestPhotos(photos);
+            await cacheSet(cacheKey, photos);
+          } else if (!cancelled && destPhotoKeyRef.current !== cacheKey) {
+            setDestPhotos([]);
+          }
+        }).catch(() => {
+          if (!cancelled && destPhotoKeyRef.current !== cacheKey) setDestPhotos([]);
+        });
+      });
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      interactionTask?.cancel?.();
+    };
   }, [coverPhotos.length, heroLocation, parsedHotelPhotos.length]);
 
   const hotelPhotos =
@@ -412,40 +435,49 @@ export function useHomeScreen() {
       }
 
       if (t) {
-        const [fs, mems] = await Promise.all([
-          withTimeout(getHomeFlightsPromise(t.id, force), [] as Flight[]),
-          withTimeout(getHomeMembersPromise(t.id, force), [] as GroupMember[]),
-        ]);
-        if (!isCurrentRequest()) return;
-        setFlights(fs); setMembers(mems);
-        if (requestUserId) await cacheSetForUser(`flights:${t.id}`, fs, requestUserId);
-
-        const cachedTid = requestUserId ? await cacheGetForUser<string>('trip:phase:tripId', requestUserId, 0) : undefined;
-        if (requestUserId && cachedTid && cachedTid !== t.id) await cacheSetForUser('trip:phase:override', null, requestUserId);
-        if (requestUserId) await cacheSetForUser('trip:phase:tripId', t.id, requestUserId);
-        const manualPhase = requestUserId ? await cacheGetForUser<TripPhase | null>('trip:phase:override', requestUserId, 0) : null;
-        setHasPhaseOverride(!!manualPhase);
+        setHasPhaseOverride(false);
         setPhaseRaw(computeTripPhase({
           trip: t,
-          flights: fs,
-          members: mems,
+          flights: [],
+          members: [],
           userId: currentUser?.id,
-          manualPhase,
+          manualPhase: null,
         }));
 
         if (!silent) {
           setLoading(false);
           setRefreshing(false);
+          markHomeCachedPaint('active-trip');
         }
 
         InteractionManager.runAfterInteractions(() => {
           if (!isCurrentRequest()) return;
           Promise.all([
+            withTimeout(getHomeFlightsPromise(t.id, force), [] as Flight[]),
+            withTimeout(getHomeMembersPromise(t.id, force), [] as GroupMember[]),
             withTimeout(getHomeMomentsPromise(t.id, force), [] as Moment[]),
             withTimeout(getHomePlacesPromise(t.id, force), [] as Place[]),
             withTimeout(getHomeExpensesPromise(t.id, force), []),
-          ]).then(([ms, places, allExp]) => {
+            requestUserId ? cacheGetForUser<string>('trip:phase:tripId', requestUserId, 0) : Promise.resolve(undefined),
+            requestUserId ? cacheGetForUser<TripPhase | null>('trip:phase:override', requestUserId, 0) : Promise.resolve(null),
+          ]).then(async ([fs, mems, ms, places, allExp, cachedTid, manualPhase]) => {
             if (!isCurrentRequest()) return;
+            setFlights(fs);
+            setMembers(mems);
+            if (requestUserId) {
+              await cacheSetForUser(`flights:${t.id}`, fs, requestUserId);
+              if (cachedTid && cachedTid !== t.id) await cacheSetForUser('trip:phase:override', null, requestUserId);
+              await cacheSetForUser('trip:phase:tripId', t.id, requestUserId);
+            }
+            const effectiveManualPhase = cachedTid && cachedTid !== t.id ? null : manualPhase;
+            setHasPhaseOverride(!!effectiveManualPhase);
+            setPhaseRaw(computeTripPhase({
+              trip: t,
+              flights: fs,
+              members: mems,
+              userId: currentUser?.id,
+              manualPhase: effectiveManualPhase,
+            }));
             setMoments(ms);
             setSavedPlaces(places);
             setTotalSpent(allExp.reduce((s, e) => s + e.amount, 0));
@@ -459,15 +491,23 @@ export function useHomeScreen() {
         });
       }
 
-      // Daily tracker
-      const trackerOn = await withTimeout(getDailyTrackerEnabled(), false);
-      if (!isCurrentRequest()) return;
-      setDailyTrackerOn(trackerOn);
-      if (trackerOn) {
-        const ds = await withTimeout(getDailyExpenseSummary(new Date().toISOString().slice(0, 10)), null);
-        if (ds) { setDailyTrackerTotal(ds.total); setDailyTrackerCount(ds.count); setDailyTrackerByCat(ds.byCategory); }
-        else { setDailyTrackerTotal(0); setDailyTrackerCount(0); setDailyTrackerByCat({}); }
-      }
+      InteractionManager.runAfterInteractions(() => {
+        if (!isCurrentRequest()) return;
+        withTimeout(getDailyTrackerEnabled(), false).then(async (trackerOn) => {
+          if (!isCurrentRequest()) return;
+          setDailyTrackerOn(trackerOn);
+          if (!trackerOn) {
+            setDailyTrackerTotal(0);
+            setDailyTrackerCount(0);
+            setDailyTrackerByCat({});
+            return;
+          }
+          const ds = await withTimeout(getDailyExpenseSummary(new Date().toISOString().slice(0, 10)), null);
+          if (!isCurrentRequest()) return;
+          if (ds) { setDailyTrackerTotal(ds.total); setDailyTrackerCount(ds.count); setDailyTrackerByCat(ds.byCategory); }
+          else { setDailyTrackerTotal(0); setDailyTrackerCount(0); setDailyTrackerByCat({}); }
+        }).catch(() => {});
+      });
 
       // Returning-user data
       const [allTripsResult, quickTripsResult, stats, profileForHistory] = await Promise.all([
@@ -548,10 +588,30 @@ export function useHomeScreen() {
         const identity = resolveAuthIdentity(profile, currentUser);
         setUserName(identity.name);
         setUserAvatar(identity.avatarUrl);
+        await setStartupSnapshot(currentUser.id, {
+          activeTrip: t ?? null,
+          segment: t ? 'active' : hasLoadedHistory ? 'returning' : 'new',
+          profileIdentity: {
+            fullName: profile?.fullName ?? currentUser.user_metadata?.full_name ?? null,
+            avatarUrl: identity.avatarUrl ?? null,
+          },
+          firstFlight: summarizeFirstFlight(t ? (getHomeFlightsCached(t.id) ?? []) : []),
+          recentTripCounts: {
+            active: t ? 1 : split.activeTrips.length,
+            past: split.pastTrips.length,
+            draft: split.draftTrips.length,
+            upcoming: split.upcomingTrips.length,
+            quick: quick.length,
+          },
+          timestamp: new Date().toISOString(),
+        });
       }
+      markStartup('home_fresh_hydrated', { hasTrip: !!t, historyStatus: nextHistoryStatus });
 
       // Write widget snapshots so headless widget context can read them
-      writeWidgetSnapshots().then(() => refreshAllWidgets()).catch(() => {});
+      InteractionManager.runAfterInteractions(() => {
+        writeWidgetSnapshots().then(() => refreshAllWidgets()).catch(() => {});
+      });
     } catch (e: unknown) {
       if (isCurrentRequest() && !silent) {
         setError(e instanceof Error ? e.message : 'Unable to load trip');
@@ -563,7 +623,7 @@ export function useHomeScreen() {
         setRefreshing(false);
       }
     }
-  }, [clearActiveTripSurface]);
+  }, [clearActiveTripSurface, markHomeCachedPaint]);
 
   // ── Toggle-off recovery ──
   const prevTestMode = useRef(isTestMode);
@@ -598,6 +658,7 @@ export function useHomeScreen() {
     }
     let cancelled = false;
     (async () => {
+      const snapshot = user?.id ? await getStartupSnapshot(user.id) : undefined;
       const memoryTrip = getHomeActiveTripCached();
       const persistedTrip = memoryTrip === undefined
         ? user?.id
@@ -605,7 +666,8 @@ export function useHomeScreen() {
           : undefined
         : undefined;
       const contextTrip = segmentActiveTrip ?? null;
-      const ct = pickHomeSeedTrip(memoryTrip, persistedTrip, contextTrip);
+      const snapshotTrip = snapshot?.activeTrip ?? undefined;
+      const ct = pickHomeSeedTrip(memoryTrip, persistedTrip ?? snapshotTrip, contextTrip);
       const hasTripSeed = ct !== undefined && ct !== null;
       const ca = getHomeAllTripsCached();
       const contextTrips = [
@@ -614,6 +676,11 @@ export function useHomeScreen() {
         ...(contextTrip ? [contextTrip] : []),
       ];
       const seededTrips = ca ?? contextTrips;
+      const snapshotHasHistory = (snapshot?.recentTripCounts.past ?? 0) > 0
+        || (snapshot?.recentTripCounts.draft ?? 0) > 0
+        || (snapshot?.recentTripCounts.upcoming ?? 0) > 0
+        || (snapshot?.recentTripCounts.quick ?? 0) > 0
+        || snapshot?.segment === 'returning';
 
       if (cancelled) return;
 
@@ -654,8 +721,18 @@ export function useHomeScreen() {
         setHistoryStatus('hasHistory');
         setHistoryHydrated(true);
       }
-      if (hasTripSeed || seededTrips.length > 0 || !segmentLoading) {
+      if (snapshot?.profileIdentity) {
+        const name = snapshot.profileIdentity.fullName?.trim().split(/\s+/)[0] || '';
+        if (name) setUserName(name);
+        if (snapshot.profileIdentity.avatarUrl) setUserAvatar(snapshot.profileIdentity.avatarUrl);
+      }
+      if (snapshotHasHistory && seededTrips.length === 0) {
+        setHistoryStatus('hasHistory');
+        setHistoryHydrated(true);
+      }
+      if (hasTripSeed || seededTrips.length > 0 || snapshotHasHistory || !segmentLoading) {
         setLoaderDone(true); setLoading(false);
+        markHomeCachedPaint(hasTripSeed ? 'trip-seed' : snapshotHasHistory ? 'startup-snapshot' : 'known-empty');
         load({ silent: true });
       } else {
         load();
@@ -663,7 +740,7 @@ export function useHomeScreen() {
     })();
     didInitialLoad.current = true;
     return () => { cancelled = true; };
-  }, [load, segmentActiveTrip, segmentPastTrips, segmentDraftTrips, segmentLoading]);
+  }, [load, markHomeCachedPaint, segmentActiveTrip, segmentPastTrips, segmentDraftTrips, segmentLoading, user?.id]);
 
   // ── Focus refresh ──
   useEffect(() => {

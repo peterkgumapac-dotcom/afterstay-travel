@@ -3,7 +3,7 @@ import {
   View, TouchableOpacity, StyleSheet, Animated,
   Modal, Pressable, Text, Platform,
 } from 'react-native';
-import { usePathname, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Plus, Camera, Receipt, Plane, Package, Zap,
@@ -24,7 +24,6 @@ export const FloatingActionButton: React.FC = () => {
   const { colors } = useTheme();
   const s = useMemo(() => getStyles(colors), [colors]);
   const router = useRouter();
-  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const rotateAnim = useRef(new Animated.Value(0)).current;
@@ -38,11 +37,6 @@ export const FloatingActionButton: React.FC = () => {
   }, []);
 
   const isPlane = !transport || transport === 'plane';
-  const isBudgetRoute = pathname.includes('/budget');
-  const isComposedRoute = ['/moments', '/discover', '/photo-viewer'].some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
-  );
-  const isTripLibraryRoute = pathname === '/trip' || pathname === '/(tabs)/trip' || pathname.endsWith('/trip');
 
   const actions: FabAction[] = useMemo(() => {
     const items: FabAction[] = [
@@ -92,8 +86,6 @@ export const FloatingActionButton: React.FC = () => {
   };
 
   const rotation = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '135deg'] });
-
-  if (isBudgetRoute || isComposedRoute || isTripLibraryRoute) return null;
 
   return (
     <>

@@ -11,6 +11,7 @@ import { supabase } from './supabase';
 import { setTabDataCacheUserId } from './tabDataCache';
 import { consumePendingInviteCode, storePendingInviteCode } from './pendingInvite';
 import { clearAccountRuntimeState } from './accountRuntime';
+import { markStartup } from './startupPerf';
 import type { Session, User } from '@supabase/supabase-js';
 import * as Crypto from 'expo-crypto';
 
@@ -122,6 +123,12 @@ async function ensureSessionProfile(s: Session | null): Promise<void> {
   });
 }
 
+function ensureSessionProfileInBackground(s: Session | null): void {
+  ensureSessionProfile(s).catch((err) => {
+    if (__DEV__) console.warn('[auth] background profile setup failed:', err);
+  });
+}
+
 async function clearAccountState(): Promise<void> {
   await clearAccountRuntimeState();
   setCacheUserId(undefined);
@@ -149,7 +156,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const activeUserIdRef = useRef<string | undefined>(undefined);
 
-  const installSession = async (s: Session | null): Promise<void> => {
+  const installSession = async (
+    s: Session | null,
+    opts?: { profileMode?: 'background' | 'block' },
+  ): Promise<void> => {
     const nextUserId = s?.user?.id;
     const previousUserId = activeUserIdRef.current;
 
@@ -161,8 +171,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     applyAccountScope(s);
     activeUserIdRef.current = nextUserId;
-    await ensureSessionProfile(s);
     setSession(s);
+    markStartup('auth_session_ready', { signedIn: !!nextUserId });
+
+    if (opts?.profileMode === 'block') {
+      await ensureSessionProfile(s);
+    } else {
+      ensureSessionProfileInBackground(s);
+    }
   };
 
   useEffect(() => {
@@ -192,7 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         if (cancelled) return;
 
-        await installSession(s);
+        await installSession(s, { profileMode: 'background' });
         if (cancelled) return;
 
         await resumePendingInvite(s);
@@ -219,7 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        await installSession(s);
+        await installSession(s, { profileMode: 'background' });
         await resumePendingInvite(s);
       },
     );
@@ -358,7 +374,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         supabase.auth.getSession(),
         'Session restore timed out. Please try again.',
       );
-      await installSession(data.session);
+      await installSession(data.session, { profileMode: 'block' });
       await resumePendingInvite(data.session);
       return { error: null };
     } catch (err) {

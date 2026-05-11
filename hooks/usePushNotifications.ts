@@ -9,14 +9,14 @@ import { registerPushNotificationsForUser } from '@/lib/pushRegistration';
  *
  * Lazy-loads expo-notifications to avoid crashes when native module is missing.
  */
-export function usePushNotifications() {
+export function usePushNotifications(enabled = true) {
   const { user } = useAuth();
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const listenersRef = useRef<{ remove: () => void }[]>([]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!enabled || !user?.id) return;
 
     const userId = user.id;
     let Notifs: any = null;
@@ -79,7 +79,7 @@ export function usePushNotifications() {
       listenersRef.current.forEach((sub) => sub.remove());
       listenersRef.current = [];
     };
-  }, [router, user?.id]);
+  }, [enabled, router, user?.id]);
 
   return { token };
 }

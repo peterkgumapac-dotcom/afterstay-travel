@@ -4,15 +4,23 @@ import { useEffect, useState } from 'react';
 import AfterStayLoader from '@/components/AfterStayLoader';
 import { cacheGetForUser, cacheSetForUser } from '@/lib/cache';
 import { getOnboardingProgress, isOnboardingIncomplete } from '@/lib/onboardingProgress';
-import { deriveUserStatus } from '@/lib/userStatus';
-import { getProfile, type Profile } from '@/lib/supabase';
+import { useUserSegment } from '@/contexts/UserSegmentContext';
+import type { Profile } from '@/lib/supabase';
+import { markStartup } from '@/lib/startupPerf';
+import { getStartupSnapshot } from '@/lib/startupSnapshot';
 import { preloadHomeData } from '@/hooks/useTabHomeData';
 
 type IndexTarget = 'welcome' | 'onboarding' | 'home' | null;
 
 function routeHome(setTarget: (target: IndexTarget) => void) {
+  markStartup('route_decided', { target: 'home' });
   preloadHomeData().catch(() => {});
   setTarget('home');
+}
+
+function routeTo(target: Exclude<IndexTarget, null>, setTarget: (target: IndexTarget) => void) {
+  markStartup('route_decided', { target });
+  setTarget(target);
 }
 
 function profileImpliesExistingAccount(profile: Profile | null): boolean {
@@ -31,6 +39,14 @@ function profileImpliesExistingAccount(profile: Profile | null): boolean {
 
 export default function Index() {
   const { session, loading } = useAuth();
+  const {
+    segment,
+    profile,
+    activeTrip,
+    pastTrips,
+    draftTrips,
+    loading: segmentLoading,
+  } = useUserSegment();
   const [target, setTarget] = useState<'welcome' | 'onboarding' | 'home' | null>(null);
 
   useEffect(() => {
@@ -39,69 +55,67 @@ export default function Index() {
       setTarget(null);
       return;
     }
+    let cancelled = false;
     (async () => {
+      const userId = session.user.id;
       try {
-        const progress = await getOnboardingProgress(session.user.id);
+        const cachedFlag = await cacheGetForUser<boolean>(`onboarding_complete:${userId}`, userId);
+        const snapshot = await getStartupSnapshot(userId);
+
+        if (cancelled) return;
+        if (cachedFlag || (snapshot && snapshot.segment !== 'new')) {
+          routeHome(setTarget);
+          return;
+        }
+
+        if (segmentLoading) return;
+
+        const progress = await getOnboardingProgress(userId);
+        if (cancelled) return;
         if (progress && isOnboardingIncomplete(progress)) {
           if (progress.stage === 'planning_draft') routeHome(setTarget);
-          else setTarget('onboarding');
+          else routeTo('onboarding', setTarget);
           return;
         }
         if (progress?.status === 'complete' || progress?.status === 'skipped') {
-          await cacheSetForUser(`onboarding_complete:${session.user.id}`, true, session.user.id);
+          await cacheSetForUser(`onboarding_complete:${userId}`, true, userId);
           routeHome(setTarget);
           return;
         }
 
-        const flag = await cacheGetForUser<boolean>(`onboarding_complete:${session.user.id}`, session.user.id);
-
-        // Derive status from Supabase trips.
-        // Retries are built into deriveUserStatus (auth token race on cold start)
-        const [result, profile] = await Promise.all([
-          deriveUserStatus(session.user.id),
-          getProfile(session.user.id).catch(() => null),
-        ]);
         const hasExistingProfileState = profileImpliesExistingAccount(profile);
-        if (result.uncertain || result.error) {
-          if (__DEV__) console.warn('[Index] trip status uncertain — avoiding new-user redirect:', result.error);
-          const cachedFlag = await cacheGetForUser<boolean>(`onboarding_complete:${session.user.id}`, session.user.id);
-          const cachedProgress = await getOnboardingProgress(session.user.id);
-          if (hasExistingProfileState) {
-            await cacheSetForUser(`onboarding_complete:${session.user.id}`, true, session.user.id);
-            routeHome(setTarget);
-          } else if (cachedProgress && isOnboardingIncomplete(cachedProgress)) {
-            if (cachedProgress.stage === 'planning_draft') routeHome(setTarget);
-            else setTarget('onboarding');
-          } else {
-            if (cachedFlag === false) setTarget('welcome');
-            else routeHome(setTarget);
-          }
-          return;
-        }
-
-        if (result.status !== 'new' || hasExistingProfileState) {
-          // User has trips — restore the flag and skip onboarding
-          await cacheSetForUser(`onboarding_complete:${session.user.id}`, true, session.user.id);
+        const hasTripState = Boolean(activeTrip) || pastTrips.length > 0 || draftTrips.length > 0;
+        if (segment !== 'new' || hasTripState || hasExistingProfileState) {
+          await cacheSetForUser(`onboarding_complete:${userId}`, true, userId);
           routeHome(setTarget);
-        } else if (flag) {
-          // A cached completion flag can let a truly no-trip returning account
-          // into Home, but it must never skip the fresh status check above.
+        } else if (cachedFlag) {
           routeHome(setTarget);
         } else {
-          setTarget('welcome');
+          routeTo('welcome', setTarget);
         }
       } catch (err) {
         if (__DEV__) console.error('[Index] error deriving status:', err);
-        const cachedFlag = await cacheGetForUser<boolean>(`onboarding_complete:${session.user.id}`, session.user.id);
-        const cachedProgress = await getOnboardingProgress(session.user.id);
+        const cachedFlag = await cacheGetForUser<boolean>(`onboarding_complete:${userId}`, userId);
+        const cachedProgress = await getOnboardingProgress(userId);
+        if (cancelled) return;
         if (cachedProgress && isOnboardingIncomplete(cachedProgress)) {
           if (cachedProgress.stage === 'planning_draft') routeHome(setTarget);
-          else setTarget('onboarding');
+          else routeTo('onboarding', setTarget);
         } else if (cachedFlag) routeHome(setTarget);
-        else setTarget('welcome');
+        else routeTo('welcome', setTarget);
       }
     })();
-  }, [session, loading]);
+    return () => { cancelled = true; };
+  }, [
+    activeTrip,
+    draftTrips.length,
+    loading,
+    pastTrips.length,
+    profile,
+    segment,
+    segmentLoading,
+    session,
+  ]);
 
   if (loading || (session && target === null)) {
     return (

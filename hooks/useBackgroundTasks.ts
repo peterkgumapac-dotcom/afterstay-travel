@@ -6,11 +6,11 @@ import { useAuth } from '@/lib/auth';
  * Registers background tasks when the user is authenticated.
  * The task executor is defined at module level in lib/backgroundTasks.ts.
  */
-export function useBackgroundTasks() {
+export function useBackgroundTasks(enabled = true) {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!enabled || !user?.id) return;
     registerBackgroundTasks();
-  }, [user?.id]);
+  }, [enabled, user?.id]);
 }

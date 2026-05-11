@@ -5,8 +5,8 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, InteractionManager, type AppStateStatus } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import AfterStayLoader from '@/components/AfterStayLoader';
@@ -19,6 +19,7 @@ import { useAppUpdates } from '@/hooks/useAppUpdates';
 import { verifyConfig } from '@/lib/config';
 import { replayPendingMutations } from '@/lib/offlineQueue';
 import { queryClient } from '@/lib/queryClient';
+import { markStartup } from '@/lib/startupPerf';
 import { refreshAllWidgets } from '@/widgets/refresh';
 
 export { ErrorBoundary } from 'expo-router';
@@ -44,10 +45,28 @@ SplashScreen.preventAutoHideAsync();
 function RootLayoutInner() {
   const { mode, colors: c } = useTheme();
   const { loading: authLoading, user } = useAuth();
-  usePushNotifications();
-  useBackgroundTasks();
+  const [sideEffectsReady, setSideEffectsReady] = useState(false);
+  usePushNotifications(sideEffectsReady);
+  useBackgroundTasks(sideEffectsReady);
   useAppUpdates();
   const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    if (authLoading) return;
+    let cancelled = false;
+    const fallback = setTimeout(() => {
+      if (!cancelled) setSideEffectsReady(true);
+    }, 1800);
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!cancelled) setSideEffectsReady(true);
+      clearTimeout(fallback);
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(fallback);
+      task.cancel?.();
+    };
+  }, [authLoading]);
 
   // Refresh Android widgets when app comes to foreground, after auth exists.
   // Also drain the offline mutation queue — any writes the user made while
@@ -287,7 +306,10 @@ function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
+    if (loaded) {
+      markStartup('fonts_ready');
+      SplashScreen.hideAsync();
+    }
   }, [loaded]);
 
   if (!loaded) return null;

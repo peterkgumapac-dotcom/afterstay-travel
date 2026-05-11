@@ -21,6 +21,7 @@ import {
 import { canUseInternalQaTools, isInternalQaBuildEnabled } from '@/lib/internalQa';
 import { getLifetimeStats, getProfile, type Profile } from '@/lib/supabase';
 import type { LifetimeStats, Trip, UserSegment } from '@/lib/types';
+import { getStartupSnapshot, setStartupSnapshot } from '@/lib/startupSnapshot';
 import { getMockDataForKey, parseMockKey, MOCK_LABELS, type MockSegmentData, type MockKey } from '@/lib/mockData';
 
 // ── Context value ────────────────────────────────────────────────────
@@ -192,20 +193,23 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
     ));
 
     // 1. Instant from cache
-    const [cachedProfile, cachedSegment, cachedTrip] = await Promise.all([
+    const [cachedProfile, cachedSegment, cachedTrip, cachedSnapshot] = await Promise.all([
       cacheGetForUser<Profile>(userCacheKey(CK_PROFILE, userId), userId),
       cacheGetForUser<UserSegment>(userCacheKey(CK_SEGMENT, userId), userId),
       cacheGetForUser<Trip>(userCacheKey(CK_ACTIVE, userId), userId),
+      getStartupSnapshot(userId),
     ]);
     const scopedCachedProfile = cachedProfile?.id === userId ? cachedProfile : null;
+    const startupSegment = cachedSegment ?? cachedSnapshot?.segment;
+    const startupTrip = cachedTrip !== undefined ? cachedTrip : cachedSnapshot?.activeTrip;
 
-    if (cachedSegment && mounted.current && currentUserIdRef.current === userId) {
+    if (startupSegment && mounted.current && currentUserIdRef.current === userId) {
       setState((prev) => ({
         ...prev,
-        segment: cachedSegment,
+        segment: startupSegment,
         profile: scopedCachedProfile ?? prev.profile,
-        activeTrip: cachedTrip !== undefined ? cachedTrip : prev.activeTrip,
-        loading: cachedSegment === 'new',
+        activeTrip: startupTrip !== undefined ? startupTrip : prev.activeTrip,
+        loading: startupSegment === 'new' && !startupTrip,
       }));
     }
 
@@ -305,6 +309,22 @@ export function UserSegmentProvider({ children }: { children: React.ReactNode })
         result.activeTrip
           ? cacheSetForUser(userCacheKey(CK_ACTIVE, userId), result.activeTrip, userId)
           : cacheSetForUser(userCacheKey(CK_ACTIVE, userId), null, userId),
+        setStartupSnapshot(userId, {
+          activeTrip: result.activeTrip ?? null,
+          segment: realSegment,
+          profileIdentity: resolvedProfile
+            ? { fullName: resolvedProfile.fullName, avatarUrl: resolvedProfile.avatarUrl }
+            : null,
+          firstFlight: null,
+          recentTripCounts: {
+            active: result.activeTrip ? 1 : 0,
+            past: result.completedTrips.length,
+            draft: result.draftTrips.length,
+            upcoming: result.planningTrips.length,
+            quick: 0,
+          },
+          timestamp: new Date().toISOString(),
+        }),
       ]);
     } catch (err) {
       if (__DEV__) console.warn('[UserSegment] load failed:', err);
