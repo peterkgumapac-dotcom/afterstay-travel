@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, CheckCircle, HelpCircle, QrCode, ReceiptText, ShieldCheck, Users, X } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, ChevronRight, HelpCircle, QrCode, ReceiptText, ShieldCheck, Users, X } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
@@ -65,9 +65,60 @@ interface PersonalSplitRow {
   status: 'review' | 'settled';
 }
 
+interface PersonalBalanceGroup {
+  key: string;
+  title: string;
+  subtitle: string;
+  amount: number;
+  currency: string;
+  rows: PersonalSplitRow[];
+}
+
 function shortTripName(trip: Trip | null): string {
   const label = trip?.destination || trip?.name || 'Trip';
   return label.length > 18 ? `${label.slice(0, 17)}...` : label;
+}
+
+function splitSourceLabel(row: PersonalSplitRow): string {
+  return row.source === 'quick-trip' ? 'Quick Trip' : 'Personal';
+}
+
+function extractLegacySplitNames(notes?: string): string[] {
+  if (!notes) return [];
+  const names = notes
+    .split('\n')
+    .map((line) => line.match(/^([^:\n]+):\s*[A-Z]{3}\s+[\d,.]+/i)?.[1]?.trim())
+    .filter((name): name is string => Boolean(name));
+  return [...new Set(names.map(displayBudgetMemberName))];
+}
+
+function groupPersonalBalanceRows(rows: PersonalSplitRow[]): PersonalBalanceGroup[] {
+  const groups = new Map<string, PersonalBalanceGroup>();
+
+  for (const row of rows) {
+    if (row.status === 'settled') continue;
+    const key = `${row.title.trim().toLowerCase()}|${row.currency}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.amount += row.amount;
+      existing.rows.push(row);
+      const sourceLabels = [...new Set(existing.rows.map(splitSourceLabel))];
+      existing.subtitle = existing.rows.length === 1
+        ? existing.rows[0].subtitle
+        : `${existing.rows.length} expenses · ${sourceLabels.join(', ')}`;
+    } else {
+      groups.set(key, {
+        key,
+        title: row.title,
+        subtitle: row.subtitle,
+        amount: row.amount,
+        currency: row.currency,
+        rows: [row],
+      });
+    }
+  }
+
+  return [...groups.values()].sort((a, b) => b.amount - a.amount);
 }
 
 function parsePersonalSplitRows(items: UnifiedExpenseHistoryItem[]): PersonalSplitRow[] {
@@ -144,6 +195,7 @@ export default function SettleBalancesScreen() {
   const [viewingQr, setViewingQr] = useState<PaymentQr | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [assignmentExpanded, setAssignmentExpanded] = useState(false);
 
   const load = useCallback(async (force = false) => {
     try {
@@ -184,7 +236,7 @@ export default function SettleBalancesScreen() {
   const personalRows = useMemo(() => parsePersonalSplitRows(personalHistory), [personalHistory]);
   const personalBalanceRows = personalRows.filter((row) => row.kind === 'person');
   const personalReviewRows = personalRows.filter((row) => row.kind === 'expense');
-  const personalOpenRows = personalBalanceRows.filter((row) => row.status !== 'settled');
+  const personalBalanceGroups = useMemo(() => groupPersonalBalanceRows(personalBalanceRows), [personalBalanceRows]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -255,10 +307,38 @@ export default function SettleBalancesScreen() {
         paidBy: row.paidBy ?? '',
         placeName: row.placeName ?? '',
         notes: row.notes ?? '',
-        splitType: row.splitType ?? 'Custom',
+        splitType: 'Custom',
+        mode: 'assign-split',
+        returnTo: 'settle-personal',
+        ...(extractLegacySplitNames(row.notes).length > 0 ? { receiptPeople: JSON.stringify(extractLegacySplitNames(row.notes)) } : {}),
       },
     } as never);
   }, [router]);
+
+  const handlePersonalGroupPaid = useCallback((group: PersonalBalanceGroup) => {
+    Alert.alert('Mark as paid?', `${group.title} paid ${formatCurrency(group.amount, group.currency)} across ${group.rows.length} ${group.rows.length === 1 ? 'expense' : 'expenses'}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Mark paid',
+        onPress: async () => {
+          try {
+            for (const row of group.rows) {
+              if (!row.splitId) continue;
+              if (row.source === 'quick-trip') {
+                await settleQuickTripExpenseSplit(row.splitId);
+              } else {
+                await settleStandaloneExpenseSplit(row.splitId);
+              }
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            await load(true);
+          } catch {
+            Alert.alert('Could not update', 'Please try again.');
+          }
+        },
+      },
+    ]);
+  }, [load]);
 
   const handlePersonalRowAction = useCallback((row: PersonalSplitRow) => {
     if (row.kind === 'expense' || !row.splitId) {
@@ -435,38 +515,35 @@ export default function SettleBalancesScreen() {
             <View style={styles.totalCard}>
               <View style={styles.totalCol}>
                 <Text style={styles.totalLabel}>People to settle</Text>
-                <Text style={styles.totalAmount}>{personalOpenRows.length}</Text>
+                <Text style={styles.totalAmount}>{personalBalanceGroups.length}</Text>
               </View>
               <View style={styles.totalDivider} />
               <View style={styles.totalCol}>
-                <Text style={styles.totalLabel}>Needs review</Text>
+                <Text style={styles.totalLabel}>Needs assignment</Text>
                 <Text style={styles.totalAmount}>{personalReviewRows.length}</Text>
               </View>
-              <Text style={styles.totalFootnote}>Personal balances reuse your saved split rows from Just Log It and Quick Trips. Older text-only notes stay in review.</Text>
+              <Text style={styles.totalFootnote}>People show here after an expense has saved split rows. Older text-only notes need people assigned first.</Text>
             </View>
 
             <SectionTitle title="People to settle" />
-            {personalBalanceRows.length > 0 ? (
+            {personalBalanceGroups.length > 0 ? (
               <View style={styles.cardList}>
-                {personalBalanceRows.map((row) => (
-                  <View key={row.id} style={styles.personRow}>
-                    <View style={row.status === 'settled' ? styles.avatarSettled : styles.avatar}>
-                      {row.status === 'settled' ? <CheckCircle size={16} color={colors.success} /> : <Text style={styles.avatarText}>{budgetMemberInitial(row.title)}</Text>}
+                {personalBalanceGroups.map((group) => (
+                  <View key={group.key} style={styles.personRow}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>{budgetMemberInitial(group.title)}</Text>
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.personName} numberOfLines={1}>{row.title}</Text>
-                      <Text style={styles.personMeta} numberOfLines={1}>{row.subtitle}</Text>
+                      <Text style={styles.personName} numberOfLines={1}>{group.title}</Text>
+                      <Text style={styles.personMeta} numberOfLines={1}>{group.subtitle}</Text>
                     </View>
-                    <Text style={styles.personAmount}>{formatCurrency(row.amount, row.currency)}</Text>
+                    <Text style={styles.personAmount}>{formatCurrency(group.amount, group.currency)}</Text>
                     <TouchableOpacity
-                      style={row.status === 'settled' ? styles.disabledAction : styles.outlineAction}
-                      onPress={() => handlePersonalRowAction(row)}
-                      disabled={row.status === 'settled'}
+                      style={styles.outlineAction}
+                      onPress={() => handlePersonalGroupPaid(group)}
                       activeOpacity={0.75}
                     >
-                      <Text style={row.status === 'settled' ? styles.disabledActionText : styles.outlineActionText}>
-                        {row.status === 'settled' ? 'Settled' : 'Mark paid'}
-                      </Text>
+                      <Text style={styles.outlineActionText}>Mark paid</Text>
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -475,30 +552,59 @@ export default function SettleBalancesScreen() {
               <View style={styles.emptyCard}>
                 <Users size={24} color={colors.text3} />
                 <Text style={styles.emptyTitle}>No personal balances yet</Text>
-                <Text style={styles.emptyText}>Add people to a Just Log It or Quick Trip expense, then each person appears here with an amount to settle.</Text>
+                <Text style={styles.emptyText}>
+                  {personalReviewRows.length > 0
+                    ? 'Assign people below to turn expenses into balances.'
+                    : 'Add people to a Just Log It or Quick Trip expense, then each person appears here with an amount to settle.'}
+                </Text>
               </View>
             )}
 
             {personalReviewRows.length > 0 && (
               <>
-                <SectionTitle title="Split expenses to review" />
-                <View style={styles.cardList}>
-                  {personalReviewRows.map((row) => (
-                    <View key={row.id} style={styles.personRow}>
-                      <View style={styles.avatarMuted}>
-                        <ReceiptText size={17} color={colors.text2} />
+                <SectionTitle title="Needs assignment" />
+                <TouchableOpacity style={styles.assignmentSummary} onPress={() => setAssignmentExpanded((value) => !value)} activeOpacity={0.75}>
+                  <View style={styles.avatarMuted}>
+                    <ReceiptText size={17} color={colors.text2} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.personName}>{personalReviewRows.length} split {personalReviewRows.length === 1 ? 'expense' : 'expenses'} need people</Text>
+                    <Text style={styles.personMeta}>Assign who owes you and the amount to create balances.</Text>
+                  </View>
+                  {assignmentExpanded ? <ChevronDown size={18} color={colors.text3} /> : <ChevronRight size={18} color={colors.text3} />}
+                </TouchableOpacity>
+
+                {assignmentExpanded && (
+                  <View style={styles.cardList}>
+                    {personalReviewRows.map((row) => (
+                      <View key={row.id} style={styles.personRow}>
+                        <View style={styles.avatarMuted}>
+                          <ReceiptText size={17} color={colors.text2} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.personName} numberOfLines={1}>{row.title}</Text>
+                          <Text style={styles.personMeta} numberOfLines={1}>{row.subtitle}</Text>
+                        </View>
+                        <Text style={styles.personAmount}>{formatCurrency(row.amount, row.currency)}</Text>
+                        <TouchableOpacity style={styles.disabledAction} onPress={() => handlePersonalRowAction(row)} activeOpacity={0.75}>
+                          <Text style={styles.disabledActionText}>Assign</Text>
+                        </TouchableOpacity>
                       </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.personName} numberOfLines={1}>{row.title}</Text>
-                        <Text style={styles.personMeta} numberOfLines={1}>{row.subtitle}</Text>
-                      </View>
-                      <Text style={styles.personAmount}>{formatCurrency(row.amount, row.currency)}</Text>
-                      <TouchableOpacity style={styles.disabledAction} onPress={() => handlePersonalRowAction(row)} activeOpacity={0.75}>
-                        <Text style={styles.disabledActionText}>Review</Text>
-                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+
+                {!assignmentExpanded && (
+                  <View style={styles.assignmentHint}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.assignmentHintTitle}>Start with the oldest split</Text>
+                      <Text style={styles.personMeta} numberOfLines={1}>{personalReviewRows[personalReviewRows.length - 1]?.title}</Text>
                     </View>
-                  ))}
-                </View>
+                    <TouchableOpacity style={styles.outlineAction} onPress={() => handlePersonalRowAction(personalReviewRows[personalReviewRows.length - 1])} activeOpacity={0.75}>
+                      <Text style={styles.outlineActionText}>Assign</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </>
             )}
           </>
@@ -566,6 +672,9 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   negative: { color: c.danger },
   sectionTitle: { fontSize: 16, fontWeight: '900', color: c.text, marginTop: 4, marginBottom: -8 },
   cardList: { borderRadius: 16, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, overflow: 'hidden' },
+  assignmentSummary: { minHeight: 76, borderRadius: 16, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  assignmentHint: { minHeight: 64, borderRadius: 16, borderWidth: 1, borderColor: c.border, backgroundColor: c.card2, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  assignmentHintTitle: { fontSize: 13, fontWeight: '900', color: c.text },
   personRow: { minHeight: 74, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.border },
   avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' },
   avatarMuted: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.card2, alignItems: 'center', justifyContent: 'center' },

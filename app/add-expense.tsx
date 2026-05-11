@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { Briefcase, Camera, ChevronDown, NotebookPen, PenLine, QrCode, ScanLine, Zap } from 'lucide-react-native';
+import { Briefcase, Camera, NotebookPen, PenLine, ScanLine, Zap } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +33,7 @@ import {
   getGroupMembers,
   getUserPaymentQrs,
   notifyExpenseAdded,
+  replaceStandaloneExpenseSplits,
   updateDailyExpense,
   updateExpense,
 } from '@/lib/supabase';
@@ -144,9 +145,12 @@ export default function AddExpenseScreen() {
     splitType?: string;
     receiptSplits?: string; // JSON-encoded per-member amounts from receipt scan
     receiptPeople?: string; // JSON-encoded names for standalone receipt assignment
+    mode?: string;
+    returnTo?: string;
   }>();
 
   const isEditing = !!params.editId;
+  const isAssigningSplit = params.mode === 'assign-split';
 
   const [description, setDescription] = useState(params.description ?? '');
   const [amount, setAmount] = useState(params.amount ?? '');
@@ -194,7 +198,7 @@ export default function AddExpenseScreen() {
   // Entry mode: pick OCR or manual first (skip if editing or pre-filled from scan)
   const hasPrefilledData = !!(params.description || params.amount || params.photoUri);
   const [entryMode, setEntryMode] = useState<'pick' | 'form'>(
-    isEditing || hasPrefilledData ? 'form' : 'pick'
+    isEditing || hasPrefilledData || isAssigningSplit ? 'form' : 'pick'
   );
 
   // Expense type (replaces params.target)
@@ -222,7 +226,7 @@ export default function AddExpenseScreen() {
     // Personal expenses use ad-hoc names
     return adHocNames.map((n, i) => ({ id: `adhoc-${i}`, name: n }));
   })();
-  const hasPeople = splitPeople.length > 1;
+  const hasPeople = expenseType === 'personal' ? splitPeople.length > 0 : splitPeople.length > 1;
 
   useEffect(() => {
     setExpenseType(resolveExpenseType(params.target, params.quickTripId, params.tripId));
@@ -367,7 +371,16 @@ export default function AddExpenseScreen() {
         : splitPeople
             .filter((person) => splitAssignments[person.id]?.selected)
             .reduce((sum, person) => sum + Number(splitAssignments[person.id]?.amount || 0), 0);
-      if (!nearlyEqual(customTotal, n)) {
+      if (expenseType === 'personal') {
+        if (customTotal <= 0) {
+          Alert.alert('Amount owed required', 'Enter how much this person should pay back.');
+          return;
+        }
+        if (customTotal > n) {
+          Alert.alert('Amount is too high', `The amount owed cannot be more than ${currency} ${n.toFixed(2)}.`);
+          return;
+        }
+      } else if (!nearlyEqual(customTotal, n)) {
         Alert.alert(
           'Split total does not match',
           `Your split adds up to ${currency} ${customTotal.toFixed(2)}, but the expense total is ${currency} ${n.toFixed(2)}.`,
@@ -391,6 +404,7 @@ export default function AddExpenseScreen() {
           const people = selected.length > 0 ? selected : splitPeople;
           for (const person of people) {
             const custom = Number(splitAssignments[person.id]?.amount);
+            if (expenseType === 'personal' && splitType === 'Custom' && custom <= 0) continue;
             const owed = splitType === 'Custom' && custom > 0 ? custom : n / people.length;
             rows.push(`${person.name}: ${currency} ${owed.toFixed(2)}`);
           }
@@ -399,6 +413,28 @@ export default function AddExpenseScreen() {
       };
       const splitNote = buildSplitNote();
       const combinedNotes = [notes.trim(), expenseType === 'personal' ? splitNote : ''].filter(Boolean).join('\n\n') || undefined;
+      const buildPersonalSplits = () => {
+        if (!hasPeople) return [];
+        if (splitAmountsFromReceipt) {
+          return splitPeople
+            .filter((person) => (splitAmountsFromReceipt[person.id] ?? splitAmountsFromReceipt[person.name] ?? 0) > 0)
+            .map((person) => ({
+              personName: person.name,
+              amount: splitAmountsFromReceipt[person.id] ?? splitAmountsFromReceipt[person.name] ?? 0,
+            }));
+        }
+        const selected = splitPeople.filter((person) => splitAssignments[person.id]?.selected);
+        const people = selected.length > 0 ? selected : splitPeople;
+        return people
+          .map((person) => {
+            const custom = Number(splitAssignments[person.id]?.amount);
+            return {
+              personName: person.name,
+              amount: splitType === 'Custom' && custom > 0 ? custom : n / people.length,
+            };
+          })
+          .filter((split) => split.amount > 0);
+      };
 
       const expenseData = {
         description: description.trim(),
@@ -462,6 +498,12 @@ export default function AddExpenseScreen() {
                 })();
             await replaceQuickTripExpenseSplits(params.editId!, splits);
           }
+        } else if (expenseType === 'personal') {
+          await updateExpense(params.editId!, expenseData);
+          const splits = buildPersonalSplits();
+          if (splits.length > 0) {
+            await replaceStandaloneExpenseSplits(params.editId!, splits);
+          }
         } else {
           await updateExpense(params.editId!, expenseData);
         }
@@ -524,24 +566,7 @@ export default function AddExpenseScreen() {
         const newExpense = await addExpense({ ...expenseData, standalone: true });
         try {
           if (newExpense?.id && hasPeople) {
-            const splits = splitAmountsFromReceipt
-              ? splitPeople
-                  .filter((person) => (splitAmountsFromReceipt[person.id] ?? splitAmountsFromReceipt[person.name] ?? 0) > 0)
-                  .map((person) => ({
-                    personName: person.name,
-                    amount: splitAmountsFromReceipt[person.id] ?? splitAmountsFromReceipt[person.name] ?? 0,
-                  }))
-              : (() => {
-                  const selected = splitPeople.filter((person) => splitAssignments[person.id]?.selected);
-                  const people = selected.length > 0 ? selected : splitPeople;
-                  return people.map((person) => {
-                    const custom = Number(splitAssignments[person.id]?.amount);
-                    return {
-                      personName: person.name,
-                      amount: splitType === 'Custom' && custom > 0 ? custom : n / people.length,
-                    };
-                  });
-                })();
+            const splits = buildPersonalSplits();
             if (splits.length > 0) {
               await addStandaloneExpenseSplits(newExpense.id, splits);
             }
@@ -610,7 +635,11 @@ export default function AddExpenseScreen() {
           ).catch(() => {});
         }
       }
-      router.back();
+      if (params.returnTo === 'settle-personal') {
+        router.replace({ pathname: '/budget/settle-balances', params: { scope: 'personal' } } as never);
+      } else {
+        router.back();
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       writeWidgetSnapshots().then(() => refreshWidgets('DailyBudget')).catch(() => {});
     } catch (e: any) {
@@ -707,6 +736,13 @@ export default function AddExpenseScreen() {
           </View>
         )}
 
+        {isAssigningSplit && (
+          <View style={[styles.assignCard, { backgroundColor: colors.accentBg, borderColor: colors.accentBorder }]}>
+            <Text style={[styles.assignTitle, { color: colors.text }]}>Assign people to this split</Text>
+            <Text style={[styles.assignText, { color: colors.text2 }]}>Add who owes you and the amount. Saving turns this expense into a real balance.</Text>
+          </View>
+        )}
+
         <FormField
           label="Description"
           placeholder="e.g. Dinner at D'Talipapa"
@@ -756,7 +792,7 @@ export default function AddExpenseScreen() {
         {/* Add people — for personal or quick-trip expenses (BEFORE split controls) */}
         {(expenseType === 'personal' || (expenseType === 'quick-trip' && companions.length === 0)) && (
           <View>
-            <Text style={[styles.sectionLabel, { color: colors.text3 }]}>SPLIT WITH</Text>
+            <Text style={[styles.sectionLabel, { color: colors.text3 }]}>{isAssigningSplit ? 'WHO OWES YOU' : 'SPLIT WITH'}</Text>
             {adHocNames.map((name, i) => (
               <View key={i} style={[styles.splitRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={[styles.splitCheck, { backgroundColor: colors.accent, borderColor: colors.accent }]}>
@@ -808,7 +844,7 @@ export default function AddExpenseScreen() {
           </View>
         )}
 
-        {hasPeople && (
+        {hasPeople && expenseType !== 'personal' && (
           <Select
             label="Paid by"
             options={splitPeople.map(p => p.name)}
@@ -977,7 +1013,9 @@ export default function AddExpenseScreen() {
           {submitting ? (
             <ActivityIndicator color={colors.white} />
           ) : (
-            <Text style={[styles.saveText, { color: colors.white }]}>{isEditing ? 'Update expense' : 'Save expense'}</Text>
+            <Text style={[styles.saveText, { color: colors.white }]}>
+              {isAssigningSplit ? 'Save split' : isEditing ? 'Update expense' : 'Save expense'}
+            </Text>
           )}
         </Pressable>
 
@@ -1024,6 +1062,14 @@ const styles = StyleSheet.create({
     borderRadius: 12, borderWidth: 1,
   },
   typeChipText: { fontSize: 12, fontWeight: '600' },
+  assignCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    gap: 4,
+  },
+  assignTitle: { fontSize: 15, fontWeight: '800' },
+  assignText: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
   // QR strip
   qrStrip: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

@@ -393,22 +393,25 @@ function BudgetScreen() {
   );
   const debtSummary = useMemo(() => summarizeDebtEdges(debtEdges, currentMember?.id), [currentMember?.id, debtEdges]);
   const personalSplitStats = useMemo(() => {
-    return personalHistory.reduce(
-      (stats, item) => {
-        if (item.source === 'trip') return stats;
-        const hasSplitSignal = Boolean(item.splitType || item.notes?.toLowerCase().includes('split:'));
-        if (!hasSplitSignal) return stats;
+    const people = new Set<string>();
+    let needsReview = 0;
 
-        const structuredRows = item.splitRows?.filter((split) => split.source === 'standalone' || split.source === 'quick-trip') ?? [];
-        if (structuredRows.length > 0) {
-          stats.peopleToSettle += structuredRows.filter((split) => !split.settled).length;
-        } else {
-          stats.needsReview += 1;
+    for (const item of personalHistory) {
+      if (item.source === 'trip') continue;
+      const hasSplitSignal = Boolean(item.splitType || item.notes?.toLowerCase().includes('split:'));
+      if (!hasSplitSignal) continue;
+
+      const structuredRows = item.splitRows?.filter((split) => split.source === 'standalone' || split.source === 'quick-trip') ?? [];
+      if (structuredRows.length > 0) {
+        for (const split of structuredRows) {
+          if (!split.settled) people.add(`${split.name.trim().toLowerCase()}|${split.currency}`);
         }
-        return stats;
-      },
-      { peopleToSettle: 0, needsReview: 0 },
-    );
+      } else {
+        needsReview += 1;
+      }
+    }
+
+    return { peopleToSettle: people.size, needsReview };
   }, [personalHistory]);
   const tripTopCategory = useMemo(
     () => topCategoryLabel(tripSummary.byCategory, tripSummary.total, currency),

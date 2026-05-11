@@ -1769,6 +1769,18 @@ export async function getStandaloneExpenseSplits(expenseId: string): Promise<Exp
   });
 }
 
+export async function replaceStandaloneExpenseSplits(
+  expenseId: string,
+  splits: { personName: string; amount: number }[],
+): Promise<ExpenseSplit[]> {
+  const { error: deleteError } = await supabase
+    .from('standalone_expense_splits')
+    .delete()
+    .eq('expense_id', expenseId);
+  if (deleteError) throw new Error(`replaceStandaloneExpenseSplits: ${deleteError.message}`);
+  return addStandaloneExpenseSplits(expenseId, splits);
+}
+
 export async function settleStandaloneExpenseSplit(splitId: string): Promise<void> {
   const { error } = await supabase
     .from('standalone_expense_splits')
