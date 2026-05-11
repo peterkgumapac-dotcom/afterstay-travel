@@ -667,7 +667,7 @@ export function MomentsTab({ tripId, onScrollY, ListHeaderComponent }: MomentsTa
           </Pressable>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.modeRow}>
+        <View style={s.modeRow}>
           {ALBUM_MODES.map((mode) => {
             const active = albumMode === mode.id;
             return (
@@ -685,7 +685,7 @@ export function MomentsTab({ tripId, onScrollY, ListHeaderComponent }: MomentsTa
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
 
         {/* ---- Expandable contributor row ---- */}
         {albumMode === 'people' && displayMembers.length > 1 && (
@@ -1073,20 +1073,22 @@ const getStyles = (colors: ReturnType<typeof useTheme>['colors']) =>
     modeRow: {
       paddingHorizontal: 16,
       paddingBottom: 12,
-      gap: 7,
+      gap: 6,
       flexDirection: 'row',
     },
     modeChip: {
+      flex: 1,
       minHeight: 38,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 7,
-      paddingHorizontal: 13,
+      justifyContent: 'center',
+      gap: 4,
+      paddingHorizontal: 6,
       borderRadius: 999,
       borderWidth: 1,
     },
     modeLabel: {
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '800',
     },
     modeCount: {
