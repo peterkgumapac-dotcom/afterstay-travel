@@ -570,6 +570,14 @@ export interface UnifiedExpenseHistoryItem {
   splitType?: string;
   placeName?: string;
   notes?: string;
+  splitRows?: {
+    id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    settled: boolean;
+    source: 'trip' | 'quick-trip' | 'standalone';
+  }[];
 }
 
 // ── Daily Expense Tracker ────────────────────────────────────────────
