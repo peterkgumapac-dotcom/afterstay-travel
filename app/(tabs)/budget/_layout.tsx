@@ -5,6 +5,7 @@ export default function BudgetLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="fate-decides" />
+      <Stack.Screen name="settle-balances" />
     </Stack>
   );
 }
