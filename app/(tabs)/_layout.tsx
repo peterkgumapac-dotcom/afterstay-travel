@@ -83,6 +83,7 @@ export default function TabLayout() {
           blurEffect="systemChromeMaterial"
           shadowColor={colors.border}
           minimizeBehavior="onScrollDown"
+          disableTransparentOnScrollEdge
           hidden={!tabBarVisible}
         >
           <NativeTabs.Trigger name="home">

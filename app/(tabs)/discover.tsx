@@ -1114,6 +1114,7 @@ function DiscoverScreenInner() {
           maxToRenderPerBatch={6}
           windowSize={5}
           contentContainerStyle={{ paddingBottom: 100 }}
+          contentInsetAdjustmentBehavior="automatic"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -1233,6 +1234,7 @@ function DiscoverScreenInner() {
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
+          contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
           onScroll={handleCompactTabScroll}
           scrollEventThrottle={16}

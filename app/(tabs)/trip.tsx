@@ -609,6 +609,7 @@ function TripScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
+        contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
         onScroll={handleCompactTabScroll}
         scrollEventThrottle={16}

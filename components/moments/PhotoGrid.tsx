@@ -294,6 +294,7 @@ export function PhotoGrid({
             keyExtractor={(item) => item.id}
             numColumns={NUM_COLS}
             contentContainerStyle={contentContainerStyle}
+            contentInsetAdjustmentBehavior="automatic"
             showsVerticalScrollIndicator={false}
             ListFooterComponent={ListFooterComponent}
             drawDistance={(THUMB_SIZE + GRID_GAP) * 6}

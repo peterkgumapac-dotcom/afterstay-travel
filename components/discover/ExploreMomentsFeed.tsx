@@ -453,6 +453,7 @@ export default function ExploreMomentsFeed({ onScrollY }: ExploreMomentsFeedProp
         onRefresh={activeFeed.refresh}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={listContentStyle}
         showsVerticalScrollIndicator={false}
       />

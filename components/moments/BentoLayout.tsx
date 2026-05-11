@@ -260,6 +260,7 @@ export function BentoLayout({
         onRefresh={onRefresh}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        contentInsetAdjustmentBehavior="automatic"
       />
     ) : (
       <FlatList
@@ -277,6 +278,7 @@ export function BentoLayout({
         onRefresh={onRefresh}
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        contentInsetAdjustmentBehavior="automatic"
       />
     )
   );

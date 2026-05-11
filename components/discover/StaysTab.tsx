@@ -282,6 +282,7 @@ export default function StaysTab({
       ListEmptyComponent={ListEmpty}
       ListFooterComponent={<View style={{ height: 100 }} />}
       contentContainerStyle={s.content}
+      contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
       onScroll={(event) => onScrollY?.(event.nativeEvent.contentOffset.y)}
       scrollEventThrottle={16}
