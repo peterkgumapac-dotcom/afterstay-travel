@@ -64,6 +64,7 @@ import type {
 } from '@/lib/types';
 import { safeParse, MS_PER_DAY } from '@/lib/utils';
 import { inferFlightLeg, sortFlightsByTime } from '@/lib/tripState';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 
 // ---------- helpers ----------
 
@@ -182,6 +183,59 @@ function ProgressBar({ pct, color }: { pct: number; color: string }) {
   return (
     <View style={styles.progressTrack}>
       <View style={[styles.progressFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: color }]} />
+    </View>
+  );
+}
+
+async function resolveAvatarUrl(avatar?: string): Promise<string | undefined> {
+  if (!avatar) return undefined;
+  const primary = await resolveRenderableStorageUrl(avatar, 'avatars').catch(() => undefined);
+  if (primary) return primary;
+  return resolveRenderableStorageUrl(avatar, 'moments').catch(() => avatar);
+}
+
+function TripMemberAvatar({
+  member,
+  styles,
+}: {
+  member: GroupMember;
+  styles: ReturnType<typeof getStyles>;
+}) {
+  const [resolvedAvatar, setResolvedAvatar] = useState<string | undefined>();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFailed(false);
+    setResolvedAvatar(undefined);
+    if (!member.profilePhoto) return () => { cancelled = true; };
+
+    resolveAvatarUrl(member.profilePhoto)
+      .then((url) => {
+        if (!cancelled) setResolvedAvatar(url ?? member.profilePhoto);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedAvatar(member.profilePhoto);
+      });
+
+    return () => { cancelled = true; };
+  }, [member.profilePhoto]);
+
+  return (
+    <View style={styles.memberAvatar}>
+      {resolvedAvatar && !failed ? (
+        <ExpoImage
+          source={{ uri: resolvedAvatar }}
+          style={styles.memberAvatarImage}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Text style={styles.memberAvatarText}>
+          {(member.name.trim().charAt(0) || '?').toUpperCase()}
+        </Text>
+      )}
     </View>
   );
 }
@@ -729,13 +783,7 @@ export default function TripOverviewScreen() {
                 const isSelf = !!user?.id && m.userId === user.id;
                 return (
                 <View key={m.id} style={styles.memberCard}>
-                  <View style={styles.memberAvatar}>
-                    {m.profilePhoto ? (
-                      <ExpoImage source={{ uri: m.profilePhoto }} style={styles.memberAvatarImage} contentFit="cover" cachePolicy="memory-disk" />
-                    ) : (
-                      <Text style={styles.memberAvatarText}>{m.name.charAt(0).toUpperCase()}</Text>
-                    )}
-                  </View>
+                  <TripMemberAvatar member={m} styles={styles} />
                   <View style={styles.memberInfo}>
                     <View style={styles.memberNameRow}>
                       <Text style={styles.memberName} numberOfLines={1}>{m.name}</Text>

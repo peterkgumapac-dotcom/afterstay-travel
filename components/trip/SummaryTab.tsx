@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   Modal,
   Pressable,
@@ -17,6 +17,7 @@ import type { PastTripDisplay, ThemeColors } from './tripConstants';
 import { CATEGORY_ICON, type QuickTrip } from '@/lib/quickTripTypes';
 import { formatCurrency } from '@/lib/utils';
 import type { Trip } from '@/lib/types';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 
 const QT_ICON_MAP: Record<string, React.ElementType> = {
   Users, Heart, Coffee, User, UtensilsCrossed, Dumbbell, Sparkles,
@@ -35,6 +36,72 @@ type TripCompanionMeta = {
   names: string[];
   avatars: (string | undefined)[];
 };
+
+async function resolveAvatarUrl(avatar?: string): Promise<string | undefined> {
+  if (!avatar) return undefined;
+  const primary = await resolveRenderableStorageUrl(avatar, 'avatars').catch(() => undefined);
+  if (primary) return primary;
+  return resolveRenderableStorageUrl(avatar, 'moments').catch(() => avatar);
+}
+
+function MemberPreviewAvatar({
+  name,
+  avatar,
+  index,
+  colors,
+  styles,
+}: {
+  name: string;
+  avatar?: string;
+  index: number;
+  colors: ThemeColors;
+  styles: ReturnType<typeof getStyles>;
+}) {
+  const [resolvedAvatar, setResolvedAvatar] = useState<string | undefined>();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFailed(false);
+    setResolvedAvatar(undefined);
+    if (!avatar) return () => { cancelled = true; };
+
+    resolveAvatarUrl(avatar)
+      .then((url) => {
+        if (!cancelled) setResolvedAvatar(url ?? avatar);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedAvatar(avatar);
+      });
+
+    return () => { cancelled = true; };
+  }, [avatar]);
+
+  const initial = (name.trim().charAt(0) || '?').toUpperCase();
+
+  return (
+    <View
+      style={[
+        styles.memberPreviewAvatar,
+        { marginLeft: index === 0 ? 0 : -8 },
+      ]}
+    >
+      {resolvedAvatar && !failed ? (
+        <Image
+          source={{ uri: resolvedAvatar }}
+          style={styles.memberPreviewImage}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Text style={[styles.memberPreviewInitial, { color: colors.accent }]}>
+          {initial}
+        </Text>
+      )}
+    </View>
+  );
+}
 
 interface SummaryTabProps {
   totalMiles: number;
@@ -223,18 +290,16 @@ export function SummaryTab({
           </View>
           {t.memberCount && t.memberCount > 0 ? (
             <View style={styles.memberPreviewRow}>
-              {(t.memberNames ?? []).slice(0, 4).map((name, idx) => {
-                const avatar = t.memberAvatars?.[idx];
-                return (
-                  <View key={`${t.tripId}-member-${idx}`} style={[styles.memberPreviewAvatar, { marginLeft: idx === 0 ? 0 : -8 }]}>
-                    {avatar ? (
-                      <Image source={{ uri: avatar }} style={styles.memberPreviewImage} contentFit="cover" cachePolicy="memory-disk" />
-                    ) : (
-                      <Text style={styles.memberPreviewInitial}>{name.charAt(0).toUpperCase()}</Text>
-                    )}
-                  </View>
-                );
-              })}
+              {(t.memberNames ?? []).slice(0, 4).map((name, idx) => (
+                <MemberPreviewAvatar
+                  key={`${t.tripId}-member-${idx}`}
+                  name={name}
+                  avatar={t.memberAvatars?.[idx]}
+                  index={idx}
+                  colors={colors}
+                  styles={styles}
+                />
+              ))}
               {t.memberCount > 4 ? (
                 <View style={[styles.memberPreviewAvatar, styles.memberPreviewMore, { marginLeft: -8 }]}>
                   <Text style={styles.memberPreviewMoreText}>+{t.memberCount - 4}</Text>
