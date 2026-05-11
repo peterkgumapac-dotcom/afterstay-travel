@@ -8,7 +8,6 @@ import {
   Alert,
   FlatList,
   Keyboard,
-  Modal,
   RefreshControl,
   ScrollView,
   Text,
@@ -17,7 +16,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bookmark, ChevronDown, ChevronRight, MapPin, Navigation, Search, ThumbsUp, Users } from 'lucide-react-native';
+import { Bookmark, ChevronDown, ChevronRight, MapPin, ThumbsUp, Users } from 'lucide-react-native';
 
 import { SwipeToDelete } from '@/components/shared/SwipeToDelete';
 import { TabErrorBoundary } from '@/components/shared/TabErrorBoundary';
@@ -1007,9 +1006,8 @@ function DiscoverScreenInner() {
     index,
   }), [CARD_HEIGHT]);
 
-  return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <StatusBar style={mode === 'light' ? 'dark' : 'light'} />
+  const discoverHeader = (
+    <>
       {/* Top bar */}
       <View style={styles.topBar}>
         <View>
@@ -1020,13 +1018,25 @@ function DiscoverScreenInner() {
 
       {/* Mode switch: Explore Moments / Find Places & Food */}
       <DiscoverModeSwitch mode={discoverMode} onModeChange={handleModeChange} />
+    </>
+  );
 
-      {/* ═══════ EXPLORE MOMENTS MODE ═══════ */}
-      {discoverMode === 'explore_moments' && (
-        <View style={styles.exploreMomentsPane} collapsable={false}>
-          <ExploreMomentsFeed onScrollY={handleCompactTabScrollY} />
-        </View>
-      )}
+  if (discoverMode === 'explore_moments') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <StatusBar style={mode === 'light' ? 'dark' : 'light'} />
+        <ExploreMomentsFeed
+          ListHeaderComponent={discoverHeader}
+          onScrollY={handleCompactTabScrollY}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <StatusBar style={mode === 'light' ? 'dark' : 'light'} />
+      {discoverHeader}
 
       {/* ═══════ PLAN MODE (existing Discover) ═══════ */}
       {discoverMode === 'plan' && <>

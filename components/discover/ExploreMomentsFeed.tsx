@@ -43,6 +43,7 @@ type EnrichedFeedPost = FeedPost & {
 };
 
 interface ExploreMomentsFeedProps {
+  ListHeaderComponent?: React.ReactNode;
   onScrollY?: (y: number) => void;
 }
 
@@ -70,7 +71,7 @@ function canOpenProfileIdentity(item: Pick<FeedPost, 'userId' | 'userName' | 'us
   return Boolean(item.userName || item.userAvatar);
 }
 
-export default function ExploreMomentsFeed({ onScrollY }: ExploreMomentsFeedProps = {}) {
+export default function ExploreMomentsFeed({ ListHeaderComponent, onScrollY }: ExploreMomentsFeedProps = {}) {
   const router = useRouter();
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -316,91 +317,95 @@ export default function ExploreMomentsFeed({ onScrollY }: ExploreMomentsFeedProp
   }, [avatarUri]);
 
   const headerContent = useMemo(() => (
-    <View style={styles.headerPaper}>
-      <PaperTexture />
-      {/* Compose bar */}
-      <View style={styles.composeBar}>
-        <View style={styles.composeInputCluster}>
+    <>
+      {ListHeaderComponent}
+      <View style={styles.headerPaper}>
+        <PaperTexture />
+        {/* Compose bar */}
+        <View style={styles.composeBar}>
+          <View style={styles.composeInputCluster}>
+            <TouchableOpacity
+              onPress={handleProfilePress}
+              activeOpacity={0.7}
+              style={styles.composeAvatarAnchor}
+              accessibilityLabel="Open your profile"
+            >
+              {showAvatarPhoto ? (
+                <Image
+                  source={{ uri: resolvedAvatarUri }}
+                  style={styles.composeAvatar}
+                  contentFit="cover"
+                  onError={() => setAvatarFailed(true)}
+                />
+              ) : (
+                <View style={[styles.composeAvatar, styles.composeAvatarPlaceholder]}>
+                  <Text style={styles.composeAvatarInitial}>
+                    {displayName.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.composeInput}
+              onPress={handleCompose}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.composeInputText} numberOfLines={1}>
+                Share a moment, {displayName}...
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity
-            onPress={handleProfilePress}
+            style={styles.composePhotoBtn}
+            onPress={handlePhotoCompose}
             activeOpacity={0.7}
-            style={styles.composeAvatarAnchor}
-            accessibilityLabel="Open your profile"
+            accessibilityLabel="Add photo"
           >
-            {showAvatarPhoto ? (
-              <Image
-                source={{ uri: resolvedAvatarUri }}
-                style={styles.composeAvatar}
-                contentFit="cover"
-                onError={() => setAvatarFailed(true)}
-              />
-            ) : (
-              <View style={[styles.composeAvatar, styles.composeAvatarPlaceholder]}>
-                <Text style={styles.composeAvatarInitial}>
-                  {displayName.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
+            <Camera size={20} color={PAPER.inkMid} strokeWidth={1.8} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.composeInput}
-            onPress={handleCompose}
+            style={styles.composePhotoBtn}
+            onPress={() => setSearchVisible(true)}
             activeOpacity={0.7}
+            accessibilityLabel="Search travelers"
           >
-            <Text style={styles.composeInputText} numberOfLines={1}>
-              Share a moment, {displayName}...
-            </Text>
+            <Search size={18} color={PAPER.inkMid} strokeWidth={1.8} />
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.composePhotoBtn}
-          onPress={handlePhotoCompose}
-          activeOpacity={0.7}
-          accessibilityLabel="Add photo"
-        >
-          <Camera size={20} color={PAPER.inkMid} strokeWidth={1.8} />
-        </TouchableOpacity>
+        {/* My Day / Stories */}
+        <ExploreStoryRow
+          onStoryPress={handleStoryPress}
+          onAddStory={handleAddStory}
+          isUploading={storyUploading}
+          refreshKey={storyRefreshKey}
+        />
 
-        <TouchableOpacity
-          style={styles.composePhotoBtn}
-          onPress={() => setSearchVisible(true)}
-          activeOpacity={0.7}
-          accessibilityLabel="Search travelers"
-        >
-          <Search size={18} color={PAPER.inkMid} strokeWidth={1.8} />
-        </TouchableOpacity>
+        {/* Mode chips */}
+        <View style={styles.chipRow}>
+          {CHIPS.map(({ id, label }) => {
+            const active = mode === id;
+            return (
+              <TouchableOpacity
+                key={id}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setMode(id)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
-
-      {/* My Day / Stories */}
-      <ExploreStoryRow
-        onStoryPress={handleStoryPress}
-        onAddStory={handleAddStory}
-        isUploading={storyUploading}
-        refreshKey={storyRefreshKey}
-      />
-
-      {/* Mode chips */}
-      <View style={styles.chipRow}>
-        {CHIPS.map(({ id, label }) => {
-          const active = mode === id;
-          return (
-            <TouchableOpacity
-              key={id}
-              style={[styles.chip, active && styles.chipActive]}
-              onPress={() => setMode(id)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                {label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
+    </>
   ), [
+    ListHeaderComponent,
     displayName,
     handleAddStory,
     handleCompose,
