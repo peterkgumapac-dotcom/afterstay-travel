@@ -536,7 +536,7 @@ export default function TripOverviewScreen() {
     placeCategoryCounts[p.category] = (placeCategoryCounts[p.category] ?? 0) + 1;
   }
 
-  const openRecap = () => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never);
+  const openRecap = () => router.push({ pathname: '/trip-summary', params: { tripId: trip.id } } as never);
   const openSummary = () => router.push({ pathname: '/trip-summary', params: { tripId: trip.id } } as never);
   const addPhoto = () => router.push({ pathname: '/add-moment', params: { tripId: trip.id } } as never);
   const uploadFile = () => router.push({ pathname: '/add-file', params: { tripId: trip.id } } as never);

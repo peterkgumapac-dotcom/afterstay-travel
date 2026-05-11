@@ -618,7 +618,7 @@ function HomeScreen() {
             recentMembers={returningMembers}
             savedPlaces={returningSavedPlaces}
             onPlanTrip={() => router.push('/onboarding')}
-            onTripPress={(id) => router.push(`/trip-recap?tripId=${id}`)}
+            onTripPress={(id) => router.push({ pathname: '/trip-summary', params: { tripId: id } } as never)}
             onDraftTripPress={(id) => router.push({ pathname: '/trip-overview', params: { tripId: id } } as never)}
             onUpcomingTripPress={(id) => router.push({ pathname: '/(tabs)/trip', params: { tripId: id } })}
             onArchiveDraft={async (id) => {
@@ -844,7 +844,7 @@ function HomeScreen() {
                 totalSpent={totalSpent}
                 currency={trip.costCurrency ?? 'PHP'}
                 onViewMemory={() => router.push({ pathname: '/trip-memory', params: { tripId: trip.id } } as never)}
-                onShare={() => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never)}
+                onShare={() => router.push({ pathname: '/trip-summary', params: { tripId: trip.id } } as never)}
               />
             ) : phase === 'planning' ? (
               /* DRAFT — no confirmed booking yet */

@@ -491,7 +491,7 @@ export default function CompanionProfileScreen() {
                   trip={topTrip}
                   photoCount={sharedMoments.length}
                   photoUrls={memoryPhotoUrls}
-                  onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: topTrip.id } } as never)}
+                  onPress={() => router.push({ pathname: '/trip-summary', params: { tripId: topTrip.id } } as never)}
                 />
               </>
             )}
@@ -550,7 +550,7 @@ export default function CompanionProfileScreen() {
                       trip={filteredTrips[0]}
                       photoCount={profileMoments.length}
                       photoUrls={memoryPhotoUrls}
-                      onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: filteredTrips[0].id } } as never)}
+                      onPress={() => router.push({ pathname: '/trip-summary', params: { tripId: filteredTrips[0].id } } as never)}
                     />
                     {filteredTrips.length > 1 ? (
                       <View style={s.albumGrid}>
@@ -559,7 +559,7 @@ export default function CompanionProfileScreen() {
                             key={trip.id}
                             trip={trip}
                             colors={colors}
-                            onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: trip.id } } as never)}
+                            onPress={() => router.push({ pathname: '/trip-summary', params: { tripId: trip.id } } as never)}
                           />
                         ))}
                       </View>

@@ -274,7 +274,7 @@ export default function ReturningUserHome({
             <View style={s.memoryActions}>
               <TouchableOpacity
                 style={s.memoryPrimary}
-                onPress={() => router.push({ pathname: '/trip-recap', params: { tripId: lastPastTrip.id } } as never)}
+                onPress={() => router.push({ pathname: '/trip-summary', params: { tripId: lastPastTrip.id } } as never)}
                 activeOpacity={0.76}
               >
                 <Text style={s.memoryPrimaryText}>View recap</Text>
