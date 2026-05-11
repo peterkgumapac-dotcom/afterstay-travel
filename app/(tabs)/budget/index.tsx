@@ -272,7 +272,7 @@ function BudgetScreen() {
     setRefreshing(false);
     if (!modeInitialized.current) {
       modeInitialized.current = true;
-      setMode(mockData.trip ? 'trips' : 'personal');
+      setMode('personal');
     }
   }, [mockData]);
 
@@ -302,7 +302,7 @@ function BudgetScreen() {
 
       if (!modeInitialized.current) {
         modeInitialized.current = true;
-        setMode(activeTrip ? 'trips' : 'personal');
+        setMode('personal');
       }
     } catch (error) {
       if (__DEV__) console.warn('[Budget] load failed:', error);
@@ -676,17 +676,17 @@ function BudgetScreen() {
       <View style={styles.modeWrap}>
         <ModeButton
           colors={colors}
-          active={mode === 'trips'}
-          label="Trips"
-          icon={<Briefcase size={16} color={mode === 'trips' ? '#fffaf0' : colors.text2} />}
-          onPress={() => setMode('trips')}
-        />
-        <ModeButton
-          colors={colors}
           active={mode === 'personal'}
           label="Personal"
           icon={<Users size={16} color={mode === 'personal' ? '#fffaf0' : colors.text2} />}
           onPress={() => setMode('personal')}
+        />
+        <ModeButton
+          colors={colors}
+          active={mode === 'trips'}
+          label="Trip"
+          icon={<Briefcase size={16} color={mode === 'trips' ? '#fffaf0' : colors.text2} />}
+          onPress={() => setMode('trips')}
         />
       </View>
 
