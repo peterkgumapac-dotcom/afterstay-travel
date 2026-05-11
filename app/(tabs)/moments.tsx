@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronDown, Zap } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MomentsTab } from '@/components/moments/MomentsTab';
@@ -59,6 +60,7 @@ function MomentsScreen() {
   const userIdRef = useRef<string | undefined>(user?.id);
   const styles = useMemo(() => getStyles(colors), [colors]);
   const { handleScrollY: handleCompactTabScrollY } = useCompactTabOnScroll('moments');
+  const isFocused = useIsFocused();
 
   const { activeTrip: segActiveTrip, pastTrips: segPastTrips, isTestMode } = useUserSegment();
   const [extraActiveTrip, setExtraActiveTrip] = useState<Trip | null>(null);
@@ -110,6 +112,7 @@ function MomentsScreen() {
   // Fetch trips + quick trips. Moments cannot rely only on UserSegmentContext here,
   // because brand-new accounts often hydrate trip state a beat later than the tab.
   useEffect(() => {
+    if (!isFocused) return;
     let cancelled = false;
     const requestUserId = user?.id;
     const isCurrentRequest = () => !cancelled && userIdRef.current === requestUserId;
@@ -154,7 +157,7 @@ function MomentsScreen() {
       .then((trips) => { if (isCurrentRequest()) setQuickTrips(trips); });
 
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [isFocused, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -185,6 +188,7 @@ function MomentsScreen() {
   }, [tripCandidates]);
 
   useEffect(() => {
+    if (!isFocused) return;
     if (tripCandidates.length === 0) {
       setTripMomentCounts({});
       return;
@@ -213,7 +217,7 @@ function MomentsScreen() {
       }
     });
     return () => { cancelled = true; };
-  }, [selectedType, tripCandidates, user?.id]);
+  }, [isFocused, selectedType, tripCandidates, user?.id]);
 
   // Fetch photos when a quick trip is selected
   useEffect(() => {

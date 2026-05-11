@@ -187,6 +187,7 @@ export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
   // Per-user dismissals (hide/show group photos)
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [showHidden, setShowHidden] = useState(false);
+  const isFocused = useIsFocused();
 
   useEffect(() => {
     rawMomentsRef.current = rawMoments;
@@ -516,6 +517,7 @@ export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
   loadRef.current = load;
 
   useEffect(() => {
+    if (!isFocused) return;
     // Cache-first: load silently if we have cached data
     const cached = tripId ? getMomentsCached(tripId) : undefined;
     if (cached !== undefined) {
@@ -524,10 +526,9 @@ export function MomentsTab({ tripId, onScrollY }: MomentsTabProps) {
     } else {
       load();
     }
-  }, [load, tripId]);
+  }, [isFocused, load, tripId]);
 
   // Refresh when screen comes back into focus (e.g. after add-moment, new-album)
-  const isFocused = useIsFocused();
   const prevFocused = useRef(isFocused);
   useEffect(() => {
     if (isFocused && !prevFocused.current) {
