@@ -432,7 +432,7 @@ function buildPages(data: TripAlbumData): AlbumPage[] {
   pages.push({
     type: 'bestMoments',
     title: data.topLocation ? `Moments from ${data.topLocation}` : 'Best moments',
-    photos: data.photos.slice(0, 5),
+    photos: data.photos.slice(0, 3),
     caption: data.photos.length < 5 ? 'A small album from the moments captured so far.' : 'The frames that make this trip easy to remember.',
   });
 
@@ -701,7 +701,7 @@ function AlbumBestMomentsPage({
           </Pressable>
         ) : null}
         <View style={styles.collageSide}>
-          {rest.slice(0, 4).map((photo) => (
+          {rest.slice(0, 2).map((photo) => (
             <Pressable key={photo.id} style={styles.collageThumb} onPress={() => onOpenPhoto?.(photo)}>
               <Image source={{ uri: photo.uri }} style={styles.imageFill} contentFit="cover" transition={140} />
             </Pressable>
@@ -1184,7 +1184,7 @@ const getStyles = (_colors: ThemeColors) =>
       flex: 1,
       flexDirection: 'row',
       gap: 8,
-      minHeight: 260,
+      minHeight: 0,
     },
     collageHero: {
       flex: 1.45,
@@ -1194,14 +1194,11 @@ const getStyles = (_colors: ThemeColors) =>
     },
     collageSide: {
       flex: 1,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
       gap: 8,
     },
     collageThumb: {
-      width: '47%',
-      flexGrow: 1,
-      minHeight: 120,
+      flex: 1,
+      minHeight: 0,
       borderRadius: 14,
       overflow: 'hidden',
       backgroundColor: '#dacbbb',
