@@ -1209,6 +1209,7 @@ const getStyles = (_colors: ThemeColors) =>
     },
     caption: {
       marginTop: 14,
+      paddingRight: 54,
       fontSize: 13,
       lineHeight: 18,
       fontWeight: '600',
