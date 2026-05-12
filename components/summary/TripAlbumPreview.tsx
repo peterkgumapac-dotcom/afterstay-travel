@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
+  Animated as RNAnimated,
   Dimensions,
-  Easing,
   FlatList,
-  PanResponder,
   Pressable,
   Share,
   StyleSheet,
@@ -12,8 +10,16 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type NativeTouchEvent,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  Easing,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,7 +36,6 @@ const PAGE_H = 440;
 const SNAP_W = SCREEN_W;
 const MAX_PHOTO_PAGES = 15;
 const PAGE_TURN_DURATION_MS = 1550;
-const CURL_W = PAGE_W * 0.58;
 
 type AlbumPage =
   | { type: 'cover' }
@@ -245,21 +250,17 @@ function buildPages(data: TripAlbumData): AlbumPage[] {
   return pages;
 }
 
-function shouldTurnBySwipe(dx: number, dy: number, canTurnPage: boolean, isFlipping: boolean) {
-  const horizontal = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.15;
-  return canTurnPage && !isFlipping && horizontal && dx < 0;
-}
-
 export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, onAddPhoto, onOpenPhoto }: Props) {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(colors), [colors]);
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const flipAnim = useRef(new Animated.Value(0)).current;
+  const scrollX = useRef(new RNAnimated.Value(0)).current;
+  const dragX = useSharedValue(0);
+  const turnProgress = useSharedValue(0);
+  const isTurning = useSharedValue(false);
   const flatListRef = useRef<FlatList<AlbumPage>>(null);
-  const swipeStartRef = useRef({ x: 0, y: 0, time: 0 });
   const [pageIndex, setPageIndex] = useState(0);
-  const [flippingPage, setFlippingPage] = useState<AlbumPage | null>(null);
-  const [flippingToPage, setFlippingToPage] = useState<AlbumPage | null>(null);
+  const [turningFromIndex, setTurningFromIndex] = useState<number | null>(null);
+  const [turningToIndex, setTurningToIndex] = useState<number | null>(null);
   const pages = useMemo(() => buildPages(data), [data]);
   const canTurnPage = pageIndex < pages.length - 1;
 
@@ -274,64 +275,79 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     });
   };
 
-  const openNextPage = useCallback(() => {
-    if (pages.length <= 1 || flippingPage) return;
+  const beginTurn = useCallback(() => {
+    if (!canTurnPage || turningFromIndex !== null) return false;
     const nextIndex = Math.min(pageIndex + 1, pages.length - 1);
-    if (nextIndex === pageIndex) return;
+    if (nextIndex === pageIndex) return false;
+    setTurningFromIndex(pageIndex);
+    setTurningToIndex(nextIndex);
+    return true;
+  }, [canTurnPage, pageIndex, pages.length, turningFromIndex]);
 
-    const fromPage = pages[pageIndex];
-    const toPage = pages[nextIndex];
-    setFlippingPage(fromPage);
-    setFlippingToPage(toPage);
-    flipAnim.setValue(0);
-
-    Animated.timing(flipAnim, {
-      toValue: 1,
-      duration: PAGE_TURN_DURATION_MS,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: true,
-    }).start(() => {
+  const finishTurn = useCallback(
+    (nextIndex: number) => {
       setPageIndex(nextIndex);
       flatListRef.current?.scrollToOffset({ offset: nextIndex * SNAP_W, animated: false });
       scrollX.setValue(nextIndex * SNAP_W);
-      setFlippingPage(null);
-      setFlippingToPage(null);
-    });
-  }, [flippingPage, flipAnim, pageIndex, pages, scrollX]);
-
-  const pageSwipeResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => shouldTurnBySwipe(gesture.dx, gesture.dy, canTurnPage, Boolean(flippingPage)),
-        onMoveShouldSetPanResponderCapture: (_, gesture) => shouldTurnBySwipe(gesture.dx, gesture.dy, canTurnPage, Boolean(flippingPage)),
-        onPanResponderTerminationRequest: () => true,
-        onPanResponderRelease: (_, gesture) => {
-          const leftSwipe = gesture.dx < -44 || gesture.vx < -0.35;
-          const mostlyHorizontal = Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.15;
-          if (canTurnPage && !flippingPage && leftSwipe && mostlyHorizontal) openNextPage();
-        },
-      }),
-    [canTurnPage, flippingPage, openNextPage],
+      setTurningFromIndex(null);
+      setTurningToIndex(null);
+    },
+    [scrollX],
   );
 
-  const handleTouchStart = useCallback((event: NativeSyntheticEvent<NativeTouchEvent>) => {
-    const touch = event.nativeEvent;
-    swipeStartRef.current = { x: touch.pageX, y: touch.pageY, time: Date.now() };
+  const cancelTurn = useCallback(() => {
+    setTurningFromIndex(null);
+    setTurningToIndex(null);
   }, []);
 
-  const handleTouchEnd = useCallback(
-    (event: NativeSyntheticEvent<NativeTouchEvent>) => {
-      const touch = event.nativeEvent;
-      const start = swipeStartRef.current;
-      const dx = touch.pageX - start.x;
-      const dy = touch.pageY - start.y;
-      const elapsed = Date.now() - start.time;
-      const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.1;
-      const intentionalSwipe = dx < -42 && mostlyHorizontal && elapsed < 900;
+  const openNextPage = useCallback(() => {
+    const started = beginTurn();
+    if (!started) return;
+    const nextIndex = Math.min(pageIndex + 1, pages.length - 1);
+    turnProgress.value = 0;
+    turnProgress.value = withTiming(1, { duration: PAGE_TURN_DURATION_MS, easing: Easing.inOut(Easing.cubic) }, () => {
+      isTurning.value = false;
+      dragX.value = 0;
+      runOnJS(finishTurn)(nextIndex);
+    });
+  }, [beginTurn, dragX, finishTurn, isTurning, pageIndex, pages.length, turnProgress]);
 
-      if (canTurnPage && !flippingPage && intentionalSwipe) openNextPage();
-    },
-    [canTurnPage, flippingPage, openNextPage],
+  const pageTurnGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(canTurnPage)
+        .activeOffsetX([-8, 8])
+        .failOffsetY([-18, 18])
+        .onBegin(() => {
+          if (turningFromIndex !== null) return;
+          isTurning.value = true;
+          dragX.value = 0;
+          turnProgress.value = 0;
+          runOnJS(beginTurn)();
+        })
+        .onUpdate((event) => {
+          if (event.translationX >= 0) return;
+          dragX.value = event.translationX;
+          turnProgress.value = Math.min(1, Math.max(0, -event.translationX / (PAGE_W * 0.72)));
+        })
+        .onEnd((event) => {
+          const nextIndex = Math.min(pageIndex + 1, pages.length - 1);
+          const shouldCommit = turnProgress.value > 0.45 || event.velocityX < -650;
+          if (shouldCommit && nextIndex !== pageIndex) {
+            turnProgress.value = withTiming(1, { duration: 260, easing: Easing.out(Easing.cubic) }, () => {
+              isTurning.value = false;
+              dragX.value = 0;
+              runOnJS(finishTurn)(nextIndex);
+            });
+          } else {
+            turnProgress.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) }, () => {
+              isTurning.value = false;
+              dragX.value = 0;
+              runOnJS(cancelTurn)();
+            });
+          }
+        }),
+    [beginTurn, cancelTurn, canTurnPage, dragX, finishTurn, isTurning, pageIndex, pages.length, turnProgress, turningFromIndex],
   );
 
   const handleScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -370,7 +386,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         <View style={styles.bookStackBack} />
         <View style={styles.bookStackMid} />
         <View style={styles.bookBindingShadow} />
-        <Animated.View
+        <RNAnimated.View
           style={[
             styles.pageShell,
             {
@@ -381,12 +397,48 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         >
           {renderAlbumPageContent(item)}
           <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.16)']} style={styles.pageEdge} />
-          <Animated.View style={[styles.turnShade, { opacity: pageShadeOpacity }]} />
+          <RNAnimated.View style={[styles.turnShade, { opacity: pageShadeOpacity }]} />
           <View style={styles.pageCorner} />
-        </Animated.View>
+        </RNAnimated.View>
       </View>
     );
   };
+
+  const nextPageStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(turnProgress.value, [0, 1], [0.992, 1]) }],
+    opacity: interpolate(turnProgress.value, [0, 0.08, 1], [0.96, 1, 1]),
+  }));
+
+  const currentPageMaskStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(turnProgress.value, [0, 0.72, 1], [1, 0.95, 0]),
+    transform: [{ translateX: interpolate(turnProgress.value, [0, 1], [0, -PAGE_W * 0.08]) }],
+  }));
+
+  const paperSheetStyle = useAnimatedStyle(() => {
+    const p = turnProgress.value;
+    return {
+      opacity: interpolate(p, [0, 0.04, 0.96, 1], [0, 1, 1, 0]),
+      transform: [
+        { perspective: 1600 },
+        { translateX: interpolate(p, [0, 0.5, 1], [PAGE_W * 0.22, -PAGE_W * 0.1, -PAGE_W * 0.42]) },
+        { rotateY: `${interpolate(p, [0, 0.5, 1], [-8, -58, -126])}deg` },
+        { scaleX: interpolate(p, [0, 0.5, 1], [1, 0.94, 0.62]) },
+      ],
+    };
+  });
+
+  const paperFrontStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(turnProgress.value, [0, 0.32, 0.52], [1, 1, 0]),
+  }));
+
+  const paperBackStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(turnProgress.value, [0.24, 0.42, 1], [0, 1, 1]),
+  }));
+
+  const foldShadowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(turnProgress.value, [0, 0.22, 0.8, 1], [0, 0.5, 0.34, 0]),
+    transform: [{ translateX: interpolate(turnProgress.value, [0, 1], [PAGE_W * 0.26, -PAGE_W * 0.3]) }],
+  }));
 
   return (
     <View style={styles.container}>
@@ -412,161 +464,80 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         </View>
       </View>
 
-      <View style={styles.bookViewport} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} {...pageSwipeResponder.panHandlers}>
-        <Animated.FlatList
-          ref={flatListRef}
-          data={pages}
-          renderItem={renderPage}
-          keyExtractor={(item, index) => `${item.type}-${index}`}
-          getItemLayout={(_, index) => ({ length: SNAP_W, offset: SNAP_W * index, index })}
-          horizontal
-          scrollEnabled={false}
-          pagingEnabled
-          snapToInterval={SNAP_W}
-          decelerationRate="fast"
-          showsHorizontalScrollIndicator={false}
-          bounces={false}
-          initialNumToRender={pages.length}
-          maxToRenderPerBatch={pages.length}
-          windowSize={pages.length}
-          onMomentumScrollEnd={handleScrollEnd}
-          onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-          onScrollToIndexFailed={({ index }) => {
-            const offset = index * SNAP_W;
-            flatListRef.current?.scrollToOffset({ offset, animated: false });
-            scrollX.setValue(offset);
-          }}
-          scrollEventThrottle={16}
-        />
-        {flippingPage ? (
-          <View pointerEvents="none" style={styles.flipOverlay}>
-            {flippingToPage ? (
-              <Animated.View
-                style={[
-                  styles.pageShell,
-                  styles.nextPageUnderlay,
-                  {
-                    opacity: 1,
-                    transform: [
-                      { scale: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.995, 1, 1], extrapolate: 'clamp' }) },
-                    ],
-                  },
-                ]}
-              >
-                {renderAlbumPageContent(flippingToPage)}
+      <GestureDetector gesture={pageTurnGesture}>
+        <View style={styles.bookViewport}>
+          <RNAnimated.FlatList
+            ref={flatListRef}
+            data={pages}
+            renderItem={renderPage}
+            keyExtractor={(item, index) => `${item.type}-${index}`}
+            getItemLayout={(_, index) => ({ length: SNAP_W, offset: SNAP_W * index, index })}
+            horizontal
+            scrollEnabled={false}
+            pagingEnabled
+            snapToInterval={SNAP_W}
+            decelerationRate="fast"
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            initialNumToRender={pages.length}
+            maxToRenderPerBatch={pages.length}
+            windowSize={pages.length}
+            onMomentumScrollEnd={handleScrollEnd}
+            onScroll={RNAnimated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+            onScrollToIndexFailed={({ index }) => {
+              const offset = index * SNAP_W;
+              flatListRef.current?.scrollToOffset({ offset, animated: false });
+              scrollX.setValue(offset);
+            }}
+            scrollEventThrottle={16}
+          />
+          {turningFromIndex !== null && turningToIndex !== null ? (
+            <View pointerEvents="none" style={styles.flipOverlay}>
+              <Animated.View style={[styles.pageShell, styles.nextPageUnderlay, nextPageStyle]}>
+                {renderAlbumPageContent(pages[turningToIndex])}
                 <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.16)']} style={styles.pageEdge} />
-                <Animated.View
-                  style={[
-                    styles.turnShade,
-                    {
-                      opacity: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.18, 0.06, 0.01], extrapolate: 'clamp' }),
-                    },
-                  ]}
-                />
                 <View style={styles.pageCorner} />
               </Animated.View>
-            ) : null}
-            <Animated.View
-              style={[
-                styles.revealedPageShadow,
-                {
-                  opacity: flipAnim.interpolate({ inputRange: [0, 0.2, 0.7, 1], outputRange: [0, 0.28, 0.16, 0], extrapolate: 'clamp' }),
-                  transform: [
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.52, 1], outputRange: [PAGE_W * 0.4, -PAGE_W * 0.06, -PAGE_W * 0.54], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.46, 1], outputRange: [0.08, 0.38, 0.08], extrapolate: 'clamp' }) },
-                  ],
-                },
-              ]}
-            />
-            <Animated.View
-              style={[
-                styles.curledPageSheet,
-                {
-                  opacity: flipAnim.interpolate({ inputRange: [0, 0.92, 0.99, 1], outputRange: [1, 1, 0.72, 0], extrapolate: 'clamp' }),
-                  transform: [
-                    { perspective: 1400 },
-                    { translateX: flipAnim.interpolate({ inputRange: [0, 0.48, 1], outputRange: [PAGE_W * 0.22, -PAGE_W * 0.16, -PAGE_W * 0.48], extrapolate: 'clamp' }) },
-                    { rotateY: flipAnim.interpolate({ inputRange: [0, 0.24, 0.72, 1], outputRange: ['0deg', '-34deg', '-82deg', '-118deg'], extrapolate: 'clamp' }) },
-                    { scaleX: flipAnim.interpolate({ inputRange: [0, 0.42, 0.78, 1], outputRange: [1, 0.92, 0.68, 0.42], extrapolate: 'clamp' }) },
-                    { scaleY: flipAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.01, 0.99], extrapolate: 'clamp' }) },
-                  ],
-                },
-              ]}
+
+              <Animated.View style={[styles.pageShell, styles.currentPageDuringDrag, currentPageMaskStyle]}>
+                {renderAlbumPageContent(pages[turningFromIndex])}
+                <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.16)']} style={styles.pageEdge} />
+                <View style={styles.pageCorner} />
+              </Animated.View>
+
+              <Animated.View style={[styles.dragFoldShadow, foldShadowStyle]} />
+
+              <Animated.View style={[styles.dragPaperSheet, paperSheetStyle]}>
+                <Animated.View style={[styles.dragPaperFront, paperFrontStyle]}>
+                  <View style={styles.dragPaperFrontContent}>
+                    {renderAlbumPageContent(pages[turningFromIndex])}
+                  </View>
+                </Animated.View>
+                <Animated.View style={[styles.dragPaperBack, paperBackStyle]}>
+                  <LinearGradient colors={['#fffaf0', '#eadcc5', '#cbb08e']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                  <View style={styles.pageBackFold} />
+                  <View style={styles.pageBackLine} />
+                  <View style={[styles.pageBackLine, styles.pageBackLineShort]} />
+                  <View style={styles.pageBackPhotoGhost} />
+                  <View style={styles.pageBackLine} />
+                </Animated.View>
+                <LinearGradient colors={['rgba(255,255,255,0.8)', 'rgba(255,255,255,0.12)', 'rgba(81,55,32,0.28)']} style={styles.dragPaperRidge} />
+              </Animated.View>
+            </View>
+          ) : null}
+          {canTurnPage ? (
+            <Pressable
+              onPress={openNextPage}
+              style={styles.turnPageControl}
+              accessibilityLabel="Turn album page"
+              accessibilityRole="button"
+              hitSlop={12}
             >
-              <Animated.View
-                style={[
-                  styles.curledPageContent,
-                  {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.34, 0.54, 1], outputRange: [1, 1, 0.08, 0], extrapolate: 'clamp' }),
-                  },
-                ]}
-              >
-                {renderAlbumPageContent(flippingPage)}
-                <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.24)']} style={styles.pageEdge} />
-                <View style={styles.pageCorner} />
-              </Animated.View>
-              <Animated.View
-                style={[
-                  styles.curledPageBackFace,
-                  {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.18, 0.36, 0.96, 1], outputRange: [0, 0, 1, 1, 0.2], extrapolate: 'clamp' }),
-                  },
-                ]}
-              >
-                <LinearGradient colors={['#fff8ec', '#efe0c8', '#d9c3a4']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-                <View style={styles.pageBackFold} />
-                <View style={styles.pageBackLine} />
-                <View style={[styles.pageBackLine, styles.pageBackLineShort]} />
-                <View style={styles.pageBackPhotoGhost} />
-                <View style={styles.pageBackLine} />
-                <View style={[styles.pageBackLine, styles.pageBackLineShort]} />
-              </Animated.View>
-              <Animated.View
-                style={[
-                  styles.curlFaceShade,
-                  {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.46, 0.82, 1], outputRange: [0.02, 0.36, 0.2, 0], extrapolate: 'clamp' }),
-                  },
-                ]}
-              />
-              <Animated.View
-                style={[
-                  styles.flipCurlHighlight,
-                  {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.2, 0.72, 1], outputRange: [0, 0.9, 0.52, 0], extrapolate: 'clamp' }),
-                    transform: [
-                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [CURL_W * 0.54, -CURL_W * 0.34], extrapolate: 'clamp' }) },
-                    ],
-                  },
-                ]}
-              />
-              <View style={styles.flipPageThickness} />
-              <Animated.View
-                style={[
-                  styles.flipBackCurl,
-                  {
-                    opacity: flipAnim.interpolate({ inputRange: [0, 0.28, 0.78, 1], outputRange: [0, 0.92, 0.58, 0], extrapolate: 'clamp' }),
-                    transform: [
-                      { translateX: flipAnim.interpolate({ inputRange: [0, 1], outputRange: [CURL_W * 0.52, -CURL_W * 0.02], extrapolate: 'clamp' }) },
-                    ],
-                  },
-                ]}
-              />
-            </Animated.View>
-          </View>
-        ) : null}
-        {canTurnPage ? (
-          <Pressable
-            onPress={openNextPage}
-            style={styles.turnPageControl}
-            accessibilityLabel="Turn album page"
-            accessibilityRole="button"
-            hitSlop={12}
-          >
-            <ChevronRight size={21} color="#21160f" strokeWidth={2.5} />
-          </Pressable>
-        ) : null}
-      </View>
+              <ChevronRight size={21} color="#21160f" strokeWidth={2.5} />
+            </Pressable>
+          ) : null}
+        </View>
+      </GestureDetector>
 
       <View style={styles.dots}>
         {pages.map((_, index) => (
@@ -851,78 +822,63 @@ const getStyles = (_colors: ThemeColors) =>
       position: 'absolute',
       zIndex: 1,
     },
-    revealedPageShadow: {
+    currentPageDuringDrag: {
       position: 'absolute',
       zIndex: 2,
-      width: PAGE_W * 0.24,
-      height: PAGE_H - 16,
-      borderRadius: 28,
+    },
+    dragFoldShadow: {
+      position: 'absolute',
+      zIndex: 3,
+      width: PAGE_W * 0.3,
+      height: PAGE_H - 20,
+      borderRadius: 24,
       backgroundColor: 'rgba(34,20,10,0.34)',
       shadowColor: '#000',
-      shadowOpacity: 0.28,
-      shadowRadius: 20,
-      shadowOffset: { width: -10, height: 8 },
+      shadowOpacity: 0.36,
+      shadowRadius: 22,
+      shadowOffset: { width: -14, height: 10 },
     },
-    flipSheet: {
+    dragPaperSheet: {
       position: 'absolute',
-      zIndex: 3,
-      shadowOpacity: 0.48,
-      shadowRadius: 26,
-      shadowOffset: { width: -24, height: 18 },
-      elevation: 14,
-    },
-    curledPageSheet: {
-      position: 'absolute',
-      zIndex: 3,
+      zIndex: 4,
       right: 20,
-      width: CURL_W,
+      width: PAGE_W * 0.62,
       height: PAGE_H,
       borderTopRightRadius: 18,
       borderBottomRightRadius: 18,
       overflow: 'hidden',
       backgroundColor: '#f4eadb',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.42)',
+      borderColor: 'rgba(255,255,255,0.5)',
       shadowColor: '#000',
-      shadowOpacity: 0.5,
-      shadowRadius: 26,
-      shadowOffset: { width: -22, height: 18 },
-      elevation: 14,
-      backfaceVisibility: 'hidden',
+      shadowOpacity: 0.44,
+      shadowRadius: 28,
+      shadowOffset: { width: -20, height: 16 },
+      elevation: 16,
     },
-    curledPageContent: {
+    dragPaperFront: {
+      ...StyleSheet.absoluteFillObject,
+      overflow: 'hidden',
+    },
+    dragPaperFrontContent: {
       width: PAGE_W,
       height: PAGE_H,
-      transform: [{ translateX: -(PAGE_W - CURL_W) }],
+      transform: [{ translateX: -(PAGE_W * 0.38) }],
     },
-    curledPageBackFace: {
-      position: 'absolute',
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
+    dragPaperBack: {
+      ...StyleSheet.absoluteFillObject,
       paddingTop: 34,
-      paddingHorizontal: 16,
+      paddingHorizontal: 18,
       paddingBottom: 24,
-      overflow: 'hidden',
       backgroundColor: '#f7efdf',
     },
-    curlFaceShade: {
+    dragPaperRidge: {
       position: 'absolute',
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      backgroundColor: '#2a1609',
-    },
-    flipBackSheet: {
-      backgroundColor: '#f7efdf',
-      borderColor: 'rgba(99,65,38,0.24)',
-    },
-    pageBackPaper: {
-      flex: 1,
-      padding: 26,
-      backgroundColor: '#f7efdf',
+      top: -8,
+      right: -2,
+      bottom: -8,
+      width: 58,
+      borderRadius: 28,
     },
     pageBackFold: {
       position: 'absolute',
@@ -950,52 +906,6 @@ const getStyles = (_colors: ThemeColors) =>
       backgroundColor: 'rgba(150,108,72,0.14)',
       borderWidth: 1,
       borderColor: 'rgba(118,88,62,0.1)',
-    },
-    flipBackSheen: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      left: 0,
-      width: 78,
-    },
-    flipBackCurl: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      width: 118,
-      borderTopLeftRadius: 18,
-      borderBottomLeftRadius: 18,
-      backgroundColor: '#f7efdf',
-      borderLeftWidth: 1,
-      borderColor: 'rgba(99,65,38,0.18)',
-      shadowColor: '#000',
-      shadowOpacity: 0.18,
-      shadowRadius: 12,
-      shadowOffset: { width: -8, height: 0 },
-    },
-    flipCurlHighlight: {
-      position: 'absolute',
-      top: -20,
-      bottom: -20,
-      width: 48,
-      borderRadius: 30,
-      backgroundColor: 'rgba(255,255,255,0.42)',
-      shadowColor: '#fff',
-      shadowOpacity: 0.65,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 0 },
-    },
-    flipPageThickness: {
-      position: 'absolute',
-      top: 10,
-      bottom: 10,
-      right: -5,
-      width: 11,
-      borderTopRightRadius: 16,
-      borderBottomRightRadius: 16,
-      backgroundColor: '#d8c6ac',
-      borderLeftWidth: 1,
-      borderLeftColor: 'rgba(91,62,37,0.18)',
     },
     turnPageControl: {
       position: 'absolute',
