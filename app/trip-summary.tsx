@@ -16,10 +16,7 @@ import {
   Camera,
   ChevronRight,
   FolderOpen,
-  Heart,
-  ImagePlus,
   MapPin,
-  Play,
   Receipt,
   Share2,
   Star,
@@ -28,7 +25,6 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-import StatPill from '@/components/summary/StatPill';
 import CategoryBar from '@/components/summary/CategoryBar';
 import PlaceRow from '@/components/summary/PlaceRow';
 import type { PlaceSource } from '@/components/summary/PlaceRow';
@@ -238,11 +234,6 @@ export default function TripSummaryScreen() {
   // ---------- DERIVED ----------
 
   const totalMoments = moments.length;
-  const favoriteCount = useMemo(
-    () => Object.values(favorites).filter((f) => f.count > 0).length,
-    [favorites],
-  );
-
   const momentsByDay = useMemo(() => {
     const map: Record<string, number> = {};
     for (const m of moments) {
@@ -461,32 +452,7 @@ export default function TripSummaryScreen() {
           onAddPhoto={handleAddMoment}
           onOpenPhoto={handleOpenAlbumPhoto}
         />
-
-        {/* ==================== 2. STATS STRIP ==================== */}
-        <View style={styles.statsGrid}>
-          <StatPill icon={<Camera size={18} color={colors.accent} />} value={totalMoments} label="Moments" colors={colors} />
-          <StatPill icon={<MapPin size={18} color={colors.coral} />} value={dedupedPlaces.length} label="Places" colors={colors} />
-          <StatPill icon={<Heart size={18} color={colors.danger} />} value={favoriteCount} label="Favs" colors={colors} />
-          <StatPill icon={<Wallet size={18} color={colors.gold} />} value={formatCurrency(summary.total, currency)} label="Spent" colors={colors} />
-        </View>
-
-        {/* ==================== 3. ACTION ROW ==================== */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.actionBtn} onPress={handlePlayReel} activeOpacity={0.7}>
-            <Play size={16} color={colors.text} fill={colors.text} />
-            <Text style={styles.actionLabel}>Play Reel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={handleAddMoment} activeOpacity={0.7}>
-            <ImagePlus size={16} color={colors.text} />
-            <Text style={styles.actionLabel}>Add Photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={handleShare} activeOpacity={0.7}>
-            <Share2 size={16} color={colors.text} />
-            <Text style={styles.actionLabel}>Share</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ==================== 4. MOMENTS ==================== */}
+        {/* ==================== 2. MOMENTS ==================== */}
         {moments.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
@@ -739,40 +705,6 @@ const getStyles = (colors: ThemeColors) =>
     scroll: {
       paddingHorizontal: 20,
       paddingTop: 0,
-    },
-
-    // Stats grid
-    statsGrid: {
-      flexDirection: 'row',
-      gap: 8,
-      marginBottom: 20,
-    },
-
-    // Action row
-    actionRow: {
-      flexDirection: 'row',
-      gap: 10,
-      marginBottom: 28,
-    },
-    actionBtn: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      paddingVertical: 12,
-      borderRadius: 14,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    actionBtnDisabled: {
-      opacity: 0.5,
-    },
-    actionLabel: {
-      fontSize: 13,
-      fontWeight: '600',
-      color: colors.text,
     },
 
     // Sections

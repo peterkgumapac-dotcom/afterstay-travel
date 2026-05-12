@@ -1,17 +1,26 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Animated as RNAnimated,
   Dimensions,
-  Easing,
-  PanResponder,
   Pressable,
   Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  Easing,
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
@@ -20,6 +29,7 @@ import {
   ChevronRight,
   Images,
   MapPin,
+  Play,
   Route,
   Share2,
   Sparkles,
@@ -34,17 +44,16 @@ import { formatCurrency } from '@/lib/utils';
 const { width: SCREEN_W } = Dimensions.get('window');
 const PAGE_W = SCREEN_W - 40;
 const PAGE_H = Math.min(500, Math.max(460, Math.round(PAGE_W * 1.36)));
-const SNAP_W = SCREEN_W;
 const MAX_PHOTO_PAGES = 15;
+const TURN_THRESHOLD = PAGE_W * 0.24;
 
 type AlbumPage =
   | { type: 'cover' }
-  | { type: 'bestMoments'; title: string; photos: AlbumPhoto[]; caption: string }
-  | { type: 'timeline' }
+  | { type: 'highlights'; title: string; photos: AlbumPhoto[]; caption: string }
+  | { type: 'story' }
   | { type: 'favorite'; photo: AlbumPhoto }
-  | { type: 'places' }
-  | { type: 'people' }
-  | { type: 'stats' }
+  | { type: 'peoplePlaces' }
+  | { type: 'aha' }
   | { type: 'closing' };
 
 export interface AlbumPhoto {
@@ -57,11 +66,11 @@ export interface AlbumPhoto {
   moment?: Moment;
 }
 
-interface TimelineHighlight {
+interface StoryBeat {
   id: string;
+  label: string;
   title: string;
-  subtitle: string;
-  meta: string;
+  detail: string;
   photo?: AlbumPhoto;
 }
 
@@ -99,7 +108,7 @@ interface TripAlbumData {
   heroPhoto?: AlbumPhoto;
   favoritePhoto?: AlbumPhoto;
   photos: AlbumPhoto[];
-  timeline: TimelineHighlight[];
+  storyBeats: StoryBeat[];
   topPlaces: AlbumPlace[];
   travelers: AlbumTraveler[];
   ahaCards: AhaCard[];
@@ -181,7 +190,8 @@ function mostCommon(values: (string | undefined)[]) {
   return Array.from(counts.entries()).sort(([, a], [, b]) => b - a)[0]?.[0];
 }
 
-function buildTimelineHighlights(moments: Moment[], albumPhotos: AlbumPhoto[]): TimelineHighlight[] {
+function buildStoryBeats(moments: Moment[], albumPhotos: AlbumPhoto[], favoritePhoto?: AlbumPhoto): StoryBeat[] {
+  if (moments.length === 0) return [];
   const photoByMoment = new Map(albumPhotos.map((photo) => [photo.id, photo]));
   const groups = new Map<
     string,
@@ -205,21 +215,55 @@ function buildTimelineHighlights(moments: Moment[], albumPhotos: AlbumPhoto[]): 
     groups.set(key, existing);
   }
 
-  return Array.from(groups.values())
-    .sort((a, b) => a.sortValue - b.sortValue)
-    .slice(0, 4)
-    .map((group, index) => {
-      const topLocation = mostCommon(group.moments.map((moment) => moment.location));
-      const topTag = mostCommon(group.moments.flatMap((moment) => moment.tags ?? []));
-      const dateLabel = formatAlbumDate(group.moments[0]?.date);
-      return {
-        id: `${group.title}-${index}`,
-        title: group.title,
-        subtitle: topLocation ?? topTag ?? 'A day worth remembering',
-        meta: `${group.moments.length} moment${group.moments.length !== 1 ? 's' : ''}${dateLabel ? ` · ${dateLabel}` : ''}`,
-        photo: group.photos[0],
-      };
-    });
+  const sortedGroups = Array.from(groups.values()).sort((a, b) => a.sortValue - b.sortValue);
+  const firstGroup = sortedGroups[0];
+  const lastGroup = sortedGroups[sortedGroups.length - 1];
+  const peakGroup = sortedGroups.reduce((best, group) => (group.moments.length > best.moments.length ? group : best), firstGroup);
+  const beats: (StoryBeat | undefined)[] = [
+    firstGroup
+      ? {
+          id: 'arrival',
+          label: 'Arrival',
+          title: mostCommon(firstGroup.moments.map((moment) => moment.location)) ?? firstGroup.title,
+          detail: `${firstGroup.moments.length} moment${firstGroup.moments.length !== 1 ? 's' : ''} started the trip${formatAlbumDate(firstGroup.moments[0]?.date) ? ` on ${formatAlbumDate(firstGroup.moments[0]?.date)}` : ''}.`,
+          photo: firstGroup.photos[0],
+        }
+      : undefined,
+    peakGroup && peakGroup !== firstGroup
+      ? {
+          id: 'peak',
+          label: 'Peak day',
+          title: mostCommon(peakGroup.moments.map((moment) => moment.location)) ?? peakGroup.title,
+          detail: `${peakGroup.moments.length} captured moment${peakGroup.moments.length !== 1 ? 's' : ''} made this the fullest day.`,
+          photo: peakGroup.photos[0],
+        }
+      : undefined,
+    favoritePhoto
+      ? {
+          id: 'favorite',
+          label: 'Favorite frame',
+          title: favoritePhoto.location ?? favoritePhoto.caption ?? 'A photo worth keeping',
+          detail: favoritePhoto.caption ?? 'One frame that carries the feeling of the trip.',
+          photo: favoritePhoto,
+        }
+      : undefined,
+    lastGroup && lastGroup !== firstGroup
+      ? {
+          id: 'final',
+          label: 'Final memory',
+          title: mostCommon(lastGroup.moments.map((moment) => moment.location)) ?? lastGroup.title,
+          detail: `${lastGroup.moments.length} moment${lastGroup.moments.length !== 1 ? 's' : ''} closed the album.`,
+          photo: lastGroup.photos[0],
+        }
+      : undefined,
+  ];
+
+  const unique = new Map<string, StoryBeat>();
+  for (const beat of beats) {
+    if (!beat) continue;
+    unique.set(beat.id, beat);
+  }
+  return Array.from(unique.values()).slice(0, 4);
 }
 
 function buildAhaCards(data: {
@@ -296,7 +340,7 @@ export function buildTripAlbumData({
     photo: member.profilePhoto,
   }));
   const spentLabel = spent > 0 ? formatCurrency(spent, currency) : 'No spend yet';
-  const timeline = buildTimelineHighlights(moments, photos);
+  const storyBeats = buildStoryBeats(moments, photos, favoritePhoto);
 
   return {
     title: trip.name || trip.destination || 'Trip Album',
@@ -312,7 +356,7 @@ export function buildTripAlbumData({
     heroPhoto: photos[0],
     favoritePhoto,
     photos,
-    timeline,
+    storyBeats,
     topPlaces,
     travelers,
     ahaCards: buildAhaCards({
@@ -383,12 +427,12 @@ export const mockTripAlbumData: TripAlbumData = {
       location: 'Ginza',
     },
   ],
-  timeline: [
+  storyBeats: [
     {
       id: 'mock-day-1',
-      title: 'Day 1',
-      subtitle: 'Shibuya Crossing',
-      meta: '18 moments · Apr 12',
+      label: 'Arrival',
+      title: 'Shibuya Crossing',
+      detail: '18 moments started the trip on Apr 12.',
       photo: {
         id: 'mock-hero',
         uri: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1200&q=80',
@@ -397,9 +441,9 @@ export const mockTripAlbumData: TripAlbumData = {
     },
     {
       id: 'mock-day-2',
-      title: 'Day 2',
-      subtitle: 'Asakusa',
-      meta: '22 moments · Apr 13',
+      label: 'Peak day',
+      title: 'Asakusa',
+      detail: '22 captured moments made this the fullest day.',
       photo: {
         id: 'mock-2',
         uri: 'https://images.unsplash.com/photo-1524413840807-0c3cb6fa808d?auto=format&fit=crop&w=1000&q=80',
@@ -430,28 +474,32 @@ function buildPages(data: TripAlbumData): AlbumPage[] {
   const pages: AlbumPage[] = [{ type: 'cover' }];
 
   pages.push({
-    type: 'bestMoments',
-    title: data.topLocation ? `Moments from ${data.topLocation}` : 'Best moments',
+    type: 'highlights',
+    title: data.topLocation ? `Highlights from ${data.topLocation}` : 'Best highlights',
     photos: data.photos.slice(0, 3),
-    caption: data.photos.length < 5 ? 'A small album from the moments captured so far.' : 'The frames that make this trip easy to remember.',
+    caption: data.photos.length < 3 ? 'A small album from the moments captured so far.' : 'Three frames that make this trip easy to remember.',
   });
 
-  if (data.timeline.length > 0) pages.push({ type: 'timeline' });
+  if (data.storyBeats.length > 0) pages.push({ type: 'story' });
   if (data.favoritePhoto) pages.push({ type: 'favorite', photo: data.favoritePhoto });
-  if (data.topPlaces.length > 0) pages.push({ type: 'places' });
-  if (data.travelers.length > 0 || data.memberCount > 0) pages.push({ type: 'people' });
-  pages.push({ type: 'stats' }, { type: 'closing' });
+  if (data.topPlaces.length > 0 || data.travelers.length > 0 || data.memberCount > 0) pages.push({ type: 'peoplePlaces' });
+  pages.push({ type: 'aha' }, { type: 'closing' });
   return pages.slice(0, 8);
 }
 
 export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, onAddPhoto, onOpenPhoto }: Props) {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(colors), [colors]);
-  const scrollX = useRef(new RNAnimated.Value(0)).current;
+  const dragX = useSharedValue(0);
+  const progress = useSharedValue(0);
+  const isDragging = useSharedValue(false);
   const [pageIndex, setPageIndex] = useState(0);
   const pages = useMemo(() => buildPages(data), [data]);
-  const canTurnPage = pageIndex < pages.length - 1;
-  const maxPageIndex = pages.length - 1;
+  const canGoPrevious = pageIndex > 0;
+  const canGoNext = pageIndex < pages.length - 1;
+  const currentPage = pages[pageIndex];
+  const previousPage = canGoPrevious ? pages[pageIndex - 1] : undefined;
+  const nextPage = canGoNext ? pages[pageIndex + 1] : undefined;
 
   useEffect(() => {
     const urls = data.photos.slice(Math.max(0, pageIndex - 1), pageIndex + 4).map((photo) => photo.uri);
@@ -464,50 +512,70 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     });
   };
 
-  const animateToPage = useCallback(
-    (nextIndex: number, duration = 280) => {
-      const targetIndex = Math.max(0, Math.min(nextIndex, maxPageIndex));
-      setPageIndex(targetIndex);
-      RNAnimated.timing(scrollX, {
-        toValue: targetIndex * SNAP_W,
-        duration,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }).start();
-    },
-    [maxPageIndex, scrollX],
-  );
+  const commitDirection = useCallback((direction: 1 | -1) => {
+    setPageIndex((current) => {
+      const target = Math.max(0, Math.min(current + direction, pages.length - 1));
+      if (target !== current) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      return target;
+    });
+  }, [pages.length]);
 
-  const openNextPage = useCallback(() => {
-    if (!canTurnPage) return;
-    animateToPage(pageIndex + 1, 360);
-  }, [animateToPage, canTurnPage, pageIndex]);
+  const animatePageTurn = useCallback((direction: 1 | -1) => {
+    if ((direction === 1 && !canGoNext) || (direction === -1 && !canGoPrevious)) return;
+    const target = direction === 1 ? -PAGE_W : PAGE_W;
+    isDragging.value = true;
+    progress.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
+    dragX.value = withTiming(target, { duration: 240, easing: Easing.out(Easing.cubic) }, (finished) => {
+      if (finished) runOnJS(commitDirection)(direction);
+      dragX.value = 0;
+      progress.value = 0;
+      isDragging.value = false;
+    });
+  }, [canGoNext, canGoPrevious, commitDirection, dragX, isDragging, progress]);
 
-  const pagePanResponder = useMemo(
+  const openNextPage = useCallback(() => animatePageTurn(1), [animatePageTurn]);
+  const openPreviousPage = useCallback(() => animatePageTurn(-1), [animatePageTurn]);
+
+  const pageGesture = useMemo(
     () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dx) > 8 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.25,
-        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
-          Math.abs(gestureState.dx) > 8 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.25,
-        onPanResponderGrant: () => {
-          scrollX.stopAnimation();
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const nextOffset = Math.max(0, Math.min(maxPageIndex * SNAP_W, pageIndex * SNAP_W - gestureState.dx));
-          scrollX.setValue(nextOffset);
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          const shouldGoNext = gestureState.dx < -58 || gestureState.vx < -0.45;
-          const shouldGoPrev = gestureState.dx > 58 || gestureState.vx > 0.45;
-          const nextIndex = shouldGoNext ? pageIndex + 1 : shouldGoPrev ? pageIndex - 1 : pageIndex;
-          animateToPage(nextIndex);
-        },
-        onPanResponderTerminate: () => {
-          animateToPage(pageIndex, 200);
-        },
-      }),
-    [animateToPage, maxPageIndex, pageIndex, scrollX],
+      Gesture.Pan()
+        .activeOffsetX([-10, 10])
+        .failOffsetY([-16, 16])
+        .onBegin(() => {
+          isDragging.value = true;
+        })
+        .onUpdate((event) => {
+          const blocked = (event.translationX < 0 && !canGoNext) || (event.translationX > 0 && !canGoPrevious);
+          const rawX = blocked ? event.translationX * 0.18 : event.translationX;
+          dragX.value = Math.max(-PAGE_W, Math.min(PAGE_W, rawX));
+          progress.value = Math.min(1, Math.abs(dragX.value) / PAGE_W);
+        })
+        .onEnd((event) => {
+          const shouldGoNext = canGoNext && (dragX.value < -TURN_THRESHOLD || event.velocityX < -650);
+          const shouldGoPrevious = canGoPrevious && (dragX.value > TURN_THRESHOLD || event.velocityX > 650);
+
+          if (shouldGoNext || shouldGoPrevious) {
+            const direction: 1 | -1 = shouldGoNext ? 1 : -1;
+            const target = direction === 1 ? -PAGE_W : PAGE_W;
+            progress.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
+            dragX.value = withTiming(target, { duration: 200, easing: Easing.out(Easing.cubic) }, (finished) => {
+              if (finished) runOnJS(commitDirection)(direction);
+              dragX.value = 0;
+              progress.value = 0;
+              isDragging.value = false;
+            });
+            return;
+          }
+
+          dragX.value = withSpring(0, { damping: 18, stiffness: 210, mass: 0.75 });
+          progress.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) }, () => {
+            isDragging.value = false;
+          });
+        })
+        .onFinalize(() => {
+          if (Math.abs(dragX.value) < 1) isDragging.value = false;
+        }),
+    [canGoNext, canGoPrevious, commitDirection, dragX, isDragging, progress],
   );
 
   const renderAlbumPageContent = (item: AlbumPage) => (
@@ -515,56 +583,63 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       {item.type === 'cover' ? (
         <AlbumCoverPage data={data} styles={styles} colors={colors} onOpenAlbum={openNextPage} onAddPhoto={onAddPhoto} />
       ) : null}
-      {item.type === 'bestMoments' ? (
-        <AlbumBestMomentsPage page={item} styles={styles} onOpenPhoto={onOpenPhoto} />
+      {item.type === 'highlights' ? (
+        <AlbumHighlightsPage page={item} styles={styles} onOpenPhoto={onOpenPhoto} />
       ) : null}
-      {item.type === 'timeline' ? <AlbumTimelinePage data={data} styles={styles} onOpenPhoto={onOpenPhoto} /> : null}
+      {item.type === 'story' ? <AlbumStoryPage data={data} styles={styles} onOpenPhoto={onOpenPhoto} /> : null}
       {item.type === 'favorite' ? (
         <AlbumFavoritePage photo={item.photo} styles={styles} onOpenPhoto={onOpenPhoto} />
       ) : null}
-      {item.type === 'places' ? <AlbumPlacesPage data={data} styles={styles} /> : null}
-      {item.type === 'people' ? <AlbumPeoplePage data={data} styles={styles} /> : null}
-      {item.type === 'stats' ? <AlbumStatsPage data={data} styles={styles} /> : null}
+      {item.type === 'peoplePlaces' ? <AlbumPeoplePlacesPage data={data} styles={styles} /> : null}
+      {item.type === 'aha' ? <AlbumAhaPage data={data} styles={styles} /> : null}
       {item.type === 'closing' ? (
-        <AlbumClosingPage data={data} styles={styles} onOpenAlbum={onOpenAlbum} onShare={handleShare} />
+        <AlbumClosingPage data={data} styles={styles} onOpenAlbum={() => data.photos[0] ? onOpenPhoto?.(data.photos[0]) : onAddPhoto()} onPlayReel={onOpenAlbum} onShare={handleShare} />
       ) : null}
     </>
   );
 
-  const renderPage = ({ item, index }: { item: AlbumPage; index: number }) => {
-    const inputRange = [(index - 1) * SNAP_W, index * SNAP_W, (index + 1) * SNAP_W];
-    const pageScale = scrollX.interpolate({ inputRange, outputRange: [0.965, 1, 0.965], extrapolate: 'clamp' });
-    const translateX = scrollX.interpolate({ inputRange, outputRange: [18, 0, -18], extrapolate: 'clamp' });
-    const translateY = scrollX.interpolate({ inputRange, outputRange: [10, 0, 10], extrapolate: 'clamp' });
-    const opacity = scrollX.interpolate({ inputRange, outputRange: [0.62, 1, 0.62], extrapolate: 'clamp' });
-    const pageShadeOpacity = scrollX.interpolate({ inputRange, outputRange: [0.09, 0, 0.09], extrapolate: 'clamp' });
-    const liftShadowOpacity = scrollX.interpolate({ inputRange, outputRange: [0.12, 0.34, 0.12], extrapolate: 'clamp' });
-
-    return (
-      <View style={styles.pageFrame}>
-        <RNAnimated.View style={[styles.pageLiftShadow, { opacity: liftShadowOpacity, transform: [{ translateY }, { scale: pageScale }] }]} />
-        <RNAnimated.View
-          style={[
-            styles.pageShell,
-            {
-              opacity,
-              transform: [{ translateX }, { translateY }, { scale: pageScale }],
-            },
-          ]}
-        >
-          {renderAlbumPageContent(item)}
-          <LinearGradient colors={['rgba(255,255,255,0.26)', 'rgba(255,255,255,0.03)', 'rgba(71,41,20,0.12)']} style={styles.pageEdge} />
-          <RNAnimated.View style={[styles.turnShade, { opacity: pageShadeOpacity }]} />
-        </RNAnimated.View>
-      </View>
-    );
-  };
-
-  const pagerTranslateX = scrollX.interpolate({
-    inputRange: [0, Math.max(1, maxPageIndex) * SNAP_W],
-    outputRange: [0, -(Math.max(1, maxPageIndex) * SNAP_W)],
-    extrapolate: 'clamp',
+  const activePageStyle = useAnimatedStyle(() => {
+    const lift = interpolate(progress.value, [0, 1], [0, 9], Extrapolation.CLAMP);
+    const scale = interpolate(progress.value, [0, 1], [1, 0.965], Extrapolation.CLAMP);
+    return {
+      transform: [{ translateX: dragX.value }, { translateY: lift }, { scale }],
+    };
   });
+
+  const activeShadowStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 1], [0.22, 0.34], Extrapolation.CLAMP),
+    transform: [
+      { translateX: dragX.value * 0.35 },
+      { translateY: interpolate(progress.value, [0, 1], [0, 12], Extrapolation.CLAMP) },
+      { scale: interpolate(progress.value, [0, 1], [0.98, 0.95], Extrapolation.CLAMP) },
+    ],
+  }));
+
+  const nextPageStyle = useAnimatedStyle(() => {
+    const reveal = Math.max(0, Math.min(1, -dragX.value / PAGE_W));
+    return {
+      opacity: canGoNext ? interpolate(reveal, [0, 1], [0.32, 1], Extrapolation.CLAMP) : 0,
+      transform: [
+        { translateX: interpolate(reveal, [0, 1], [34, 0], Extrapolation.CLAMP) },
+        { scale: interpolate(reveal, [0, 1], [0.965, 1], Extrapolation.CLAMP) },
+      ],
+    };
+  }, [canGoNext]);
+
+  const previousPageStyle = useAnimatedStyle(() => {
+    const reveal = Math.max(0, Math.min(1, dragX.value / PAGE_W));
+    return {
+      opacity: canGoPrevious ? interpolate(reveal, [0, 1], [0, 1], Extrapolation.CLAMP) : 0,
+      transform: [
+        { translateX: interpolate(reveal, [0, 1], [-34, 0], Extrapolation.CLAMP) },
+        { scale: interpolate(reveal, [0, 1], [0.965, 1], Extrapolation.CLAMP) },
+      ],
+    };
+  }, [canGoPrevious]);
+
+  const activeShadeStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 1], [0, 0.1], Extrapolation.CLAMP),
+  }));
 
   return (
     <View style={styles.container}>
@@ -590,15 +665,41 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         </View>
       </View>
 
-      <View style={styles.bookViewport} {...pagePanResponder.panHandlers}>
-          <RNAnimated.View style={[styles.albumPager, { transform: [{ translateX: pagerTranslateX }] }]}>
-            {pages.map((item, index) => (
-              <React.Fragment key={`${item.type}-${index}`}>
-                {renderPage({ item, index })}
-              </React.Fragment>
-            ))}
-          </RNAnimated.View>
-          {canTurnPage ? (
+      <GestureDetector gesture={pageGesture}>
+        <View style={styles.bookViewport}>
+          <Animated.View style={[styles.pageLiftShadow, activeShadowStyle]} />
+          {previousPage ? (
+            <Animated.View pointerEvents="none" style={[styles.pageShell, styles.layeredPage, previousPageStyle]}>
+              {renderAlbumPageContent(previousPage)}
+              <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.1)']} style={styles.pageEdge} />
+            </Animated.View>
+          ) : null}
+          {nextPage ? (
+            <Animated.View pointerEvents="none" style={[styles.pageShell, styles.layeredPage, nextPageStyle]}>
+              {renderAlbumPageContent(nextPage)}
+              <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.1)']} style={styles.pageEdge} />
+            </Animated.View>
+          ) : null}
+          <Animated.View style={[styles.pageShell, styles.layeredPage, styles.activeLayeredPage, activePageStyle]}>
+            {renderAlbumPageContent(currentPage)}
+            <LinearGradient colors={['rgba(255,255,255,0.26)', 'rgba(255,255,255,0.03)', 'rgba(71,41,20,0.12)']} style={styles.pageEdge} />
+            <Animated.View pointerEvents="none" style={[styles.turnShade, activeShadeStyle]} />
+          </Animated.View>
+          <Pressable
+            onPress={openPreviousPage}
+            disabled={!canGoPrevious}
+            style={styles.tapZoneLeft}
+            accessibilityLabel="Previous album page"
+            accessibilityRole="button"
+          />
+          <Pressable
+            onPress={openNextPage}
+            disabled={!canGoNext}
+            style={styles.tapZoneRight}
+            accessibilityLabel="Next album page"
+            accessibilityRole="button"
+          />
+          {canGoNext ? (
             <Pressable
               onPress={openNextPage}
               style={styles.turnPageControl}
@@ -609,7 +710,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
               <ChevronRight size={21} color="#21160f" strokeWidth={2.5} />
             </Pressable>
           ) : null}
-      </View>
+        </View>
+      </GestureDetector>
 
       <View style={styles.dots}>
         {pages.map((_, index) => (
@@ -680,12 +782,12 @@ function AlbumCoverPage({
   );
 }
 
-function AlbumBestMomentsPage({
+function AlbumHighlightsPage({
   page,
   styles,
   onOpenPhoto,
 }: {
-  page: Extract<AlbumPage, { type: 'bestMoments' }>;
+  page: Extract<AlbumPage, { type: 'highlights' }>;
   styles: ReturnType<typeof getStyles>;
   onOpenPhoto?: (photo: AlbumPhoto) => void;
 }) {
@@ -694,19 +796,21 @@ function AlbumBestMomentsPage({
     <View style={styles.paperPage}>
       <Text style={styles.spreadKicker}>PHOTO SPREAD</Text>
       <Text style={styles.spreadTitle} numberOfLines={2}>{page.title}</Text>
-      <View style={styles.collageGrid}>
+      <View style={[styles.collageGrid, rest.length === 0 && styles.singleHighlightGrid]}>
         {hero ? (
-          <Pressable style={styles.collageHero} onPress={() => onOpenPhoto?.(hero)}>
+          <Pressable style={[styles.collageHero, rest.length === 0 && styles.collageHeroSingle]} onPress={() => onOpenPhoto?.(hero)}>
             <Image source={{ uri: hero.uri }} style={styles.imageFill} contentFit="cover" transition={140} />
           </Pressable>
         ) : null}
-        <View style={styles.collageSide}>
-          {rest.slice(0, 2).map((photo) => (
-            <Pressable key={photo.id} style={styles.collageThumb} onPress={() => onOpenPhoto?.(photo)}>
-              <Image source={{ uri: photo.uri }} style={styles.imageFill} contentFit="cover" transition={140} />
-            </Pressable>
-          ))}
-        </View>
+        {rest.length > 0 ? (
+          <View style={styles.collageSide}>
+            {rest.slice(0, 2).map((photo) => (
+              <Pressable key={photo.id} style={styles.collageThumb} onPress={() => onOpenPhoto?.(photo)}>
+                <Image source={{ uri: photo.uri }} style={styles.imageFill} contentFit="cover" transition={140} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
       <Text style={styles.caption} numberOfLines={2}>{page.caption}</Text>
     </View>
@@ -743,7 +847,7 @@ function AlbumFavoritePage({
   );
 }
 
-function AlbumTimelinePage({
+function AlbumStoryPage({
   data,
   styles,
   onOpenPhoto,
@@ -754,10 +858,10 @@ function AlbumTimelinePage({
 }) {
   return (
     <View style={styles.paperPage}>
-      <Text style={styles.spreadKicker}>TRIP TIMELINE</Text>
-      <Text style={styles.spreadTitle}>The days that shaped it</Text>
+      <Text style={styles.spreadKicker}>STORY BEATS</Text>
+      <Text style={styles.spreadTitle}>The trip in moments</Text>
       <View style={styles.timelineList}>
-        {data.timeline.map((item, index) => (
+        {data.storyBeats.map((item, index) => (
           <Pressable
             key={item.id}
             style={styles.timelineRow}
@@ -775,9 +879,9 @@ function AlbumTimelinePage({
               </View>
             )}
             <View style={styles.timelineCopy}>
-              <Text style={styles.timelineTitle}>{item.title}</Text>
-              <Text style={styles.timelineSubtitle} numberOfLines={1}>{item.subtitle}</Text>
-              <Text style={styles.timelineMeta} numberOfLines={1}>{item.meta}</Text>
+              <Text style={styles.timelineMeta} numberOfLines={1}>{item.label}</Text>
+              <Text style={styles.timelineTitle} numberOfLines={1}>{item.title}</Text>
+              <Text style={styles.timelineSubtitle} numberOfLines={2}>{item.detail}</Text>
             </View>
           </Pressable>
         ))}
@@ -786,17 +890,24 @@ function AlbumTimelinePage({
   );
 }
 
-function AlbumPlacesPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+function AlbumPeoplePlacesPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+  const visibleTravelers = data.travelers.length > 0 ? data.travelers : [{ id: 'solo', name: 'You' }];
   return (
     <View style={styles.paperPage}>
-      <Text style={styles.spreadKicker}>PLACES</Text>
-      <Text style={styles.spreadTitle}>Where the trip lived</Text>
+      <Text style={styles.spreadKicker}>PEOPLE + PLACES</Text>
+      <Text style={styles.spreadTitle}>Who and where</Text>
       <View style={styles.placesHero}>
         <Route size={20} color="#6d4a2f" />
         <View style={styles.placesHeroCopy}>
           <Text style={styles.placesHeroTitle} numberOfLines={1}>{data.topLocation ?? data.destination}</Text>
           <Text style={styles.placesHeroText}>{data.placesCount} saved place{data.placesCount !== 1 ? 's' : ''} across the trip</Text>
         </View>
+      </View>
+      <View style={styles.peopleStrip}>
+        <Users size={16} color="#6d4a2f" />
+        <Text style={styles.peopleStripText} numberOfLines={1}>
+          {visibleTravelers.slice(0, 4).map((traveler) => traveler.name).join(', ')}
+        </Text>
       </View>
       <View style={styles.placeList}>
         {data.topPlaces.slice(0, 4).map((place, index) => (
@@ -819,38 +930,7 @@ function AlbumPlacesPage({ data, styles }: { data: TripAlbumData; styles: Return
   );
 }
 
-function AlbumPeoplePage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
-  const visibleTravelers = data.travelers.length > 0 ? data.travelers : [{ id: 'solo', name: 'You' }];
-  return (
-    <View style={styles.paperPage}>
-      <Text style={styles.spreadKicker}>PEOPLE</Text>
-      <Text style={styles.spreadTitle}>Who made it feel real</Text>
-      <View style={styles.peopleHero}>
-        <Users size={28} color="#6d4a2f" />
-        <Text style={styles.peopleHeroTitle}>
-          {Math.max(1, data.memberCount)} traveler{Math.max(1, data.memberCount) !== 1 ? 's' : ''}
-        </Text>
-        <Text style={styles.peopleHeroText}>The recap works best when the people are part of the story.</Text>
-      </View>
-      <View style={styles.peopleGrid}>
-        {visibleTravelers.slice(0, 5).map((traveler) => (
-          <View key={traveler.id} style={styles.personChip}>
-            {traveler.photo ? (
-              <Image source={{ uri: traveler.photo }} style={styles.personPhoto} contentFit="cover" transition={140} />
-            ) : (
-              <View style={styles.personInitial}>
-                <Text style={styles.personInitialText}>{traveler.name.trim().charAt(0).toUpperCase() || 'A'}</Text>
-              </View>
-            )}
-            <Text style={styles.personName} numberOfLines={1}>{traveler.name}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function AlbumStatsPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+function AlbumAhaPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
   return (
     <View style={styles.paperPage}>
       <Text style={styles.spreadKicker}>AHA MOMENTS</Text>
@@ -872,11 +952,13 @@ function AlbumClosingPage({
   data,
   styles,
   onOpenAlbum,
+  onPlayReel,
   onShare,
 }: {
   data: TripAlbumData;
   styles: ReturnType<typeof getStyles>;
   onOpenAlbum: () => void;
+  onPlayReel: () => void;
   onShare: () => void;
 }) {
   return (
@@ -893,9 +975,13 @@ function AlbumClosingPage({
           <Images size={16} color="#21160f" />
           <Text style={styles.primaryBtnText}>View All Photos</Text>
         </Pressable>
+        <Pressable style={styles.secondaryBtn} onPress={onPlayReel}>
+          <Play size={16} color="#f8eee1" fill="#f8eee1" />
+          <Text style={styles.secondaryBtnText}>Play Reel</Text>
+        </Pressable>
         <Pressable style={styles.secondaryBtn} onPress={onShare}>
           <Share2 size={16} color="#f8eee1" />
-          <Text style={styles.secondaryBtnText}>Share Cover</Text>
+          <Text style={styles.secondaryBtnText}>Share Recap</Text>
         </Pressable>
       </View>
     </View>
@@ -958,18 +1044,11 @@ const getStyles = (_colors: ThemeColors) =>
       fontWeight: '700',
       color: '#f8eee1',
     },
-    pageFrame: {
-      width: SNAP_W,
-      height: PAGE_H + 24,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
     bookViewport: {
       height: PAGE_H + 24,
       overflow: 'hidden',
-    },
-    albumPager: {
-      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     turnPageControl: {
       position: 'absolute',
@@ -992,6 +1071,8 @@ const getStyles = (_colors: ThemeColors) =>
     },
     pageLiftShadow: {
       position: 'absolute',
+      top: 16,
+      left: 25,
       width: PAGE_W - 10,
       height: PAGE_H - 4,
       borderRadius: 22,
@@ -1017,6 +1098,15 @@ const getStyles = (_colors: ThemeColors) =>
       elevation: 9,
       backfaceVisibility: 'hidden',
     },
+    layeredPage: {
+      position: 'absolute',
+      top: 12,
+      left: 20,
+      zIndex: 2,
+    },
+    activeLayeredPage: {
+      zIndex: 4,
+    },
     pageEdge: {
       position: 'absolute',
       top: 0,
@@ -1032,6 +1122,22 @@ const getStyles = (_colors: ThemeColors) =>
       bottom: 0,
       left: 0,
       backgroundColor: '#2a1609',
+    },
+    tapZoneLeft: {
+      position: 'absolute',
+      top: 18,
+      bottom: 18,
+      left: 0,
+      width: 58,
+      zIndex: 6,
+    },
+    tapZoneRight: {
+      position: 'absolute',
+      top: 18,
+      bottom: 18,
+      right: 0,
+      width: 64,
+      zIndex: 6,
     },
     coverPage: {
       flex: 1,
@@ -1186,11 +1292,17 @@ const getStyles = (_colors: ThemeColors) =>
       gap: 8,
       minHeight: 0,
     },
+    singleHighlightGrid: {
+      flexDirection: 'column',
+    },
     collageHero: {
       flex: 1.45,
       borderRadius: 16,
       overflow: 'hidden',
       backgroundColor: '#dacbbb',
+    },
+    collageHeroSingle: {
+      flex: 1,
     },
     collageSide: {
       flex: 1,
@@ -1341,6 +1453,23 @@ const getStyles = (_colors: ThemeColors) =>
       fontSize: 12,
       fontWeight: '700',
       color: '#8b7766',
+    },
+    peopleStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 16,
+      backgroundColor: '#ead4bb',
+    },
+    peopleStripText: {
+      flex: 1,
+      minWidth: 0,
+      fontSize: 12,
+      fontWeight: '800',
+      color: '#6d4a2f',
     },
     placeList: {
       gap: 10,
