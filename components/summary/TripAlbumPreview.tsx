@@ -12,10 +12,12 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   Easing,
   Extrapolation,
   interpolate,
   runOnJS,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -24,11 +26,10 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
-  BookOpen,
-  CalendarDays,
   ChevronRight,
   Images,
   MapPin,
+  Pause,
   Play,
   Route,
   Share2,
@@ -41,20 +42,22 @@ import type { Expense, GroupMember, Moment, Place, Trip } from '@/lib/types';
 import type { MomentFavoriteMap } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const PAGE_W = SCREEN_W - 40;
-const PAGE_H = Math.min(500, Math.max(460, Math.round(PAGE_W * 1.36)));
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const PLAYER_H = Math.max(660, Math.min(820, Math.round(SCREEN_H * 0.9)));
 const MAX_PHOTO_PAGES = 15;
-const TURN_THRESHOLD = PAGE_W * 0.24;
+const MAX_SCENES = 8;
+const SWIPE_THRESHOLD = SCREEN_W * 0.22;
+const SCENE_DURATION_MS = 4200;
 
-type AlbumPage =
+type MemoryScene =
   | { type: 'cover' }
+  | { type: 'arrival'; beat?: StoryBeat; photo?: AlbumPhoto }
   | { type: 'highlights'; title: string; photos: AlbumPhoto[]; caption: string }
-  | { type: 'story' }
-  | { type: 'favorite'; photo: AlbumPhoto }
-  | { type: 'peoplePlaces' }
-  | { type: 'aha' }
-  | { type: 'closing' };
+  | { type: 'peakDay'; beat?: StoryBeat; photo?: AlbumPhoto }
+  | { type: 'favoriteFrame'; photo: AlbumPhoto }
+  | { type: 'peoplePlaces'; photo?: AlbumPhoto }
+  | { type: 'aha'; photo?: AlbumPhoto }
+  | { type: 'closing'; photo?: AlbumPhoto };
 
 export interface AlbumPhoto {
   id: string;
@@ -139,13 +142,13 @@ function bestAlbumPhotos(moments: Moment[], favorites: MomentFavoriteMap): Album
     const uri = moment.photo?.trim() || moment.hdPhoto?.trim();
     if (!uri) return acc;
     acc.push({
-        id: moment.id,
-        uri,
-        hdUri: moment.hdPhoto,
-        caption: moment.caption && moment.caption !== 'Untitled' ? moment.caption : undefined,
-        location: moment.location,
-        date: moment.date,
-        moment,
+      id: moment.id,
+      uri,
+      hdUri: moment.hdPhoto,
+      caption: moment.caption && moment.caption !== 'Untitled' ? moment.caption : undefined,
+      location: moment.location,
+      date: moment.date,
+      moment,
     });
     return acc;
   }, []);
@@ -269,37 +272,31 @@ function buildStoryBeats(moments: Moment[], albumPhotos: AlbumPhoto[], favoriteP
 function buildAhaCards(data: {
   moments: Moment[];
   places: Place[];
-  members: GroupMember[];
   nights: number;
   spentLabel: string;
   topLocation?: string;
   topTag?: string;
-  favoritePhoto?: AlbumPhoto;
 }): AhaCard[] {
   return [
     {
-      id: 'moments',
-      label: 'Captured',
-      value: String(data.moments.length),
-      detail: `${data.nights || 1} night${data.nights !== 1 ? 's' : ''} turned into a full camera roll.`,
+      id: 'mood',
+      label: 'Trip mood',
+      value: data.topTag ?? 'Travel story',
+      detail: data.topTag ? 'Your photos kept returning to this feeling.' : 'A mix of places, people, and small details.',
     },
     {
       id: 'place',
       label: 'Most remembered',
       value: data.topLocation ?? data.places[0]?.name ?? 'The trip',
-      detail: data.topLocation ? 'This place kept showing up in your memories.' : 'Your places and moments built the story.',
+      detail: data.topLocation ? 'This place showed up again and again.' : 'Your saved places shaped the story.',
     },
     {
-      id: 'mood',
-      label: 'Trip mood',
-      value: data.topTag ?? 'Travel story',
-      detail: data.topTag ? 'Your photos leaned into this feeling.' : 'A mix of places, people, and small details.',
-    },
-    {
-      id: 'group',
-      label: 'Together with',
-      value: `${Math.max(1, data.members.length)} traveler${Math.max(1, data.members.length) !== 1 ? 's' : ''}`,
-      detail: data.favoritePhoto?.location ? `The favorite frame came from ${data.favoritePhoto.location}.` : `Logged spend: ${data.spentLabel}.`,
+      id: 'rhythm',
+      label: data.spentLabel === 'No spend yet' ? 'Captured' : 'Trip rhythm',
+      value: data.spentLabel === 'No spend yet' ? String(data.moments.length) : data.spentLabel,
+      detail: data.spentLabel === 'No spend yet'
+        ? `${data.nights || 1} night${data.nights !== 1 ? 's' : ''} turned into a camera roll.`
+        : `Logged across ${data.nights || 1} night${data.nights !== 1 ? 's' : ''}.`,
     },
   ];
 }
@@ -343,7 +340,7 @@ export function buildTripAlbumData({
   const storyBeats = buildStoryBeats(moments, photos, favoritePhoto);
 
   return {
-    title: trip.name || trip.destination || 'Trip Album',
+    title: trip.name || trip.destination || 'AfterStay Memory',
     subtitle: `${dateLabel} · ${trip.nights} night${trip.nights !== 1 ? 's' : ''}`,
     destination: trip.destination,
     nights: trip.nights,
@@ -362,12 +359,10 @@ export function buildTripAlbumData({
     ahaCards: buildAhaCards({
       moments,
       places,
-      members,
       nights: trip.nights,
       spentLabel,
       topLocation,
       topTag,
-      favoritePhoto,
     }),
   };
 }
@@ -429,7 +424,7 @@ export const mockTripAlbumData: TripAlbumData = {
   ],
   storyBeats: [
     {
-      id: 'mock-day-1',
+      id: 'arrival',
       label: 'Arrival',
       title: 'Shibuya Crossing',
       detail: '18 moments started the trip on Apr 12.',
@@ -440,7 +435,7 @@ export const mockTripAlbumData: TripAlbumData = {
       },
     },
     {
-      id: 'mock-day-2',
+      id: 'peak',
       label: 'Peak day',
       title: 'Asakusa',
       detail: '22 captured moments made this the fullest day.',
@@ -462,467 +457,564 @@ export const mockTripAlbumData: TripAlbumData = {
     { id: 'traveler-3', name: 'Jon' },
   ],
   ahaCards: [
-    { id: 'moments', label: 'Captured', value: '128', detail: '7 nights turned into a full camera roll.' },
-    { id: 'place', label: 'Most remembered', value: 'Shibuya Crossing', detail: 'This place kept showing up in your memories.' },
-    { id: 'mood', label: 'Trip mood', value: 'Food', detail: 'Your photos leaned into this feeling.' },
-    { id: 'group', label: 'Together with', value: '4 travelers', detail: 'The favorite frame came from Asakusa.' },
+    { id: 'mood', label: 'Trip mood', value: 'Food', detail: 'Your photos kept returning to this feeling.' },
+    { id: 'place', label: 'Most remembered', value: 'Shibuya Crossing', detail: 'This place showed up again and again.' },
+    { id: 'rhythm', label: 'Trip rhythm', value: 'PHP 84,260', detail: 'Logged across 7 nights.' },
   ],
 };
 
-function buildPages(data: TripAlbumData): AlbumPage[] {
+function buildScenes(data: TripAlbumData): MemoryScene[] {
   if (data.photos.length === 0) return [{ type: 'cover' }, { type: 'closing' }];
-  const pages: AlbumPage[] = [{ type: 'cover' }];
 
-  pages.push({
-    type: 'highlights',
-    title: data.topLocation ? `Highlights from ${data.topLocation}` : 'Best highlights',
-    photos: data.photos.slice(0, 3),
-    caption: data.photos.length < 3 ? 'A small album from the moments captured so far.' : 'Three frames that make this trip easy to remember.',
-  });
+  const arrivalBeat = data.storyBeats.find((beat) => beat.id === 'arrival') ?? data.storyBeats[0];
+  const peakBeat = data.storyBeats.find((beat) => beat.id === 'peak');
+  const scenes: MemoryScene[] = [{ type: 'cover' }];
 
-  if (data.storyBeats.length > 0) pages.push({ type: 'story' });
-  if (data.favoritePhoto) pages.push({ type: 'favorite', photo: data.favoritePhoto });
-  if (data.topPlaces.length > 0 || data.travelers.length > 0 || data.memberCount > 0) pages.push({ type: 'peoplePlaces' });
-  pages.push({ type: 'aha' }, { type: 'closing' });
-  return pages.slice(0, 8);
+  scenes.push({ type: 'arrival', beat: arrivalBeat, photo: arrivalBeat?.photo ?? data.photos[0] });
+
+  if (data.photos.length >= 2) {
+    scenes.push({
+      type: 'highlights',
+      title: data.topLocation ? `A few frames from ${data.topLocation}` : 'The frames that stayed',
+      photos: data.photos.slice(0, 3),
+      caption: data.photos.length < 3 ? 'A small set of photos, enough to bring the trip back.' : 'Three photos that carry the trip without making you work for it.',
+    });
+  }
+
+  if (peakBeat || data.photos[2]) scenes.push({ type: 'peakDay', beat: peakBeat, photo: peakBeat?.photo ?? data.photos[2] });
+  if (data.favoritePhoto) scenes.push({ type: 'favoriteFrame', photo: data.favoritePhoto });
+  if (data.topPlaces.length > 0 || data.travelers.length > 0 || data.memberCount > 0) {
+    scenes.push({ type: 'peoplePlaces', photo: data.photos[3] ?? data.heroPhoto });
+  }
+  scenes.push({ type: 'aha', photo: data.photos[4] ?? data.favoritePhoto ?? data.heroPhoto });
+  scenes.push({ type: 'closing', photo: data.heroPhoto ?? data.favoritePhoto });
+
+  return scenes.slice(0, MAX_SCENES);
+}
+
+function getScenePhoto(scene: MemoryScene, data: TripAlbumData) {
+  if (scene.type === 'cover') return data.heroPhoto;
+  if (scene.type === 'arrival') return scene.photo ?? data.heroPhoto;
+  if (scene.type === 'highlights') return scene.photos[0] ?? data.heroPhoto;
+  if (scene.type === 'peakDay') return scene.photo ?? data.heroPhoto;
+  if (scene.type === 'favoriteFrame') return scene.photo;
+  if (scene.type === 'peoplePlaces' || scene.type === 'aha' || scene.type === 'closing') return scene.photo ?? data.heroPhoto;
+  return data.heroPhoto;
 }
 
 export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, onAddPhoto, onOpenPhoto }: Props) {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const dragX = useSharedValue(0);
-  const progress = useSharedValue(0);
-  const isDragging = useSharedValue(false);
-  const [pageIndex, setPageIndex] = useState(0);
-  const pages = useMemo(() => buildPages(data), [data]);
-  const canGoPrevious = pageIndex > 0;
-  const canGoNext = pageIndex < pages.length - 1;
-  const currentPage = pages[pageIndex];
-  const previousPage = canGoPrevious ? pages[pageIndex - 1] : undefined;
-  const nextPage = canGoNext ? pages[pageIndex + 1] : undefined;
+  const sceneProgress = useSharedValue(0);
+  const transitionProgress = useSharedValue(0);
+  const [sceneIndex, setSceneIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isHolding, setIsHolding] = useState(false);
+  const scenes = useMemo(() => buildScenes(data), [data]);
+  const canGoPrevious = sceneIndex > 0;
+  const canGoNext = sceneIndex < scenes.length - 1;
+  const currentScene = scenes[sceneIndex];
+  const previousScene = canGoPrevious ? scenes[sceneIndex - 1] : undefined;
+  const nextScene = canGoNext ? scenes[sceneIndex + 1] : undefined;
+  const currentPhoto = getScenePhoto(currentScene, data);
 
   useEffect(() => {
-    const urls = data.photos.slice(Math.max(0, pageIndex - 1), pageIndex + 4).map((photo) => photo.uri);
+    const urls = data.photos.slice(Math.max(0, sceneIndex - 1), sceneIndex + 2).map((photo) => photo.uri);
     urls.forEach((url) => void Image.prefetch(url).catch(() => {}));
-  }, [data.photos, pageIndex]);
-
-  const handleShare = async () => {
-    await Share.share({
-      message: `${data.title} — ${data.momentCount} moments, ${data.placesCount} places, ${data.spentLabel}`,
-    });
-  };
+  }, [data.photos, sceneIndex]);
 
   const commitDirection = useCallback((direction: 1 | -1) => {
-    setPageIndex((current) => {
-      const target = Math.max(0, Math.min(current + direction, pages.length - 1));
+    setSceneIndex((current) => {
+      const target = Math.max(0, Math.min(current + direction, scenes.length - 1));
       if (target !== current) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       return target;
     });
-  }, [pages.length]);
+  }, [scenes.length]);
 
-  const animatePageTurn = useCallback((direction: 1 | -1) => {
+  const stopMemory = useCallback(() => {
+    cancelAnimation(sceneProgress);
+    sceneProgress.value = 0;
+    setIsPlaying(false);
+  }, [sceneProgress]);
+
+  const autoAdvance = useCallback(() => {
+    setSceneIndex((current) => {
+      if (current >= scenes.length - 1) {
+        setIsPlaying(false);
+        sceneProgress.value = 0;
+        return current;
+      }
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      return current + 1;
+    });
+  }, [sceneProgress, scenes.length]);
+
+  useEffect(() => {
+    sceneProgress.value = 0;
+  }, [sceneIndex, sceneProgress]);
+
+  useEffect(() => {
+    cancelAnimation(sceneProgress);
+    if (!isPlaying) {
+      sceneProgress.value = 0;
+      return;
+    }
+    if (isHolding) return;
+    const remainingDuration = Math.max(320, SCENE_DURATION_MS * Math.max(0, 1 - sceneProgress.value));
+    sceneProgress.value = withTiming(1, { duration: remainingDuration, easing: Easing.linear }, (finished) => {
+      if (finished) runOnJS(autoAdvance)();
+    });
+  }, [autoAdvance, isHolding, isPlaying, sceneIndex, sceneProgress]);
+
+  const animateSceneTurn = useCallback((direction: 1 | -1) => {
     if ((direction === 1 && !canGoNext) || (direction === -1 && !canGoPrevious)) return;
-    const target = direction === 1 ? -PAGE_W : PAGE_W;
-    isDragging.value = true;
-    progress.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
-    dragX.value = withTiming(target, { duration: 240, easing: Easing.out(Easing.cubic) }, (finished) => {
+    cancelAnimation(sceneProgress);
+    transitionProgress.value = withTiming(1, { duration: 210, easing: Easing.out(Easing.cubic) });
+    dragX.value = withTiming(direction === 1 ? -SCREEN_W : SCREEN_W, { duration: 230, easing: Easing.out(Easing.cubic) }, (finished) => {
       if (finished) runOnJS(commitDirection)(direction);
       dragX.value = 0;
-      progress.value = 0;
-      isDragging.value = false;
+      transitionProgress.value = 0;
     });
-  }, [canGoNext, canGoPrevious, commitDirection, dragX, isDragging, progress]);
+  }, [canGoNext, canGoPrevious, commitDirection, dragX, sceneProgress, transitionProgress]);
 
-  const openNextPage = useCallback(() => animatePageTurn(1), [animatePageTurn]);
-  const openPreviousPage = useCallback(() => animatePageTurn(-1), [animatePageTurn]);
+  const openNextScene = useCallback(() => animateSceneTurn(1), [animateSceneTurn]);
+  const openPreviousScene = useCallback(() => animateSceneTurn(-1), [animateSceneTurn]);
+
+  const startMemory = useCallback(() => {
+    if (scenes.length <= 1) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setIsPlaying(true);
+    setIsHolding(false);
+  }, [scenes.length]);
+
+  const handleShare = async () => {
+    await Share.share({
+      message: `${data.title} - ${data.momentCount} moments, ${data.placesCount} places, ${data.spentLabel}`,
+    });
+  };
 
   const pageGesture = useMemo(
     () =>
       Gesture.Pan()
         .activeOffsetX([-10, 10])
-        .failOffsetY([-16, 16])
-        .onBegin(() => {
-          isDragging.value = true;
-        })
+        .failOffsetY([-18, 18])
         .onUpdate((event) => {
           const blocked = (event.translationX < 0 && !canGoNext) || (event.translationX > 0 && !canGoPrevious);
           const rawX = blocked ? event.translationX * 0.18 : event.translationX;
-          dragX.value = Math.max(-PAGE_W, Math.min(PAGE_W, rawX));
-          progress.value = Math.min(1, Math.abs(dragX.value) / PAGE_W);
+          dragX.value = Math.max(-SCREEN_W, Math.min(SCREEN_W, rawX));
+          transitionProgress.value = Math.min(1, Math.abs(dragX.value) / SCREEN_W);
         })
         .onEnd((event) => {
-          const shouldGoNext = canGoNext && (dragX.value < -TURN_THRESHOLD || event.velocityX < -650);
-          const shouldGoPrevious = canGoPrevious && (dragX.value > TURN_THRESHOLD || event.velocityX > 650);
+          const shouldGoNext = canGoNext && (dragX.value < -SWIPE_THRESHOLD || event.velocityX < -700);
+          const shouldGoPrevious = canGoPrevious && (dragX.value > SWIPE_THRESHOLD || event.velocityX > 700);
 
           if (shouldGoNext || shouldGoPrevious) {
             const direction: 1 | -1 = shouldGoNext ? 1 : -1;
-            const target = direction === 1 ? -PAGE_W : PAGE_W;
-            progress.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
-            dragX.value = withTiming(target, { duration: 200, easing: Easing.out(Easing.cubic) }, (finished) => {
+            cancelAnimation(sceneProgress);
+            dragX.value = withTiming(direction === 1 ? -SCREEN_W : SCREEN_W, { duration: 190, easing: Easing.out(Easing.cubic) }, (finished) => {
               if (finished) runOnJS(commitDirection)(direction);
               dragX.value = 0;
-              progress.value = 0;
-              isDragging.value = false;
+              transitionProgress.value = 0;
             });
             return;
           }
 
-          dragX.value = withSpring(0, { damping: 18, stiffness: 210, mass: 0.75 });
-          progress.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) }, () => {
-            isDragging.value = false;
-          });
+          dragX.value = withSpring(0, { damping: 20, stiffness: 220, mass: 0.8 });
+          transitionProgress.value = withTiming(0, { duration: 170, easing: Easing.out(Easing.cubic) });
+        }),
+    [canGoNext, canGoPrevious, commitDirection, dragX, sceneProgress, transitionProgress],
+  );
+
+  const holdGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(180)
+        .onStart(() => {
+          runOnJS(setIsHolding)(true);
         })
         .onFinalize(() => {
-          if (Math.abs(dragX.value) < 1) isDragging.value = false;
+          runOnJS(setIsHolding)(false);
         }),
-    [canGoNext, canGoPrevious, commitDirection, dragX, isDragging, progress],
+    [],
   );
 
-  const renderAlbumPageContent = (item: AlbumPage) => (
-    <>
-      {item.type === 'cover' ? (
-        <AlbumCoverPage data={data} styles={styles} colors={colors} onOpenAlbum={openNextPage} onAddPhoto={onAddPhoto} />
-      ) : null}
-      {item.type === 'highlights' ? (
-        <AlbumHighlightsPage page={item} styles={styles} onOpenPhoto={onOpenPhoto} />
-      ) : null}
-      {item.type === 'story' ? <AlbumStoryPage data={data} styles={styles} onOpenPhoto={onOpenPhoto} /> : null}
-      {item.type === 'favorite' ? (
-        <AlbumFavoritePage photo={item.photo} styles={styles} onOpenPhoto={onOpenPhoto} />
-      ) : null}
-      {item.type === 'peoplePlaces' ? <AlbumPeoplePlacesPage data={data} styles={styles} /> : null}
-      {item.type === 'aha' ? <AlbumAhaPage data={data} styles={styles} /> : null}
-      {item.type === 'closing' ? (
-        <AlbumClosingPage data={data} styles={styles} onOpenAlbum={() => data.photos[0] ? onOpenPhoto?.(data.photos[0]) : onAddPhoto()} onPlayReel={onOpenAlbum} onShare={handleShare} />
-      ) : null}
-    </>
-  );
+  const combinedGesture = useMemo(() => Gesture.Simultaneous(pageGesture, holdGesture), [holdGesture, pageGesture]);
 
-  const activePageStyle = useAnimatedStyle(() => {
-    const lift = interpolate(progress.value, [0, 1], [0, 9], Extrapolation.CLAMP);
-    const scale = interpolate(progress.value, [0, 1], [1, 0.965], Extrapolation.CLAMP);
-    return {
-      transform: [{ translateX: dragX.value }, { translateY: lift }, { scale }],
-    };
-  });
-
-  const activeShadowStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 1], [0.22, 0.34], Extrapolation.CLAMP),
+  const activeSceneStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(transitionProgress.value, [0, 1], [1, 0.24], Extrapolation.CLAMP),
     transform: [
-      { translateX: dragX.value * 0.35 },
-      { translateY: interpolate(progress.value, [0, 1], [0, 12], Extrapolation.CLAMP) },
-      { scale: interpolate(progress.value, [0, 1], [0.98, 0.95], Extrapolation.CLAMP) },
+      { translateX: dragX.value },
+      { scale: interpolate(transitionProgress.value, [0, 1], [1, 0.985], Extrapolation.CLAMP) },
     ],
   }));
 
-  const nextPageStyle = useAnimatedStyle(() => {
-    const reveal = Math.max(0, Math.min(1, -dragX.value / PAGE_W));
+  const nextSceneStyle = useAnimatedStyle(() => {
+    const reveal = Math.max(0, Math.min(1, -dragX.value / SCREEN_W));
     return {
-      opacity: canGoNext ? interpolate(reveal, [0, 1], [0.32, 1], Extrapolation.CLAMP) : 0,
+      opacity: canGoNext ? interpolate(reveal, [0, 1], [0, 1], Extrapolation.CLAMP) : 0,
       transform: [
-        { translateX: interpolate(reveal, [0, 1], [34, 0], Extrapolation.CLAMP) },
-        { scale: interpolate(reveal, [0, 1], [0.965, 1], Extrapolation.CLAMP) },
+        { translateX: interpolate(reveal, [0, 1], [SCREEN_W * 0.18, 0], Extrapolation.CLAMP) },
+        { scale: interpolate(reveal, [0, 1], [1.035, 1], Extrapolation.CLAMP) },
       ],
     };
   }, [canGoNext]);
 
-  const previousPageStyle = useAnimatedStyle(() => {
-    const reveal = Math.max(0, Math.min(1, dragX.value / PAGE_W));
+  const previousSceneStyle = useAnimatedStyle(() => {
+    const reveal = Math.max(0, Math.min(1, dragX.value / SCREEN_W));
     return {
       opacity: canGoPrevious ? interpolate(reveal, [0, 1], [0, 1], Extrapolation.CLAMP) : 0,
       transform: [
-        { translateX: interpolate(reveal, [0, 1], [-34, 0], Extrapolation.CLAMP) },
-        { scale: interpolate(reveal, [0, 1], [0.965, 1], Extrapolation.CLAMP) },
+        { translateX: interpolate(reveal, [0, 1], [-SCREEN_W * 0.18, 0], Extrapolation.CLAMP) },
+        { scale: interpolate(reveal, [0, 1], [1.035, 1], Extrapolation.CLAMP) },
       ],
     };
   }, [canGoPrevious]);
 
-  const activeShadeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 1], [0, 0.1], Extrapolation.CLAMP),
-  }));
+  const renderSceneContent = (scene: MemoryScene) => (
+    <>
+      {scene.type === 'cover' ? (
+        <MemoryCoverScene data={data} styles={styles} colors={colors} onPlayMemory={startMemory} onAddPhoto={onAddPhoto} />
+      ) : null}
+      {scene.type === 'arrival' ? (
+        <MemoryPhotoScene
+          eyebrow={scene.beat?.label ?? 'First memory'}
+          title={scene.beat?.title ?? scene.photo?.location ?? 'The trip begins'}
+          detail={scene.beat?.detail ?? scene.photo?.caption ?? 'The first frame that brings the trip back.'}
+          photo={scene.photo}
+          styles={styles}
+          onOpenPhoto={onOpenPhoto}
+        />
+      ) : null}
+      {scene.type === 'highlights' ? (
+        <MemoryHighlightsScene scene={scene} styles={styles} onOpenPhoto={onOpenPhoto} />
+      ) : null}
+      {scene.type === 'peakDay' ? (
+        <MemoryPhotoScene
+          eyebrow={scene.beat?.label ?? 'Peak day'}
+          title={scene.beat?.title ?? scene.photo?.location ?? 'The fullest day'}
+          detail={scene.beat?.detail ?? scene.photo?.caption ?? 'The day the camera roll filled up.'}
+          photo={scene.photo}
+          styles={styles}
+          onOpenPhoto={onOpenPhoto}
+        />
+      ) : null}
+      {scene.type === 'favoriteFrame' ? (
+        <MemoryPhotoScene
+          eyebrow="Favorite frame"
+          title={scene.photo.location ?? 'A photo worth keeping'}
+          detail={scene.photo.caption ?? 'One frame that carries the feeling of the trip.'}
+          photo={scene.photo}
+          styles={styles}
+          onOpenPhoto={onOpenPhoto}
+          featured
+        />
+      ) : null}
+      {scene.type === 'peoplePlaces' ? <MemoryPeoplePlacesScene data={data} styles={styles} /> : null}
+      {scene.type === 'aha' ? <MemoryAhaScene data={data} styles={styles} /> : null}
+      {scene.type === 'closing' ? (
+        <MemoryClosingScene
+          data={data}
+          styles={styles}
+          isPlaying={isPlaying}
+          onViewPhotos={data.photos.length > 0 ? onOpenAlbum : onAddPhoto}
+          onPlayMemory={isPlaying ? stopMemory : startMemory}
+          onShare={handleShare}
+        />
+      ) : null}
+    </>
+  );
 
   return (
     <View style={styles.container}>
-      {onBack ? (
-        <Pressable
-          onPress={onBack}
-          style={[styles.backBtn, { top: insets.top + 8 }]}
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
-          hitSlop={10}
-        >
-          <ArrowLeft size={20} color="#fff" />
-        </Pressable>
-      ) : null}
-
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.kicker}>TRIP ALBUM</Text>
-          <Text style={styles.headerTitle}>Browse the recap</Text>
-        </View>
-        <View style={styles.pagePill}>
-          <Text style={styles.pagePillText}>{pageIndex + 1}/{pages.length}</Text>
-        </View>
-      </View>
-
-      <GestureDetector gesture={pageGesture}>
-        <View style={styles.bookViewport}>
-          <Animated.View style={[styles.pageLiftShadow, activeShadowStyle]} />
-          {previousPage ? (
-            <Animated.View pointerEvents="none" style={[styles.pageShell, styles.layeredPage, previousPageStyle]}>
-              {renderAlbumPageContent(previousPage)}
-              <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.1)']} style={styles.pageEdge} />
+      <GestureDetector gesture={combinedGesture}>
+        <View style={styles.memoryViewport}>
+          {previousScene ? (
+            <Animated.View pointerEvents="none" style={[styles.sceneLayer, previousSceneStyle]}>
+              <SceneBackground photo={getScenePhoto(previousScene, data)} fallbackColor={colors.accent} />
+              {renderSceneContent(previousScene)}
             </Animated.View>
           ) : null}
-          {nextPage ? (
-            <Animated.View pointerEvents="none" style={[styles.pageShell, styles.layeredPage, nextPageStyle]}>
-              {renderAlbumPageContent(nextPage)}
-              <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.1)']} style={styles.pageEdge} />
+          {nextScene ? (
+            <Animated.View pointerEvents="none" style={[styles.sceneLayer, nextSceneStyle]}>
+              <SceneBackground photo={getScenePhoto(nextScene, data)} fallbackColor={colors.accent} />
+              {renderSceneContent(nextScene)}
             </Animated.View>
           ) : null}
-          <Animated.View style={[styles.pageShell, styles.layeredPage, styles.activeLayeredPage, activePageStyle]}>
-            {renderAlbumPageContent(currentPage)}
-            <LinearGradient colors={['rgba(255,255,255,0.26)', 'rgba(255,255,255,0.03)', 'rgba(71,41,20,0.12)']} style={styles.pageEdge} />
-            <Animated.View pointerEvents="none" style={[styles.turnShade, activeShadeStyle]} />
+          <Animated.View style={[styles.sceneLayer, styles.activeSceneLayer, activeSceneStyle]}>
+            <SceneBackground photo={currentPhoto} fallbackColor={colors.accent} />
+            {renderSceneContent(currentScene)}
           </Animated.View>
+
+          <View style={[styles.progressRow, { top: insets.top + 10 }]}>
+            {scenes.map((_, index) => (
+              <MemoryProgressSegment
+                key={index}
+                state={index < sceneIndex ? 'past' : index === sceneIndex ? 'active' : 'future'}
+                progress={sceneProgress}
+                isPlaying={isPlaying && !isHolding}
+                styles={styles}
+              />
+            ))}
+          </View>
+
+          {onBack ? (
+            <Pressable
+              onPress={onBack}
+              style={[styles.backBtn, { top: insets.top + 26 }]}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
+              hitSlop={10}
+            >
+              <ArrowLeft size={20} color="#fff" />
+            </Pressable>
+          ) : null}
+
+          <View style={[styles.topMeta, { top: insets.top + 28 }]}>
+            <Text style={styles.topMetaText}>{sceneIndex + 1}/{scenes.length}</Text>
+            {isPlaying ? (
+              <View style={styles.playingPill}>
+                {isHolding ? <Pause size={11} color="#fff" fill="#fff" /> : <Play size={10} color="#fff" fill="#fff" />}
+                <Text style={styles.playingText}>{isHolding ? 'Paused' : 'Playing'}</Text>
+              </View>
+            ) : null}
+          </View>
+
           <Pressable
-            onPress={openPreviousPage}
+            onPress={openPreviousScene}
             disabled={!canGoPrevious}
             style={styles.tapZoneLeft}
-            accessibilityLabel="Previous album page"
+            accessibilityLabel="Previous memory"
             accessibilityRole="button"
           />
           <Pressable
-            onPress={openNextPage}
+            onPress={openNextScene}
             disabled={!canGoNext}
             style={styles.tapZoneRight}
-            accessibilityLabel="Next album page"
+            accessibilityLabel="Next memory"
             accessibilityRole="button"
           />
           {canGoNext ? (
             <Pressable
-              onPress={openNextPage}
-              style={styles.turnPageControl}
-              accessibilityLabel="Next album page"
+              onPress={openNextScene}
+              style={styles.nextControl}
+              accessibilityLabel="Next memory"
               accessibilityRole="button"
               hitSlop={12}
             >
-              <ChevronRight size={21} color="#21160f" strokeWidth={2.5} />
+              <ChevronRight size={21} color="#15110d" strokeWidth={2.6} />
             </Pressable>
           ) : null}
         </View>
       </GestureDetector>
-
-      <View style={styles.dots}>
-        {pages.map((_, index) => (
-          <View key={index} style={[styles.dot, index === pageIndex && styles.dotActive]} />
-        ))}
-      </View>
     </View>
   );
 }
 
-function AlbumCoverPage({
+function SceneBackground({ photo, fallbackColor }: { photo?: AlbumPhoto; fallbackColor: string }) {
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      {photo ? (
+        <Image source={{ uri: photo.uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} />
+      ) : (
+        <LinearGradient colors={[fallbackColor + '55', '#100c0a', '#050403']} style={StyleSheet.absoluteFill} />
+      )}
+      <LinearGradient
+        colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.84)']}
+        locations={[0, 0.42, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={stylesStatic.vignette} />
+    </View>
+  );
+}
+
+function MemoryProgressSegment({
+  state,
+  progress,
+  isPlaying,
+  styles,
+}: {
+  state: 'past' | 'active' | 'future';
+  progress: SharedValue<number>;
+  isPlaying: boolean;
+  styles: ReturnType<typeof getStyles>;
+}) {
+  const fillStyle = useAnimatedStyle(() => {
+    if (state === 'past') return { width: '100%' };
+    if (state === 'future') return { width: '0%' };
+    if (!isPlaying) return { width: '100%' };
+    return { width: `${Math.max(3, Math.min(100, progress.value * 100))}%` };
+  }, [isPlaying, state]);
+
+  return (
+    <View style={styles.progressTrack}>
+      <Animated.View style={[styles.progressFill, fillStyle]} />
+    </View>
+  );
+}
+
+function MemoryCoverScene({
   data,
   styles,
   colors,
-  onOpenAlbum,
+  onPlayMemory,
   onAddPhoto,
 }: {
   data: TripAlbumData;
   styles: ReturnType<typeof getStyles>;
   colors: ThemeColors;
-  onOpenAlbum: () => void;
+  onPlayMemory: () => void;
   onAddPhoto: () => void;
 }) {
   return (
-    <View style={styles.coverPage}>
-      {data.heroPhoto ? (
-        <Image source={{ uri: data.heroPhoto.uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={180} />
-      ) : (
-        <LinearGradient colors={[colors.accent + '45', colors.card]} style={StyleSheet.absoluteFill} />
-      )}
-      <LinearGradient
-        colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.78)']}
-        locations={[0, 0.45, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.albumSpine} />
-      <View style={styles.coverPageEdges}>
-        <View style={styles.coverPageEdgeLine} />
-        <View style={styles.coverPageEdgeLine} />
-        <View style={styles.coverPageEdgeLine} />
+    <View style={styles.sceneContent}>
+      <View style={styles.coverBadge}>
+        <Sparkles size={13} color="#f3c996" />
+        <Text style={styles.coverBadgeText}>AfterStay Memory</Text>
       </View>
-      <View style={styles.coverInsetBorder} />
-      <View style={styles.coverCornerStamp}>
-        <Sparkles size={14} color="#e3bd8c" />
-      </View>
-      <View style={styles.coverContent}>
-        <View style={styles.coverBadge}>
-          <BookOpen size={13} color="#f8eee1" />
-          <Text style={styles.coverBadgeText}>AfterStay album</Text>
-        </View>
-        <Text style={styles.coverTitle} numberOfLines={2}>{data.title}</Text>
+      <View style={styles.coverTitleWrap}>
+        <Text style={styles.coverDestination} numberOfLines={1}>{data.destination || 'Trip recap'}</Text>
+        <Text style={styles.coverTitle} numberOfLines={3}>{data.title}</Text>
         <Text style={styles.coverSubtitle} numberOfLines={2}>{data.subtitle}</Text>
-        <View style={styles.coverMetaRow}>
-          <Text style={styles.coverMeta}>{data.momentCount} moments</Text>
-          <Text style={styles.coverMetaDot}>·</Text>
-          <Text style={styles.coverMeta}>{data.placesCount} places</Text>
-          <Text style={styles.coverMetaDot}>·</Text>
-          <Text style={styles.coverMeta}>{data.memberCount || 1} traveler{(data.memberCount || 1) !== 1 ? 's' : ''}</Text>
-        </View>
-        <View style={styles.coverActions}>
-          <Pressable style={styles.primaryBtn} onPress={data.photos.length > 0 ? onOpenAlbum : onAddPhoto}>
-            {data.photos.length > 0 ? <BookOpen size={16} color="#21160f" /> : <Images size={16} color="#21160f" />}
-            <Text style={styles.primaryBtnText}>{data.photos.length > 0 ? 'Start Recap' : 'Add Photos'}</Text>
-          </Pressable>
-        </View>
       </View>
+      <View style={styles.memoryMetaRow}>
+        <MemoryMeta label="moments" value={String(data.momentCount)} />
+        <MemoryMeta label="places" value={String(data.placesCount)} />
+        <MemoryMeta label="travelers" value={String(data.memberCount || 1)} />
+      </View>
+      <Pressable
+        style={[styles.primaryAction, { backgroundColor: data.photos.length > 0 ? '#f3c996' : colors.accent }]}
+        onPress={data.photos.length > 0 ? onPlayMemory : onAddPhoto}
+        accessibilityRole="button"
+      >
+        {data.photos.length > 0 ? <Play size={17} color="#15110d" fill="#15110d" /> : <Images size={17} color="#15110d" />}
+        <Text style={styles.primaryActionText}>{data.photos.length > 0 ? 'Play Memory' : 'Add Memories'}</Text>
+      </Pressable>
     </View>
   );
 }
 
-function AlbumHighlightsPage({
-  page,
-  styles,
-  onOpenPhoto,
-}: {
-  page: Extract<AlbumPage, { type: 'highlights' }>;
-  styles: ReturnType<typeof getStyles>;
-  onOpenPhoto?: (photo: AlbumPhoto) => void;
-}) {
-  const [hero, ...rest] = page.photos;
+function MemoryMeta({ value, label }: { value: string; label: string }) {
   return (
-    <View style={styles.paperPage}>
-      <Text style={styles.spreadKicker}>PHOTO SPREAD</Text>
-      <Text style={styles.spreadTitle} numberOfLines={2}>{page.title}</Text>
-      <View style={[styles.collageGrid, rest.length === 0 && styles.singleHighlightGrid]}>
-        {hero ? (
-          <Pressable style={[styles.collageHero, rest.length === 0 && styles.collageHeroSingle]} onPress={() => onOpenPhoto?.(hero)}>
-            <Image source={{ uri: hero.uri }} style={styles.imageFill} contentFit="cover" transition={140} />
-          </Pressable>
-        ) : null}
-        {rest.length > 0 ? (
-          <View style={styles.collageSide}>
-            {rest.slice(0, 2).map((photo) => (
-              <Pressable key={photo.id} style={styles.collageThumb} onPress={() => onOpenPhoto?.(photo)}>
-                <Image source={{ uri: photo.uri }} style={styles.imageFill} contentFit="cover" transition={140} />
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </View>
-      <Text style={styles.caption} numberOfLines={2}>{page.caption}</Text>
+    <View style={stylesStatic.metaItem}>
+      <Text style={stylesStatic.metaValue}>{value}</Text>
+      <Text style={stylesStatic.metaLabel}>{label}</Text>
     </View>
   );
 }
 
-function AlbumFavoritePage({
+function MemoryPhotoScene({
+  eyebrow,
+  title,
+  detail,
   photo,
   styles,
   onOpenPhoto,
+  featured,
 }: {
-  photo: AlbumPhoto;
+  eyebrow: string;
+  title: string;
+  detail: string;
+  photo?: AlbumPhoto;
   styles: ReturnType<typeof getStyles>;
   onOpenPhoto?: (photo: AlbumPhoto) => void;
+  featured?: boolean;
 }) {
   return (
-    <Pressable style={styles.paperPage} onPress={() => onOpenPhoto?.(photo)}>
-      <View style={styles.singlePhotoWrap}>
-        <Image source={{ uri: photo.uri }} style={styles.imageFill} contentFit="cover" transition={160} />
-      </View>
-      <View style={styles.photoCaptionRow}>
-        <View style={styles.photoCaptionTextWrap}>
-          <Text style={styles.photoCaption} numberOfLines={2}>{photo.caption ?? 'A favorite frame from the trip'}</Text>
-          {photo.location ? (
-            <View style={styles.locationRow}>
-              <MapPin size={11} color="#8b7766" />
-              <Text style={styles.locationText} numberOfLines={1}>{photo.location}</Text>
-            </View>
-          ) : null}
-        </View>
-        <Text style={styles.photoDate}>{photo.date ? new Date(photo.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Photo'}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function AlbumStoryPage({
-  data,
-  styles,
-  onOpenPhoto,
-}: {
-  data: TripAlbumData;
-  styles: ReturnType<typeof getStyles>;
-  onOpenPhoto?: (photo: AlbumPhoto) => void;
-}) {
-  return (
-    <View style={styles.paperPage}>
-      <Text style={styles.spreadKicker}>STORY BEATS</Text>
-      <Text style={styles.spreadTitle}>The trip in moments</Text>
-      <View style={styles.timelineList}>
-        {data.storyBeats.map((item, index) => (
-          <Pressable
-            key={item.id}
-            style={styles.timelineRow}
-            onPress={() => (item.photo ? onOpenPhoto?.(item.photo) : undefined)}
-            disabled={!item.photo}
-          >
-            <View style={styles.timelineMarker}>
-              <Text style={styles.timelineMarkerText}>{index + 1}</Text>
-            </View>
-            {item.photo ? (
-              <Image source={{ uri: item.photo.uri }} style={styles.timelinePhoto} contentFit="cover" transition={140} />
-            ) : (
-              <View style={styles.timelinePhotoFallback}>
-                <CalendarDays size={16} color="#8d6c52" />
-              </View>
-            )}
-            <View style={styles.timelineCopy}>
-              <Text style={styles.timelineMeta} numberOfLines={1}>{item.label}</Text>
-              <Text style={styles.timelineTitle} numberOfLines={1}>{item.title}</Text>
-              <Text style={styles.timelineSubtitle} numberOfLines={2}>{item.detail}</Text>
-            </View>
-          </Pressable>
-        ))}
+    <View style={styles.sceneContent}>
+      <Pressable
+        style={[styles.photoFocusFrame, featured && styles.photoFocusFrameFeatured]}
+        onPress={() => (photo ? onOpenPhoto?.(photo) : undefined)}
+        disabled={!photo}
+      >
+        {photo ? (
+          <Image source={{ uri: photo.uri }} style={stylesStatic.imageFill} contentFit="cover" transition={160} />
+        ) : (
+          <View style={styles.emptyPhotoFrame}>
+            <Images size={34} color="rgba(255,255,255,0.72)" />
+          </View>
+        )}
+      </Pressable>
+      <View style={styles.sceneCopyBlock}>
+        <Text style={styles.sceneEyebrow}>{eyebrow}</Text>
+        <Text style={styles.sceneTitle} numberOfLines={2}>{title}</Text>
+        <Text style={styles.sceneDetail} numberOfLines={3}>{detail}</Text>
+        {photo?.location ? (
+          <View style={styles.sceneLocationRow}>
+            <MapPin size={13} color="#f3c996" />
+            <Text style={styles.sceneLocationText} numberOfLines={1}>{photo.location}</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
-function AlbumPeoplePlacesPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
-  const visibleTravelers = data.travelers.length > 0 ? data.travelers : [{ id: 'solo', name: 'You' }];
+function MemoryHighlightsScene({
+  scene,
+  styles,
+  onOpenPhoto,
+}: {
+  scene: Extract<MemoryScene, { type: 'highlights' }>;
+  styles: ReturnType<typeof getStyles>;
+  onOpenPhoto?: (photo: AlbumPhoto) => void;
+}) {
+  const [hero, second, third] = scene.photos;
+
   return (
-    <View style={styles.paperPage}>
-      <Text style={styles.spreadKicker}>PEOPLE + PLACES</Text>
-      <Text style={styles.spreadTitle}>Who and where</Text>
-      <View style={styles.placesHero}>
-        <Route size={20} color="#6d4a2f" />
-        <View style={styles.placesHeroCopy}>
-          <Text style={styles.placesHeroTitle} numberOfLines={1}>{data.topLocation ?? data.destination}</Text>
-          <Text style={styles.placesHeroText}>{data.placesCount} saved place{data.placesCount !== 1 ? 's' : ''} across the trip</Text>
+    <View style={styles.sceneContent}>
+      <View style={styles.highlightsHeader}>
+        <Text style={styles.sceneEyebrow}>Highlights</Text>
+        <Text style={styles.sceneTitle} numberOfLines={2}>{scene.title}</Text>
+      </View>
+      <View style={styles.cinematicCollage}>
+        {hero ? (
+          <Pressable style={styles.collageHero} onPress={() => onOpenPhoto?.(hero)}>
+            <Image source={{ uri: hero.uri }} style={stylesStatic.imageFill} contentFit="cover" transition={150} />
+          </Pressable>
+        ) : null}
+        {second ? (
+          <Pressable style={styles.collageTop} onPress={() => onOpenPhoto?.(second)}>
+            <Image source={{ uri: second.uri }} style={stylesStatic.imageFill} contentFit="cover" transition={150} />
+          </Pressable>
+        ) : null}
+        {third ? (
+          <Pressable style={styles.collageBottom} onPress={() => onOpenPhoto?.(third)}>
+            <Image source={{ uri: third.uri }} style={stylesStatic.imageFill} contentFit="cover" transition={150} />
+          </Pressable>
+        ) : null}
+      </View>
+      <Text style={styles.sceneDetail} numberOfLines={2}>{scene.caption}</Text>
+    </View>
+  );
+}
+
+function MemoryPeoplePlacesScene({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+  const visibleTravelers = data.travelers.length > 0 ? data.travelers : [{ id: 'solo', name: 'You' }];
+
+  return (
+    <View style={styles.sceneContent}>
+      <View style={styles.sceneCopyBlockCompact}>
+        <Text style={styles.sceneEyebrow}>People + Places</Text>
+        <Text style={styles.sceneTitle} numberOfLines={2}>Who made it feel like a trip</Text>
+      </View>
+      <View style={styles.glassPanel}>
+        <View style={styles.panelRow}>
+          <Users size={17} color="#f3c996" />
+          <Text style={styles.panelTitle} numberOfLines={1}>{visibleTravelers.slice(0, 4).map((traveler) => traveler.name).join(', ')}</Text>
         </View>
+        <Text style={styles.panelText}>{data.memberCount || 1} traveler{(data.memberCount || 1) !== 1 ? 's' : ''} in this memory.</Text>
       </View>
-      <View style={styles.peopleStrip}>
-        <Users size={16} color="#6d4a2f" />
-        <Text style={styles.peopleStripText} numberOfLines={1}>
-          {visibleTravelers.slice(0, 4).map((traveler) => traveler.name).join(', ')}
-        </Text>
-      </View>
-      <View style={styles.placeList}>
-        {data.topPlaces.slice(0, 4).map((place, index) => (
-          <View key={place.id} style={styles.placeRow}>
-            {place.photoUrl ? (
-              <Image source={{ uri: place.photoUrl }} style={styles.placePhoto} contentFit="cover" transition={140} />
-            ) : (
-              <View style={styles.placeNumber}>
-                <Text style={styles.placeNumberText}>{index + 1}</Text>
-              </View>
-            )}
-            <View style={styles.placeCopy}>
-              <Text style={styles.placeName} numberOfLines={1}>{place.name}</Text>
-              <Text style={styles.placeMeta} numberOfLines={1}>{place.category ?? 'Saved place'}</Text>
-            </View>
+      <View style={styles.placesStack}>
+        <View style={styles.panelRow}>
+          <Route size={17} color="#f3c996" />
+          <Text style={styles.panelTitle}>{data.topLocation ?? data.destination}</Text>
+        </View>
+        {data.topPlaces.slice(0, 3).map((place) => (
+          <View key={place.id} style={styles.placeChip}>
+            <Text style={styles.placeChipName} numberOfLines={1}>{place.name}</Text>
+            <Text style={styles.placeChipMeta} numberOfLines={1}>{place.category ?? 'Saved place'}</Text>
           </View>
         ))}
       </View>
@@ -930,16 +1022,18 @@ function AlbumPeoplePlacesPage({ data, styles }: { data: TripAlbumData; styles: 
   );
 }
 
-function AlbumAhaPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+function MemoryAhaScene({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
   return (
-    <View style={styles.paperPage}>
-      <Text style={styles.spreadKicker}>AHA MOMENTS</Text>
-      <Text style={styles.spreadTitle}>What the trip says back</Text>
-      <View style={styles.ahaGrid}>
-        {data.ahaCards.map((card) => (
+    <View style={styles.sceneContent}>
+      <View style={styles.sceneCopyBlockCompact}>
+        <Text style={styles.sceneEyebrow}>Aha moments</Text>
+        <Text style={styles.sceneTitle} numberOfLines={2}>What the trip says back</Text>
+      </View>
+      <View style={styles.ahaStack}>
+        {data.ahaCards.slice(0, 3).map((card) => (
           <View key={card.id} style={styles.ahaCard}>
             <Text style={styles.ahaLabel}>{card.label}</Text>
-            <Text style={styles.ahaValue} numberOfLines={2}>{card.value}</Text>
+            <Text style={styles.ahaValue} numberOfLines={1}>{card.value}</Text>
             <Text style={styles.ahaDetail} numberOfLines={2}>{card.detail}</Text>
           </View>
         ))}
@@ -948,753 +1042,558 @@ function AlbumAhaPage({ data, styles }: { data: TripAlbumData; styles: ReturnTyp
   );
 }
 
-function AlbumClosingPage({
+function MemoryClosingScene({
   data,
   styles,
-  onOpenAlbum,
-  onPlayReel,
+  isPlaying,
+  onViewPhotos,
+  onPlayMemory,
   onShare,
 }: {
   data: TripAlbumData;
   styles: ReturnType<typeof getStyles>;
-  onOpenAlbum: () => void;
-  onPlayReel: () => void;
+  isPlaying: boolean;
+  onViewPhotos: () => void;
+  onPlayMemory: () => void;
   onShare: () => void;
 }) {
+  const hasPhotos = data.photos.length > 0;
+
   return (
-    <View style={styles.closingPage}>
-      <View style={styles.closingIcon}>
-        <BookOpen size={30} color="#21160f" />
+    <View style={styles.closingContent}>
+      <View style={styles.posterMark}>
+        <Sparkles size={28} color="#15110d" />
       </View>
-      <Text style={styles.closingTitle}>Ready to relive it</Text>
-      <Text style={styles.closingText}>
-        {data.title} has {data.momentCount} moments, {data.placesCount} places, and a few memories worth sharing.
+      <Text style={styles.closingEyebrow}>Your memory is ready</Text>
+      <Text style={styles.closingTitle} numberOfLines={2}>{data.title}</Text>
+      <Text style={styles.closingText} numberOfLines={3}>
+        {hasPhotos
+          ? `${data.momentCount} moments, ${data.placesCount} places, and the parts worth coming back to.`
+          : 'Add photos to turn this trip into a cinematic recap.'}
       </Text>
       <View style={styles.closingActions}>
-        <Pressable style={styles.primaryBtn} onPress={onOpenAlbum}>
-          <Images size={16} color="#21160f" />
-          <Text style={styles.primaryBtnText}>View All Photos</Text>
+        <Pressable style={styles.primaryAction} onPress={onViewPhotos} accessibilityRole="button">
+          <Images size={17} color="#15110d" />
+          <Text style={styles.primaryActionText}>{hasPhotos ? 'View Photos' : 'Add Memories'}</Text>
         </Pressable>
-        <Pressable style={styles.secondaryBtn} onPress={onPlayReel}>
-          <Play size={16} color="#f8eee1" fill="#f8eee1" />
-          <Text style={styles.secondaryBtnText}>Play Reel</Text>
+        <Pressable style={styles.secondaryAction} onPress={onPlayMemory} accessibilityRole="button">
+          {isPlaying ? <Pause size={17} color="#fff" fill="#fff" /> : <Play size={17} color="#fff" fill="#fff" />}
+          <Text style={styles.secondaryActionText}>{isPlaying ? 'Pause Memory' : 'Play Memory'}</Text>
         </Pressable>
-        <Pressable style={styles.secondaryBtn} onPress={onShare}>
-          <Share2 size={16} color="#f8eee1" />
-          <Text style={styles.secondaryBtnText}>Share Recap</Text>
+        <Pressable style={styles.secondaryAction} onPress={onShare} accessibilityRole="button">
+          <Share2 size={17} color="#fff" />
+          <Text style={styles.secondaryActionText}>Share</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
+const stylesStatic = StyleSheet.create({
+  vignette: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  metaItem: {
+    flex: 1,
+    minHeight: 58,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metaValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: 0,
+  },
+  metaLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.72)',
+    letterSpacing: 0,
+  },
+  imageFill: {
+    width: '100%',
+    height: '100%',
+  },
+});
+
 const getStyles = (_colors: ThemeColors) =>
   StyleSheet.create({
     container: {
       width: SCREEN_W,
       marginLeft: -20,
-      paddingTop: 0,
-      paddingBottom: 16,
       marginBottom: 4,
-      backgroundColor: '#1a130f',
+      backgroundColor: '#050403',
+    },
+    memoryViewport: {
+      width: SCREEN_W,
+      height: PLAYER_H,
+      overflow: 'hidden',
+      backgroundColor: '#050403',
+    },
+    sceneLayer: {
+      ...StyleSheet.absoluteFillObject,
+      overflow: 'hidden',
+      backgroundColor: '#050403',
+    },
+    activeSceneLayer: {
+      zIndex: 3,
+    },
+    sceneContent: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      paddingHorizontal: 24,
+      paddingBottom: 88,
+      paddingTop: 112,
+      zIndex: 2,
+    },
+    progressRow: {
+      position: 'absolute',
+      left: 14,
+      right: 14,
+      zIndex: 20,
+      flexDirection: 'row',
+      gap: 4,
+    },
+    progressTrack: {
+      flex: 1,
+      height: 3,
+      borderRadius: 999,
+      overflow: 'hidden',
+      backgroundColor: 'rgba(255,255,255,0.28)',
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 999,
+      backgroundColor: '#fff',
     },
     backBtn: {
       position: 'absolute',
       left: 16,
       zIndex: 20,
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: 'rgba(0,0,0,0.45)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    headerRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingLeft: 78,
-      paddingRight: 20,
-      paddingTop: 58,
-      paddingBottom: 14,
-    },
-    kicker: {
-      fontSize: 10,
-      fontWeight: '800',
-      letterSpacing: 1.8,
-      color: '#d9b88f',
-    },
-    headerTitle: {
-      marginTop: 3,
-      fontSize: 20,
-      fontWeight: '800',
-      color: '#f8eee1',
-      letterSpacing: 0,
-    },
-    pagePill: {
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 999,
-      backgroundColor: 'rgba(255,255,255,0.1)',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.14)',
-    },
-    pagePillText: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: '#f8eee1',
-    },
-    bookViewport: {
-      height: PAGE_H + 24,
-      overflow: 'hidden',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    turnPageControl: {
-      position: 'absolute',
-      right: 38,
-      bottom: 28,
-      zIndex: 8,
       width: 42,
       height: 42,
       borderRadius: 21,
+      backgroundColor: 'rgba(0,0,0,0.42)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.12)',
+    },
+    topMeta: {
+      position: 'absolute',
+      right: 16,
+      zIndex: 20,
+      alignItems: 'flex-end',
+      gap: 7,
+    },
+    topMetaText: {
+      overflow: 'hidden',
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: 'rgba(0,0,0,0.38)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.12)',
+      color: '#fff',
+      fontSize: 11,
+      fontWeight: '800',
+    },
+    playingPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 9,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: 'rgba(0,0,0,0.34)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.12)',
+    },
+    playingText: {
+      color: '#fff',
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0,
+    },
+    tapZoneLeft: {
+      position: 'absolute',
+      top: 92,
+      bottom: 118,
+      left: 0,
+      width: SCREEN_W * 0.24,
+      zIndex: 10,
+    },
+    tapZoneRight: {
+      position: 'absolute',
+      top: 92,
+      bottom: 118,
+      right: 0,
+      width: SCREEN_W * 0.24,
+      zIndex: 10,
+    },
+    nextControl: {
+      position: 'absolute',
+      right: 22,
+      bottom: 34,
+      zIndex: 15,
+      width: 52,
+      height: 52,
+      borderRadius: 26,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: '#f3c996',
       borderWidth: 1,
-      borderColor: 'rgba(70,42,23,0.18)',
+      borderColor: 'rgba(255,255,255,0.4)',
       shadowColor: '#000',
-      shadowOpacity: 0.18,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 6,
-    },
-    pageLiftShadow: {
-      position: 'absolute',
-      top: 16,
-      left: 25,
-      width: PAGE_W - 10,
-      height: PAGE_H - 4,
-      borderRadius: 22,
-      backgroundColor: '#000',
-      shadowColor: '#000',
-      shadowOpacity: 0.24,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.28,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
       elevation: 8,
     },
-    pageShell: {
-      width: PAGE_W,
-      height: PAGE_H,
-      borderRadius: 24,
-      overflow: 'hidden',
-      backgroundColor: '#f4eadb',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.5)',
-      shadowColor: '#000',
-      shadowOpacity: 0.18,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 9,
-      backfaceVisibility: 'hidden',
-    },
-    layeredPage: {
-      position: 'absolute',
-      top: 12,
-      left: 20,
-      zIndex: 2,
-    },
-    activeLayeredPage: {
-      zIndex: 4,
-    },
-    pageEdge: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      left: 0,
-      width: 22,
-      opacity: 0.68,
-    },
-    turnShade: {
-      position: 'absolute',
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      backgroundColor: '#2a1609',
-    },
-    tapZoneLeft: {
-      position: 'absolute',
-      top: 18,
-      bottom: 18,
-      left: 0,
-      width: 58,
-      zIndex: 6,
-    },
-    tapZoneRight: {
-      position: 'absolute',
-      top: 18,
-      bottom: 18,
-      right: 0,
-      width: 64,
-      zIndex: 6,
-    },
-    coverPage: {
-      flex: 1,
-      backgroundColor: '#0a0806',
-    },
-    albumSpine: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      left: 0,
-      width: 22,
-      backgroundColor: 'rgba(26,13,4,0.55)',
-      borderRightWidth: 1,
-      borderRightColor: 'rgba(255,255,255,0.12)',
-    },
-    coverPageEdges: {
-      position: 'absolute',
-      top: 16,
-      right: 0,
-      bottom: 16,
-      width: 16,
-      justifyContent: 'center',
-      gap: 7,
-      backgroundColor: 'rgba(255,248,235,0.3)',
-      borderLeftWidth: 1,
-      borderLeftColor: 'rgba(255,248,235,0.22)',
-    },
-    coverPageEdgeLine: {
-      height: 1,
-      marginLeft: 3,
-      backgroundColor: 'rgba(55,34,20,0.22)',
-    },
-    coverInsetBorder: {
-      position: 'absolute',
-      top: 14,
-      right: 14,
-      bottom: 14,
-      left: 30,
-      borderRadius: 15,
-      borderWidth: 1,
-      borderColor: 'rgba(255,248,235,0.32)',
-    },
-    coverCornerStamp: {
-      position: 'absolute',
-      top: 28,
-      right: 26,
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'rgba(0,0,0,0.34)',
-      borderWidth: 1,
-      borderColor: 'rgba(255,248,235,0.22)',
-    },
-    coverContent: {
-      position: 'absolute',
-      left: 34,
-      right: 22,
-      bottom: 26,
-    },
     coverBadge: {
+      alignSelf: 'flex-start',
       flexDirection: 'row',
       alignItems: 'center',
-      alignSelf: 'flex-start',
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
+      gap: 7,
+      paddingHorizontal: 11,
+      paddingVertical: 7,
       borderRadius: 999,
-      backgroundColor: 'rgba(0,0,0,0.35)',
+      backgroundColor: 'rgba(0,0,0,0.38)',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.18)',
-      marginBottom: 12,
+      borderColor: 'rgba(255,255,255,0.14)',
     },
     coverBadgeText: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: '#f8eee1',
+      fontSize: 12,
+      fontWeight: '800',
+      color: '#fff',
+      letterSpacing: 0,
+    },
+    coverTitleWrap: {
+      marginTop: 18,
+      marginBottom: 22,
+    },
+    coverDestination: {
+      fontSize: 12,
+      fontWeight: '900',
+      letterSpacing: 1.8,
+      color: '#f3c996',
+      textTransform: 'uppercase',
     },
     coverTitle: {
-      fontSize: 38,
-      lineHeight: 41,
+      marginTop: 8,
+      fontSize: 48,
+      lineHeight: 50,
       fontWeight: '900',
-      color: '#fff8eb',
+      color: '#fff',
       letterSpacing: 0,
     },
     coverSubtitle: {
-      marginTop: 8,
-      fontSize: 14,
-      lineHeight: 19,
-      fontWeight: '600',
-      color: 'rgba(255,248,235,0.78)',
-    },
-    coverMetaRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 6,
       marginTop: 12,
-    },
-    coverMeta: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: 'rgba(255,248,235,0.75)',
-    },
-    coverMetaDot: {
-      fontSize: 12,
-      color: 'rgba(255,248,235,0.55)',
-    },
-    coverActions: {
-      flexDirection: 'row',
-      marginTop: 18,
-    },
-    primaryBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 7,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderRadius: 14,
-      backgroundColor: '#e3bd8c',
-    },
-    primaryBtnText: {
-      fontSize: 13,
-      fontWeight: '800',
-      color: '#21160f',
-    },
-    paperPage: {
-      flex: 1,
-      padding: 20,
-      backgroundColor: '#f4eadb',
-    },
-    spreadKicker: {
-      fontSize: 10,
-      fontWeight: '900',
-      letterSpacing: 1.7,
-      color: '#9b7356',
-    },
-    spreadTitle: {
-      marginTop: 5,
-      marginBottom: 16,
-      fontSize: 25,
-      lineHeight: 29,
-      fontWeight: '900',
-      color: '#2b2119',
-      letterSpacing: 0,
-    },
-    collageGrid: {
-      flex: 1,
-      flexDirection: 'row',
-      gap: 8,
-      minHeight: 0,
-    },
-    singleHighlightGrid: {
-      flexDirection: 'column',
-    },
-    collageHero: {
-      flex: 1.45,
-      borderRadius: 16,
-      overflow: 'hidden',
-      backgroundColor: '#dacbbb',
-    },
-    collageHeroSingle: {
-      flex: 1,
-    },
-    collageSide: {
-      flex: 1,
-      gap: 8,
-    },
-    collageThumb: {
-      flex: 1,
-      minHeight: 0,
-      borderRadius: 14,
-      overflow: 'hidden',
-      backgroundColor: '#dacbbb',
-    },
-    imageFill: {
-      width: '100%',
-      height: '100%',
-    },
-    caption: {
-      marginTop: 14,
-      paddingRight: 54,
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '600',
-      color: '#6d5a49',
-    },
-    singlePhotoWrap: {
-      flex: 1,
-      borderRadius: 18,
-      overflow: 'hidden',
-      backgroundColor: '#dacbbb',
-      borderWidth: 8,
-      borderColor: '#fffaf1',
-    },
-    photoCaptionRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: 12,
-      marginTop: 14,
-    },
-    photoCaptionTextWrap: {
-      flex: 1,
-    },
-    photoCaption: {
-      fontSize: 15,
-      lineHeight: 20,
-      fontWeight: '800',
-      color: '#2b2119',
-    },
-    locationRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      marginTop: 5,
-    },
-    locationText: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: '#8b7766',
-    },
-    photoDate: {
-      fontSize: 12,
-      fontWeight: '800',
-      color: '#9b7356',
-    },
-    timelineList: {
-      gap: 10,
-      marginTop: 8,
-    },
-    timelineRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      padding: 10,
-      borderRadius: 16,
-      backgroundColor: '#fff6e9',
-      borderWidth: 1,
-      borderColor: '#e5d3bd',
-    },
-    timelineMarker: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: '#ead4bb',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    timelineMarkerText: {
-      fontSize: 11,
-      fontWeight: '900',
-      color: '#6d4a2f',
-    },
-    timelinePhoto: {
-      width: 54,
-      height: 54,
-      borderRadius: 14,
-      backgroundColor: '#dacbbb',
-    },
-    timelinePhotoFallback: {
-      width: 54,
-      height: 54,
-      borderRadius: 14,
-      backgroundColor: '#ead4bb',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    timelineCopy: {
-      flex: 1,
-      minWidth: 0,
-    },
-    timelineTitle: {
-      fontSize: 13,
-      fontWeight: '900',
-      color: '#2b2119',
-    },
-    timelineSubtitle: {
-      marginTop: 2,
-      fontSize: 13,
-      fontWeight: '800',
-      color: '#6d4a2f',
-    },
-    timelineMeta: {
-      marginTop: 2,
-      fontSize: 11,
-      fontWeight: '700',
-      color: '#9b7356',
-    },
-    placesHero: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      padding: 14,
-      borderRadius: 18,
-      backgroundColor: '#fff6e9',
-      borderWidth: 1,
-      borderColor: '#e5d3bd',
-    },
-    placesHeroCopy: {
-      flex: 1,
-      minWidth: 0,
-    },
-    placesHeroTitle: {
       fontSize: 16,
-      fontWeight: '900',
-      color: '#2b2119',
-    },
-    placesHeroText: {
-      marginTop: 3,
-      fontSize: 12,
+      lineHeight: 22,
       fontWeight: '700',
-      color: '#8b7766',
-    },
-    peopleStrip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginTop: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderRadius: 16,
-      backgroundColor: '#ead4bb',
-    },
-    peopleStripText: {
-      flex: 1,
-      minWidth: 0,
-      fontSize: 12,
-      fontWeight: '800',
-      color: '#6d4a2f',
-    },
-    placeList: {
-      gap: 10,
-      marginTop: 14,
-    },
-    placeRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      padding: 10,
-      borderRadius: 16,
-      backgroundColor: '#fffaf1',
-      borderWidth: 1,
-      borderColor: '#e5d3bd',
-    },
-    placePhoto: {
-      width: 48,
-      height: 48,
-      borderRadius: 14,
-      backgroundColor: '#dacbbb',
-    },
-    placeNumber: {
-      width: 48,
-      height: 48,
-      borderRadius: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#ead4bb',
-    },
-    placeNumberText: {
-      fontSize: 17,
-      fontWeight: '900',
-      color: '#6d4a2f',
-    },
-    placeCopy: {
-      flex: 1,
-      minWidth: 0,
-    },
-    placeName: {
-      fontSize: 15,
-      fontWeight: '900',
-      color: '#2b2119',
-    },
-    placeMeta: {
-      marginTop: 3,
-      fontSize: 12,
-      fontWeight: '700',
-      color: '#8b7766',
-    },
-    peopleHero: {
-      alignItems: 'center',
-      padding: 18,
-      borderRadius: 22,
-      backgroundColor: '#fff6e9',
-      borderWidth: 1,
-      borderColor: '#e5d3bd',
-    },
-    peopleHeroTitle: {
-      marginTop: 8,
-      fontSize: 24,
-      fontWeight: '900',
-      color: '#2b2119',
+      color: 'rgba(255,255,255,0.82)',
       letterSpacing: 0,
     },
-    peopleHeroText: {
-      marginTop: 6,
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '700',
-      color: '#8b7766',
-      textAlign: 'center',
-    },
-    peopleGrid: {
+    memoryMetaRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 10,
-      marginTop: 16,
-    },
-    personChip: {
-      width: '47%',
-      flexGrow: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
       gap: 8,
-      padding: 9,
-      borderRadius: 16,
-      backgroundColor: '#fffaf1',
-      borderWidth: 1,
-      borderColor: '#e5d3bd',
-    },
-    personPhoto: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: '#dacbbb',
-    },
-    personInitial: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#ead4bb',
-    },
-    personInitialText: {
-      fontSize: 13,
-      fontWeight: '900',
-      color: '#6d4a2f',
-    },
-    personName: {
-      flex: 1,
-      minWidth: 0,
-      fontSize: 13,
-      fontWeight: '800',
-      color: '#2b2119',
-    },
-    ahaGrid: {
-      flex: 1,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 10,
-      marginTop: 4,
-    },
-    ahaCard: {
-      width: '47%',
-      flexGrow: 1,
-      minHeight: 132,
-      padding: 14,
-      borderRadius: 18,
-      backgroundColor: '#fff6e9',
-      borderWidth: 1,
-      borderColor: '#e5d3bd',
-      justifyContent: 'space-between',
-    },
-    ahaLabel: {
-      fontSize: 10,
-      fontWeight: '900',
-      color: '#9b7356',
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-    },
-    ahaValue: {
-      marginTop: 8,
-      fontSize: 22,
-      lineHeight: 25,
-      fontWeight: '900',
-      color: '#2b2119',
-      letterSpacing: 0,
-    },
-    ahaDetail: {
-      marginTop: 8,
-      fontSize: 12,
-      lineHeight: 16,
-      fontWeight: '700',
-      color: '#7d6857',
-    },
-    closingPage: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 24,
-      backgroundColor: '#21160f',
-    },
-    closingIcon: {
-      width: 66,
-      height: 66,
-      borderRadius: 22,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#e3bd8c',
       marginBottom: 18,
     },
-    closingTitle: {
-      fontSize: 30,
-      lineHeight: 34,
-      fontWeight: '900',
-      color: '#fff8eb',
-      textAlign: 'center',
-      letterSpacing: 0,
-    },
-    closingText: {
-      marginTop: 10,
-      fontSize: 14,
-      lineHeight: 20,
-      fontWeight: '600',
-      color: 'rgba(255,248,235,0.7)',
-      textAlign: 'center',
-    },
-    closingActions: {
-      alignSelf: 'stretch',
-      gap: 10,
-      marginTop: 24,
-    },
-    secondaryBtn: {
+    primaryAction: {
+      minHeight: 56,
+      borderRadius: 18,
+      paddingHorizontal: 18,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 7,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderRadius: 14,
+      gap: 9,
+      backgroundColor: '#f3c996',
+    },
+    primaryActionText: {
+      color: '#15110d',
+      fontSize: 15,
+      fontWeight: '900',
+      letterSpacing: 0,
+    },
+    secondaryAction: {
+      minHeight: 54,
+      borderRadius: 18,
+      paddingHorizontal: 18,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 9,
       backgroundColor: 'rgba(255,255,255,0.1)',
       borderWidth: 1,
       borderColor: 'rgba(255,255,255,0.18)',
     },
-    secondaryBtnText: {
-      fontSize: 13,
+    secondaryActionText: {
+      color: '#fff',
+      fontSize: 15,
       fontWeight: '800',
-      color: '#f8eee1',
+      letterSpacing: 0,
     },
-    dots: {
-      flexDirection: 'row',
+    photoFocusFrame: {
+      height: PLAYER_H * 0.43,
+      borderRadius: 28,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.24)',
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      shadowColor: '#000',
+      shadowOpacity: 0.3,
+      shadowRadius: 22,
+      shadowOffset: { width: 0, height: 14 },
+      elevation: 9,
+    },
+    photoFocusFrameFeatured: {
+      height: PLAYER_H * 0.5,
+    },
+    emptyPhotoFrame: {
+      flex: 1,
+      alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    sceneCopyBlock: {
+      marginTop: 22,
+    },
+    sceneCopyBlockCompact: {
+      marginBottom: 18,
+    },
+    sceneEyebrow: {
+      fontSize: 12,
+      fontWeight: '900',
+      letterSpacing: 1.9,
+      color: '#f3c996',
+      textTransform: 'uppercase',
+    },
+    sceneTitle: {
+      marginTop: 8,
+      fontSize: 36,
+      lineHeight: 39,
+      fontWeight: '900',
+      color: '#fff',
+      letterSpacing: 0,
+    },
+    sceneDetail: {
+      marginTop: 10,
+      fontSize: 16,
+      lineHeight: 23,
+      fontWeight: '700',
+      color: 'rgba(255,255,255,0.84)',
+      letterSpacing: 0,
+    },
+    sceneLocationRow: {
+      marginTop: 14,
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: 'rgba(0,0,0,0.32)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.12)',
+    },
+    sceneLocationText: {
+      maxWidth: SCREEN_W - 94,
+      color: '#fff',
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 0,
+    },
+    highlightsHeader: {
+      marginBottom: 18,
+    },
+    cinematicCollage: {
+      height: PLAYER_H * 0.48,
+      marginBottom: 18,
+    },
+    collageHero: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: '61%',
+      borderRadius: 28,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.22)',
+    },
+    collageTop: {
+      position: 'absolute',
+      top: 18,
+      right: 0,
+      width: '43%',
+      height: '43%',
+      borderRadius: 24,
+      overflow: 'hidden',
+      borderWidth: 4,
+      borderColor: 'rgba(255,255,255,0.92)',
+      transform: [{ rotate: '4deg' }],
+      shadowColor: '#000',
+      shadowOpacity: 0.25,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
+    },
+    collageBottom: {
+      position: 'absolute',
+      right: 10,
+      bottom: 8,
+      width: '45%',
+      height: '42%',
+      borderRadius: 24,
+      overflow: 'hidden',
+      borderWidth: 4,
+      borderColor: 'rgba(255,255,255,0.92)',
+      transform: [{ rotate: '-3deg' }],
+      shadowColor: '#000',
+      shadowOpacity: 0.25,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 8 },
+    },
+    glassPanel: {
+      padding: 18,
+      borderRadius: 24,
+      backgroundColor: 'rgba(0,0,0,0.34)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.16)',
+    },
+    panelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    panelTitle: {
+      flex: 1,
+      fontSize: 18,
+      fontWeight: '900',
+      color: '#fff',
+      letterSpacing: 0,
+    },
+    panelText: {
+      marginTop: 8,
+      fontSize: 14,
+      lineHeight: 20,
+      color: 'rgba(255,255,255,0.78)',
+      fontWeight: '700',
+      letterSpacing: 0,
+    },
+    placesStack: {
       marginTop: 14,
+      gap: 10,
+      padding: 18,
+      borderRadius: 24,
+      backgroundColor: 'rgba(0,0,0,0.28)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.14)',
     },
-    dot: {
-      width: 5,
-      height: 5,
-      borderRadius: 3,
-      backgroundColor: 'rgba(255,255,255,0.24)',
+    placeChip: {
+      paddingHorizontal: 13,
+      paddingVertical: 11,
+      borderRadius: 16,
+      backgroundColor: 'rgba(255,255,255,0.12)',
     },
-    dotActive: {
-      width: 18,
-      backgroundColor: '#e3bd8c',
+    placeChipName: {
+      fontSize: 14,
+      fontWeight: '900',
+      color: '#fff',
+      letterSpacing: 0,
+    },
+    placeChipMeta: {
+      marginTop: 2,
+      fontSize: 11,
+      fontWeight: '800',
+      color: 'rgba(255,255,255,0.68)',
+      letterSpacing: 0,
+    },
+    ahaStack: {
+      gap: 12,
+    },
+    ahaCard: {
+      padding: 18,
+      borderRadius: 24,
+      backgroundColor: 'rgba(0,0,0,0.35)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.16)',
+    },
+    ahaLabel: {
+      fontSize: 11,
+      fontWeight: '900',
+      color: '#f3c996',
+      letterSpacing: 1.3,
+      textTransform: 'uppercase',
+    },
+    ahaValue: {
+      marginTop: 7,
+      fontSize: 31,
+      lineHeight: 34,
+      fontWeight: '900',
+      color: '#fff',
+      letterSpacing: 0,
+    },
+    ahaDetail: {
+      marginTop: 6,
+      fontSize: 14,
+      lineHeight: 20,
+      fontWeight: '700',
+      color: 'rgba(255,255,255,0.76)',
+      letterSpacing: 0,
+    },
+    closingContent: {
+      flex: 1,
+      paddingHorizontal: 24,
+      paddingTop: 132,
+      paddingBottom: 86,
+      justifyContent: 'center',
+      zIndex: 2,
+    },
+    posterMark: {
+      width: 74,
+      height: 74,
+      borderRadius: 24,
+      backgroundColor: '#f3c996',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 22,
+    },
+    closingEyebrow: {
+      fontSize: 12,
+      fontWeight: '900',
+      letterSpacing: 1.8,
+      textTransform: 'uppercase',
+      color: '#f3c996',
+    },
+    closingTitle: {
+      marginTop: 8,
+      fontSize: 42,
+      lineHeight: 45,
+      fontWeight: '900',
+      color: '#fff',
+      letterSpacing: 0,
+    },
+    closingText: {
+      marginTop: 12,
+      marginBottom: 22,
+      fontSize: 16,
+      lineHeight: 23,
+      fontWeight: '700',
+      color: 'rgba(255,255,255,0.82)',
+      letterSpacing: 0,
+    },
+    closingActions: {
+      gap: 10,
     },
   });
