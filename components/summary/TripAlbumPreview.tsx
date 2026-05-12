@@ -13,7 +13,18 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, BookOpen, Camera, ChevronRight, Images, MapPin, Share2, Sparkles, Wallet } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  BookOpen,
+  CalendarDays,
+  ChevronRight,
+  Images,
+  MapPin,
+  Route,
+  Share2,
+  Sparkles,
+  Users,
+} from 'lucide-react-native';
 
 import type { ThemeColors } from '@/constants/ThemeContext';
 import type { Expense, GroupMember, Moment, Place, Trip } from '@/lib/types';
@@ -28,8 +39,11 @@ const MAX_PHOTO_PAGES = 15;
 
 type AlbumPage =
   | { type: 'cover' }
-  | { type: 'collage'; title: string; photos: AlbumPhoto[]; caption: string }
-  | { type: 'photo'; photo: AlbumPhoto }
+  | { type: 'bestMoments'; title: string; photos: AlbumPhoto[]; caption: string }
+  | { type: 'timeline' }
+  | { type: 'favorite'; photo: AlbumPhoto }
+  | { type: 'places' }
+  | { type: 'people' }
   | { type: 'stats' }
   | { type: 'closing' };
 
@@ -41,6 +55,34 @@ export interface AlbumPhoto {
   location?: string;
   date?: string;
   moment?: Moment;
+}
+
+interface TimelineHighlight {
+  id: string;
+  title: string;
+  subtitle: string;
+  meta: string;
+  photo?: AlbumPhoto;
+}
+
+interface AlbumPlace {
+  id: string;
+  name: string;
+  category?: string;
+  photoUrl?: string;
+}
+
+interface AlbumTraveler {
+  id: string;
+  name: string;
+  photo?: string;
+}
+
+interface AhaCard {
+  id: string;
+  label: string;
+  value: string;
+  detail: string;
 }
 
 interface TripAlbumData {
@@ -55,7 +97,12 @@ interface TripAlbumData {
   topTag?: string;
   topLocation?: string;
   heroPhoto?: AlbumPhoto;
+  favoritePhoto?: AlbumPhoto;
   photos: AlbumPhoto[];
+  timeline: TimelineHighlight[];
+  topPlaces: AlbumPlace[];
+  travelers: AlbumTraveler[];
+  ahaCards: AhaCard[];
 }
 
 interface BuildTripAlbumDataInput {
@@ -117,6 +164,102 @@ function bestAlbumPhotos(moments: Moment[], favorites: MomentFavoriteMap): Album
   return Array.from(selected.values()).slice(0, MAX_PHOTO_PAGES);
 }
 
+function formatAlbumDate(value?: string, options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toLocaleDateString(undefined, options);
+}
+
+function mostCommon(values: (string | undefined)[]) {
+  const counts = new Map<string, number>();
+  for (const rawValue of values) {
+    const value = rawValue?.trim();
+    if (!value) continue;
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).sort(([, a], [, b]) => b - a)[0]?.[0];
+}
+
+function buildTimelineHighlights(moments: Moment[], albumPhotos: AlbumPhoto[]): TimelineHighlight[] {
+  const photoByMoment = new Map(albumPhotos.map((photo) => [photo.id, photo]));
+  const groups = new Map<
+    string,
+    {
+      sortValue: number;
+      title: string;
+      moments: Moment[];
+      photos: AlbumPhoto[];
+    }
+  >();
+
+  for (const moment of moments) {
+    const date = new Date(moment.date);
+    const dayLabel = moment.dayNumber ? `Day ${moment.dayNumber}` : formatAlbumDate(moment.date) ?? 'A trip day';
+    const key = moment.dayNumber ? `day-${moment.dayNumber}` : formatAlbumDate(moment.date, { year: 'numeric', month: '2-digit', day: '2-digit' }) ?? moment.id;
+    const sortValue = moment.dayNumber ?? (Number.isNaN(date.getTime()) ? Number.MAX_SAFE_INTEGER : date.getTime());
+    const existing = groups.get(key) ?? { sortValue, title: dayLabel, moments: [], photos: [] };
+    existing.moments.push(moment);
+    const photo = photoByMoment.get(moment.id);
+    if (photo) existing.photos.push(photo);
+    groups.set(key, existing);
+  }
+
+  return Array.from(groups.values())
+    .sort((a, b) => a.sortValue - b.sortValue)
+    .slice(0, 4)
+    .map((group, index) => {
+      const topLocation = mostCommon(group.moments.map((moment) => moment.location));
+      const topTag = mostCommon(group.moments.flatMap((moment) => moment.tags ?? []));
+      const dateLabel = formatAlbumDate(group.moments[0]?.date);
+      return {
+        id: `${group.title}-${index}`,
+        title: group.title,
+        subtitle: topLocation ?? topTag ?? 'A day worth remembering',
+        meta: `${group.moments.length} moment${group.moments.length !== 1 ? 's' : ''}${dateLabel ? ` · ${dateLabel}` : ''}`,
+        photo: group.photos[0],
+      };
+    });
+}
+
+function buildAhaCards(data: {
+  moments: Moment[];
+  places: Place[];
+  members: GroupMember[];
+  nights: number;
+  spentLabel: string;
+  topLocation?: string;
+  topTag?: string;
+  favoritePhoto?: AlbumPhoto;
+}): AhaCard[] {
+  return [
+    {
+      id: 'moments',
+      label: 'Captured',
+      value: String(data.moments.length),
+      detail: `${data.nights || 1} night${data.nights !== 1 ? 's' : ''} turned into a full camera roll.`,
+    },
+    {
+      id: 'place',
+      label: 'Most remembered',
+      value: data.topLocation ?? data.places[0]?.name ?? 'The trip',
+      detail: data.topLocation ? 'This place kept showing up in your memories.' : 'Your places and moments built the story.',
+    },
+    {
+      id: 'mood',
+      label: 'Trip mood',
+      value: data.topTag ?? 'Travel story',
+      detail: data.topTag ? 'Your photos leaned into this feeling.' : 'A mix of places, people, and small details.',
+    },
+    {
+      id: 'group',
+      label: 'Together with',
+      value: `${Math.max(1, data.members.length)} traveler${Math.max(1, data.members.length) !== 1 ? 's' : ''}`,
+      detail: data.favoritePhoto?.location ? `The favorite frame came from ${data.favoritePhoto.location}.` : `Logged spend: ${data.spentLabel}.`,
+    },
+  ];
+}
+
 export function buildTripAlbumData({
   trip,
   moments,
@@ -140,6 +283,20 @@ export function buildTripAlbumData({
 
   const topTag = Array.from(byTag.entries()).sort(([, a], [, b]) => b - a)[0]?.[0];
   const topLocation = Array.from(byLocation.entries()).sort(([, a], [, b]) => b - a)[0]?.[0];
+  const favoritePhoto = photos.find((photo) => (favorites[photo.id]?.count ?? 0) > 0) ?? photos[1] ?? photos[0];
+  const topPlaces = places.slice(0, 4).map((place) => ({
+    id: place.id,
+    name: place.name,
+    category: place.category,
+    photoUrl: place.photoUrl,
+  }));
+  const travelers = members.slice(0, 5).map((member) => ({
+    id: member.id,
+    name: member.name,
+    photo: member.profilePhoto,
+  }));
+  const spentLabel = spent > 0 ? formatCurrency(spent, currency) : 'No spend yet';
+  const timeline = buildTimelineHighlights(moments, photos);
 
   return {
     title: trip.name || trip.destination || 'Trip Album',
@@ -149,11 +306,25 @@ export function buildTripAlbumData({
     momentCount: moments.length,
     placesCount: places.length,
     memberCount: members.length,
-    spentLabel: spent > 0 ? formatCurrency(spent, currency) : 'No spend yet',
+    spentLabel,
     topTag,
     topLocation,
     heroPhoto: photos[0],
+    favoritePhoto,
     photos,
+    timeline,
+    topPlaces,
+    travelers,
+    ahaCards: buildAhaCards({
+      moments,
+      places,
+      members,
+      nights: trip.nights,
+      spentLabel,
+      topLocation,
+      topTag,
+      favoritePhoto,
+    }),
   };
 }
 
@@ -173,6 +344,12 @@ export const mockTripAlbumData: TripAlbumData = {
     uri: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1200&q=80',
     caption: 'The first night felt electric.',
     location: 'Shibuya',
+  },
+  favoritePhoto: {
+    id: 'mock-2',
+    uri: 'https://images.unsplash.com/photo-1524413840807-0c3cb6fa808d?auto=format&fit=crop&w=1000&q=80',
+    caption: 'Golden hour at Senso-ji',
+    location: 'Asakusa',
   },
   photos: [
     {
@@ -206,37 +383,65 @@ export const mockTripAlbumData: TripAlbumData = {
       location: 'Ginza',
     },
   ],
+  timeline: [
+    {
+      id: 'mock-day-1',
+      title: 'Day 1',
+      subtitle: 'Shibuya Crossing',
+      meta: '18 moments · Apr 12',
+      photo: {
+        id: 'mock-hero',
+        uri: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1200&q=80',
+        location: 'Shibuya',
+      },
+    },
+    {
+      id: 'mock-day-2',
+      title: 'Day 2',
+      subtitle: 'Asakusa',
+      meta: '22 moments · Apr 13',
+      photo: {
+        id: 'mock-2',
+        uri: 'https://images.unsplash.com/photo-1524413840807-0c3cb6fa808d?auto=format&fit=crop&w=1000&q=80',
+        location: 'Asakusa',
+      },
+    },
+  ],
+  topPlaces: [
+    { id: 'place-1', name: 'Shibuya Crossing', category: 'Culture' },
+    { id: 'place-2', name: 'Senso-ji', category: 'Culture' },
+    { id: 'place-3', name: 'Golden Gai', category: 'Nightlife' },
+  ],
+  travelers: [
+    { id: 'traveler-1', name: 'Peter' },
+    { id: 'traveler-2', name: 'Mika' },
+    { id: 'traveler-3', name: 'Jon' },
+  ],
+  ahaCards: [
+    { id: 'moments', label: 'Captured', value: '128', detail: '7 nights turned into a full camera roll.' },
+    { id: 'place', label: 'Most remembered', value: 'Shibuya Crossing', detail: 'This place kept showing up in your memories.' },
+    { id: 'mood', label: 'Trip mood', value: 'Food', detail: 'Your photos leaned into this feeling.' },
+    { id: 'group', label: 'Together with', value: '4 travelers', detail: 'The favorite frame came from Asakusa.' },
+  ],
 };
 
 function buildPages(data: TripAlbumData): AlbumPage[] {
   if (data.photos.length === 0) return [{ type: 'cover' }, { type: 'closing' }];
-  if (data.photos.length < 5) {
-    return [
-      { type: 'cover' },
-      { type: 'collage', title: 'Your first pages', photos: data.photos, caption: 'A small album from the moments captured so far.' },
-      { type: 'stats' },
-      { type: 'closing' },
-    ];
-  }
-
   const pages: AlbumPage[] = [{ type: 'cover' }];
+
   pages.push({
-    type: 'collage',
-    title: data.topLocation ? `Scenes from ${data.topLocation}` : 'Favorite scenes',
+    type: 'bestMoments',
+    title: data.topLocation ? `Moments from ${data.topLocation}` : 'Best moments',
     photos: data.photos.slice(0, 5),
-    caption: 'A spread of the moments that defined the trip.',
+    caption: data.photos.length < 5 ? 'A small album from the moments captured so far.' : 'The frames that make this trip easy to remember.',
   });
-  for (const photo of data.photos.slice(5, 11)) pages.push({ type: 'photo', photo });
-  if (data.photos.length > 11) {
-    pages.push({
-      type: 'collage',
-      title: 'More from the roll',
-      photos: data.photos.slice(11, 15),
-      caption: 'The extra little frames that made the album feel alive.',
-    });
-  }
+
+  if (data.timeline.length > 0) pages.push({ type: 'timeline' });
+  if (data.favoritePhoto) pages.push({ type: 'favorite', photo: data.favoritePhoto });
+  if (data.topPlaces.length > 0) pages.push({ type: 'places' });
+  if (data.travelers.length > 0 || data.memberCount > 0) pages.push({ type: 'people' });
   pages.push({ type: 'stats' }, { type: 'closing' });
-  return pages;
+  return pages.slice(0, 8);
 }
 
 export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, onAddPhoto, onOpenPhoto }: Props) {
@@ -310,15 +515,18 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       {item.type === 'cover' ? (
         <AlbumCoverPage data={data} styles={styles} colors={colors} onOpenAlbum={openNextPage} onAddPhoto={onAddPhoto} />
       ) : null}
-      {item.type === 'collage' ? (
-        <AlbumCollagePage page={item} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
+      {item.type === 'bestMoments' ? (
+        <AlbumBestMomentsPage page={item} styles={styles} onOpenPhoto={onOpenPhoto} />
       ) : null}
-      {item.type === 'photo' ? (
-        <AlbumPhotoPage photo={item.photo} styles={styles} colors={colors} onOpenPhoto={onOpenPhoto} />
+      {item.type === 'timeline' ? <AlbumTimelinePage data={data} styles={styles} onOpenPhoto={onOpenPhoto} /> : null}
+      {item.type === 'favorite' ? (
+        <AlbumFavoritePage photo={item.photo} styles={styles} onOpenPhoto={onOpenPhoto} />
       ) : null}
-      {item.type === 'stats' ? <AlbumStatsPage data={data} styles={styles} colors={colors} /> : null}
+      {item.type === 'places' ? <AlbumPlacesPage data={data} styles={styles} /> : null}
+      {item.type === 'people' ? <AlbumPeoplePage data={data} styles={styles} /> : null}
+      {item.type === 'stats' ? <AlbumStatsPage data={data} styles={styles} /> : null}
       {item.type === 'closing' ? (
-        <AlbumClosingPage data={data} styles={styles} colors={colors} onOpenAlbum={onOpenAlbum} onShare={handleShare} />
+        <AlbumClosingPage data={data} styles={styles} onOpenAlbum={onOpenAlbum} onShare={handleShare} />
       ) : null}
     </>
   );
@@ -478,14 +686,13 @@ function AlbumCoverPage({
   );
 }
 
-function AlbumCollagePage({
+function AlbumBestMomentsPage({
   page,
   styles,
   onOpenPhoto,
 }: {
-  page: Extract<AlbumPage, { type: 'collage' }>;
+  page: Extract<AlbumPage, { type: 'bestMoments' }>;
   styles: ReturnType<typeof getStyles>;
-  colors: ThemeColors;
   onOpenPhoto?: (photo: AlbumPhoto) => void;
 }) {
   const [hero, ...rest] = page.photos;
@@ -512,14 +719,13 @@ function AlbumCollagePage({
   );
 }
 
-function AlbumPhotoPage({
+function AlbumFavoritePage({
   photo,
   styles,
   onOpenPhoto,
 }: {
   photo: AlbumPhoto;
   styles: ReturnType<typeof getStyles>;
-  colors: ThemeColors;
   onOpenPhoto?: (photo: AlbumPhoto) => void;
 }) {
   return (
@@ -543,38 +749,126 @@ function AlbumPhotoPage({
   );
 }
 
-function AlbumStatsPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles>; colors: ThemeColors }) {
+function AlbumTimelinePage({
+  data,
+  styles,
+  onOpenPhoto,
+}: {
+  data: TripAlbumData;
+  styles: ReturnType<typeof getStyles>;
+  onOpenPhoto?: (photo: AlbumPhoto) => void;
+}) {
   return (
     <View style={styles.paperPage}>
-      <Text style={styles.spreadKicker}>ALBUM NOTES</Text>
-      <Text style={styles.spreadTitle}>The trip in pages</Text>
-      <View style={styles.statsList}>
-        <StatLine icon={<Camera size={18} color="#6d4a2f" />} label="Moments captured" value={String(data.momentCount)} styles={styles} />
-        <StatLine icon={<MapPin size={18} color="#6d4a2f" />} label="Places remembered" value={String(data.placesCount)} styles={styles} />
-        <StatLine icon={<Wallet size={18} color="#6d4a2f" />} label="Spending logged" value={data.spentLabel} styles={styles} />
-        <StatLine icon={<Sparkles size={18} color="#6d4a2f" />} label="Album mood" value={data.topTag ?? data.topLocation ?? 'Travel story'} styles={styles} />
+      <Text style={styles.spreadKicker}>TRIP TIMELINE</Text>
+      <Text style={styles.spreadTitle}>The days that shaped it</Text>
+      <View style={styles.timelineList}>
+        {data.timeline.map((item, index) => (
+          <Pressable
+            key={item.id}
+            style={styles.timelineRow}
+            onPress={() => (item.photo ? onOpenPhoto?.(item.photo) : undefined)}
+            disabled={!item.photo}
+          >
+            <View style={styles.timelineMarker}>
+              <Text style={styles.timelineMarkerText}>{index + 1}</Text>
+            </View>
+            {item.photo ? (
+              <Image source={{ uri: item.photo.uri }} style={styles.timelinePhoto} contentFit="cover" transition={140} />
+            ) : (
+              <View style={styles.timelinePhotoFallback}>
+                <CalendarDays size={16} color="#8d6c52" />
+              </View>
+            )}
+            <View style={styles.timelineCopy}>
+              <Text style={styles.timelineTitle}>{item.title}</Text>
+              <Text style={styles.timelineSubtitle} numberOfLines={1}>{item.subtitle}</Text>
+              <Text style={styles.timelineMeta} numberOfLines={1}>{item.meta}</Text>
+            </View>
+          </Pressable>
+        ))}
       </View>
     </View>
   );
 }
 
-function StatLine({
-  icon,
-  label,
-  value,
-  styles,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  styles: ReturnType<typeof getStyles>;
-}) {
+function AlbumPlacesPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
   return (
-    <View style={styles.statLine}>
-      <View style={styles.statIcon}>{icon}</View>
-      <View style={styles.statCopy}>
-        <Text style={styles.statLabel}>{label}</Text>
-        <Text style={styles.statValue} numberOfLines={1}>{value}</Text>
+    <View style={styles.paperPage}>
+      <Text style={styles.spreadKicker}>PLACES</Text>
+      <Text style={styles.spreadTitle}>Where the trip lived</Text>
+      <View style={styles.placesHero}>
+        <Route size={20} color="#6d4a2f" />
+        <View style={styles.placesHeroCopy}>
+          <Text style={styles.placesHeroTitle} numberOfLines={1}>{data.topLocation ?? data.destination}</Text>
+          <Text style={styles.placesHeroText}>{data.placesCount} saved place{data.placesCount !== 1 ? 's' : ''} across the trip</Text>
+        </View>
+      </View>
+      <View style={styles.placeList}>
+        {data.topPlaces.slice(0, 4).map((place, index) => (
+          <View key={place.id} style={styles.placeRow}>
+            {place.photoUrl ? (
+              <Image source={{ uri: place.photoUrl }} style={styles.placePhoto} contentFit="cover" transition={140} />
+            ) : (
+              <View style={styles.placeNumber}>
+                <Text style={styles.placeNumberText}>{index + 1}</Text>
+              </View>
+            )}
+            <View style={styles.placeCopy}>
+              <Text style={styles.placeName} numberOfLines={1}>{place.name}</Text>
+              <Text style={styles.placeMeta} numberOfLines={1}>{place.category ?? 'Saved place'}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function AlbumPeoplePage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+  const visibleTravelers = data.travelers.length > 0 ? data.travelers : [{ id: 'solo', name: 'You' }];
+  return (
+    <View style={styles.paperPage}>
+      <Text style={styles.spreadKicker}>PEOPLE</Text>
+      <Text style={styles.spreadTitle}>Who made it feel real</Text>
+      <View style={styles.peopleHero}>
+        <Users size={28} color="#6d4a2f" />
+        <Text style={styles.peopleHeroTitle}>
+          {Math.max(1, data.memberCount)} traveler{Math.max(1, data.memberCount) !== 1 ? 's' : ''}
+        </Text>
+        <Text style={styles.peopleHeroText}>The recap works best when the people are part of the story.</Text>
+      </View>
+      <View style={styles.peopleGrid}>
+        {visibleTravelers.slice(0, 5).map((traveler) => (
+          <View key={traveler.id} style={styles.personChip}>
+            {traveler.photo ? (
+              <Image source={{ uri: traveler.photo }} style={styles.personPhoto} contentFit="cover" transition={140} />
+            ) : (
+              <View style={styles.personInitial}>
+                <Text style={styles.personInitialText}>{traveler.name.trim().charAt(0).toUpperCase() || 'A'}</Text>
+              </View>
+            )}
+            <Text style={styles.personName} numberOfLines={1}>{traveler.name}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function AlbumStatsPage({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+  return (
+    <View style={styles.paperPage}>
+      <Text style={styles.spreadKicker}>AHA MOMENTS</Text>
+      <Text style={styles.spreadTitle}>What the trip says back</Text>
+      <View style={styles.ahaGrid}>
+        {data.ahaCards.map((card) => (
+          <View key={card.id} style={styles.ahaCard}>
+            <Text style={styles.ahaLabel}>{card.label}</Text>
+            <Text style={styles.ahaValue} numberOfLines={2}>{card.value}</Text>
+            <Text style={styles.ahaDetail} numberOfLines={2}>{card.detail}</Text>
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -588,7 +882,6 @@ function AlbumClosingPage({
 }: {
   data: TripAlbumData;
   styles: ReturnType<typeof getStyles>;
-  colors: ThemeColors;
   onOpenAlbum: () => void;
   onShare: () => void;
 }) {
@@ -597,8 +890,10 @@ function AlbumClosingPage({
       <View style={styles.closingIcon}>
         <BookOpen size={30} color="#21160f" />
       </View>
-      <Text style={styles.closingTitle}>Your album is ready</Text>
-      <Text style={styles.closingText}>{data.title} has {data.momentCount} moments ready to browse.</Text>
+      <Text style={styles.closingTitle}>Ready to relive it</Text>
+      <Text style={styles.closingText}>
+        {data.title} has {data.momentCount} moments, {data.placesCount} places, and a few memories worth sharing.
+      </Text>
       <View style={styles.closingActions}>
         <Pressable style={styles.primaryBtn} onPress={onOpenAlbum}>
           <Images size={16} color="#21160f" />
@@ -1007,44 +1302,247 @@ const getStyles = (_colors: ThemeColors) =>
       fontWeight: '800',
       color: '#9b7356',
     },
-    statsList: {
+    timelineList: {
       gap: 10,
       marginTop: 8,
     },
-    statLine: {
+    timelineRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-      padding: 14,
+      padding: 10,
       borderRadius: 16,
       backgroundColor: '#fff6e9',
       borderWidth: 1,
       borderColor: '#e5d3bd',
     },
-    statIcon: {
-      width: 40,
-      height: 40,
+    timelineMarker: {
+      width: 26,
+      height: 26,
       borderRadius: 13,
       backgroundColor: '#ead4bb',
       alignItems: 'center',
       justifyContent: 'center',
     },
-    statCopy: {
+    timelineMarkerText: {
+      fontSize: 11,
+      fontWeight: '900',
+      color: '#6d4a2f',
+    },
+    timelinePhoto: {
+      width: 54,
+      height: 54,
+      borderRadius: 14,
+      backgroundColor: '#dacbbb',
+    },
+    timelinePhotoFallback: {
+      width: 54,
+      height: 54,
+      borderRadius: 14,
+      backgroundColor: '#ead4bb',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    timelineCopy: {
       flex: 1,
       minWidth: 0,
     },
-    statLabel: {
-      fontSize: 11,
+    timelineTitle: {
+      fontSize: 13,
+      fontWeight: '900',
+      color: '#2b2119',
+    },
+    timelineSubtitle: {
+      marginTop: 2,
+      fontSize: 13,
       fontWeight: '800',
-      color: '#92745e',
+      color: '#6d4a2f',
+    },
+    timelineMeta: {
+      marginTop: 2,
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#9b7356',
+    },
+    placesHero: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 14,
+      borderRadius: 18,
+      backgroundColor: '#fff6e9',
+      borderWidth: 1,
+      borderColor: '#e5d3bd',
+    },
+    placesHeroCopy: {
+      flex: 1,
+      minWidth: 0,
+    },
+    placesHeroTitle: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: '#2b2119',
+    },
+    placesHeroText: {
+      marginTop: 3,
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#8b7766',
+    },
+    placeList: {
+      gap: 10,
+      marginTop: 14,
+    },
+    placeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 10,
+      borderRadius: 16,
+      backgroundColor: '#fffaf1',
+      borderWidth: 1,
+      borderColor: '#e5d3bd',
+    },
+    placePhoto: {
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      backgroundColor: '#dacbbb',
+    },
+    placeNumber: {
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#ead4bb',
+    },
+    placeNumberText: {
+      fontSize: 17,
+      fontWeight: '900',
+      color: '#6d4a2f',
+    },
+    placeCopy: {
+      flex: 1,
+      minWidth: 0,
+    },
+    placeName: {
+      fontSize: 15,
+      fontWeight: '900',
+      color: '#2b2119',
+    },
+    placeMeta: {
+      marginTop: 3,
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#8b7766',
+    },
+    peopleHero: {
+      alignItems: 'center',
+      padding: 18,
+      borderRadius: 22,
+      backgroundColor: '#fff6e9',
+      borderWidth: 1,
+      borderColor: '#e5d3bd',
+    },
+    peopleHeroTitle: {
+      marginTop: 8,
+      fontSize: 24,
+      fontWeight: '900',
+      color: '#2b2119',
+      letterSpacing: 0,
+    },
+    peopleHeroText: {
+      marginTop: 6,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '700',
+      color: '#8b7766',
+      textAlign: 'center',
+    },
+    peopleGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginTop: 16,
+    },
+    personChip: {
+      width: '47%',
+      flexGrow: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      padding: 9,
+      borderRadius: 16,
+      backgroundColor: '#fffaf1',
+      borderWidth: 1,
+      borderColor: '#e5d3bd',
+    },
+    personPhoto: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: '#dacbbb',
+    },
+    personInitial: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#ead4bb',
+    },
+    personInitialText: {
+      fontSize: 13,
+      fontWeight: '900',
+      color: '#6d4a2f',
+    },
+    personName: {
+      flex: 1,
+      minWidth: 0,
+      fontSize: 13,
+      fontWeight: '800',
+      color: '#2b2119',
+    },
+    ahaGrid: {
+      flex: 1,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginTop: 4,
+    },
+    ahaCard: {
+      width: '47%',
+      flexGrow: 1,
+      minHeight: 132,
+      padding: 14,
+      borderRadius: 18,
+      backgroundColor: '#fff6e9',
+      borderWidth: 1,
+      borderColor: '#e5d3bd',
+      justifyContent: 'space-between',
+    },
+    ahaLabel: {
+      fontSize: 10,
+      fontWeight: '900',
+      color: '#9b7356',
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
-    statValue: {
-      marginTop: 2,
-      fontSize: 19,
+    ahaValue: {
+      marginTop: 8,
+      fontSize: 22,
+      lineHeight: 25,
       fontWeight: '900',
       color: '#2b2119',
+      letterSpacing: 0,
+    },
+    ahaDetail: {
+      marginTop: 8,
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: '700',
+      color: '#7d6857',
     },
     closingPage: {
       flex: 1,
