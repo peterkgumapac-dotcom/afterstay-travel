@@ -33,7 +33,7 @@ import { formatCurrency } from '@/lib/utils';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const PAGE_W = SCREEN_W - 40;
-const PAGE_H = 440;
+const PAGE_H = Math.min(500, Math.max(460, Math.round(PAGE_W * 1.36)));
 const SNAP_W = SCREEN_W;
 const MAX_PHOTO_PAGES = 15;
 
@@ -533,34 +533,28 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
 
   const renderPage = ({ item, index }: { item: AlbumPage; index: number }) => {
     const inputRange = [(index - 1) * SNAP_W, index * SNAP_W, (index + 1) * SNAP_W];
-    const pageScale = scrollX.interpolate({ inputRange, outputRange: [0.94, 1, 0.94], extrapolate: 'clamp' });
-    const rotateY = scrollX.interpolate({ inputRange, outputRange: ['-9deg', '0deg', '9deg'], extrapolate: 'clamp' });
-    const rotateZ = scrollX.interpolate({ inputRange, outputRange: ['-0.6deg', '0deg', '0.6deg'], extrapolate: 'clamp' });
-    const translateX = scrollX.interpolate({ inputRange, outputRange: [20, 0, -20], extrapolate: 'clamp' });
-    const translateY = scrollX.interpolate({ inputRange, outputRange: [14, 0, 14], extrapolate: 'clamp' });
-    const opacity = scrollX.interpolate({ inputRange, outputRange: [0.72, 1, 0.72], extrapolate: 'clamp' });
-    const pageShadeOpacity = scrollX.interpolate({ inputRange, outputRange: [0.18, 0.015, 0.18], extrapolate: 'clamp' });
-    const liftShadowOpacity = scrollX.interpolate({ inputRange, outputRange: [0.2, 0.46, 0.2], extrapolate: 'clamp' });
+    const pageScale = scrollX.interpolate({ inputRange, outputRange: [0.965, 1, 0.965], extrapolate: 'clamp' });
+    const translateX = scrollX.interpolate({ inputRange, outputRange: [18, 0, -18], extrapolate: 'clamp' });
+    const translateY = scrollX.interpolate({ inputRange, outputRange: [10, 0, 10], extrapolate: 'clamp' });
+    const opacity = scrollX.interpolate({ inputRange, outputRange: [0.62, 1, 0.62], extrapolate: 'clamp' });
+    const pageShadeOpacity = scrollX.interpolate({ inputRange, outputRange: [0.09, 0, 0.09], extrapolate: 'clamp' });
+    const liftShadowOpacity = scrollX.interpolate({ inputRange, outputRange: [0.12, 0.34, 0.12], extrapolate: 'clamp' });
 
     return (
       <View style={styles.pageFrame}>
-        <View style={styles.bookStackBack} />
-        <View style={styles.bookStackMid} />
-        <View style={styles.bookBindingShadow} />
         <RNAnimated.View style={[styles.pageLiftShadow, { opacity: liftShadowOpacity, transform: [{ translateY }, { scale: pageScale }] }]} />
         <RNAnimated.View
           style={[
             styles.pageShell,
             {
               opacity,
-              transform: [{ perspective: 900 }, { translateX }, { translateY }, { rotateY }, { rotateZ }, { scale: pageScale }],
+              transform: [{ translateX }, { translateY }, { scale: pageScale }],
             },
           ]}
         >
           {renderAlbumPageContent(item)}
-          <LinearGradient colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0)', 'rgba(71,41,20,0.16)']} style={styles.pageEdge} />
+          <LinearGradient colors={['rgba(255,255,255,0.26)', 'rgba(255,255,255,0.03)', 'rgba(71,41,20,0.12)']} style={styles.pageEdge} />
           <RNAnimated.View style={[styles.turnShade, { opacity: pageShadeOpacity }]} />
-          <View style={styles.pageCorner} />
         </RNAnimated.View>
       </View>
     );
@@ -608,7 +602,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
             <Pressable
               onPress={openNextPage}
               style={styles.turnPageControl}
-              accessibilityLabel="Turn album page"
+              accessibilityLabel="Next album page"
               accessibilityRole="button"
               hitSlop={12}
             >
@@ -678,7 +672,7 @@ function AlbumCoverPage({
         <View style={styles.coverActions}>
           <Pressable style={styles.primaryBtn} onPress={data.photos.length > 0 ? onOpenAlbum : onAddPhoto}>
             {data.photos.length > 0 ? <BookOpen size={16} color="#21160f" /> : <Images size={16} color="#21160f" />}
-            <Text style={styles.primaryBtnText}>{data.photos.length > 0 ? 'Turn Page' : 'Add Photos'}</Text>
+            <Text style={styles.primaryBtnText}>{data.photos.length > 0 ? 'Start Recap' : 'Add Photos'}</Text>
           </Pressable>
         </View>
       </View>
@@ -980,7 +974,7 @@ const getStyles = (_colors: ThemeColors) =>
     turnPageControl: {
       position: 'absolute',
       right: 38,
-      bottom: 24,
+      bottom: 28,
       zIndex: 8,
       width: 42,
       height: 42,
@@ -996,57 +990,30 @@ const getStyles = (_colors: ThemeColors) =>
       shadowOffset: { width: 0, height: 6 },
       elevation: 6,
     },
-    bookStackBack: {
-      position: 'absolute',
-      width: PAGE_W,
-      height: PAGE_H - 8,
-      borderRadius: 20,
-      backgroundColor: '#c4ad93',
-      transform: [{ translateX: 22 }, { translateY: 12 }, { rotate: '1.15deg' }],
-      opacity: 0.72,
-    },
-    bookStackMid: {
-      position: 'absolute',
-      width: PAGE_W,
-      height: PAGE_H - 4,
-      borderRadius: 21,
-      backgroundColor: '#eadcc8',
-      transform: [{ translateX: 12 }, { translateY: 6 }, { rotate: '0.55deg' }],
-      opacity: 0.88,
-    },
-    bookBindingShadow: {
-      position: 'absolute',
-      left: 26,
-      top: 18,
-      bottom: 22,
-      width: 22,
-      borderRadius: 18,
-      backgroundColor: 'rgba(0,0,0,0.24)',
-    },
     pageLiftShadow: {
       position: 'absolute',
-      width: PAGE_W - 18,
-      height: PAGE_H - 8,
+      width: PAGE_W - 10,
+      height: PAGE_H - 4,
       borderRadius: 22,
       backgroundColor: '#000',
       shadowColor: '#000',
-      shadowOpacity: 0.42,
-      shadowRadius: 26,
-      shadowOffset: { width: 0, height: 18 },
+      shadowOpacity: 0.24,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 12 },
       elevation: 8,
     },
     pageShell: {
       width: PAGE_W,
       height: PAGE_H,
-      borderRadius: 18,
+      borderRadius: 24,
       overflow: 'hidden',
       backgroundColor: '#f4eadb',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.42)',
+      borderColor: 'rgba(255,255,255,0.5)',
       shadowColor: '#000',
-      shadowOpacity: 0.36,
-      shadowRadius: 22,
-      shadowOffset: { width: 0, height: 16 },
+      shadowOpacity: 0.18,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 10 },
       elevation: 9,
       backfaceVisibility: 'hidden',
     },
@@ -1055,8 +1022,8 @@ const getStyles = (_colors: ThemeColors) =>
       top: 0,
       bottom: 0,
       left: 0,
-      width: 34,
-      opacity: 0.92,
+      width: 22,
+      opacity: 0.68,
     },
     turnShade: {
       position: 'absolute',
@@ -1065,18 +1032,6 @@ const getStyles = (_colors: ThemeColors) =>
       bottom: 0,
       left: 0,
       backgroundColor: '#2a1609',
-    },
-    pageCorner: {
-      position: 'absolute',
-      right: 0,
-      bottom: 0,
-      width: 38,
-      height: 38,
-      borderTopLeftRadius: 24,
-      backgroundColor: 'rgba(255,255,255,0.22)',
-      borderLeftWidth: 1,
-      borderTopWidth: 1,
-      borderColor: 'rgba(91,62,37,0.18)',
     },
     coverPage: {
       flex: 1,
