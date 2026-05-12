@@ -3,6 +3,7 @@ import {
   Animated as RNAnimated,
   Dimensions,
   FlatList,
+  PanResponder,
   Pressable,
   Share,
   StyleSheet,
@@ -11,7 +12,6 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   interpolate,
@@ -312,41 +312,51 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     });
   }, [beginTurn, dragX, finishTurn, isTurning, pageIndex, pages.length, turnProgress]);
 
-  const pageTurnGesture = useMemo(
+  const pageTurnPanResponder = useMemo(
     () =>
-      Gesture.Pan()
-        .enabled(canTurnPage)
-        .activeOffsetX([-8, 8])
-        .failOffsetY([-18, 18])
-        .onBegin(() => {
-          if (turningFromIndex !== null) return;
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          canTurnPage && gestureState.dx < -6 && Math.abs(gestureState.dy) < 28,
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          canTurnPage && gestureState.dx < -6 && Math.abs(gestureState.dy) < 28,
+        onPanResponderGrant: () => {
+          if (!canTurnPage || turningFromIndex !== null) return;
           isTurning.value = true;
           dragX.value = 0;
           turnProgress.value = 0;
-          runOnJS(beginTurn)();
-        })
-        .onUpdate((event) => {
-          if (event.translationX >= 0) return;
-          dragX.value = event.translationX;
-          turnProgress.value = Math.min(1, Math.max(0, -event.translationX / (PAGE_W * 0.72)));
-        })
-        .onEnd((event) => {
+          beginTurn();
+        },
+        onPanResponderMove: (_, gestureState) => {
+          if (gestureState.dx >= 0) return;
+          dragX.value = gestureState.dx;
+          turnProgress.value = Math.min(1, Math.max(0, -gestureState.dx / (PAGE_W * 0.72)));
+        },
+        onPanResponderRelease: (_, gestureState) => {
           const nextIndex = Math.min(pageIndex + 1, pages.length - 1);
-          const shouldCommit = turnProgress.value > 0.45 || event.velocityX < -650;
+          const shouldCommit = turnProgress.value > 0.45 || gestureState.vx < -0.65;
           if (shouldCommit && nextIndex !== pageIndex) {
             turnProgress.value = withTiming(1, { duration: 260, easing: Easing.out(Easing.cubic) }, () => {
               isTurning.value = false;
               dragX.value = 0;
               runOnJS(finishTurn)(nextIndex);
             });
-          } else {
-            turnProgress.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) }, () => {
-              isTurning.value = false;
-              dragX.value = 0;
-              runOnJS(cancelTurn)();
-            });
+            return;
           }
-        }),
+
+          turnProgress.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) }, () => {
+            isTurning.value = false;
+            dragX.value = 0;
+            runOnJS(cancelTurn)();
+          });
+        },
+        onPanResponderTerminate: () => {
+          turnProgress.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) }, () => {
+            isTurning.value = false;
+            dragX.value = 0;
+            runOnJS(cancelTurn)();
+          });
+        },
+      }),
     [beginTurn, cancelTurn, canTurnPage, dragX, finishTurn, isTurning, pageIndex, pages.length, turnProgress, turningFromIndex],
   );
 
@@ -464,8 +474,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         </View>
       </View>
 
-      <GestureDetector gesture={pageTurnGesture}>
-        <View style={styles.bookViewport}>
+      <View style={styles.bookViewport} {...pageTurnPanResponder.panHandlers}>
           <RNAnimated.FlatList
             ref={flatListRef}
             data={pages}
@@ -536,8 +545,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
               <ChevronRight size={21} color="#21160f" strokeWidth={2.5} />
             </Pressable>
           ) : null}
-        </View>
-      </GestureDetector>
+      </View>
 
       <View style={styles.dots}>
         {pages.map((_, index) => (
