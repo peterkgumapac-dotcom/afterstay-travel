@@ -44,12 +44,14 @@ import { formatCurrency } from '@/lib/utils';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PLAYER_H = Math.max(660, Math.min(820, Math.round(SCREEN_H * 0.9)));
 const MAX_PHOTO_PAGES = 15;
-const MAX_SCENES = 10;
+const MAX_SCENES = 12;
+const MAX_REEL_PHOTO_SLIDES = 9;
 const SWIPE_THRESHOLD = SCREEN_W * 0.22;
 const SCENE_DURATION_MS = 4200;
 
 type MemoryScene =
   | { type: 'cover' }
+  | { type: 'reelPhoto'; photo: AlbumPhoto; index: number; total: number }
   | { type: 'arrival'; beat?: StoryBeat; photo?: AlbumPhoto }
   | { type: 'highlights'; title: string; photos: AlbumPhoto[]; caption: string }
   | { type: 'peakDay'; beat?: StoryBeat; photo?: AlbumPhoto }
@@ -469,63 +471,14 @@ export const mockTripAlbumData: TripAlbumData = {
 function buildScenes(data: TripAlbumData): MemoryScene[] {
   if (data.photos.length === 0) return [{ type: 'cover' }, { type: 'closing' }];
 
-  const arrivalBeat = data.storyBeats.find((beat) => beat.id === 'arrival') ?? data.storyBeats[0];
-  const peakBeat = data.storyBeats.find((beat) => beat.id === 'peak');
   const scenes: MemoryScene[] = [{ type: 'cover' }];
-  const usedPhotoIds = new Set<string>();
-  const rememberPhoto = (photo?: AlbumPhoto) => {
-    if (photo) usedPhotoIds.add(photo.id);
-  };
 
-  const arrivalPhoto = arrivalBeat?.photo ?? data.photos[0];
-  scenes.push({ type: 'arrival', beat: arrivalBeat, photo: arrivalPhoto });
-  rememberPhoto(arrivalPhoto);
+  const reelPhotos = data.photos.slice(0, MAX_REEL_PHOTO_SLIDES);
+  reelPhotos.forEach((photo, index) => {
+    scenes.push({ type: 'reelPhoto', photo, index: index + 1, total: reelPhotos.length });
+  });
 
-  if (data.photos.length >= 2) {
-    scenes.push({
-      type: 'highlights',
-      title: data.topLocation ? `A few frames from ${data.topLocation}` : 'The frames that stayed',
-      photos: data.photos.slice(0, 3),
-      caption: data.photos.length < 3 ? 'A small set of photos, enough to bring the trip back.' : 'Three photos that carry the trip without making you work for it.',
-    });
-    data.photos.slice(0, 3).forEach(rememberPhoto);
-  }
-
-  const peakPhoto = peakBeat?.photo ?? data.photos.find((photo) => !usedPhotoIds.has(photo.id)) ?? data.photos[2];
-  if (peakBeat || peakPhoto) {
-    scenes.push({ type: 'peakDay', beat: peakBeat, photo: peakPhoto });
-    rememberPhoto(peakPhoto);
-  }
-
-  const extraBeats = data.storyBeats.filter((beat) => beat.id !== 'arrival' && beat.id !== 'peak' && beat.photo);
-  for (const beat of extraBeats.slice(0, 2)) {
-    scenes.push({ type: 'dayStory', beat });
-    rememberPhoto(beat.photo);
-  }
-
-  if (data.favoritePhoto && !usedPhotoIds.has(data.favoritePhoto.id)) {
-    scenes.push({ type: 'favoriteFrame', photo: data.favoritePhoto });
-    rememberPhoto(data.favoritePhoto);
-  }
-
-  const extraPhotos = data.photos.filter((photo) => !usedPhotoIds.has(photo.id)).slice(0, 4);
-  if (extraPhotos.length >= 2) {
-    scenes.push({
-      type: 'photoSet',
-      title: 'More pieces of the trip',
-      photos: extraPhotos.slice(0, 3),
-      caption: `${data.momentCount} moments became the camera-roll version of ${data.destination || 'this trip'}.`,
-    });
-  }
-
-  if (data.topPlaces.length > 0 || data.topLocation || data.placesCount > 0) {
-    scenes.push({ type: 'places', photo: data.photos[5] ?? data.heroPhoto });
-  }
-  if (data.travelers.length > 0 || data.memberCount > 1) {
-    scenes.push({ type: 'people', photo: data.photos[6] ?? data.favoritePhoto ?? data.heroPhoto });
-  }
-  scenes.push({ type: 'tripStats', photo: data.photos[7] ?? data.heroPhoto });
-  scenes.push({ type: 'aha', photo: data.photos[8] ?? data.favoritePhoto ?? data.heroPhoto });
+  scenes.push({ type: 'tripStats', photo: data.photos[MAX_REEL_PHOTO_SLIDES] ?? data.heroPhoto });
 
   const closing: MemoryScene = { type: 'closing', photo: data.heroPhoto ?? data.favoritePhoto };
   return [...scenes.slice(0, MAX_SCENES - 1), closing];
@@ -533,6 +486,7 @@ function buildScenes(data: TripAlbumData): MemoryScene[] {
 
 function getScenePhoto(scene: MemoryScene, data: TripAlbumData) {
   if (scene.type === 'cover') return data.heroPhoto;
+  if (scene.type === 'reelPhoto') return scene.photo;
   if (scene.type === 'arrival') return scene.photo ?? data.heroPhoto;
   if (scene.type === 'highlights') return scene.photos[0] ?? data.heroPhoto;
   if (scene.type === 'peakDay') return scene.photo ?? data.heroPhoto;
@@ -718,6 +672,14 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     <>
       {scene.type === 'cover' ? (
         <MemoryCoverScene data={data} styles={styles} colors={colors} onPlayMemory={startMemory} onAddPhoto={onAddPhoto} />
+      ) : null}
+      {scene.type === 'reelPhoto' ? (
+        <MemoryReelPhotoScene
+          scene={scene}
+          data={data}
+          styles={styles}
+          onOpenPhoto={onOpenPhoto}
+        />
       ) : null}
       {scene.type === 'arrival' ? (
         <MemoryPhotoScene
@@ -1002,6 +964,48 @@ function MemoryPhotoScene({
             <Text style={styles.sceneLocationText} numberOfLines={1}>{photo.location}</Text>
           </View>
         ) : null}
+      </View>
+    </View>
+  );
+}
+
+function MemoryReelPhotoScene({
+  scene,
+  data,
+  styles,
+  onOpenPhoto,
+}: {
+  scene: Extract<MemoryScene, { type: 'reelPhoto' }>;
+  data: TripAlbumData;
+  styles: ReturnType<typeof getStyles>;
+  onOpenPhoto?: (photo: AlbumPhoto) => void;
+}) {
+  const title = scene.photo.caption ?? scene.photo.location ?? `Memory ${scene.index}`;
+  const date = formatAlbumDate(scene.photo.date, { month: 'short', day: 'numeric' });
+  const detail = [
+    scene.photo.location,
+    date,
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <View style={styles.reelSceneContent}>
+      <Pressable
+        style={styles.reelPhotoHitArea}
+        onPress={() => onOpenPhoto?.(scene.photo)}
+        accessibilityRole="imagebutton"
+      >
+        <View />
+      </Pressable>
+      <View style={styles.reelPhotoCopy}>
+        <Text style={styles.sceneEyebrow}>Highlight {scene.index}/{scene.total}</Text>
+        <Text style={styles.reelPhotoTitle} numberOfLines={2}>{title}</Text>
+        {detail ? <Text style={styles.reelPhotoDetail} numberOfLines={1}>{detail}</Text> : null}
+      </View>
+      <View style={styles.reelFooterStrip}>
+        <Text style={styles.reelFooterTitle} numberOfLines={1}>{data.title}</Text>
+        <Text style={styles.reelFooterMeta} numberOfLines={1}>
+          {data.momentCount} moments · {data.placesCount} places · {data.spentLabel}
+        </Text>
       </View>
     </View>
   );
@@ -1302,6 +1306,61 @@ const getStyles = (_colors: ThemeColors) =>
       paddingBottom: 88,
       paddingTop: 112,
       zIndex: 2,
+    },
+    reelSceneContent: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      paddingHorizontal: 22,
+      paddingBottom: 94,
+      paddingTop: 112,
+      zIndex: 2,
+    },
+    reelPhotoHitArea: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 1,
+    },
+    reelPhotoCopy: {
+      zIndex: 2,
+      maxWidth: SCREEN_W - 58,
+    },
+    reelPhotoTitle: {
+      marginTop: 8,
+      color: '#fff',
+      fontSize: 38,
+      lineHeight: 41,
+      fontWeight: '900',
+      letterSpacing: 0,
+    },
+    reelPhotoDetail: {
+      marginTop: 10,
+      color: 'rgba(255,255,255,0.84)',
+      fontSize: 15,
+      lineHeight: 20,
+      fontWeight: '800',
+      letterSpacing: 0,
+    },
+    reelFooterStrip: {
+      zIndex: 2,
+      marginTop: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 18,
+      backgroundColor: 'rgba(0,0,0,0.34)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.14)',
+    },
+    reelFooterTitle: {
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '900',
+      letterSpacing: 0,
+    },
+    reelFooterMeta: {
+      marginTop: 3,
+      color: 'rgba(255,255,255,0.68)',
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0,
     },
     progressRow: {
       position: 'absolute',
