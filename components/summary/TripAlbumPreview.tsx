@@ -34,7 +34,6 @@ import {
   Route,
   Share2,
   Sparkles,
-  Users,
 } from 'lucide-react-native';
 
 import type { ThemeColors } from '@/constants/ThemeContext';
@@ -45,7 +44,7 @@ import { formatCurrency } from '@/lib/utils';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PLAYER_H = Math.max(660, Math.min(820, Math.round(SCREEN_H * 0.9)));
 const MAX_PHOTO_PAGES = 15;
-const MAX_SCENES = 8;
+const MAX_SCENES = 10;
 const SWIPE_THRESHOLD = SCREEN_W * 0.22;
 const SCENE_DURATION_MS = 4200;
 
@@ -54,8 +53,12 @@ type MemoryScene =
   | { type: 'arrival'; beat?: StoryBeat; photo?: AlbumPhoto }
   | { type: 'highlights'; title: string; photos: AlbumPhoto[]; caption: string }
   | { type: 'peakDay'; beat?: StoryBeat; photo?: AlbumPhoto }
+  | { type: 'dayStory'; beat: StoryBeat }
   | { type: 'favoriteFrame'; photo: AlbumPhoto }
-  | { type: 'peoplePlaces'; photo?: AlbumPhoto }
+  | { type: 'photoSet'; title: string; photos: AlbumPhoto[]; caption: string }
+  | { type: 'people'; photo?: AlbumPhoto }
+  | { type: 'places'; photo?: AlbumPhoto }
+  | { type: 'tripStats'; photo?: AlbumPhoto }
   | { type: 'aha'; photo?: AlbumPhoto }
   | { type: 'closing'; photo?: AlbumPhoto };
 
@@ -266,7 +269,7 @@ function buildStoryBeats(moments: Moment[], albumPhotos: AlbumPhoto[], favoriteP
     if (!beat) continue;
     unique.set(beat.id, beat);
   }
-  return Array.from(unique.values()).slice(0, 4);
+  return Array.from(unique.values()).slice(0, 6);
 }
 
 function buildAhaCards(data: {
@@ -469,8 +472,14 @@ function buildScenes(data: TripAlbumData): MemoryScene[] {
   const arrivalBeat = data.storyBeats.find((beat) => beat.id === 'arrival') ?? data.storyBeats[0];
   const peakBeat = data.storyBeats.find((beat) => beat.id === 'peak');
   const scenes: MemoryScene[] = [{ type: 'cover' }];
+  const usedPhotoIds = new Set<string>();
+  const rememberPhoto = (photo?: AlbumPhoto) => {
+    if (photo) usedPhotoIds.add(photo.id);
+  };
 
-  scenes.push({ type: 'arrival', beat: arrivalBeat, photo: arrivalBeat?.photo ?? data.photos[0] });
+  const arrivalPhoto = arrivalBeat?.photo ?? data.photos[0];
+  scenes.push({ type: 'arrival', beat: arrivalBeat, photo: arrivalPhoto });
+  rememberPhoto(arrivalPhoto);
 
   if (data.photos.length >= 2) {
     scenes.push({
@@ -479,17 +488,47 @@ function buildScenes(data: TripAlbumData): MemoryScene[] {
       photos: data.photos.slice(0, 3),
       caption: data.photos.length < 3 ? 'A small set of photos, enough to bring the trip back.' : 'Three photos that carry the trip without making you work for it.',
     });
+    data.photos.slice(0, 3).forEach(rememberPhoto);
   }
 
-  if (peakBeat || data.photos[2]) scenes.push({ type: 'peakDay', beat: peakBeat, photo: peakBeat?.photo ?? data.photos[2] });
-  if (data.favoritePhoto) scenes.push({ type: 'favoriteFrame', photo: data.favoritePhoto });
-  if (data.topPlaces.length > 0 || data.travelers.length > 0 || data.memberCount > 0) {
-    scenes.push({ type: 'peoplePlaces', photo: data.photos[3] ?? data.heroPhoto });
+  const peakPhoto = peakBeat?.photo ?? data.photos.find((photo) => !usedPhotoIds.has(photo.id)) ?? data.photos[2];
+  if (peakBeat || peakPhoto) {
+    scenes.push({ type: 'peakDay', beat: peakBeat, photo: peakPhoto });
+    rememberPhoto(peakPhoto);
   }
-  scenes.push({ type: 'aha', photo: data.photos[4] ?? data.favoritePhoto ?? data.heroPhoto });
-  scenes.push({ type: 'closing', photo: data.heroPhoto ?? data.favoritePhoto });
 
-  return scenes.slice(0, MAX_SCENES);
+  const extraBeats = data.storyBeats.filter((beat) => beat.id !== 'arrival' && beat.id !== 'peak' && beat.photo);
+  for (const beat of extraBeats.slice(0, 2)) {
+    scenes.push({ type: 'dayStory', beat });
+    rememberPhoto(beat.photo);
+  }
+
+  if (data.favoritePhoto && !usedPhotoIds.has(data.favoritePhoto.id)) {
+    scenes.push({ type: 'favoriteFrame', photo: data.favoritePhoto });
+    rememberPhoto(data.favoritePhoto);
+  }
+
+  const extraPhotos = data.photos.filter((photo) => !usedPhotoIds.has(photo.id)).slice(0, 4);
+  if (extraPhotos.length >= 2) {
+    scenes.push({
+      type: 'photoSet',
+      title: 'More pieces of the trip',
+      photos: extraPhotos.slice(0, 3),
+      caption: `${data.momentCount} moments became the camera-roll version of ${data.destination || 'this trip'}.`,
+    });
+  }
+
+  if (data.topPlaces.length > 0 || data.topLocation || data.placesCount > 0) {
+    scenes.push({ type: 'places', photo: data.photos[5] ?? data.heroPhoto });
+  }
+  if (data.travelers.length > 0 || data.memberCount > 1) {
+    scenes.push({ type: 'people', photo: data.photos[6] ?? data.favoritePhoto ?? data.heroPhoto });
+  }
+  scenes.push({ type: 'tripStats', photo: data.photos[7] ?? data.heroPhoto });
+  scenes.push({ type: 'aha', photo: data.photos[8] ?? data.favoritePhoto ?? data.heroPhoto });
+
+  const closing: MemoryScene = { type: 'closing', photo: data.heroPhoto ?? data.favoritePhoto };
+  return [...scenes.slice(0, MAX_SCENES - 1), closing];
 }
 
 function getScenePhoto(scene: MemoryScene, data: TripAlbumData) {
@@ -497,8 +536,12 @@ function getScenePhoto(scene: MemoryScene, data: TripAlbumData) {
   if (scene.type === 'arrival') return scene.photo ?? data.heroPhoto;
   if (scene.type === 'highlights') return scene.photos[0] ?? data.heroPhoto;
   if (scene.type === 'peakDay') return scene.photo ?? data.heroPhoto;
+  if (scene.type === 'dayStory') return scene.beat.photo ?? data.heroPhoto;
   if (scene.type === 'favoriteFrame') return scene.photo;
-  if (scene.type === 'peoplePlaces' || scene.type === 'aha' || scene.type === 'closing') return scene.photo ?? data.heroPhoto;
+  if (scene.type === 'photoSet') return scene.photos[0] ?? data.heroPhoto;
+  if (scene.type === 'people' || scene.type === 'places' || scene.type === 'tripStats' || scene.type === 'aha' || scene.type === 'closing') {
+    return scene.photo ?? data.heroPhoto;
+  }
   return data.heroPhoto;
 }
 
@@ -699,6 +742,16 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
           onOpenPhoto={onOpenPhoto}
         />
       ) : null}
+      {scene.type === 'dayStory' ? (
+        <MemoryPhotoScene
+          eyebrow={scene.beat.label}
+          title={scene.beat.title}
+          detail={scene.beat.detail}
+          photo={scene.beat.photo}
+          styles={styles}
+          onOpenPhoto={onOpenPhoto}
+        />
+      ) : null}
       {scene.type === 'favoriteFrame' ? (
         <MemoryPhotoScene
           eyebrow="Favorite frame"
@@ -710,7 +763,10 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
           featured
         />
       ) : null}
-      {scene.type === 'peoplePlaces' ? <MemoryPeoplePlacesScene data={data} styles={styles} /> : null}
+      {scene.type === 'photoSet' ? <MemoryPhotoSetScene scene={scene} styles={styles} onOpenPhoto={onOpenPhoto} /> : null}
+      {scene.type === 'places' ? <MemoryPlacesScene data={data} styles={styles} /> : null}
+      {scene.type === 'people' ? <MemoryPeopleScene data={data} styles={styles} /> : null}
+      {scene.type === 'tripStats' ? <MemoryTripStatsScene data={data} styles={styles} /> : null}
       {scene.type === 'aha' ? <MemoryAhaScene data={data} styles={styles} /> : null}
       {scene.type === 'closing' ? (
         <MemoryClosingScene
@@ -990,31 +1046,123 @@ function MemoryHighlightsScene({
   );
 }
 
-function MemoryPeoplePlacesScene({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+function MemoryPhotoSetScene({
+  scene,
+  styles,
+  onOpenPhoto,
+}: {
+  scene: Extract<MemoryScene, { type: 'photoSet' }>;
+  styles: ReturnType<typeof getStyles>;
+  onOpenPhoto?: (photo: AlbumPhoto) => void;
+}) {
+  return (
+    <View style={styles.sceneContent}>
+      <View style={styles.sceneCopyBlockCompact}>
+        <Text style={styles.sceneEyebrow}>Camera roll</Text>
+        <Text style={styles.sceneTitle} numberOfLines={2}>{scene.title}</Text>
+        <Text style={styles.sceneDetail} numberOfLines={2}>{scene.caption}</Text>
+      </View>
+      <View style={styles.photoSetGrid}>
+        {scene.photos.slice(0, 3).map((photo, index) => (
+          <Pressable
+            key={photo.id}
+            style={[styles.photoSetCard, index === 0 && styles.photoSetCardLarge]}
+            onPress={() => onOpenPhoto?.(photo)}
+          >
+            <Image source={{ uri: photo.uri }} style={stylesStatic.imageFill} contentFit="cover" transition={150} />
+            {photo.location ? (
+              <LinearGradient colors={['transparent', 'rgba(0,0,0,0.62)']} style={styles.photoSetCardGradient}>
+                <Text style={styles.photoSetCardLabel} numberOfLines={1}>{photo.location}</Text>
+              </LinearGradient>
+            ) : null}
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function MemoryPeopleScene({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
   const visibleTravelers = data.travelers.length > 0 ? data.travelers : [{ id: 'solo', name: 'You' }];
 
   return (
     <View style={styles.sceneContent}>
       <View style={styles.sceneCopyBlockCompact}>
-        <Text style={styles.sceneEyebrow}>People + Places</Text>
+        <Text style={styles.sceneEyebrow}>People</Text>
         <Text style={styles.sceneTitle} numberOfLines={2}>Who made it feel like a trip</Text>
+        <Text style={styles.sceneDetail} numberOfLines={2}>
+          {data.memberCount || 1} traveler{(data.memberCount || 1) !== 1 ? 's' : ''} carried this memory together.
+        </Text>
       </View>
-      <View style={styles.glassPanel}>
-        <View style={styles.panelRow}>
-          <Users size={17} color="#f3c996" />
-          <Text style={styles.panelTitle} numberOfLines={1}>{visibleTravelers.slice(0, 4).map((traveler) => traveler.name).join(', ')}</Text>
-        </View>
-        <Text style={styles.panelText}>{data.memberCount || 1} traveler{(data.memberCount || 1) !== 1 ? 's' : ''} in this memory.</Text>
+      <View style={styles.peopleGrid}>
+        {visibleTravelers.slice(0, 6).map((traveler, index) => (
+          <View key={traveler.id} style={styles.personCard}>
+            {traveler.photo ? (
+              <Image source={{ uri: traveler.photo }} style={styles.personAvatar} contentFit="cover" transition={150} />
+            ) : (
+              <View style={styles.personAvatarFallback}>
+                <Text style={styles.personInitial}>{traveler.name.trim()[0]?.toUpperCase() ?? 'Y'}</Text>
+              </View>
+            )}
+            <Text style={styles.personName} numberOfLines={1}>{traveler.name}</Text>
+            <Text style={styles.personRole}>{index === 0 ? 'Host memory' : 'Traveler'}</Text>
+          </View>
+        ))}
       </View>
-      <View style={styles.placesStack}>
+    </View>
+  );
+}
+
+function MemoryPlacesScene({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+  const visiblePlaces = data.topPlaces.length > 0
+    ? data.topPlaces
+    : [{ id: 'destination', name: data.topLocation ?? (data.destination || 'The trip'), category: 'Most remembered' }];
+
+  return (
+    <View style={styles.sceneContent}>
+      <View style={styles.sceneCopyBlockCompact}>
+        <Text style={styles.sceneEyebrow}>Places</Text>
+        <Text style={styles.sceneTitle} numberOfLines={2}>The map inside the memory</Text>
+        <Text style={styles.sceneDetail} numberOfLines={2}>
+          {data.placesCount || visiblePlaces.length} place{(data.placesCount || visiblePlaces.length) !== 1 ? 's' : ''} shaped the route.
+        </Text>
+      </View>
+      <View style={styles.placesStackLarge}>
         <View style={styles.panelRow}>
           <Route size={17} color="#f3c996" />
           <Text style={styles.panelTitle}>{data.topLocation ?? data.destination}</Text>
         </View>
-        {data.topPlaces.slice(0, 3).map((place) => (
+        {visiblePlaces.slice(0, 5).map((place) => (
           <View key={place.id} style={styles.placeChip}>
             <Text style={styles.placeChipName} numberOfLines={1}>{place.name}</Text>
             <Text style={styles.placeChipMeta} numberOfLines={1}>{place.category ?? 'Saved place'}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function MemoryTripStatsScene({ data, styles }: { data: TripAlbumData; styles: ReturnType<typeof getStyles> }) {
+  const stats = [
+    { id: 'moments', label: 'Moments saved', value: String(data.momentCount), detail: 'Photos and notes that made it into AfterStay.' },
+    { id: 'nights', label: 'Nights away', value: String(data.nights || 1), detail: 'The shape of the stay.' },
+    { id: 'spent', label: 'Trip spend', value: data.spentLabel, detail: data.spentLabel === 'No spend yet' ? 'No budget log yet.' : 'Logged from shared expenses.' },
+    { id: 'places', label: 'Places', value: String(data.placesCount), detail: 'Saved or remembered stops.' },
+  ];
+
+  return (
+    <View style={styles.sceneContent}>
+      <View style={styles.sceneCopyBlockCompact}>
+        <Text style={styles.sceneEyebrow}>Trip summary</Text>
+        <Text style={styles.sceneTitle} numberOfLines={2}>The trip in numbers</Text>
+      </View>
+      <View style={styles.statsGrid}>
+        {stats.map((stat) => (
+          <View key={stat.id} style={styles.statCard}>
+            <Text style={styles.statLabel}>{stat.label}</Text>
+            <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{stat.value}</Text>
+            <Text style={styles.statDetail} numberOfLines={2}>{stat.detail}</Text>
           </View>
         ))}
       </View>
@@ -1500,6 +1648,14 @@ const getStyles = (_colors: ThemeColors) =>
       borderWidth: 1,
       borderColor: 'rgba(255,255,255,0.14)',
     },
+    placesStackLarge: {
+      gap: 11,
+      padding: 18,
+      borderRadius: 26,
+      backgroundColor: 'rgba(0,0,0,0.32)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.16)',
+    },
     placeChip: {
       paddingHorizontal: 13,
       paddingVertical: 11,
@@ -1517,6 +1673,129 @@ const getStyles = (_colors: ThemeColors) =>
       fontSize: 11,
       fontWeight: '800',
       color: 'rgba(255,255,255,0.68)',
+      letterSpacing: 0,
+    },
+    photoSetGrid: {
+      height: PLAYER_H * 0.5,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+    },
+    photoSetCard: {
+      flex: 1,
+      minWidth: '47%',
+      borderRadius: 24,
+      overflow: 'hidden',
+      backgroundColor: 'rgba(255,255,255,0.1)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.18)',
+    },
+    photoSetCardLarge: {
+      minWidth: '100%',
+      flexBasis: '100%',
+      flexGrow: 1.25,
+    },
+    photoSetCardGradient: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      paddingHorizontal: 13,
+      paddingTop: 26,
+      paddingBottom: 12,
+    },
+    photoSetCardLabel: {
+      color: '#fff',
+      fontSize: 12,
+      fontWeight: '900',
+      letterSpacing: 0,
+    },
+    peopleGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+    },
+    personCard: {
+      width: (SCREEN_W - 68) / 2,
+      minHeight: 132,
+      padding: 14,
+      borderRadius: 24,
+      backgroundColor: 'rgba(0,0,0,0.34)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.16)',
+      justifyContent: 'center',
+    },
+    personAvatar: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      marginBottom: 10,
+      backgroundColor: 'rgba(255,255,255,0.16)',
+    },
+    personAvatarFallback: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      marginBottom: 10,
+      backgroundColor: '#f3c996',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    personInitial: {
+      color: '#15110d',
+      fontSize: 20,
+      fontWeight: '900',
+      letterSpacing: 0,
+    },
+    personName: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '900',
+      letterSpacing: 0,
+    },
+    personRole: {
+      marginTop: 3,
+      color: 'rgba(255,255,255,0.62)',
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 0,
+    },
+    statsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+    },
+    statCard: {
+      width: (SCREEN_W - 68) / 2,
+      minHeight: 146,
+      padding: 16,
+      borderRadius: 24,
+      backgroundColor: 'rgba(0,0,0,0.34)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.16)',
+      justifyContent: 'center',
+    },
+    statLabel: {
+      fontSize: 11,
+      fontWeight: '900',
+      color: '#f3c996',
+      letterSpacing: 1.1,
+      textTransform: 'uppercase',
+    },
+    statValue: {
+      marginTop: 9,
+      color: '#fff',
+      fontSize: 29,
+      lineHeight: 32,
+      fontWeight: '900',
+      letterSpacing: 0,
+    },
+    statDetail: {
+      marginTop: 7,
+      color: 'rgba(255,255,255,0.7)',
+      fontSize: 12,
+      lineHeight: 17,
+      fontWeight: '700',
       letterSpacing: 0,
     },
     ahaStack: {
