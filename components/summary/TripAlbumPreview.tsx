@@ -521,6 +521,21 @@ function getSceneDurationMs(scene: MemoryScene) {
   return SCENE_DURATIONS_MS.photo;
 }
 
+function getPlaybackSceneIndexForElapsed(scenes: MemoryScene[], elapsedMs: number) {
+  let offsetMs = 0;
+  for (let index = 0; index < scenes.length; index += 1) {
+    const durationMs = getSceneDurationMs(scenes[index]);
+    if (durationMs === 0) return index;
+    if (elapsedMs < offsetMs + durationMs) return index;
+    offsetMs += durationMs;
+  }
+  return Math.max(0, scenes.length - 1);
+}
+
+function getPlaybackSceneOffsetMs(scenes: MemoryScene[], sceneIndex: number) {
+  return scenes.slice(0, sceneIndex).reduce((total, scene) => total + getSceneDurationMs(scene), 0);
+}
+
 function waitForNextFrame() {
   return new Promise<void>((resolve) => {
     requestAnimationFrame(() => resolve());
@@ -548,11 +563,10 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const [sceneIndex, setSceneIndex] = useState(0);
   const [playbackSceneIndex, setPlaybackSceneIndex] = useState(0);
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
-  const playbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playbackRunIdRef = useRef(0);
-  const remainingSceneMsRef = useRef(0);
-  const sceneStartedAtRef = useRef(0);
-  const sceneCanAdvanceAtRef = useRef(0);
+  const playbackStartedAtRef = useRef(0);
+  const playbackElapsedMsRef = useRef(0);
   const pauseReasonRef = useRef<'hold' | null>(null);
   const scenes = useMemo(() => buildScenes(data), [data]);
   const isPlaying = playbackState === 'playing';
@@ -574,9 +588,9 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   }, [data.photos, visibleSceneIndex]);
 
   const clearPlaybackTimer = useCallback(() => {
-    if (playbackTimerRef.current) {
-      clearTimeout(playbackTimerRef.current);
-      playbackTimerRef.current = null;
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current);
+      playbackIntervalRef.current = null;
     }
   }, []);
 
@@ -585,8 +599,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     clearPlaybackTimer();
     cancelAnimation(sceneProgress);
     sceneProgress.value = 0;
-    remainingSceneMsRef.current = 0;
-    sceneCanAdvanceAtRef.current = 0;
+    playbackStartedAtRef.current = 0;
+    playbackElapsedMsRef.current = 0;
     pauseReasonRef.current = null;
     setPlaybackState(nextState);
   }, [clearPlaybackTimer, sceneProgress]);
@@ -599,36 +613,20 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     });
   }, [scenes.length]);
 
-  const advancePlayback = useCallback((runId: number) => {
-    if (runId !== playbackRunIdRef.current) return;
-    const msUntilAdvance = sceneCanAdvanceAtRef.current - Date.now();
-    if (msUntilAdvance > 120) {
-      clearPlaybackTimer();
-      playbackTimerRef.current = setTimeout(() => advancePlayback(runId), msUntilAdvance);
-      return;
-    }
-    setPlaybackSceneIndex((current) => {
-      const next = current + 1;
-      if (next >= scenes.length) {
-        setPlaybackState('complete');
-        sceneProgress.value = 0;
-        return current;
-      }
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      if (scenes[next]?.type === 'closing') {
-        setSceneIndex(next);
-        setPlaybackState('complete');
-      }
-      return next;
-    });
-  }, [clearPlaybackTimer, sceneProgress, scenes]);
-
   useEffect(() => {
     sceneEntryProgress.value = 0;
     sceneEntryProgress.value = withTiming(1, { duration: 650, easing: Easing.out(Easing.cubic) });
     sceneProgress.value = 0;
-    remainingSceneMsRef.current = 0;
-  }, [sceneEntryProgress, sceneProgress, visibleSceneIndex]);
+    if (playbackState === 'playing' && currentScene.type !== 'closing') {
+      const elapsedMs = Math.max(0, Date.now() - playbackStartedAtRef.current);
+      const sceneOffsetMs = getPlaybackSceneOffsetMs(scenes, visibleSceneIndex);
+      const sceneElapsedMs = Math.max(0, elapsedMs - sceneOffsetMs);
+      const sceneDurationMs = getSceneDurationMs(currentScene);
+      const remainingDurationMs = Math.max(800, sceneDurationMs - sceneElapsedMs);
+      sceneProgress.value = Math.min(0.98, Math.max(0, sceneElapsedMs / sceneDurationMs));
+      sceneProgress.value = withTiming(1, { duration: remainingDurationMs, easing: Easing.linear });
+    }
+  }, [currentScene, playbackState, sceneEntryProgress, sceneProgress, scenes, visibleSceneIndex]);
 
   useEffect(() => {
     clearPlaybackTimer();
@@ -642,33 +640,27 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       sceneProgress.value = 0;
       return;
     }
-    const isResumingScene = remainingSceneMsRef.current > 0;
-    const remainingDuration = isResumingScene
-      ? Math.max(800, remainingSceneMsRef.current)
-      : Math.max(5500, getSceneDurationMs(currentScene));
     const runId = playbackRunIdRef.current;
-    const startedAt = Date.now();
-    const dueAt = startedAt + remainingDuration;
-    sceneStartedAtRef.current = startedAt;
-    sceneCanAdvanceAtRef.current = dueAt;
-    remainingSceneMsRef.current = remainingDuration;
-    sceneProgress.value = withTiming(1, { duration: remainingDuration, easing: Easing.linear }, (finished) => {
-      if (!finished) return;
-    });
-    const scheduleAdvance = (delayMs: number) => {
-      playbackTimerRef.current = setTimeout(() => {
-        if (runId !== playbackRunIdRef.current) return;
-        const remainingMs = dueAt - Date.now();
-        if (remainingMs > 120) {
-          scheduleAdvance(remainingMs);
-          return;
-        }
-        remainingSceneMsRef.current = 0;
-        advancePlayback(runId);
-      }, Math.max(120, delayMs));
+    if (playbackStartedAtRef.current <= 0) {
+      playbackStartedAtRef.current = Date.now() - playbackElapsedMsRef.current;
+    }
+    const tickPlayback = () => {
+      if (runId !== playbackRunIdRef.current) return;
+      const elapsedMs = Date.now() - playbackStartedAtRef.current;
+      const targetIndex = getPlaybackSceneIndexForElapsed(scenes, elapsedMs);
+      setPlaybackSceneIndex((current) => {
+        if (current !== targetIndex) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        return targetIndex;
+      });
+      if (scenes[targetIndex]?.type === 'closing') {
+        setSceneIndex(targetIndex);
+        clearPlaybackTimer();
+        setPlaybackState('complete');
+      }
     };
-    scheduleAdvance(remainingDuration);
-  }, [advancePlayback, clearPlaybackTimer, currentScene, playbackState, sceneProgress]);
+    tickPlayback();
+    playbackIntervalRef.current = setInterval(tickPlayback, 250);
+  }, [clearPlaybackTimer, currentScene, playbackState, sceneProgress, scenes]);
 
   useEffect(() => () => {
     clearPlaybackTimer();
@@ -679,12 +671,10 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     if (playbackState !== 'playing') return;
     clearPlaybackTimer();
     cancelAnimation(sceneProgress);
-    const elapsed = Date.now() - sceneStartedAtRef.current;
-    const remaining = remainingSceneMsRef.current || getSceneDurationMs(currentScene);
-    remainingSceneMsRef.current = Math.max(800, remaining - elapsed);
+    playbackElapsedMsRef.current = Math.max(0, Date.now() - playbackStartedAtRef.current);
     pauseReasonRef.current = 'hold';
     setPlaybackState('paused');
-  }, [clearPlaybackTimer, currentScene, playbackState, sceneProgress]);
+  }, [clearPlaybackTimer, playbackState, sceneProgress]);
 
   const resumePlaybackFromHold = useCallback(() => {
     if (playbackState !== 'paused' || pauseReasonRef.current !== 'hold') return;
@@ -721,7 +711,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     await Promise.all(urls.map((url) => Image.prefetch(url).catch(() => false)));
     await waitForNextFrame();
     playbackRunIdRef.current += 1;
-    remainingSceneMsRef.current = 0;
+    playbackStartedAtRef.current = 0;
+    playbackElapsedMsRef.current = 0;
     setPlaybackState('playing');
   }, [data, dragX, sceneEntryProgress, scenes, stopPlayback, transitionProgress]);
 
