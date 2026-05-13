@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, type ImageStyle, type StyleProp, View } from 'react-native';
 
 import type { PostMedia } from '@/lib/types';
 
@@ -21,6 +21,38 @@ function getLayout(count: number): CollageLayout {
 
 const ROTATIONS = [-2, 1.8, -1.2, 2.2, -1.5];
 
+function CollageImage({
+  uri,
+  style,
+  recyclingKey,
+}: {
+  uri?: string;
+  style: StyleProp<ImageStyle>;
+  recyclingKey?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (!uri || failed) {
+    return (
+      <View style={[style, styles.imageFallback]}>
+        <Text style={styles.imageFallbackText}>Photo unavailable</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri }}
+      style={style}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      recyclingKey={recyclingKey ?? uri}
+      transition={0}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidCollageProps) {
   const layout = getLayout(media.length);
   const visible = media.slice(0, maxVisible);
@@ -30,13 +62,10 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
     return (
       <View style={styles.singleWrap}>
         <View style={styles.polaroid}>
-          <Image
-            source={{ uri: media[0]?.mediaUrl }}
+          <CollageImage
+            uri={media[0]?.mediaUrl}
             style={styles.singleImg}
-            contentFit="cover"
-            cachePolicy="memory-disk"
             recyclingKey={media[0]?.id || media[0]?.mediaUrl}
-            transition={0}
           />
         </View>
       </View>
@@ -51,13 +80,10 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
             key={m.id || i}
             style={[styles.polaroid, styles.duoCard, { transform: [{ rotate: `${ROTATIONS[i]}deg` }] }]}
           >
-            <Image
-              source={{ uri: m.mediaUrl }}
+            <CollageImage
+              uri={m.mediaUrl}
               style={styles.duoImg}
-              contentFit="cover"
-              cachePolicy="memory-disk"
               recyclingKey={m.id || m.mediaUrl}
-              transition={0}
             />
           </View>
         ))}
@@ -69,13 +95,10 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
     return (
       <View style={styles.triptychWrap}>
         <View style={[styles.polaroid, styles.heroCard, { transform: [{ rotate: `${ROTATIONS[0]}deg` }] }]}>
-          <Image
-            source={{ uri: visible[0]?.mediaUrl }}
+          <CollageImage
+            uri={visible[0]?.mediaUrl}
             style={styles.heroImg}
-            contentFit="cover"
-            cachePolicy="memory-disk"
             recyclingKey={visible[0]?.id || visible[0]?.mediaUrl}
-            transition={0}
           />
         </View>
         <View style={styles.triptychSide}>
@@ -84,13 +107,10 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
               key={m.id || i}
               style={[styles.polaroid, styles.smallCard, { transform: [{ rotate: `${ROTATIONS[i + 1]}deg` }] }]}
             >
-              <Image
-                source={{ uri: m.mediaUrl }}
+              <CollageImage
+                uri={m.mediaUrl}
                 style={styles.smallImg}
-                contentFit="cover"
-                cachePolicy="memory-disk"
                 recyclingKey={m.id || m.mediaUrl}
-                transition={0}
               />
             </View>
           ))}
@@ -107,13 +127,10 @@ export default function PolaroidCollage({ media, maxVisible = 4 }: PolaroidColla
           key={m.id || i}
           style={[styles.polaroid, styles.gridCard, { transform: [{ rotate: `${ROTATIONS[i]}deg` }] }]}
         >
-          <Image
-            source={{ uri: m.mediaUrl }}
+          <CollageImage
+            uri={m.mediaUrl}
             style={styles.gridImg}
-            contentFit="cover"
-            cachePolicy="memory-disk"
             recyclingKey={m.id || m.mediaUrl}
-            transition={0}
           />
           {i === maxVisible - 1 && overflow > 0 && (
             <View style={styles.overflowOverlay}>
@@ -197,5 +214,17 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: '#fff',
+  },
+  imageFallback: {
+    backgroundColor: '#f0e8d8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageFallbackText: {
+    color: '#8d7b63',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
 });

@@ -18,7 +18,10 @@ function parseSupabaseStorageRef(value: string, fallbackBucket: string): Storage
     return { bucket: fallbackBucket, path: trimmed.replace(/^\/+/, '') };
   }
 
-  const marker = '/storage/v1/object/';
+  const marker =
+    trimmed.includes('/storage/v1/render/image/')
+      ? '/storage/v1/render/image/'
+      : '/storage/v1/object/';
   const markerIndex = trimmed.indexOf(marker);
   if (markerIndex === -1) return null;
 
@@ -31,6 +34,11 @@ function parseSupabaseStorageRef(value: string, fallbackBucket: string): Storage
     bucket: bucketAndPath.slice(0, slashIndex),
     path: decodeURIComponent(bucketAndPath.slice(slashIndex + 1)),
   };
+}
+
+function publicStorageUrl(ref: StorageRef): string | undefined {
+  const { data } = supabase.storage.from(ref.bucket).getPublicUrl(ref.path);
+  return data.publicUrl;
 }
 
 function pruneSignedUrlCache(now = Date.now()): void {
@@ -66,7 +74,7 @@ export async function resolveRenderableStorageUrl(
     .from(ref.bucket)
     .createSignedUrl(ref.path, SIGNED_URL_TTL_SECONDS);
 
-  if (error || !data?.signedUrl) return raw.startsWith('http') ? raw : undefined;
+  if (error || !data?.signedUrl) return raw.startsWith('http') ? raw : publicStorageUrl(ref);
 
   signedUrlCache.set(cacheKey, {
     url: data.signedUrl,

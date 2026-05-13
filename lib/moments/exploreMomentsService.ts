@@ -30,7 +30,7 @@ function mapRpcPost(row: Record<string, unknown>): FeedPost {
     longitude: row.longitude as number | undefined,
     layoutType: (row.layout_type as FeedPost['layoutType']) ?? undefined,
     metadata: (row.metadata as Record<string, unknown>) ?? {},
-    media: Array.isArray(row.media) ? (row.media as PostMedia[]) : [],
+    media: normalizePostMediaRows(row.media),
     likesCount: (row.likes_count as number) ?? 0,
     commentsCount: (row.comments_count as number) ?? 0,
     saveCount: (row.save_count as number) ?? 0,
@@ -42,6 +42,41 @@ function mapRpcPost(row: Record<string, unknown>): FeedPost {
     viewerHasLiked: (row.viewer_has_liked as boolean) ?? false,
     viewerHasSaved: (row.viewer_has_saved as boolean) ?? false,
   };
+}
+
+function textField(row: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function numberField(row: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function normalizePostMediaRows(value: unknown): PostMedia[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map((item, index) => {
+      const storagePath = textField(item, 'storagePath', 'storage_path') ?? '';
+      const mediaUrl = textField(item, 'mediaUrl', 'media_url') ?? storagePath;
+      return {
+        id: textField(item, 'id') ?? '',
+        mediaUrl,
+        storagePath,
+        mediaType: textField(item, 'mediaType', 'media_type') ?? 'image',
+        width: numberField(item, 'width'),
+        height: numberField(item, 'height'),
+        orderIndex: numberField(item, 'orderIndex', 'order_index') ?? index,
+      };
+    });
 }
 
 function withUploadTimeout<T>(promise: PromiseLike<T>, message: string, ms = 45_000): Promise<T> {
@@ -193,8 +228,7 @@ async function uploadMedia(
     timeoutMs: 150_000,
   });
 
-  const { data: urlData } = supabase.storage.from('moments').getPublicUrl(storagePath);
-  return { storagePath, mediaUrl: urlData.publicUrl };
+  return { storagePath, mediaUrl: storagePath };
 }
 
 function resolvePostType(count: number, layoutType?: FeedPost['layoutType']): FeedPost['type'] {
@@ -374,11 +408,12 @@ export async function sharePost(postId: string): Promise<void> {
 // ── Stories ─────────────────────────────────────────────────────
 
 function mapStory(row: Record<string, unknown>, viewed: boolean): Story {
+  const storagePath = textField(row, 'storagePath', 'storage_path') ?? '';
   return {
     id: row.id as string,
     userId: row.user_id as string,
-    mediaUrl: row.media_url as string,
-    storagePath: row.storage_path as string,
+    mediaUrl: textField(row, 'mediaUrl', 'media_url') ?? storagePath,
+    storagePath,
     caption: (row.caption as string) ?? undefined,
     placeId: (row.place_id as string) ?? undefined,
     locationName: (row.location_name as string) ?? undefined,
@@ -509,9 +544,6 @@ export async function createStory(input: {
     timeoutMs: 150_000,
   });
 
-  const { data: urlData } = supabase.storage.from('moments').getPublicUrl(storagePath);
-  if (!urlData.publicUrl) throw new Error('createStory: public URL could not be generated');
-
   let story: Record<string, unknown> | null = null;
   try {
     const { data, error } = await supabase
@@ -519,7 +551,7 @@ export async function createStory(input: {
       .insert({
         id: storyId,
         user_id: user.id,
-        media_url: urlData.publicUrl,
+        media_url: storagePath,
         storage_path: storagePath,
         caption: input.caption ?? null,
         location_name: input.locationName ?? null,

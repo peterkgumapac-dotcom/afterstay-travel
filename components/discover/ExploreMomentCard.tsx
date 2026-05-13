@@ -9,16 +9,16 @@ import MomentEngagementBar from '@/components/discover/MomentEngagementBar';
 import PostOptionsMenu from '@/components/discover/PostOptionsMenu';
 import PolaroidCollage from '@/components/discover/PolaroidCollage';
 import type { MomentDisplay } from '@/components/moments/types';
-import { smallUrl } from '@/lib/imageUrl';
 import { isOfficialAfterStayPost, isTravelPulsePost } from '@/lib/officialAccount';
 import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
-import type { FeedPost, PostTag } from '@/lib/types';
+import type { FeedPost, PostMedia, PostTag } from '@/lib/types';
 
 const SCREEN_W = Dimensions.get('window').width;
 const CARD_PAD = 16;
 const MEDIA_W = SCREEN_W - CARD_PAD * 2;
 const AFTERSTAY_AUTHOR_NAME = 'AfterStay Travel';
 const DIRECT_MEDIA_URI_RE = /^(https?:|file:|content:|data:)/i;
+const SUPABASE_STORAGE_RE = /\/storage\/v1\/(object|render\/image)\//i;
 
 interface ExploreMomentCardProps {
   post: FeedPost;
@@ -141,7 +141,16 @@ function uniqueTexts(values: (string | undefined)[], limit: number): string[] {
 
 function directRenderableUri(value?: string): string | undefined {
   const trimmed = value?.trim();
-  return trimmed && DIRECT_MEDIA_URI_RE.test(trimmed) ? trimmed : undefined;
+  if (!trimmed || !DIRECT_MEDIA_URI_RE.test(trimmed)) return undefined;
+  return SUPABASE_STORAGE_RE.test(trimmed) ? undefined : trimmed;
+}
+
+function preferredMediaUrl(media: PostMedia): string | undefined {
+  return media.mediaUrl?.trim() || media.storagePath?.trim() || undefined;
+}
+
+function renderableMediaUrl(value?: string): string | undefined {
+  return directRenderableUri(value);
 }
 
 function ExploreMomentCardComponent({
@@ -210,7 +219,7 @@ function ExploreMomentCardComponent({
     let cancelled = false;
     setFailedMedia(new Set());
     const entries = [
-      ...(post.media ?? []).map((media, index) => [`media:${media.id || index}`, media.mediaUrl] as const),
+      ...(post.media ?? []).map((media, index) => [`media:${media.id || index}`, preferredMediaUrl(media)] as const),
       ...(post.photoUrl ? [['photo', post.photoUrl] as const] : []),
     ].filter(([, url]) => !!url && !directRenderableUri(url));
 
@@ -221,7 +230,7 @@ function ExploreMomentCardComponent({
 
     Promise.all(entries.map(async ([key, url]) => {
       try {
-        return [key, await resolveRenderableStorageUrl(url)] as const;
+        return [key, await resolveRenderableStorageUrl(url, 'moments')] as const;
       } catch {
         return [key, url] as const;
       }
@@ -233,20 +242,21 @@ function ExploreMomentCardComponent({
           return acc;
         }, {});
         setResolvedMediaUrls(nextUrls);
-      })
+      });
     return () => { cancelled = true; };
   }, [post.media, post.photoUrl]);
 
   const mediaWithResolvedUrls = useMemo(() => (post.media ?? []).map((media, index) => {
     const key = `media:${media.id || index}`;
+    const mediaUrl = preferredMediaUrl(media);
     return {
       ...media,
-      resolvedUrl: resolvedMediaUrls[key] ?? media.mediaUrl,
+      resolvedUrl: resolvedMediaUrls[key] ?? renderableMediaUrl(mediaUrl),
       renderKey: key,
     };
   }), [post.media, resolvedMediaUrls]);
 
-  const resolvedPhotoUrl = resolvedMediaUrls.photo ?? post.photoUrl;
+  const resolvedPhotoUrl = resolvedMediaUrls.photo ?? renderableMediaUrl(post.photoUrl);
   const allPhotos = useMemo(() => (hasMedia
     ? mediaWithResolvedUrls.map((m) => m.resolvedUrl).filter(Boolean)
     : resolvedPhotoUrl ? [resolvedPhotoUrl] : []), [hasMedia, mediaWithResolvedUrls, resolvedPhotoUrl]);
@@ -284,8 +294,8 @@ function ExploreMomentCardComponent({
 
   const collageMedia = useMemo(() => mediaWithResolvedUrls.map((media) => ({
     ...media,
-    mediaUrl: smallUrl(media.resolvedUrl) ?? media.resolvedUrl,
-  })), [mediaWithResolvedUrls]);
+    mediaUrl: media.resolvedUrl ?? '',
+  })).filter((media) => !!media.mediaUrl), [mediaWithResolvedUrls]);
   const handleLike = useCallback(() => onLike(post.id), [onLike, post.id]);
   const handleComment = useCallback(() => onComment(post.id), [onComment, post.id]);
   const handleShare = useCallback(() => onShare(post.id), [onShare, post.id]);
@@ -433,7 +443,13 @@ function ExploreMomentCardComponent({
         {isCollage && hasMedia ? (
           <PhotoZoomLink href={viewerHref(0)}>
             <TouchableOpacity activeOpacity={0.9}>
-              <PolaroidCollage media={collageMedia} />
+              {collageMedia.length > 0 ? (
+                <PolaroidCollage media={collageMedia} />
+              ) : (
+                <View style={[styles.singleImg, styles.mediaFallback]}>
+                  <Text style={styles.mediaFallbackText}>Loading photos...</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </PhotoZoomLink>
         ) : isCarousel && hasMedia ? (
@@ -454,7 +470,7 @@ function ExploreMomentCardComponent({
                   <TouchableOpacity activeOpacity={0.9}>
                     {item.resolvedUrl && !failedMedia.has(item.renderKey) ? (
                       <Image
-                        source={{ uri: smallUrl(item.resolvedUrl) ?? item.resolvedUrl }}
+                        source={{ uri: item.resolvedUrl }}
                         style={styles.carouselImg}
                         contentFit="cover"
                         cachePolicy="memory-disk"
@@ -484,7 +500,7 @@ function ExploreMomentCardComponent({
             <TouchableOpacity activeOpacity={0.9}>
               {!failedMedia.has('photo') ? (
                 <Image
-                  source={{ uri: smallUrl(resolvedPhotoUrl) ?? resolvedPhotoUrl }}
+                  source={{ uri: resolvedPhotoUrl }}
                   style={styles.singleImg}
                   contentFit="cover"
                   cachePolicy="memory-disk"

@@ -5,8 +5,9 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 
 import { PAPER } from '@/components/feed/feedTheme';
 import { getStories } from '@/lib/moments/exploreMomentsService';
-import type { Story } from '@/lib/types';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 import { supabase } from '@/lib/supabase';
+import type { Story } from '@/lib/types';
 
 interface ExploreStoryRowProps {
   onStoryPress: (stories: Story[], startIndex: number) => void;
@@ -61,6 +62,21 @@ function groupByUser(stories: Story[]): StoryGroup[] {
   return Array.from(map.values());
 }
 
+async function resolveStoryMedia(story: Story): Promise<Story> {
+  const [mediaUrl, userAvatar] = await Promise.all([
+    resolveRenderableStorageUrl(story.mediaUrl || story.storagePath, 'moments').catch(() => story.mediaUrl),
+    story.userAvatar
+      ? resolveRenderableStorageUrl(story.userAvatar, 'avatars').catch(() => story.userAvatar)
+      : Promise.resolve(undefined),
+  ]);
+
+  return {
+    ...story,
+    mediaUrl: mediaUrl ?? story.mediaUrl,
+    userAvatar,
+  };
+}
+
 export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading = false, refreshKey = 0 }: ExploreStoryRowProps) {
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -78,10 +94,11 @@ export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading 
     setFailedImages(new Set());
     const storiesTask = setTimeout(() => {
       withTimeout(getStories())
-        .then((stories) => {
-          if (!cancelled) setGroups(groupByUser(stories).slice(0, 10));
+        .then(async (stories) => {
+          const resolvedStories = await Promise.all(stories.map(resolveStoryMedia));
+          if (!cancelled) setGroups(groupByUser(resolvedStories).slice(0, 10));
           if (!cancelled) setLoading(false);
-        }, (err) => {
+        }, () => {
           if (!cancelled) setGroups([]);
           if (!cancelled) setLoading(false);
         });
