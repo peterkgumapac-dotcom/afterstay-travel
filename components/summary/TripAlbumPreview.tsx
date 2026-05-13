@@ -552,13 +552,15 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const playbackRunIdRef = useRef(0);
   const remainingSceneMsRef = useRef(0);
   const sceneStartedAtRef = useRef(0);
+  const sceneCanAdvanceAtRef = useRef(0);
   const pauseReasonRef = useRef<'hold' | null>(null);
   const scenes = useMemo(() => buildScenes(data), [data]);
   const isPlaying = playbackState === 'playing';
   const isPaused = playbackState === 'paused';
   const isPreparing = playbackState === 'preparing';
+  const isPlaybackComplete = playbackState === 'complete';
   const isPlaybackActive = isPreparing || isPlaying || isPaused;
-  const visibleSceneIndex = isPlaybackActive ? playbackSceneIndex : sceneIndex;
+  const visibleSceneIndex = isPlaybackActive || isPlaybackComplete ? playbackSceneIndex : sceneIndex;
   const canGoPrevious = visibleSceneIndex > 0;
   const canGoNext = visibleSceneIndex < scenes.length - 1;
   const currentScene = scenes[visibleSceneIndex];
@@ -584,6 +586,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     cancelAnimation(sceneProgress);
     sceneProgress.value = 0;
     remainingSceneMsRef.current = 0;
+    sceneCanAdvanceAtRef.current = 0;
     pauseReasonRef.current = null;
     setPlaybackState(nextState);
   }, [clearPlaybackTimer, sceneProgress]);
@@ -598,6 +601,12 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
 
   const advancePlayback = useCallback((runId: number) => {
     if (runId !== playbackRunIdRef.current) return;
+    const msUntilAdvance = sceneCanAdvanceAtRef.current - Date.now();
+    if (msUntilAdvance > 120) {
+      clearPlaybackTimer();
+      playbackTimerRef.current = setTimeout(() => advancePlayback(runId), msUntilAdvance);
+      return;
+    }
     setPlaybackSceneIndex((current) => {
       const next = current + 1;
       if (next >= scenes.length) {
@@ -612,7 +621,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       }
       return next;
     });
-  }, [sceneProgress, scenes]);
+  }, [clearPlaybackTimer, sceneProgress, scenes]);
 
   useEffect(() => {
     sceneEntryProgress.value = 0;
@@ -641,6 +650,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     const startedAt = Date.now();
     const dueAt = startedAt + remainingDuration;
     sceneStartedAtRef.current = startedAt;
+    sceneCanAdvanceAtRef.current = dueAt;
     remainingSceneMsRef.current = remainingDuration;
     sceneProgress.value = withTiming(1, { duration: remainingDuration, easing: Easing.linear }, (finished) => {
       if (!finished) return;
