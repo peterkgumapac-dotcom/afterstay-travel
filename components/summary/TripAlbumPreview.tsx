@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Pressable,
@@ -45,9 +45,16 @@ import { formatCurrency } from '@/lib/utils';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PLAYER_H = Math.max(660, Math.min(820, Math.round(SCREEN_H * 0.9)));
 const MAX_PHOTO_PAGES = 15;
-const MAX_SCENES = 8;
+const MAX_SCENES = 6;
 const SWIPE_THRESHOLD = SCREEN_W * 0.22;
-const SCENE_DURATION_MS = 4200;
+const SCENE_DURATIONS_MS = {
+  cover: 6000,
+  photo: 7000,
+  highlights: 8000,
+  aha: 6500,
+} as const;
+
+type PlaybackState = 'idle' | 'preparing' | 'playing' | 'paused' | 'complete';
 
 type MemoryScene =
   | { type: 'cover' }
@@ -466,28 +473,32 @@ export const mockTripAlbumData: TripAlbumData = {
 function buildScenes(data: TripAlbumData): MemoryScene[] {
   if (data.photos.length === 0) return [{ type: 'cover' }, { type: 'closing' }];
 
-  const arrivalBeat = data.storyBeats.find((beat) => beat.id === 'arrival') ?? data.storyBeats[0];
-  const peakBeat = data.storyBeats.find((beat) => beat.id === 'peak');
+  const chronologicalPhotos = [...data.photos].sort((a, b) => {
+    const aTime = a.date ? new Date(a.date).getTime() : Number.MAX_SAFE_INTEGER;
+    const bTime = b.date ? new Date(b.date).getTime() : Number.MAX_SAFE_INTEGER;
+    return (Number.isNaN(aTime) ? Number.MAX_SAFE_INTEGER : aTime) - (Number.isNaN(bTime) ? Number.MAX_SAFE_INTEGER : bTime);
+  });
+  const addUniqueScene = (scenes: MemoryScene[], scene: MemoryScene) => {
+    const photo = getScenePhoto(scene, data);
+    if (photo && scenes.some((existing) => getScenePhoto(existing, data)?.id === photo.id)) return;
+    scenes.push(scene);
+  };
+  const arrivalBeat = data.storyBeats.find((beat) => beat.id === 'arrival' && beat.photo) ?? data.storyBeats.find((beat) => beat.photo);
+  const peakBeat = data.storyBeats.find((beat) => beat.id === 'peak' && beat.photo);
+  const favoritePhoto = data.favoritePhoto ?? chronologicalPhotos[0];
   const scenes: MemoryScene[] = [{ type: 'cover' }];
 
-  scenes.push({ type: 'arrival', beat: arrivalBeat, photo: arrivalBeat?.photo ?? data.photos[0] });
-
-  if (data.photos.length >= 2) {
-    scenes.push({
-      type: 'highlights',
-      title: data.topLocation ? `A few frames from ${data.topLocation}` : 'The frames that stayed',
-      photos: data.photos.slice(0, 3),
-      caption: data.photos.length < 3 ? 'A small set of photos, enough to bring the trip back.' : 'Three photos that carry the trip without making you work for it.',
-    });
+  if (data.photos.length < 3) {
+    addUniqueScene(scenes, { type: 'favoriteFrame', photo: favoritePhoto });
+    scenes.push({ type: 'closing', photo: data.heroPhoto ?? favoritePhoto });
+    return scenes;
   }
 
-  if (peakBeat || data.photos[2]) scenes.push({ type: 'peakDay', beat: peakBeat, photo: peakBeat?.photo ?? data.photos[2] });
-  if (data.favoritePhoto) scenes.push({ type: 'favoriteFrame', photo: data.favoritePhoto });
-  if (data.topPlaces.length > 0 || data.travelers.length > 0 || data.memberCount > 0) {
-    scenes.push({ type: 'peoplePlaces', photo: data.photos[3] ?? data.heroPhoto });
-  }
-  scenes.push({ type: 'aha', photo: data.photos[4] ?? data.favoritePhoto ?? data.heroPhoto });
-  scenes.push({ type: 'closing', photo: data.heroPhoto ?? data.favoritePhoto });
+  addUniqueScene(scenes, { type: 'arrival', beat: arrivalBeat, photo: arrivalBeat?.photo ?? chronologicalPhotos[0] });
+  if (peakBeat) addUniqueScene(scenes, { type: 'peakDay', beat: peakBeat, photo: peakBeat.photo });
+  addUniqueScene(scenes, { type: 'favoriteFrame', photo: favoritePhoto });
+  scenes.push({ type: 'aha', photo: chronologicalPhotos.find((photo) => photo.id !== favoritePhoto.id) ?? data.heroPhoto });
+  scenes.push({ type: 'closing', photo: data.heroPhoto ?? favoritePhoto });
 
   return scenes.slice(0, MAX_SCENES);
 }
@@ -502,15 +513,38 @@ function getScenePhoto(scene: MemoryScene, data: TripAlbumData) {
   return data.heroPhoto;
 }
 
+function getSceneDurationMs(scene: MemoryScene) {
+  if (scene.type === 'cover') return SCENE_DURATIONS_MS.cover;
+  if (scene.type === 'highlights') return SCENE_DURATIONS_MS.highlights;
+  if (scene.type === 'aha') return SCENE_DURATIONS_MS.aha;
+  if (scene.type === 'closing') return 0;
+  return SCENE_DURATIONS_MS.photo;
+}
+
+function sceneTitleFromPhoto(photo?: AlbumPhoto, fallback = 'A memory from the trip') {
+  return photo?.location ?? photo?.caption ?? fallback;
+}
+
+function sceneDetailFromPhoto(photo?: AlbumPhoto, fallback = 'A quiet part of the trip worth keeping.') {
+  const date = formatAlbumDate(photo?.date);
+  if (photo?.caption) return photo.caption;
+  if (date) return `A moment from ${date}.`;
+  return fallback;
+}
+
 export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, onAddPhoto, onOpenPhoto }: Props) {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(colors), [colors]);
   const dragX = useSharedValue(0);
   const sceneProgress = useSharedValue(0);
   const transitionProgress = useSharedValue(0);
+  const sceneEntryProgress = useSharedValue(1);
   const [sceneIndex, setSceneIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isHolding, setIsHolding] = useState(false);
+  const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
+  const playbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remainingSceneMsRef = useRef(0);
+  const sceneStartedAtRef = useRef(0);
+  const pauseReasonRef = useRef<'hold' | null>(null);
   const scenes = useMemo(() => buildScenes(data), [data]);
   const canGoPrevious = sceneIndex > 0;
   const canGoNext = sceneIndex < scenes.length - 1;
@@ -518,11 +552,30 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const previousScene = canGoPrevious ? scenes[sceneIndex - 1] : undefined;
   const nextScene = canGoNext ? scenes[sceneIndex + 1] : undefined;
   const currentPhoto = getScenePhoto(currentScene, data);
+  const isPlaying = playbackState === 'playing';
+  const isPaused = playbackState === 'paused';
+  const isPreparing = playbackState === 'preparing';
 
   useEffect(() => {
     const urls = data.photos.slice(Math.max(0, sceneIndex - 1), sceneIndex + 2).map((photo) => photo.uri);
     urls.forEach((url) => void Image.prefetch(url).catch(() => {}));
   }, [data.photos, sceneIndex]);
+
+  const clearPlaybackTimer = useCallback(() => {
+    if (playbackTimerRef.current) {
+      clearTimeout(playbackTimerRef.current);
+      playbackTimerRef.current = null;
+    }
+  }, []);
+
+  const stopPlayback = useCallback((nextState: PlaybackState = 'idle') => {
+    clearPlaybackTimer();
+    cancelAnimation(sceneProgress);
+    sceneProgress.value = 0;
+    remainingSceneMsRef.current = 0;
+    pauseReasonRef.current = null;
+    setPlaybackState(nextState);
+  }, [clearPlaybackTimer, sceneProgress]);
 
   const commitDirection = useCallback((direction: 1 | -1) => {
     setSceneIndex((current) => {
@@ -532,61 +585,100 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     });
   }, [scenes.length]);
 
-  const stopMemory = useCallback(() => {
-    cancelAnimation(sceneProgress);
-    sceneProgress.value = 0;
-    setIsPlaying(false);
-  }, [sceneProgress]);
-
-  const autoAdvance = useCallback(() => {
+  const advancePlayback = useCallback(() => {
     setSceneIndex((current) => {
-      if (current >= scenes.length - 1) {
-        setIsPlaying(false);
+      const next = current + 1;
+      if (next >= scenes.length) {
+        setPlaybackState('complete');
         sceneProgress.value = 0;
         return current;
       }
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      return current + 1;
+      return next;
     });
   }, [sceneProgress, scenes.length]);
 
   useEffect(() => {
+    sceneEntryProgress.value = 0;
+    sceneEntryProgress.value = withTiming(1, { duration: 650, easing: Easing.out(Easing.cubic) });
     sceneProgress.value = 0;
-  }, [sceneIndex, sceneProgress]);
+    remainingSceneMsRef.current = 0;
+  }, [sceneEntryProgress, sceneIndex, sceneProgress]);
 
   useEffect(() => {
+    clearPlaybackTimer();
     cancelAnimation(sceneProgress);
-    if (!isPlaying) {
+    if (playbackState !== 'playing') {
+      if (playbackState === 'idle' || playbackState === 'complete') sceneProgress.value = 0;
+      return;
+    }
+    if (currentScene.type === 'closing') {
+      setPlaybackState('complete');
       sceneProgress.value = 0;
       return;
     }
-    if (isHolding) return;
-    const remainingDuration = Math.max(320, SCENE_DURATION_MS * Math.max(0, 1 - sceneProgress.value));
+    const remainingDuration = remainingSceneMsRef.current || getSceneDurationMs(currentScene);
+    sceneStartedAtRef.current = Date.now();
     sceneProgress.value = withTiming(1, { duration: remainingDuration, easing: Easing.linear }, (finished) => {
-      if (finished) runOnJS(autoAdvance)();
+      if (!finished) return;
     });
-  }, [autoAdvance, isHolding, isPlaying, sceneIndex, sceneProgress]);
+    playbackTimerRef.current = setTimeout(() => {
+      remainingSceneMsRef.current = 0;
+      advancePlayback();
+    }, remainingDuration);
+  }, [advancePlayback, clearPlaybackTimer, currentScene, playbackState, sceneProgress]);
+
+  useEffect(() => () => {
+    clearPlaybackTimer();
+    cancelAnimation(sceneProgress);
+  }, [clearPlaybackTimer, sceneProgress]);
+
+  const pausePlaybackForHold = useCallback(() => {
+    if (playbackState !== 'playing') return;
+    clearPlaybackTimer();
+    cancelAnimation(sceneProgress);
+    const elapsed = Date.now() - sceneStartedAtRef.current;
+    const remaining = remainingSceneMsRef.current || getSceneDurationMs(currentScene);
+    remainingSceneMsRef.current = Math.max(800, remaining - elapsed);
+    pauseReasonRef.current = 'hold';
+    setPlaybackState('paused');
+  }, [clearPlaybackTimer, currentScene, playbackState, sceneProgress]);
+
+  const resumePlaybackFromHold = useCallback(() => {
+    if (playbackState !== 'paused' || pauseReasonRef.current !== 'hold') return;
+    pauseReasonRef.current = null;
+    setPlaybackState('playing');
+  }, [playbackState]);
 
   const animateSceneTurn = useCallback((direction: 1 | -1) => {
     if ((direction === 1 && !canGoNext) || (direction === -1 && !canGoPrevious)) return;
-    cancelAnimation(sceneProgress);
+    stopPlayback('idle');
     transitionProgress.value = withTiming(1, { duration: 210, easing: Easing.out(Easing.cubic) });
     dragX.value = withTiming(direction === 1 ? -SCREEN_W : SCREEN_W, { duration: 230, easing: Easing.out(Easing.cubic) }, (finished) => {
       if (finished) runOnJS(commitDirection)(direction);
       dragX.value = 0;
       transitionProgress.value = 0;
     });
-  }, [canGoNext, canGoPrevious, commitDirection, dragX, sceneProgress, transitionProgress]);
+  }, [canGoNext, canGoPrevious, commitDirection, dragX, stopPlayback, transitionProgress]);
 
   const openNextScene = useCallback(() => animateSceneTurn(1), [animateSceneTurn]);
   const openPreviousScene = useCallback(() => animateSceneTurn(-1), [animateSceneTurn]);
 
-  const startMemory = useCallback(() => {
-    if (scenes.length <= 1) return;
+  const startMemory = useCallback(async () => {
+    if (data.photos.length === 0 || scenes.length <= 1) return;
+    stopPlayback('preparing');
+    setSceneIndex(0);
+    sceneEntryProgress.value = 1;
+    dragX.value = 0;
+    transitionProgress.value = 0;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    setIsPlaying(true);
-    setIsHolding(false);
-  }, [scenes.length]);
+    const urls = scenes
+      .map((scene) => getScenePhoto(scene, data)?.uri)
+      .filter((url): url is string => Boolean(url));
+    await Promise.all(urls.map((url) => Image.prefetch(url).catch(() => false)));
+    remainingSceneMsRef.current = 0;
+    setPlaybackState('playing');
+  }, [data, dragX, sceneEntryProgress, scenes, stopPlayback, transitionProgress]);
 
   const handleShare = async () => {
     await Share.share({
@@ -611,7 +703,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
 
           if (shouldGoNext || shouldGoPrevious) {
             const direction: 1 | -1 = shouldGoNext ? 1 : -1;
-            cancelAnimation(sceneProgress);
+            runOnJS(stopPlayback)('idle');
             dragX.value = withTiming(direction === 1 ? -SCREEN_W : SCREEN_W, { duration: 190, easing: Easing.out(Easing.cubic) }, (finished) => {
               if (finished) runOnJS(commitDirection)(direction);
               dragX.value = 0;
@@ -623,7 +715,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
           dragX.value = withSpring(0, { damping: 20, stiffness: 220, mass: 0.8 });
           transitionProgress.value = withTiming(0, { duration: 170, easing: Easing.out(Easing.cubic) });
         }),
-    [canGoNext, canGoPrevious, commitDirection, dragX, sceneProgress, transitionProgress],
+    [canGoNext, canGoPrevious, commitDirection, dragX, stopPlayback, transitionProgress],
   );
 
   const holdGesture = useMemo(
@@ -631,23 +723,27 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       Gesture.LongPress()
         .minDuration(180)
         .onStart(() => {
-          runOnJS(setIsHolding)(true);
+          runOnJS(pausePlaybackForHold)();
         })
         .onFinalize(() => {
-          runOnJS(setIsHolding)(false);
+          runOnJS(resumePlaybackFromHold)();
         }),
-    [],
+    [pausePlaybackForHold, resumePlaybackFromHold],
   );
 
   const combinedGesture = useMemo(() => Gesture.Simultaneous(pageGesture, holdGesture), [holdGesture, pageGesture]);
 
-  const activeSceneStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(transitionProgress.value, [0, 1], [1, 0.24], Extrapolation.CLAMP),
-    transform: [
-      { translateX: dragX.value },
-      { scale: interpolate(transitionProgress.value, [0, 1], [1, 0.985], Extrapolation.CLAMP) },
-    ],
-  }));
+  const activeSceneStyle = useAnimatedStyle(() => {
+    const playbackZoom = isPlaying ? interpolate(sceneProgress.value, [0, 1], [1, 1.025], Extrapolation.CLAMP) : 1;
+    return {
+      opacity: interpolate(transitionProgress.value, [0, 1], [1, 0.24], Extrapolation.CLAMP) * sceneEntryProgress.value,
+      transform: [
+        { translateX: dragX.value },
+        { scale: interpolate(transitionProgress.value, [0, 1], [1, 0.985], Extrapolation.CLAMP) },
+        { scale: playbackZoom },
+      ],
+    };
+  });
 
   const nextSceneStyle = useAnimatedStyle(() => {
     const reveal = Math.max(0, Math.min(1, -dragX.value / SCREEN_W));
@@ -674,13 +770,13 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const renderSceneContent = (scene: MemoryScene) => (
     <>
       {scene.type === 'cover' ? (
-        <MemoryCoverScene data={data} styles={styles} colors={colors} onPlayMemory={startMemory} onAddPhoto={onAddPhoto} />
+        <MemoryCoverScene data={data} styles={styles} colors={colors} playbackState={playbackState} onPlayMemory={startMemory} onAddPhoto={onAddPhoto} />
       ) : null}
       {scene.type === 'arrival' ? (
         <MemoryPhotoScene
           eyebrow={scene.beat?.label ?? 'First memory'}
-          title={scene.beat?.title ?? scene.photo?.location ?? 'The trip begins'}
-          detail={scene.beat?.detail ?? scene.photo?.caption ?? 'The first frame that brings the trip back.'}
+          title={sceneTitleFromPhoto(scene.photo, 'The trip begins')}
+          detail={sceneDetailFromPhoto(scene.photo, 'The first frame that brings the trip back.')}
           photo={scene.photo}
           styles={styles}
           onOpenPhoto={onOpenPhoto}
@@ -692,8 +788,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       {scene.type === 'peakDay' ? (
         <MemoryPhotoScene
           eyebrow={scene.beat?.label ?? 'Peak day'}
-          title={scene.beat?.title ?? scene.photo?.location ?? 'The fullest day'}
-          detail={scene.beat?.detail ?? scene.photo?.caption ?? 'The day the camera roll filled up.'}
+          title={sceneTitleFromPhoto(scene.photo, 'The fullest day')}
+          detail={sceneDetailFromPhoto(scene.photo, 'The day the camera roll filled up.')}
           photo={scene.photo}
           styles={styles}
           onOpenPhoto={onOpenPhoto}
@@ -702,8 +798,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       {scene.type === 'favoriteFrame' ? (
         <MemoryPhotoScene
           eyebrow="Favorite frame"
-          title={scene.photo.location ?? 'A photo worth keeping'}
-          detail={scene.photo.caption ?? 'One frame that carries the feeling of the trip.'}
+          title={sceneTitleFromPhoto(scene.photo, 'A photo worth keeping')}
+          detail={sceneDetailFromPhoto(scene.photo, 'One frame that carries the feeling of the trip.')}
           photo={scene.photo}
           styles={styles}
           onOpenPhoto={onOpenPhoto}
@@ -716,9 +812,9 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         <MemoryClosingScene
           data={data}
           styles={styles}
-          isPlaying={isPlaying}
+          playbackState={playbackState}
           onViewPhotos={data.photos.length > 0 ? onOpenAlbum : onAddPhoto}
-          onPlayMemory={isPlaying ? stopMemory : startMemory}
+          onPlayMemory={startMemory}
           onShare={handleShare}
         />
       ) : null}
@@ -752,7 +848,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
                 key={index}
                 state={index < sceneIndex ? 'past' : index === sceneIndex ? 'active' : 'future'}
                 progress={sceneProgress}
-                isPlaying={isPlaying && !isHolding}
+                playbackState={playbackState}
                 styles={styles}
               />
             ))}
@@ -772,10 +868,10 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
 
           <View style={[styles.topMeta, { top: insets.top + 28 }]}>
             <Text style={styles.topMetaText}>{sceneIndex + 1}/{scenes.length}</Text>
-            {isPlaying ? (
+            {playbackState !== 'idle' && playbackState !== 'complete' ? (
               <View style={styles.playingPill}>
-                {isHolding ? <Pause size={11} color="#fff" fill="#fff" /> : <Play size={10} color="#fff" fill="#fff" />}
-                <Text style={styles.playingText}>{isHolding ? 'Paused' : 'Playing'}</Text>
+                {isPlaying ? <Play size={10} color="#fff" fill="#fff" /> : <Pause size={11} color="#fff" fill="#fff" />}
+                <Text style={styles.playingText}>{isPreparing ? 'Preparing' : isPaused ? 'Paused' : 'Playing'}</Text>
               </View>
             ) : null}
           </View>
@@ -832,20 +928,24 @@ function SceneBackground({ photo, fallbackColor }: { photo?: AlbumPhoto; fallbac
 function MemoryProgressSegment({
   state,
   progress,
-  isPlaying,
+  playbackState,
   styles,
 }: {
   state: 'past' | 'active' | 'future';
   progress: SharedValue<number>;
-  isPlaying: boolean;
+  playbackState: PlaybackState;
   styles: ReturnType<typeof getStyles>;
 }) {
   const fillStyle = useAnimatedStyle(() => {
     if (state === 'past') return { width: '100%' };
     if (state === 'future') return { width: '0%' };
-    if (!isPlaying) return { width: '100%' };
+    if (playbackState === 'preparing') return { width: '0%' };
+    if (playbackState === 'complete') return { width: '100%' };
+    if (playbackState === 'playing' || playbackState === 'paused') {
+      return { width: `${Math.max(3, Math.min(100, progress.value * 100))}%` };
+    }
     return { width: `${Math.max(3, Math.min(100, progress.value * 100))}%` };
-  }, [isPlaying, state]);
+  }, [playbackState, state]);
 
   return (
     <View style={styles.progressTrack}>
@@ -858,15 +958,19 @@ function MemoryCoverScene({
   data,
   styles,
   colors,
+  playbackState,
   onPlayMemory,
   onAddPhoto,
 }: {
   data: TripAlbumData;
   styles: ReturnType<typeof getStyles>;
   colors: ThemeColors;
+  playbackState: PlaybackState;
   onPlayMemory: () => void;
   onAddPhoto: () => void;
 }) {
+  const isPreparing = playbackState === 'preparing';
+
   return (
     <View style={styles.sceneContent}>
       <View style={styles.coverBadge}>
@@ -886,10 +990,11 @@ function MemoryCoverScene({
       <Pressable
         style={[styles.primaryAction, { backgroundColor: data.photos.length > 0 ? '#f3c996' : colors.accent }]}
         onPress={data.photos.length > 0 ? onPlayMemory : onAddPhoto}
+        disabled={isPreparing}
         accessibilityRole="button"
       >
         {data.photos.length > 0 ? <Play size={17} color="#15110d" fill="#15110d" /> : <Images size={17} color="#15110d" />}
-        <Text style={styles.primaryActionText}>{data.photos.length > 0 ? 'Play Memory' : 'Add Memories'}</Text>
+        <Text style={styles.primaryActionText}>{data.photos.length > 0 ? (isPreparing ? 'Preparing memory...' : 'Play Memory') : 'Add Memories'}</Text>
       </Pressable>
     </View>
   );
@@ -1045,19 +1150,20 @@ function MemoryAhaScene({ data, styles }: { data: TripAlbumData; styles: ReturnT
 function MemoryClosingScene({
   data,
   styles,
-  isPlaying,
+  playbackState,
   onViewPhotos,
   onPlayMemory,
   onShare,
 }: {
   data: TripAlbumData;
   styles: ReturnType<typeof getStyles>;
-  isPlaying: boolean;
+  playbackState: PlaybackState;
   onViewPhotos: () => void;
   onPlayMemory: () => void;
   onShare: () => void;
 }) {
   const hasPhotos = data.photos.length > 0;
+  const isPreparing = playbackState === 'preparing';
 
   return (
     <View style={styles.closingContent}>
@@ -1076,10 +1182,12 @@ function MemoryClosingScene({
           <Images size={17} color="#15110d" />
           <Text style={styles.primaryActionText}>{hasPhotos ? 'View Photos' : 'Add Memories'}</Text>
         </Pressable>
-        <Pressable style={styles.secondaryAction} onPress={onPlayMemory} accessibilityRole="button">
-          {isPlaying ? <Pause size={17} color="#fff" fill="#fff" /> : <Play size={17} color="#fff" fill="#fff" />}
-          <Text style={styles.secondaryActionText}>{isPlaying ? 'Pause Memory' : 'Play Memory'}</Text>
-        </Pressable>
+        {hasPhotos ? (
+          <Pressable style={styles.secondaryAction} onPress={onPlayMemory} disabled={isPreparing} accessibilityRole="button">
+            <Play size={17} color="#fff" fill="#fff" />
+            <Text style={styles.secondaryActionText}>{isPreparing ? 'Preparing memory...' : 'Replay Memory'}</Text>
+          </Pressable>
+        ) : null}
         <Pressable style={styles.secondaryAction} onPress={onShare} accessibilityRole="button">
           <Share2 size={17} color="#fff" />
           <Text style={styles.secondaryActionText}>Share</Text>
