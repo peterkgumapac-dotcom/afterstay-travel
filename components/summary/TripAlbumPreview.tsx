@@ -521,6 +521,12 @@ function getSceneDurationMs(scene: MemoryScene) {
   return SCENE_DURATIONS_MS.photo;
 }
 
+function waitForNextFrame() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 function sceneTitleFromPhoto(photo?: AlbumPhoto, fallback = 'A memory from the trip') {
   return photo?.location ?? photo?.caption ?? fallback;
 }
@@ -542,6 +548,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const [sceneIndex, setSceneIndex] = useState(0);
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
   const playbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playbackRunIdRef = useRef(0);
   const remainingSceneMsRef = useRef(0);
   const sceneStartedAtRef = useRef(0);
   const pauseReasonRef = useRef<'hold' | null>(null);
@@ -569,6 +576,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   }, []);
 
   const stopPlayback = useCallback((nextState: PlaybackState = 'idle') => {
+    playbackRunIdRef.current += 1;
     clearPlaybackTimer();
     cancelAnimation(sceneProgress);
     sceneProgress.value = 0;
@@ -585,7 +593,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     });
   }, [scenes.length]);
 
-  const advancePlayback = useCallback(() => {
+  const advancePlayback = useCallback((runId: number) => {
+    if (runId !== playbackRunIdRef.current) return;
     setSceneIndex((current) => {
       const next = current + 1;
       if (next >= scenes.length) {
@@ -617,15 +626,31 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       sceneProgress.value = 0;
       return;
     }
-    const remainingDuration = remainingSceneMsRef.current || getSceneDurationMs(currentScene);
-    sceneStartedAtRef.current = Date.now();
+    const isResumingScene = remainingSceneMsRef.current > 0;
+    const remainingDuration = isResumingScene
+      ? Math.max(800, remainingSceneMsRef.current)
+      : Math.max(5500, getSceneDurationMs(currentScene));
+    const runId = playbackRunIdRef.current;
+    const startedAt = Date.now();
+    const dueAt = startedAt + remainingDuration;
+    sceneStartedAtRef.current = startedAt;
+    remainingSceneMsRef.current = remainingDuration;
     sceneProgress.value = withTiming(1, { duration: remainingDuration, easing: Easing.linear }, (finished) => {
       if (!finished) return;
     });
-    playbackTimerRef.current = setTimeout(() => {
-      remainingSceneMsRef.current = 0;
-      advancePlayback();
-    }, remainingDuration);
+    const scheduleAdvance = (delayMs: number) => {
+      playbackTimerRef.current = setTimeout(() => {
+        if (runId !== playbackRunIdRef.current) return;
+        const remainingMs = dueAt - Date.now();
+        if (remainingMs > 120) {
+          scheduleAdvance(remainingMs);
+          return;
+        }
+        remainingSceneMsRef.current = 0;
+        advancePlayback(runId);
+      }, Math.max(120, delayMs));
+    };
+    scheduleAdvance(remainingDuration);
   }, [advancePlayback, clearPlaybackTimer, currentScene, playbackState, sceneProgress]);
 
   useEffect(() => () => {
@@ -676,6 +701,8 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
       .map((scene) => getScenePhoto(scene, data)?.uri)
       .filter((url): url is string => Boolean(url));
     await Promise.all(urls.map((url) => Image.prefetch(url).catch(() => false)));
+    await waitForNextFrame();
+    playbackRunIdRef.current += 1;
     remainingSceneMsRef.current = 0;
     setPlaybackState('playing');
   }, [data, dragX, sceneEntryProgress, scenes, stopPlayback, transitionProgress]);
@@ -970,6 +997,8 @@ function MemoryCoverScene({
   onAddPhoto: () => void;
 }) {
   const isPreparing = playbackState === 'preparing';
+  const isPlaybackActive = playbackState === 'preparing' || playbackState === 'playing' || playbackState === 'paused';
+  const playLabel = isPreparing ? 'Preparing memory...' : playbackState === 'paused' ? 'Paused' : playbackState === 'playing' ? 'Playing memory...' : 'Play Memory';
 
   return (
     <View style={styles.sceneContent}>
@@ -990,11 +1019,11 @@ function MemoryCoverScene({
       <Pressable
         style={[styles.primaryAction, { backgroundColor: data.photos.length > 0 ? '#f3c996' : colors.accent }]}
         onPress={data.photos.length > 0 ? onPlayMemory : onAddPhoto}
-        disabled={isPreparing}
+        disabled={isPlaybackActive}
         accessibilityRole="button"
       >
         {data.photos.length > 0 ? <Play size={17} color="#15110d" fill="#15110d" /> : <Images size={17} color="#15110d" />}
-        <Text style={styles.primaryActionText}>{data.photos.length > 0 ? (isPreparing ? 'Preparing memory...' : 'Play Memory') : 'Add Memories'}</Text>
+        <Text style={styles.primaryActionText}>{data.photos.length > 0 ? playLabel : 'Add Memories'}</Text>
       </Pressable>
     </View>
   );
