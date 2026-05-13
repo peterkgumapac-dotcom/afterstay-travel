@@ -562,6 +562,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const isPlaying = playbackState === 'playing';
   const isPaused = playbackState === 'paused';
   const isPreparing = playbackState === 'preparing';
+  const shouldSuppressCoverNavigation = currentScene.type === 'cover' && (isPreparing || isPlaying || isPaused);
 
   useEffect(() => {
     const urls = data.photos.slice(Math.max(0, sceneIndex - 1), sceneIndex + 2).map((photo) => photo.uri);
@@ -716,6 +717,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const pageGesture = useMemo(
     () =>
       Gesture.Pan()
+        .enabled(!shouldSuppressCoverNavigation)
         .activeOffsetX([-10, 10])
         .failOffsetY([-18, 18])
         .onUpdate((event) => {
@@ -742,7 +744,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
           dragX.value = withSpring(0, { damping: 20, stiffness: 220, mass: 0.8 });
           transitionProgress.value = withTiming(0, { duration: 170, easing: Easing.out(Easing.cubic) });
         }),
-    [canGoNext, canGoPrevious, commitDirection, dragX, stopPlayback, transitionProgress],
+    [canGoNext, canGoPrevious, commitDirection, dragX, shouldSuppressCoverNavigation, stopPlayback, transitionProgress],
   );
 
   const holdGesture = useMemo(
@@ -905,19 +907,21 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
 
           <Pressable
             onPress={openPreviousScene}
-            disabled={!canGoPrevious}
+            disabled={!canGoPrevious || shouldSuppressCoverNavigation}
             style={styles.tapZoneLeft}
+            pointerEvents={shouldSuppressCoverNavigation ? 'none' : 'auto'}
             accessibilityLabel="Previous memory"
             accessibilityRole="button"
           />
           <Pressable
             onPress={openNextScene}
-            disabled={!canGoNext}
+            disabled={!canGoNext || shouldSuppressCoverNavigation}
             style={styles.tapZoneRight}
+            pointerEvents={shouldSuppressCoverNavigation ? 'none' : 'auto'}
             accessibilityLabel="Next memory"
             accessibilityRole="button"
           />
-          {canGoNext ? (
+          {canGoNext && !shouldSuppressCoverNavigation ? (
             <Pressable
               onPress={openNextScene}
               style={styles.nextControl}
@@ -1364,7 +1368,7 @@ const getStyles = (_colors: ThemeColors) =>
     tapZoneLeft: {
       position: 'absolute',
       top: 92,
-      bottom: 118,
+      bottom: 210,
       left: 0,
       width: SCREEN_W * 0.24,
       zIndex: 10,
@@ -1372,7 +1376,7 @@ const getStyles = (_colors: ThemeColors) =>
     tapZoneRight: {
       position: 'absolute',
       top: 92,
-      bottom: 118,
+      bottom: 210,
       right: 0,
       width: SCREEN_W * 0.24,
       zIndex: 10,
