@@ -546,6 +546,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const transitionProgress = useSharedValue(0);
   const sceneEntryProgress = useSharedValue(1);
   const [sceneIndex, setSceneIndex] = useState(0);
+  const [playbackSceneIndex, setPlaybackSceneIndex] = useState(0);
   const [playbackState, setPlaybackState] = useState<PlaybackState>('idle');
   const playbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackRunIdRef = useRef(0);
@@ -553,21 +554,22 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const sceneStartedAtRef = useRef(0);
   const pauseReasonRef = useRef<'hold' | null>(null);
   const scenes = useMemo(() => buildScenes(data), [data]);
-  const canGoPrevious = sceneIndex > 0;
-  const canGoNext = sceneIndex < scenes.length - 1;
-  const currentScene = scenes[sceneIndex];
-  const previousScene = canGoPrevious ? scenes[sceneIndex - 1] : undefined;
-  const nextScene = canGoNext ? scenes[sceneIndex + 1] : undefined;
-  const currentPhoto = getScenePhoto(currentScene, data);
   const isPlaying = playbackState === 'playing';
   const isPaused = playbackState === 'paused';
   const isPreparing = playbackState === 'preparing';
-  const shouldSuppressCoverNavigation = currentScene.type === 'cover' && (isPreparing || isPlaying || isPaused);
+  const isPlaybackActive = isPreparing || isPlaying || isPaused;
+  const visibleSceneIndex = isPlaybackActive ? playbackSceneIndex : sceneIndex;
+  const canGoPrevious = visibleSceneIndex > 0;
+  const canGoNext = visibleSceneIndex < scenes.length - 1;
+  const currentScene = scenes[visibleSceneIndex];
+  const previousScene = canGoPrevious ? scenes[visibleSceneIndex - 1] : undefined;
+  const nextScene = canGoNext ? scenes[visibleSceneIndex + 1] : undefined;
+  const currentPhoto = getScenePhoto(currentScene, data);
 
   useEffect(() => {
-    const urls = data.photos.slice(Math.max(0, sceneIndex - 1), sceneIndex + 2).map((photo) => photo.uri);
+    const urls = data.photos.slice(Math.max(0, visibleSceneIndex - 1), visibleSceneIndex + 2).map((photo) => photo.uri);
     urls.forEach((url) => void Image.prefetch(url).catch(() => {}));
-  }, [data.photos, sceneIndex]);
+  }, [data.photos, visibleSceneIndex]);
 
   const clearPlaybackTimer = useCallback(() => {
     if (playbackTimerRef.current) {
@@ -596,7 +598,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
 
   const advancePlayback = useCallback((runId: number) => {
     if (runId !== playbackRunIdRef.current) return;
-    setSceneIndex((current) => {
+    setPlaybackSceneIndex((current) => {
       const next = current + 1;
       if (next >= scenes.length) {
         setPlaybackState('complete');
@@ -604,16 +606,20 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
         return current;
       }
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      if (scenes[next]?.type === 'closing') {
+        setSceneIndex(next);
+        setPlaybackState('complete');
+      }
       return next;
     });
-  }, [sceneProgress, scenes.length]);
+  }, [sceneProgress, scenes]);
 
   useEffect(() => {
     sceneEntryProgress.value = 0;
     sceneEntryProgress.value = withTiming(1, { duration: 650, easing: Easing.out(Easing.cubic) });
     sceneProgress.value = 0;
     remainingSceneMsRef.current = 0;
-  }, [sceneEntryProgress, sceneIndex, sceneProgress]);
+  }, [sceneEntryProgress, sceneProgress, visibleSceneIndex]);
 
   useEffect(() => {
     clearPlaybackTimer();
@@ -694,6 +700,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
     if (data.photos.length === 0 || scenes.length <= 1) return;
     stopPlayback('preparing');
     setSceneIndex(0);
+    setPlaybackSceneIndex(0);
     sceneEntryProgress.value = 1;
     dragX.value = 0;
     transitionProgress.value = 0;
@@ -717,7 +724,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
   const pageGesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!shouldSuppressCoverNavigation)
+        .enabled(!isPlaybackActive)
         .activeOffsetX([-10, 10])
         .failOffsetY([-18, 18])
         .onUpdate((event) => {
@@ -744,7 +751,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
           dragX.value = withSpring(0, { damping: 20, stiffness: 220, mass: 0.8 });
           transitionProgress.value = withTiming(0, { duration: 170, easing: Easing.out(Easing.cubic) });
         }),
-    [canGoNext, canGoPrevious, commitDirection, dragX, shouldSuppressCoverNavigation, stopPlayback, transitionProgress],
+    [canGoNext, canGoPrevious, commitDirection, dragX, isPlaybackActive, stopPlayback, transitionProgress],
   );
 
   const holdGesture = useMemo(
@@ -875,7 +882,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
             {scenes.map((_, index) => (
               <MemoryProgressSegment
                 key={index}
-                state={index < sceneIndex ? 'past' : index === sceneIndex ? 'active' : 'future'}
+                state={index < visibleSceneIndex ? 'past' : index === visibleSceneIndex ? 'active' : 'future'}
                 progress={sceneProgress}
                 playbackState={playbackState}
                 styles={styles}
@@ -896,7 +903,7 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
           ) : null}
 
           <View style={[styles.topMeta, { top: insets.top + 28 }]}>
-            <Text style={styles.topMetaText}>{sceneIndex + 1}/{scenes.length}</Text>
+            <Text style={styles.topMetaText}>{visibleSceneIndex + 1}/{scenes.length}</Text>
             {playbackState !== 'idle' && playbackState !== 'complete' ? (
               <View style={styles.playingPill}>
                 {isPlaying ? <Play size={10} color="#fff" fill="#fff" /> : <Pause size={11} color="#fff" fill="#fff" />}
@@ -907,21 +914,21 @@ export default function TripAlbumPreview({ data, colors, onBack, onOpenAlbum, on
 
           <Pressable
             onPress={openPreviousScene}
-            disabled={!canGoPrevious || shouldSuppressCoverNavigation}
+            disabled={!canGoPrevious || isPlaybackActive}
             style={styles.tapZoneLeft}
-            pointerEvents={shouldSuppressCoverNavigation ? 'none' : 'auto'}
+            pointerEvents={isPlaybackActive ? 'none' : 'auto'}
             accessibilityLabel="Previous memory"
             accessibilityRole="button"
           />
           <Pressable
             onPress={openNextScene}
-            disabled={!canGoNext || shouldSuppressCoverNavigation}
+            disabled={!canGoNext || isPlaybackActive}
             style={styles.tapZoneRight}
-            pointerEvents={shouldSuppressCoverNavigation ? 'none' : 'auto'}
+            pointerEvents={isPlaybackActive ? 'none' : 'auto'}
             accessibilityLabel="Next memory"
             accessibilityRole="button"
           />
-          {canGoNext && !shouldSuppressCoverNavigation ? (
+          {canGoNext && !isPlaybackActive ? (
             <Pressable
               onPress={openNextScene}
               style={styles.nextControl}
