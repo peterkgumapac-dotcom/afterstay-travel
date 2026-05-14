@@ -44,8 +44,8 @@ import { formatCurrency } from '@/lib/utils';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const PLAYER_H = Math.max(660, Math.min(820, Math.round(SCREEN_H * 0.9)));
 const MAX_PHOTO_PAGES = 15;
-const MAX_SCENES = 12;
-const MAX_REEL_PHOTO_SLIDES = 9;
+const MAX_SCENES = 15;
+const MAX_REEL_PHOTO_SLIDES = 10;
 const SWIPE_THRESHOLD = SCREEN_W * 0.22;
 const SCENE_DURATION_MS = 4200;
 
@@ -469,18 +469,51 @@ export const mockTripAlbumData: TripAlbumData = {
 };
 
 function buildScenes(data: TripAlbumData): MemoryScene[] {
-  if (data.photos.length === 0) return [{ type: 'cover' }, { type: 'closing' }];
-
   const scenes: MemoryScene[] = [{ type: 'cover' }];
+  const closing: MemoryScene = { type: 'closing', photo: data.heroPhoto ?? data.favoritePhoto };
+
+  if (data.photos.length === 0) {
+    scenes.push({ type: 'tripStats' });
+    if (data.topPlaces.length > 0 || data.destination) scenes.push({ type: 'places' });
+    if (data.ahaCards.length > 0) scenes.push({ type: 'aha' });
+    return [...scenes.slice(0, MAX_SCENES - 1), closing];
+  }
 
   const reelPhotos = data.photos.slice(0, MAX_REEL_PHOTO_SLIDES);
-  reelPhotos.forEach((photo, index) => {
+
+  reelPhotos.slice(0, 3).forEach((photo, index) => {
     scenes.push({ type: 'reelPhoto', photo, index: index + 1, total: reelPhotos.length });
   });
 
-  scenes.push({ type: 'tripStats', photo: data.photos[MAX_REEL_PHOTO_SLIDES] ?? data.heroPhoto });
+  scenes.push({ type: 'tripStats', photo: data.photos[3] ?? data.heroPhoto });
+  if (data.topPlaces.length > 0 || data.topLocation || data.destination) {
+    scenes.push({ type: 'places', photo: data.photos[4] ?? data.heroPhoto });
+  }
+  if (data.memberCount > 1 || data.travelers.length > 0) {
+    scenes.push({ type: 'people', photo: data.photos[5] ?? data.favoritePhoto ?? data.heroPhoto });
+  }
 
-  const closing: MemoryScene = { type: 'closing', photo: data.heroPhoto ?? data.favoritePhoto };
+  for (const beat of data.storyBeats.slice(0, 2)) {
+    if (beat.photo) scenes.push({ type: 'dayStory', beat });
+  }
+
+  reelPhotos.slice(3).forEach((photo, index) => {
+    scenes.push({ type: 'reelPhoto', photo, index: index + 4, total: reelPhotos.length });
+  });
+
+  if (data.photos.length >= 3) {
+    scenes.push({
+      type: 'photoSet',
+      title: data.topLocation ? `More from ${data.topLocation}` : 'More from the trip',
+      photos: data.photos.slice(Math.max(0, data.photos.length - 4), data.photos.length),
+      caption: `${data.momentCount} moment${data.momentCount !== 1 ? 's' : ''} made this recap.`,
+    });
+  }
+
+  if (data.ahaCards.length > 0) {
+    scenes.push({ type: 'aha', photo: data.favoritePhoto ?? data.heroPhoto });
+  }
+
   return [...scenes.slice(0, MAX_SCENES - 1), closing];
 }
 
