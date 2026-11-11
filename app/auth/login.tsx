@@ -20,7 +20,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import Svg, { Path, Circle as SvgCircle, Rect, Line, Polyline } from 'react-native-svg';
+import Svg, { Path, Rect, Line, Polyline } from 'react-native-svg';
 import { useTheme } from '@/constants/ThemeContext';
 import { useAuth } from '@/lib/auth';
 import { beginGoogleSignIn } from '@/lib/googleAuth';
@@ -50,17 +50,6 @@ function withLoginTimeout<T>(promise: PromiseLike<T>, message: string, ms = LOGI
 
 /* ─── SVG Icons — exact copies from prototype ─── */
 
-function AppleIcon() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="currentColor" style={{ marginTop: -2 }}>
-      <Path
-        d="M17.6 12.6c0-2.5 2-3.7 2.1-3.8-1.2-1.7-3-2-3.7-2-1.6-.2-3.1 1-3.9 1-.8 0-2.1-.9-3.4-.9-1.7 0-3.4 1-4.3 2.6-1.8 3.2-.5 7.9 1.3 10.5.9 1.3 2 2.7 3.3 2.6 1.3 0 1.8-.8 3.4-.8 1.6 0 2.1.8 3.4.8 1.4 0 2.3-1.3 3.2-2.6 1-1.5 1.4-2.9 1.4-3-.1 0-2.7-1-2.8-4.4zM15 5.5c.7-.9 1.2-2.1 1.1-3.3-1 0-2.3.7-3 1.5-.7.8-1.3 2-1.1 3.2 1.1.1 2.3-.6 3-1.4z"
-        fill="#fff"
-      />
-    </Svg>
-  );
-}
-
 function GoogleIcon() {
   return (
     <Svg width={18} height={18} viewBox="0 0 48 48">
@@ -77,17 +66,6 @@ function EmailIcon() {
     <Svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <Rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" fill="none" />
       <Path d="M3 7l9 6 9-6" stroke="currentColor" fill="none" />
-    </Svg>
-  );
-}
-
-function SMSIcon() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M21 12a8 8 0 01-11.8 7L4 20.5l1.5-4.5A8 8 0 1121 12z" stroke="currentColor" fill="none" />
-      <SvgCircle cx="8.5" cy="12" r="0.8" fill="currentColor" stroke="none" />
-      <SvgCircle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none" />
-      <SvgCircle cx="15.5" cy="12" r="0.8" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
@@ -438,6 +416,7 @@ export default function LoginScreen() {
   const { signIn, signInWithMagicLink, session } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ error?: string }>();
+  const showGoogleSignIn = Platform.OS !== 'ios';
 
   const [panel, setPanel] = useState<Panel>('root');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -577,72 +556,62 @@ export default function LoginScreen() {
 
           {/* Button group */}
           <View style={styles.buttonGroup}>
-            {/* Apple — not yet wired */}
-            <StaggeredItem index={1}>
-              <View style={{ opacity: 0.45 }}>
-                <SignInButton
-                  onPress={() => {}}
-                  icon={<AppleIcon />}
-                  label="Continue with Apple — coming soon"
-                  bg="#000"
-                  fg="#fff"
-                  borderColor="#000"
-                />
-              </View>
-            </StaggeredItem>
+            {showGoogleSignIn ? (
+              <>
+                {/* Google */}
+                <StaggeredItem index={1}>
+                  <SignInButton
+                    onPress={async () => {
+                      try {
+                        setLoading(true);
+                        setError(null);
+                        const response = await withLoginTimeout(
+                          beginGoogleSignIn(),
+                          'Google sign-in timed out. Please try again.',
+                          20_000,
+                        );
+                        const idToken = response.data?.idToken;
+                        if (!idToken) {
+                          Alert.alert('Sign-In Error', 'No ID token received from Google');
+                          return;
+                        }
+                        const { error: googleErr } = await withLoginTimeout(
+                          supabase.auth.signInWithIdToken({
+                            provider: 'google',
+                            token: idToken,
+                          }),
+                          'Google sign-in timed out. Please check your connection and try again.',
+                        );
+                        if (googleErr) {
+                          Alert.alert('Sign-In Error', googleErr.message);
+                        }
+                      } catch (e: unknown) {
+                        const err = e as { code?: string; message?: string };
+                        if (err.code !== 'SIGN_IN_CANCELLED' && err.code !== 'IN_PROGRESS') {
+                          Alert.alert('Google Sign-In failed', err.message ?? 'Unknown error');
+                        }
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    icon={<GoogleIcon />}
+                    label="Continue with Google"
+                    bg="#fff"
+                    fg="#1f1f1f"
+                    borderColor="#dadce0"
+                    shadow
+                  />
+                </StaggeredItem>
 
-            {/* Google */}
-            <StaggeredItem index={2}>
-              <SignInButton
-                onPress={async () => {
-                  try {
-                    setLoading(true);
-                    setError(null);
-                    const response = await withLoginTimeout(
-                      beginGoogleSignIn(),
-                      'Google sign-in timed out. Please try again.',
-                      20_000,
-                    );
-                    const idToken = response.data?.idToken;
-                    if (!idToken) {
-                      Alert.alert('Sign-In Error', 'No ID token received from Google');
-                      return;
-                    }
-                    const { error: googleErr } = await withLoginTimeout(
-                      supabase.auth.signInWithIdToken({
-                        provider: 'google',
-                        token: idToken,
-                      }),
-                      'Google sign-in timed out. Please check your connection and try again.',
-                    );
-                    if (googleErr) {
-                      Alert.alert('Sign-In Error', googleErr.message);
-                    }
-                  } catch (e: unknown) {
-                    const err = e as { code?: string; message?: string };
-                    if (err.code !== 'SIGN_IN_CANCELLED' && err.code !== 'IN_PROGRESS') {
-                      Alert.alert('Google Sign-In failed', err.message ?? 'Unknown error');
-                    }
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                icon={<GoogleIcon />}
-                label="Continue with Google"
-                bg="#fff"
-                fg="#1f1f1f"
-                borderColor="#dadce0"
-                shadow
-              />
-            </StaggeredItem>
-
-            {/* OR divider */}
-            <StaggeredItem index={3}>
-              <DividerOr colors={colors} />
-            </StaggeredItem>
+                {/* OR divider */}
+                <StaggeredItem index={2}>
+                  <DividerOr colors={colors} />
+                </StaggeredItem>
+              </>
+            ) : null}
 
             {/* Email */}
-            <StaggeredItem index={4}>
+            <StaggeredItem index={showGoogleSignIn ? 3 : 1}>
               <SignInButton
                 onPress={() => resetToPanel('email')}
                 icon={<EmailIcon />}
@@ -651,20 +620,6 @@ export default function LoginScreen() {
                 fg={colors.text}
                 borderColor={colors.border}
               />
-            </StaggeredItem>
-
-            {/* Phone — not yet wired */}
-            <StaggeredItem index={5}>
-              <View style={{ opacity: 0.45 }}>
-                <SignInButton
-                  onPress={() => {}}
-                  icon={<SMSIcon />}
-                  label="Continue with phone — coming soon"
-                  bg={colors.card}
-                  fg={colors.text}
-                  borderColor={colors.border}
-                />
-              </View>
             </StaggeredItem>
           </View>
 

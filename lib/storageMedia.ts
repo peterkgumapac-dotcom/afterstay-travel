@@ -18,10 +18,14 @@ function parseSupabaseStorageRef(value: string, fallbackBucket: string): Storage
     return { bucket: fallbackBucket, path: trimmed.replace(/^\/+/, '') };
   }
 
-  const marker = '/storage/v1/object/';
-  const markerIndex = trimmed.indexOf(marker);
-  if (markerIndex === -1) return null;
+  const markers = [
+    '/storage/v1/object/',
+    '/storage/v1/render/image/',
+  ];
+  const marker = markers.find((candidate) => trimmed.includes(candidate));
+  if (!marker) return null;
 
+  const markerIndex = trimmed.indexOf(marker);
   const afterObject = trimmed.slice(markerIndex + marker.length);
   const bucketAndPath = afterObject.replace(/^public\//, '').replace(/^sign\//, '').split('?')[0];
   const slashIndex = bucketAndPath.indexOf('/');

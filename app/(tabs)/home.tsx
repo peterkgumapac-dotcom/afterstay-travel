@@ -428,6 +428,14 @@ function HomeScreen() {
       }),
     [savedPlaces, members],
   );
+  const hasHomeHistory =
+    pastTrips.length > 0 ||
+    upcomingTrips.length > 0 ||
+    activeTrips.length > 0 ||
+    quickTrips.length > 0 ||
+    draftTrips.length > 0 ||
+    allTrips.some((t) => !t.deletedAt && !t.isDraft);
+  const hasInitialHomeContent = !!trip || hasHomeHistory || profileSuggestsHistory;
 
   const handleGroupVoteTap = useCallback(() => {
     setShowVotingSheet(true);
@@ -447,9 +455,9 @@ function HomeScreen() {
 
   // Hide tab bar during initial load
   useEffect(() => {
-    const isInitialLoading = loading || (showLoader && !loaderDone);
+    const isInitialLoading = !hasInitialHomeContent && (loading || (showLoader && !loaderDone));
     setTabBarVisible(!isInitialLoading);
-  }, [loading, showLoader, loaderDone, setTabBarVisible]);
+  }, [hasInitialHomeContent, loading, showLoader, loaderDone, setTabBarVisible]);
 
   const boardFlight = useCallback(async () => {
     await setManualPhaseOverride('inflight');
@@ -531,10 +539,9 @@ function HomeScreen() {
       : planningLocation.label
         ? `Top 5 near ${planningLocation.label}`
         : 'Unlock local picks';
-
-  // Show branded loader until both: 3s minimum passed AND data loaded
+  // Show branded loader until both: minimum passed AND data loaded
   // In test mode, skip loader entirely — mock data is synchronous
-  if (!isTestMode && (!loaderDone || loading)) {
+  if (!isTestMode && !hasInitialHomeContent && (!loaderDone || loading)) {
     return (
       <AfterStayLoader
         message="Loading your trip..."
@@ -572,16 +579,9 @@ function HomeScreen() {
     }
     // Returning user — has ANY trips (past, upcoming, active, archived, drafts, quick trips)
     // In test mode, segment is the sole gate (ignore real trip data)
-    const hasHistory =
-      pastTrips.length > 0 ||
-      upcomingTrips.length > 0 ||
-      activeTrips.length > 0 ||
-      quickTrips.length > 0 ||
-      draftTrips.length > 0 ||
-      allTrips.some((t) => !t.deletedAt && !t.isDraft);
     const shouldKeepCheckingHistory =
       !isTestMode &&
-      !hasHistory &&
+      !hasHomeHistory &&
       (!historyHydrated || historyStatus === 'unknown');
     if (shouldKeepCheckingHistory) {
       return (
@@ -595,7 +595,7 @@ function HomeScreen() {
         />
       );
     }
-    if (hasHistory || profileSuggestsHistory) {
+    if (hasHomeHistory || profileSuggestsHistory) {
       const displayName = userName || user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || '';
       const handle =
         user?.email?.split('@')[0] ||

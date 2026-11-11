@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  ArrowLeft, BookOpen, Calendar, Lock, MapPin, Plane,
+  ArrowLeft, BookOpen, Calendar, MapPin, Plane,
   Sparkles, Star, TrendingUp, Users, Wallet,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -15,14 +15,13 @@ import { useAuth } from '@/lib/auth';
 import { formatDatePHT } from '@/lib/utils';
 import {
   finalizeTripMemory,
-  getProfile,
   getTripMemory,
   getMoments,
   saveTripMemoryDraft,
 } from '@/lib/supabase';
 import { generateTripMemory } from '@/lib/anthropic';
 import { buildTripMemoryData } from '@/lib/tripMemoryBuilder';
-import type { Moment, TripMemory, UserTier } from '@/lib/types';
+import type { Moment, TripMemory } from '@/lib/types';
 
 type Phase = 'loading' | 'generating' | 'ready' | 'error';
 
@@ -36,7 +35,6 @@ export default function TripMemoryScreen() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [memory, setMemory] = useState<TripMemory | null>(null);
   const [moments, setMoments] = useState<Moment[]>([]);
-  const [tier, setTier] = useState<UserTier>('free');
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -56,10 +54,6 @@ export default function TripMemoryScreen() {
   const load = useCallback(async () => {
     if (!user?.id) return;
     try {
-      // Get user tier
-      const profile = await getProfile(user.id);
-      setTier(profile?.tier ?? 'free');
-
       // Check for existing memory
       const tid = tripId ?? '';
       if (tid) {
@@ -121,10 +115,7 @@ export default function TripMemoryScreen() {
   useEffect(() => { load(); }, [load]);
 
   const handleSave = async () => {
-    if (!memory || tier !== 'premium') {
-      Alert.alert('Premium Feature', 'Upgrade to Premium to save your Trip Memory forever.');
-      return;
-    }
+    if (!memory) return;
     setSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -367,7 +358,7 @@ export default function TripMemoryScreen() {
             <Star size={16} color={colors.accent} fill={colors.accent} />
             <Text style={s.savedText}>Saved · {memory.savedAt ? formatDatePHT(memory.savedAt) : ''}</Text>
           </View>
-        ) : tier === 'premium' ? (
+        ) : (
           <TouchableOpacity style={s.saveBtn} onPress={handleSave} activeOpacity={0.7} disabled={saving}>
             {saving ? (
               <ActivityIndicator size="small" color={colors.bg} />
@@ -377,11 +368,6 @@ export default function TripMemoryScreen() {
                 <Text style={s.saveBtnText}>Save Memory</Text>
               </>
             )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={s.upgradeBtn} onPress={() => Alert.alert('Premium', 'Upgrade to save Trip Memories. Coming soon!')} activeOpacity={0.7}>
-            <Lock size={16} color={colors.text2} />
-            <Text style={s.upgradeBtnText}>Upgrade to Save</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -500,12 +486,6 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
     }),
   },
   saveBtnText: { fontSize: 15, fontWeight: '600', color: c.bg },
-  upgradeBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: c.card, borderRadius: 16, paddingVertical: 14,
-    borderWidth: 1, borderColor: c.border,
-  },
-  upgradeBtnText: { fontSize: 15, fontWeight: '600', color: c.text2 },
   savedBadge: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 14,

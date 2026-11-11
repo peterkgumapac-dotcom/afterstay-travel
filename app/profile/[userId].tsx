@@ -278,7 +278,7 @@ export default function CompanionProfileScreen() {
     }
     const sharedTrip = mutualTrips[0];
     if (!sharedTrip?.id) {
-      Alert.alert('Direct message coming soon', 'You follow each other. One-to-one travel messages are next; shared trip chats are available today.');
+      Alert.alert('No shared trip chat', 'Add this traveler to a trip to message them in that trip chat.');
       return;
     }
     router.push({ pathname: '/group-chat', params: { tripId: sharedTrip.id } } as never);

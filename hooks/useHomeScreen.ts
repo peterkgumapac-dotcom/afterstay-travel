@@ -74,6 +74,7 @@ function destinationPhotoCacheKey(destination: string) {
 const HOME_REQUEST_TIMEOUT_MS = 10000;
 const HOME_SLOW_REQUEST_TIMEOUT_MS = 15000;
 const HOME_PERSISTED_SEED_TTL_MS = 5 * 60 * 1000;
+const HOME_LOADER_MIN_MS = 450;
 
 function splitTripsByLifecycle(allTripsData: Trip[]) {
   return {
@@ -784,7 +785,7 @@ export function useHomeScreen() {
   useEffect(() => {
     if (!loading) return;
     setShowLoader(true);
-    const t = setTimeout(() => setLoaderDone(true), 900);
+    const t = setTimeout(() => setLoaderDone(true), HOME_LOADER_MIN_MS);
     return () => clearTimeout(t);
   }, [loading]);
 

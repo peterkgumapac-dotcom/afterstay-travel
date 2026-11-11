@@ -7,6 +7,7 @@ import { PAPER } from '@/components/feed/feedTheme';
 import { getStories } from '@/lib/moments/exploreMomentsService';
 import type { Story } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 
 interface ExploreStoryRowProps {
   onStoryPress: (stories: Story[], startIndex: number) => void;
@@ -61,6 +62,18 @@ function groupByUser(stories: Story[]): StoryGroup[] {
   return Array.from(map.values());
 }
 
+async function resolveStoryMedia(stories: Story[]): Promise<Story[]> {
+  return Promise.all(stories.map(async (story) => ({
+    ...story,
+    mediaUrl: await resolveRenderableStorageUrl(story.mediaUrl || story.storagePath, 'moments')
+      .then((url) => url ?? story.mediaUrl ?? story.storagePath)
+      .catch(() => story.mediaUrl || story.storagePath),
+    userAvatar: story.userAvatar
+      ? await resolveRenderableStorageUrl(story.userAvatar, 'avatars').catch(() => story.userAvatar)
+      : story.userAvatar,
+  })));
+}
+
 export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading = false, refreshKey = 0 }: ExploreStoryRowProps) {
   const [groups, setGroups] = useState<StoryGroup[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -78,6 +91,7 @@ export default function ExploreStoryRow({ onStoryPress, onAddStory, isUploading 
     setFailedImages(new Set());
     const storiesTask = setTimeout(() => {
       withTimeout(getStories())
+        .then(resolveStoryMedia)
         .then((stories) => {
           if (!cancelled) setGroups(groupByUser(stories).slice(0, 10));
           if (!cancelled) setLoading(false);

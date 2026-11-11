@@ -82,13 +82,13 @@ export async function getUnifiedExpenseHistory(
     standaloneExpenseIds.length > 0
       ? supabase
           .from('standalone_expense_splits')
-          .select('expense_id, person_name, amount, settled, settled_at')
+          .select('id, expense_id, person_name, amount, settled, settled_at')
           .in('expense_id', standaloneExpenseIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     tripExpenseIds.length > 0
       ? supabase
           .from('expense_splits')
-          .select('expense_id, member_name, amount, settled, settled_at')
+          .select('id, expense_id, member_name, amount, settled, settled_at')
           .in('expense_id', tripExpenseIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     qtIds.length > 0
@@ -100,7 +100,7 @@ export async function getUnifiedExpenseHistory(
     qtExpenseIds.length > 0
       ? supabase
           .from('quick_trip_expense_splits')
-          .select('quick_trip_expense_id, companion_id, amount_owed, settled_at')
+          .select('id, quick_trip_expense_id, companion_id, amount_owed, settled_at')
           .in('quick_trip_expense_id', qtExpenseIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ])
@@ -159,6 +159,14 @@ export async function getUnifiedExpenseHistory(
       paidBy: (r.paid_by as string) ?? undefined,
       splitType: (r.split_type as string) ?? undefined,
       notes: splitSummary ? `Split:\n${splitSummary}` : (r.notes as string) ?? undefined,
+      splitRows: expenseSplits.map((split) => ({
+        id: split.id as string,
+        name: (split.member_name as string) ?? 'Traveler',
+        amount: toNum(split.amount),
+        currency: (r.currency as string) || 'PHP',
+        settled: Boolean(split.settled || split.settled_at),
+        source: 'trip' as const,
+      })),
     })
   }
 
@@ -184,6 +192,14 @@ export async function getUnifiedExpenseHistory(
       splitType: e.splitType,
       placeName: e.placeName,
       notes: splitSummary ? `Split:\n${splitSummary}` : e.notes,
+      splitRows: expenseSplits.map((split) => ({
+        id: split.id as string,
+        name: (split.person_name as string) ?? 'Friend',
+        amount: toNum(split.amount),
+        currency: e.currency || 'PHP',
+        settled: Boolean(split.settled || split.settled_at),
+        source: 'standalone' as const,
+      })),
     })
   }
 
@@ -211,6 +227,14 @@ export async function getUnifiedExpenseHistory(
       paidBy: companionNameMap.get(r.paid_by_companion_id as string),
       splitType: mapQuickTripSplitType(r.split_type as string | undefined),
       notes: splitSummary ? `Split:\n${splitSummary}` : undefined,
+      splitRows: expenseSplits.map((split) => ({
+        id: split.id as string,
+        name: companionNameMap.get(split.companion_id as string) ?? 'Traveler',
+        amount: toNum(split.amount_owed),
+        currency: (r.currency as string) || 'PHP',
+        settled: Boolean(split.settled_at),
+        source: 'quick-trip' as const,
+      })),
     })
   }
 

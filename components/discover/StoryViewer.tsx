@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PAPER } from '@/components/feed/feedTheme';
 import { markStoryViewed } from '@/lib/moments/exploreMomentsService';
+import { resolveRenderableStorageUrl } from '@/lib/storageMedia';
 import type { Story } from '@/lib/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -52,6 +53,8 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, curren
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [mediaFailed, setMediaFailed] = useState(false);
+  const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | undefined>();
+  const [resolvedAvatarUrl, setResolvedAvatarUrl] = useState<string | undefined>();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progress = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -59,6 +62,33 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, curren
   const story = stories[index];
   const isOwner = !!story && story.userId === currentUserId;
   const canOpenProfile = !!story && !!onProfilePress && (isOwner || Boolean(story.userName || story.userAvatar));
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedMediaUrl(undefined);
+    setResolvedAvatarUrl(undefined);
+    if (!story) return () => { cancelled = true; };
+
+    resolveRenderableStorageUrl(story.mediaUrl || story.storagePath, 'moments')
+      .then((url) => {
+        if (!cancelled) setResolvedMediaUrl(url ?? story.mediaUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedMediaUrl(story.mediaUrl);
+      });
+
+    if (story.userAvatar) {
+      resolveRenderableStorageUrl(story.userAvatar, 'avatars')
+        .then((url) => {
+          if (!cancelled) setResolvedAvatarUrl(url ?? story.userAvatar);
+        })
+        .catch(() => {
+          if (!cancelled) setResolvedAvatarUrl(story.userAvatar);
+        });
+    }
+
+    return () => { cancelled = true; };
+  }, [story]);
 
   const startTimer = useCallback((ignorePause = false) => {
     if (!ignorePause && (menuOpen || deleting)) return;
@@ -189,7 +219,7 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, curren
             </View>
           ) : (
             <Image
-              source={{ uri: story.mediaUrl }}
+              source={{ uri: resolvedMediaUrl ?? story.mediaUrl }}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
               onError={() => setMediaFailed(true)}
@@ -215,8 +245,8 @@ export default function StoryViewer({ visible, stories, initialIndex = 0, curren
               activeOpacity={canOpenProfile ? 0.75 : 1}
               disabled={!canOpenProfile}
             >
-              {story.userAvatar ? (
-                <Image source={{ uri: story.userAvatar }} style={styles.avatar} contentFit="cover" />
+              {resolvedAvatarUrl || story.userAvatar ? (
+                <Image source={{ uri: resolvedAvatarUrl ?? story.userAvatar }} style={styles.avatar} contentFit="cover" />
               ) : (
                 <View style={[styles.avatar, styles.avatarPlaceholder]}>
                   <Text style={styles.avatarLetter}>{(story.userName ?? 'T')[0].toUpperCase()}</Text>

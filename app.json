@@ -17,7 +17,9 @@
       "bundleIdentifier": "com.afterstay.travel",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "AfterStay needs access to your photo library to add trip moments.",
-        "NSCameraUsageDescription": "AfterStay needs camera access to capture trip moments."
+        "NSPhotoLibraryAddUsageDescription": "AfterStay saves trip recaps, memories, and edited photos to your photo library when you choose to export them.",
+        "NSCameraUsageDescription": "AfterStay needs camera access to capture trip moments.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "icon": {
         "light": "./assets/icon/afterstay-icon.png",

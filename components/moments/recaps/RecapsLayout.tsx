@@ -1,7 +1,9 @@
 import * as Haptics from 'expo-haptics';
+import * as Sharing from 'expo-sharing';
 import { Share2 } from 'lucide-react-native';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { captureRef } from 'react-native-view-shot';
 
 import { useTheme } from '@/constants/ThemeContext';
 import type { MomentDisplay } from '../types';
@@ -37,9 +39,22 @@ export function RecapsLayout({ items, destination, tripStartDate }: RecapsLayout
     if (!ref) return;
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      Alert.alert('Share', 'Share feature coming soon — being polished for next update.');
-    } catch {
-      // ignore
+      const uri = await captureRef(ref, {
+        format: 'png',
+        quality: 0.95,
+      });
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert('Share unavailable', 'Sharing is not available on this device.');
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        dialogTitle: 'Share trip recap',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not prepare this recap for sharing.';
+      Alert.alert('Share failed', message);
     }
   }, []);
 

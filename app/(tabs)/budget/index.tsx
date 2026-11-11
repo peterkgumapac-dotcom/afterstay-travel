@@ -392,10 +392,24 @@ function BudgetScreen() {
     [expenses, members, tripSplits],
   );
   const debtSummary = useMemo(() => summarizeDebtEdges(debtEdges, currentMember?.id), [currentMember?.id, debtEdges]);
-  const pendingPersonalSplits = useMemo(
-    () => personalHistory.filter((item) => item.splitType || item.notes?.toLowerCase().includes('split:')),
-    [personalHistory],
-  );
+  const personalSplitStats = useMemo(() => {
+    return personalHistory.reduce(
+      (stats, item) => {
+        if (item.source === 'trip') return stats;
+        const hasSplitSignal = Boolean(item.splitType || item.notes?.toLowerCase().includes('split:'));
+        if (!hasSplitSignal) return stats;
+
+        const structuredRows = item.splitRows?.filter((split) => split.source === 'standalone' || split.source === 'quick-trip') ?? [];
+        if (structuredRows.length > 0) {
+          stats.peopleToSettle += structuredRows.filter((split) => !split.settled).length;
+        } else {
+          stats.needsReview += 1;
+        }
+        return stats;
+      },
+      { peopleToSettle: 0, needsReview: 0 },
+    );
+  }, [personalHistory]);
   const tripTopCategory = useMemo(
     () => topCategoryLabel(tripSummary.byCategory, tripSummary.total, currency),
     [currency, tripSummary.byCategory, tripSummary.total],
@@ -744,7 +758,7 @@ function BudgetScreen() {
             allExpenseCount={personalHistory.length}
             showAll={showAllPersonalExpenses}
             setShowAll={setShowAllPersonalExpenses}
-            pendingPersonalSplits={pendingPersonalSplits.length}
+            personalSplitStats={personalSplitStats}
             topCategory={personalTopCategory}
             savingsGoal={savingsGoal}
             expandedInsight={expandedInsight}
@@ -1175,7 +1189,7 @@ function PersonalMode(props: {
   allExpenseCount: number;
   showAll: boolean;
   setShowAll: (value: boolean) => void;
-  pendingPersonalSplits: number;
+  personalSplitStats: { peopleToSettle: number; needsReview: number };
   topCategory: string;
   savingsGoal: SavingsGoal | null;
   expandedInsight: boolean;
@@ -1206,7 +1220,7 @@ function PersonalMode(props: {
     allExpenseCount,
     showAll,
     setShowAll,
-    pendingPersonalSplits,
+    personalSplitStats,
     topCategory,
     savingsGoal,
     expandedInsight,
@@ -1249,12 +1263,20 @@ function PersonalMode(props: {
 
       <ActionButtons styles={styles} colors={colors} onAdd={onAdd} onScan={onScan} />
 
-      {pendingPersonalSplits > 0 && (
+      {personalSplitStats.peopleToSettle + personalSplitStats.needsReview > 0 && (
         <SettlementNudge
           colors={colors}
           styles={styles}
-          title={`You have ${pendingPersonalSplits} split note${pendingPersonalSplits === 1 ? '' : 's'}`}
-          subtitle="Review quick-trip and personal balances"
+          title={
+            personalSplitStats.peopleToSettle > 0
+              ? `${personalSplitStats.peopleToSettle} ${personalSplitStats.peopleToSettle === 1 ? 'person' : 'people'} to settle`
+              : `${personalSplitStats.needsReview} split ${personalSplitStats.needsReview === 1 ? 'expense' : 'expenses'} to review`
+          }
+          subtitle={
+            personalSplitStats.peopleToSettle > 0
+              ? 'Mark paid or review personal balances'
+              : 'Assign people so these become balances'
+          }
           rightLabel="View all"
           onPress={onOpenSettle}
         />

@@ -6,6 +6,7 @@ export default ({ config }) => ({
     'expo-sqlite',
     'expo-video',
     'expo-secure-store',
+    'expo-sharing',
     [
       'react-native-maps',
       {

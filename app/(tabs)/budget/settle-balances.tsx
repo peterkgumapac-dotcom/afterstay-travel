@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, CheckCircle, HelpCircle, QrCode, ShieldCheck, Users, X } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle, HelpCircle, QrCode, ReceiptText, ShieldCheck, Users, X } from 'lucide-react-native';
 
 import { useTheme } from '@/constants/ThemeContext';
 import { radius } from '@/constants/theme';
@@ -27,7 +27,9 @@ import {
   getTripSplits,
   notifySettlementReminder,
   settleExpenseSplit,
+  settleStandaloneExpenseSplit,
 } from '@/lib/supabase';
+import { settleQuickTripExpenseSplit } from '@/lib/quickTrips';
 import type { ExpenseSplit, PaymentQr } from '@/lib/supabase';
 import { getUnifiedExpenseHistory } from '@/lib/expenseHistory';
 import {
@@ -45,10 +47,21 @@ type SettleScope = 'trip' | 'personal';
 
 interface PersonalSplitRow {
   id: string;
+  kind: 'person' | 'expense';
+  expenseId: string;
+  splitId?: string;
+  source: 'standalone' | 'quick-trip';
+  sourceId?: string;
   title: string;
   subtitle: string;
   amount: number;
   currency: string;
+  category: string;
+  date: string;
+  notes?: string;
+  paidBy?: string;
+  placeName?: string;
+  splitType?: string;
   status: 'review' | 'settled';
 }
 
@@ -64,32 +77,51 @@ function parsePersonalSplitRows(items: UnifiedExpenseHistoryItem[]): PersonalSpl
     if (item.source === 'trip') continue;
     if (!item.splitType && !item.notes?.toLowerCase().includes('split:')) continue;
 
-    const splitLines = item.notes?.split('\n').filter((line) => /:\s*[A-Z]{3}\s+[\d,.]+/i.test(line)) ?? [];
-    if (splitLines.length === 0) {
-      rows.push({
-        id: item.id,
-        title: item.description || 'Split expense',
-        subtitle: `${item.sourceLabel ?? item.category} · ${formatDatePHT(item.date)}`,
-        amount: item.amount,
-        currency: item.currency,
-        status: 'review',
-      });
+    const structuredRows = item.splitRows?.filter((split) => split.source === 'standalone' || split.source === 'quick-trip') ?? [];
+    if (structuredRows.length > 0) {
+      for (const split of structuredRows) {
+        const source = split.source === 'quick-trip' ? 'quick-trip' : 'standalone';
+        rows.push({
+          id: `${item.id}-${split.id}`,
+          kind: 'person',
+          expenseId: item.id,
+          splitId: split.id,
+          source,
+          sourceId: item.sourceId,
+          title: displayBudgetMemberName(split.name),
+          subtitle: `${item.description || 'Split expense'} · ${item.sourceLabel ?? item.category} · ${formatDatePHT(item.date)}`,
+          amount: split.amount,
+          currency: split.currency || item.currency,
+          category: item.category,
+          date: item.date,
+          notes: item.notes,
+          paidBy: item.paidBy,
+          placeName: item.placeName,
+          splitType: item.splitType,
+          status: split.settled ? 'settled' : 'review',
+        });
+      }
       continue;
     }
 
-    for (const line of splitLines) {
-      const match = line.match(/^([^:]+):\s*([A-Z]{3})\s+([\d,.]+)/i);
-      if (!match) continue;
-      const settled = /settled/i.test(line);
-      rows.push({
-        id: `${item.id}-${rows.length}`,
-        title: displayBudgetMemberName(match[1]),
-        subtitle: `${item.description || 'Split expense'} · ${formatDatePHT(item.date)}`,
-        amount: Number(match[3].replace(/,/g, '')) || 0,
-        currency: match[2].toUpperCase(),
-        status: settled ? 'settled' : 'review',
-      });
-    }
+    rows.push({
+      id: item.id,
+      kind: 'expense',
+      expenseId: item.id,
+      source: item.source === 'quick-trip' ? 'quick-trip' : 'standalone',
+      sourceId: item.sourceId,
+      title: item.description || 'Split expense',
+      subtitle: `${item.sourceLabel ?? item.category} · ${formatDatePHT(item.date)}`,
+      amount: item.amount,
+      currency: item.currency,
+      category: item.category,
+      date: item.date,
+      notes: item.notes,
+      paidBy: item.paidBy,
+      placeName: item.placeName,
+      splitType: item.splitType,
+      status: 'review',
+    });
   }
 
   return rows;
@@ -102,7 +134,7 @@ export default function SettleBalancesScreen() {
   const params = useLocalSearchParams<{ scope?: string }>();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
-  const [scope, setScope] = useState<SettleScope>(params.scope === 'personal' ? 'personal' : 'trip');
+  const [scope, setScope] = useState<SettleScope>(params.scope === 'trip' ? 'trip' : 'personal');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -150,8 +182,9 @@ export default function SettleBalancesScreen() {
   const debtEdges = useMemo(() => computeUnsettledDebtEdges(expenses, members, splits), [expenses, members, splits]);
   const summary = useMemo(() => summarizeDebtEdges(debtEdges, currentMember?.id), [currentMember?.id, debtEdges]);
   const personalRows = useMemo(() => parsePersonalSplitRows(personalHistory), [personalHistory]);
-  const personalOpenRows = personalRows.filter((row) => row.status !== 'settled');
-  const personalSettledRows = personalRows.filter((row) => row.status === 'settled');
+  const personalBalanceRows = personalRows.filter((row) => row.kind === 'person');
+  const personalReviewRows = personalRows.filter((row) => row.kind === 'expense');
+  const personalOpenRows = personalBalanceRows.filter((row) => row.status !== 'settled');
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -200,6 +233,61 @@ export default function SettleBalancesScreen() {
       Alert.alert('Reminder not sent', 'Please try again later.');
     }
   }, [currentMember, currency, trip, user?.id]);
+
+  const openPersonalReview = useCallback((row: PersonalSplitRow) => {
+    const target = row.source === 'quick-trip' ? 'quick-trip' : 'standalone';
+    if (row.source === 'quick-trip' && !row.sourceId) {
+      Alert.alert('Could not open expense', 'This Quick Trip split is missing its trip reference.');
+      return;
+    }
+
+    router.push({
+      pathname: '/add-expense',
+      params: {
+        editId: row.expenseId,
+        target,
+        ...(row.source === 'quick-trip' && row.sourceId ? { quickTripId: row.sourceId } : {}),
+        description: row.title,
+        amount: String(row.amount),
+        currency: row.currency,
+        category: row.category,
+        date: row.date,
+        paidBy: row.paidBy ?? '',
+        placeName: row.placeName ?? '',
+        notes: row.notes ?? '',
+        splitType: row.splitType ?? 'Custom',
+      },
+    } as never);
+  }, [router]);
+
+  const handlePersonalRowAction = useCallback((row: PersonalSplitRow) => {
+    if (row.kind === 'expense' || !row.splitId) {
+      openPersonalReview(row);
+      return;
+    }
+    if (row.status === 'settled') return;
+    const splitId = row.splitId;
+
+    Alert.alert('Mark as paid?', `${row.title} paid ${formatCurrency(row.amount, row.currency)} for ${row.subtitle}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Mark paid',
+        onPress: async () => {
+          try {
+            if (row.source === 'quick-trip') {
+              await settleQuickTripExpenseSplit(splitId);
+            } else {
+              await settleStandaloneExpenseSplit(splitId);
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            await load(true);
+          } catch {
+            Alert.alert('Could not update', 'Please try again.');
+          }
+        },
+      },
+    ]);
+  }, [load, openPersonalReview]);
 
   const openPaymentQr = useCallback(() => {
     if (paymentQrs.length === 0) {
@@ -256,7 +344,7 @@ export default function SettleBalancesScreen() {
       </View>
 
       <View style={styles.segmentWrap}>
-        {(['trip', 'personal'] as const).map((nextScope) => {
+        {(['personal', 'trip'] as const).map((nextScope) => {
           const active = scope === nextScope;
           const disabled = nextScope === 'trip' && !trip;
           return (
@@ -268,7 +356,7 @@ export default function SettleBalancesScreen() {
               activeOpacity={0.75}
             >
               <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                {nextScope === 'trip' ? `On Trip (${shortTripName(trip)})` : 'Personal'}
+                {nextScope === 'trip' ? `Trip (${shortTripName(trip)})` : 'Personal'}
               </Text>
             </TouchableOpacity>
           );
@@ -346,33 +434,40 @@ export default function SettleBalancesScreen() {
           <>
             <View style={styles.totalCard}>
               <View style={styles.totalCol}>
-                <Text style={styles.totalLabel}>Open personal splits</Text>
+                <Text style={styles.totalLabel}>People to settle</Text>
                 <Text style={styles.totalAmount}>{personalOpenRows.length}</Text>
               </View>
               <View style={styles.totalDivider} />
               <View style={styles.totalCol}>
-                <Text style={styles.totalLabel}>Settled notes</Text>
-                <Text style={styles.totalAmount}>{personalSettledRows.length}</Text>
+                <Text style={styles.totalLabel}>Needs review</Text>
+                <Text style={styles.totalAmount}>{personalReviewRows.length}</Text>
               </View>
-              <Text style={styles.totalFootnote}>Personal reminders are manual unless the person is an AfterStay user in a shared trip.</Text>
+              <Text style={styles.totalFootnote}>Personal balances reuse your saved split rows from Just Log It and Quick Trips. Older text-only notes stay in review.</Text>
             </View>
 
-            <SectionTitle title="Personal split notes" />
-            {personalRows.length > 0 ? (
+            <SectionTitle title="People to settle" />
+            {personalBalanceRows.length > 0 ? (
               <View style={styles.cardList}>
-                {personalRows.map((row) => (
+                {personalBalanceRows.map((row) => (
                   <View key={row.id} style={styles.personRow}>
                     <View style={row.status === 'settled' ? styles.avatarSettled : styles.avatar}>
-                      {row.status === 'settled' ? <CheckCircle size={16} color={colors.success} /> : <Text style={styles.avatarText}>?</Text>}
+                      {row.status === 'settled' ? <CheckCircle size={16} color={colors.success} /> : <Text style={styles.avatarText}>{budgetMemberInitial(row.title)}</Text>}
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={styles.personName} numberOfLines={1}>{row.title}</Text>
                       <Text style={styles.personMeta} numberOfLines={1}>{row.subtitle}</Text>
                     </View>
                     <Text style={styles.personAmount}>{formatCurrency(row.amount, row.currency)}</Text>
-                    <View style={styles.disabledAction}>
-                      <Text style={styles.disabledActionText}>{row.status === 'settled' ? 'Settled' : 'Share'}</Text>
-                    </View>
+                    <TouchableOpacity
+                      style={row.status === 'settled' ? styles.disabledAction : styles.outlineAction}
+                      onPress={() => handlePersonalRowAction(row)}
+                      disabled={row.status === 'settled'}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={row.status === 'settled' ? styles.disabledActionText : styles.outlineActionText}>
+                        {row.status === 'settled' ? 'Settled' : 'Mark paid'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 ))}
               </View>
@@ -380,8 +475,31 @@ export default function SettleBalancesScreen() {
               <View style={styles.emptyCard}>
                 <Users size={24} color={colors.text3} />
                 <Text style={styles.emptyTitle}>No personal balances yet</Text>
-                <Text style={styles.emptyText}>Add split Just Log It or quick-trip expenses, then they will appear here for manual review.</Text>
+                <Text style={styles.emptyText}>Add people to a Just Log It or Quick Trip expense, then each person appears here with an amount to settle.</Text>
               </View>
+            )}
+
+            {personalReviewRows.length > 0 && (
+              <>
+                <SectionTitle title="Split expenses to review" />
+                <View style={styles.cardList}>
+                  {personalReviewRows.map((row) => (
+                    <View key={row.id} style={styles.personRow}>
+                      <View style={styles.avatarMuted}>
+                        <ReceiptText size={17} color={colors.text2} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.personName} numberOfLines={1}>{row.title}</Text>
+                        <Text style={styles.personMeta} numberOfLines={1}>{row.subtitle}</Text>
+                      </View>
+                      <Text style={styles.personAmount}>{formatCurrency(row.amount, row.currency)}</Text>
+                      <TouchableOpacity style={styles.disabledAction} onPress={() => handlePersonalRowAction(row)} activeOpacity={0.75}>
+                        <Text style={styles.disabledActionText}>Review</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              </>
             )}
           </>
         )}

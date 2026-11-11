@@ -37,6 +37,7 @@ import {
   Plane,
   QrCode,
   Sun,
+  Trash2,
   User,
   X,
 } from 'lucide-react-native';
@@ -172,6 +173,7 @@ export default function SettingsScreen() {
   const [editSocials, setEditSocials] = useState<ProfileSocials>({});
   const [handleStatus, setHandleStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [saving, setSaving] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const handleCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // App updates
@@ -228,6 +230,37 @@ export default function SettingsScreen() {
   const loadTrip = async () => {
     const active = await getActiveTrip();
     setTrip(active);
+  };
+
+  const handleDeleteAccount = () => {
+    if (!user?.id) return;
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your AfterStay account and removes your saved account data. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingAccount(true);
+            try {
+              const { error } = await supabase.functions.invoke('delete-account');
+              if (error) throw error;
+              await signOut().catch(() => {});
+              router.replace('/auth/login' as any);
+            } catch (err) {
+              Alert.alert(
+                'Could not delete account',
+                err instanceof Error ? err.message : 'Please try again or contact support.',
+              );
+            } finally {
+              setDeletingAccount(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const saveProfile = async (updated: ProfileState) => {
@@ -617,16 +650,9 @@ export default function SettingsScreen() {
             <Crown size={18} color={colors.accent} />
             <View style={{ flex: 1, marginLeft: spacing.md }}>
               <Text style={s.cardTitle}>Free Plan</Text>
-              <Text style={s.cardSub}>Upgrade for Trip Memories and premium features</Text>
+              <Text style={s.cardSub}>Includes trip memories, planning tools, daily budget tracking, and shared trip basics.</Text>
             </View>
           </View>
-          <TouchableOpacity
-            onPress={() => Alert.alert('Premium', 'Premium subscriptions coming soon!')}
-            style={s.upgradeBtn}
-            activeOpacity={0.7}
-          >
-            <Text style={s.upgradeBtnText}>Upgrade</Text>
-          </TouchableOpacity>
         </View>
 
         {/* App Updates */}
@@ -702,9 +728,23 @@ export default function SettingsScreen() {
             onPress={async () => { await signOut(); router.replace('/auth/login' as any); }}
             style={s.signOutBtn}
             activeOpacity={0.7}
+            disabled={deletingAccount}
           >
             <LogOut size={14} color={colors.danger} />
             <Text style={s.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleDeleteAccount}
+            style={s.deleteAccountBtn}
+            activeOpacity={0.7}
+            disabled={deletingAccount}
+          >
+            {deletingAccount ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <Trash2 size={14} color={colors.danger} />
+            )}
+            <Text style={s.signOutText}>{deletingAccount ? 'Deleting...' : 'Delete Account'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -1219,19 +1259,6 @@ const getDynamicStyles = (c: Record<string, string>) =>
     toggleDesc: { fontSize: 11, color: c.text3, marginTop: 1 },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: c.border, marginVertical: spacing.md },
 
-    // Subscription
-    upgradeBtn: {
-      marginTop: spacing.md,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.lg,
-      backgroundColor: c.accentBg,
-      borderRadius: radius.sm,
-      alignSelf: 'flex-start',
-      borderWidth: 1,
-      borderColor: c.accentBorder,
-    },
-    upgradeBtnText: { color: c.accent, fontSize: 13, fontWeight: '600' },
-
     // Account
     signOutBtn: {
       marginTop: spacing.md,
@@ -1242,6 +1269,19 @@ const getDynamicStyles = (c: Record<string, string>) =>
       paddingHorizontal: spacing.lg,
       backgroundColor: c.danger + '18',
       borderRadius: radius.sm,
+      alignSelf: 'flex-start',
+    },
+    deleteAccountBtn: {
+      marginTop: spacing.sm,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      backgroundColor: c.danger + '10',
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: c.danger + '40',
       alignSelf: 'flex-start',
     },
     signOutText: { color: c.danger, fontSize: 13, fontWeight: '600' },

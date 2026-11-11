@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Lock } from 'lucide-react-native';
 import { useTheme, ThemeColors } from '@/constants/ThemeContext';
 import type { UserTier } from '@/lib/types';
@@ -19,16 +19,11 @@ export function PremiumGate({ tier, children, feature = 'this feature' }: Premiu
   return (
     <View style={s.container}>
       <View style={s.overlay}>
-        <Lock size={24} color={colors.text3} />
-        <Text style={s.title}>Premium Feature</Text>
-        <Text style={s.subtitle}>Upgrade to unlock {feature}</Text>
-        <TouchableOpacity
-          style={s.upgradeBtn}
-          onPress={() => Alert.alert('Premium', 'Upgrade coming soon!')}
-          activeOpacity={0.7}
-        >
-          <Text style={s.upgradeBtnText}>Upgrade</Text>
-        </TouchableOpacity>
+        <View accessibilityRole="image" accessibilityLabel="Locked feature">
+          <Lock size={24} color={colors.text3} />
+        </View>
+        <Text style={s.title}>Feature unavailable</Text>
+        <Text style={s.subtitle}>{feature} is not enabled for this account.</Text>
       </View>
     </View>
   );
@@ -45,9 +40,4 @@ const getStyles = (c: ThemeColors) => StyleSheet.create({
   },
   title: { fontSize: 16, fontWeight: '600', color: c.text, marginTop: 12 },
   subtitle: { fontSize: 13, color: c.text3, marginTop: 4 },
-  upgradeBtn: {
-    marginTop: 16, backgroundColor: c.accent, borderRadius: 12,
-    paddingVertical: 10, paddingHorizontal: 24,
-  },
-  upgradeBtnText: { fontSize: 14, fontWeight: '600', color: c.bg },
 });
